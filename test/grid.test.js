@@ -4,6 +4,7 @@ import {
   isWalkable,
   parseMap,
   resolveMove,
+  withObstacles,
   worldToGrid,
 } from '../src/logic/grid.js'
 
@@ -114,5 +115,29 @@ describe('resolveMove', () => {
     )
     expect(result.x).toBe(1.3)
     expect(result.z).toBeCloseTo(1.3)
+  })
+})
+
+describe('withObstacles', () => {
+  const grid = parseMap(['#####', '#...#', '#...#', '#...#', '#####'])
+  const tileSize = 1
+  const radius = 0.3
+
+  it('marks the given tiles as walls without mutating the original grid', () => {
+    const withCrate = withObstacles(grid, [{ x: 2, z: 2 }])
+    expect(isWalkable(withCrate, 2, 2)).toBe(false)
+    expect(isWalkable(grid, 2, 2)).toBe(true)
+  })
+
+  it('blocks the player from walking into the obstacle tile (crate collision)', () => {
+    const withCrate = withObstacles(grid, [{ x: 2, z: 2 }])
+    const result = resolveMove(withCrate, tileSize, { x: 1.6, z: 2.5 }, radius, {
+      x: 0.5,
+      z: 0,
+    })
+    // Moving right would push the circle into the crate's tile at x >= 2,
+    // so the x axis is blocked and the position does not change.
+    expect(result.x).toBe(1.6)
+    expect(result.z).toBe(2.5)
   })
 })

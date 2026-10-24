@@ -83,6 +83,20 @@ function circleHitsWall(grid, tileSize, cx, cz, radius) {
   return false
 }
 
+// Returns a new grid with the given tiles additionally marked as walls,
+// without mutating the original. Used to treat obstacles like crates as
+// solid for movement collision while keeping the original grid (with no
+// obstacles) for checks that should see past them, such as line of sight.
+export function withObstacles(grid, tiles) {
+  const cells = grid.cells.map((row) => row.slice())
+  for (const tile of tiles) {
+    if (tile.x >= 0 && tile.z >= 0 && tile.x < grid.width && tile.z < grid.height) {
+      cells[tile.z][tile.x] = TILE.WALL
+    }
+  }
+  return { ...grid, cells }
+}
+
 // Moves a circle (position + radius) by delta against the wall grid,
 // resolving the X and Z axes separately so the circle slides along a wall
 // instead of stopping dead when moving diagonally into it.
