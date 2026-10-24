@@ -1,4 +1,8 @@
 import * as THREE from 'three'
+import { CAMERA_LERP, CAMERA_OFFSET } from './config.js'
+import { createDungeon } from './dungeon.js'
+import { Input } from './input.js'
+import { Player } from './player.js'
 
 const container = document.querySelector('#app')
 
@@ -7,26 +11,36 @@ renderer.setSize(window.innerWidth, window.innerHeight)
 container.appendChild(renderer.domElement)
 
 const scene = new THREE.Scene()
-scene.background = new THREE.Color(0x222233)
+
+const dungeon = createDungeon()
+scene.add(dungeon.group)
+scene.background = new THREE.Color(dungeon.backgroundColor)
+scene.fog = dungeon.fog
 
 const camera = new THREE.PerspectiveCamera(
-  75,
+  70,
   window.innerWidth / window.innerHeight,
   0.1,
-  1000,
+  100,
 )
-camera.position.z = 3
 
-const light = new THREE.DirectionalLight(0xffffff, 1)
-light.position.set(1, 1, 1)
-scene.add(light)
+const input = new Input()
+const player = new Player({
+  spawn: dungeon.playerSpawn,
+  grid: dungeon.grid,
+  tileSize: dungeon.tileSize,
+})
+scene.add(player.mesh)
 
-// Placeholder spinning cube, will be replaced by real game content in later milestones.
-const cube = new THREE.Mesh(
-  new THREE.BoxGeometry(),
-  new THREE.MeshStandardMaterial({ color: 0x44aa88 }),
+// The camera doesn't rotate yet, so it stays behind the player along a
+// fixed world-space offset and eases toward its target each frame.
+const cameraYaw = 0
+const cameraTarget = new THREE.Vector3()
+camera.position.set(
+  player.position.x + CAMERA_OFFSET.x,
+  CAMERA_OFFSET.y,
+  player.position.z + CAMERA_OFFSET.z,
 )
-scene.add(cube)
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight
@@ -34,9 +48,22 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight)
 })
 
+const clock = new THREE.Clock()
+
 function animate() {
-  cube.rotation.x += 0.01
-  cube.rotation.y += 0.01
+  const deltaSeconds = clock.getDelta()
+
+  player.update(input, cameraYaw, deltaSeconds)
+
+  cameraTarget.set(
+    player.position.x + CAMERA_OFFSET.x,
+    CAMERA_OFFSET.y,
+    player.position.z + CAMERA_OFFSET.z,
+  )
+  const lerpFactor = 1 - Math.exp(-CAMERA_LERP * deltaSeconds)
+  camera.position.lerp(cameraTarget, lerpFactor)
+  camera.lookAt(player.position.x, 1, player.position.z)
+
   renderer.render(scene, camera)
   requestAnimationFrame(animate)
 }
