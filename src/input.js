@@ -45,6 +45,15 @@ export class Input {
     this._justPressed.clear()
   }
 
+  // Clears all currently-tracked key/mouse state. Used so the keypress or
+  // click that dismisses the start card doesn't leak into the first frame
+  // of gameplay as a held key or an attack press.
+  clear() {
+    this.keys.clear()
+    this.mouseButtons.clear()
+    this._justPressed.clear()
+  }
+
   dispose() {
     window.removeEventListener('keydown', this._onKeyDown)
     window.removeEventListener('keyup', this._onKeyUp)
