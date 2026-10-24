@@ -49,6 +49,33 @@
         margin-top: 10px;
         font-size: 16px;
       }
+      #hidden-indicator {
+        display: none;
+        margin-top: 10px;
+        font-size: 18px;
+        color: #ffe066;
+      }
+      #hide-prompt {
+        display: none;
+        margin-top: 10px;
+        font-size: 14px;
+        color: #cfeaff;
+      }
+
+      #ambush-banner {
+        display: none;
+        position: fixed;
+        top: 30%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        font-family: system-ui, sans-serif;
+        font-weight: 900;
+        font-size: 48px;
+        color: #ff3355;
+        text-shadow: 3px 3px 0 #000;
+        user-select: none;
+        pointer-events: none;
+      }
     </style>
   </head>
   <body>
@@ -59,7 +86,10 @@
       </div>
       <span id="health-label">100 / 100</span>
       <div id="monsters-left">Monsters left: 0</div>
+      <div id="hidden-indicator">HIDDEN</div>
+      <div id="hide-prompt">Press E to hide</div>
     </div>
+    <div id="ambush-banner">AMBUSH!</div>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

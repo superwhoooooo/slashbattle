@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import {
+  AMBUSH_WINDOW,
   ATTACK_ARC_RADIANS,
   ATTACK_COOLDOWN,
   ATTACK_DAMAGE,
@@ -18,6 +19,7 @@ import {
   knockbackVector,
 } from './logic/combat.js'
 import { resolveMove } from './logic/grid.js'
+import { isAmbushActive } from './logic/hiding.js'
 
 // The sword rotates through this arc (radians, around its local Z axis)
 // over the swing, and the hit is checked once the swing crosses the
@@ -41,11 +43,16 @@ export function createAttackState() {
 // Drives the player's melee attack each frame: reads the attack button
 // (left mouse or Space), animates the sword swing, and at the swing's hit
 // moment checks every living monster for a hit, applying damage,
-// knockback, and a hit flash/squash, starting a death pop on a lethal hit.
+// knockback, and a hit flash/squash, starting a death pop on a lethal
+// hit. Disabled entirely while hidden. Returns { ambushHit }: true the
+// one frame an ambush-boosted hit actually landed on a monster, so the
+// caller can flash the "AMBUSH!" banner.
 export function updatePlayerAttack(
   attackState,
   { player, monsters, grid, tileSize, input, elapsedSeconds, deltaSeconds },
 ) {
+  if (player.hidden) return { ambushHit: false }
+
   const sword = player.mesh.userData.sword
   const attackPressed = input.isMouseDown(0) || input.isDown('Space')
 
@@ -59,29 +66,37 @@ export function updatePlayerAttack(
     attackState.cooldown.trigger(elapsedSeconds)
   }
 
-  if (attackState.swingElapsed === null) return
+  if (attackState.swingElapsed === null) return { ambushHit: false }
 
   attackState.swingElapsed += deltaSeconds
   const progress = Math.min(attackState.swingElapsed / ATTACK_SWING_DURATION, 1)
   sword.rotation.z = THREE.MathUtils.lerp(SWING_START_ANGLE, SWING_END_ANGLE, progress)
 
+  let ambushHit = false
   if (!attackState.hasHitThisSwing && progress >= SWING_HIT_FRACTION) {
     attackState.hasHitThisSwing = true
-    resolveAttackHits(player, monsters, grid, tileSize)
+    ambushHit = resolveAttackHits(player, monsters, grid, tileSize, elapsedSeconds)
   }
 
   if (progress >= 1) {
     attackState.swingElapsed = null
     sword.rotation.z = 0
   }
+
+  return { ambushHit }
 }
 
 // Checks every living monster against the attack arc and applies the hit:
-// damage, a wall-safe knockback, and the flash/squash reaction. A lethal
-// hit starts the monster's death pop instead of removing it immediately,
-// so updateMonsterHitReaction can animate it out first.
-function resolveAttackHits(player, monsters, grid, tileSize) {
+// damage (boosted if the player is still within the ambush window after
+// popping out of hiding), a wall-safe knockback, and the flash/squash
+// reaction. A lethal hit starts the monster's death pop instead of
+// removing it immediately, so updateMonsterHitReaction can animate it out
+// first. Returns true if an ambush-boosted hit landed on at least one
+// monster.
+function resolveAttackHits(player, monsters, grid, tileSize, now) {
   const attackerPos = player.position
+  const ambush = isAmbushActive(now, player.exitedAt, AMBUSH_WINDOW)
+  let ambushHit = false
 
   for (const monster of monsters) {
     if (monster.userData.dying) continue
@@ -93,9 +108,10 @@ function resolveAttackHits(player, monsters, grid, tileSize) {
       continue
     }
 
-    const damage = computeDamage(ATTACK_DAMAGE, { ambush: monster.userData.ambush === true })
+    const damage = computeDamage(ATTACK_DAMAGE, { ambush })
     const { hp, lethal } = applyDamage({ hp: monster.userData.hp }, damage)
     monster.userData.hp = hp
+    if (ambush) ambushHit = true
 
     const knockback = knockbackVector(attackerPos, targetPos, KNOCKBACK_STRENGTH)
     const resolved = resolveMove(grid, tileSize, targetPos, monster.userData.radius, knockback)
@@ -110,6 +126,8 @@ function resolveAttackHits(player, monsters, grid, tileSize) {
       monster.userData.deathPopElapsed = 0
     }
   }
+
+  return ambushHit
 }
 
 // Advances one monster's hit-flash, hit-squash, and death-pop animation by
