@@ -5,6 +5,7 @@ import { createAttackState, updateMonsterHitReaction, updatePlayerAttack } from 
 import { createDungeon } from './dungeon.js'
 import { createHud, updateHud } from './hud.js'
 import { Input } from './input.js'
+import { createMonsterAIState, separateMonsters, updateMonster } from './monster.js'
 import { Player } from './player.js'
 
 const container = document.querySelector('#app')
@@ -36,7 +37,7 @@ const player = new Player({
 scene.add(player.mesh)
 
 // Spawn one monster per M spawn point, cycling through the monster types.
-// They just stand and wobble for now; AI arrives in a later milestone.
+// Each starts out wandering; updateMonster drives wander/chase/attack/search.
 const monsterTypeNames = Object.keys(MONSTER_TYPES)
 let monsters = dungeon.monsterSpawns.map((spawn, index) => {
   const type = monsterTypeNames[index % monsterTypeNames.length]
@@ -48,6 +49,7 @@ let monsters = dungeon.monsterSpawns.map((spawn, index) => {
   mesh.userData.wobblePhase = index * 1.3
   mesh.userData.hp = stats.hp
   mesh.userData.radius = stats.radius
+  Object.assign(mesh.userData, createMonsterAIState())
   scene.add(mesh)
   return mesh
 })
@@ -77,7 +79,9 @@ function animate() {
   const deltaSeconds = clock.getDelta()
   const elapsedSeconds = clock.getElapsedTime()
 
-  player.update(input, cameraYaw, deltaSeconds)
+  // Once hp hits 0, stop reading player input; the game-over screen comes
+  // in a later milestone.
+  if (player.hp > 0) player.update(input, cameraYaw, deltaSeconds)
   updateWobble(player.mesh, elapsedSeconds, 0)
 
   updatePlayerAttack(attackState, {
@@ -103,9 +107,12 @@ function animate() {
     }
 
     updateWobble(mesh, elapsedSeconds, mesh.userData.wobblePhase)
+    updateMonster(mesh, player, dungeon.grid, deltaSeconds, elapsedSeconds)
     updateMonsterHitReaction(mesh, deltaSeconds)
     return true
   })
+
+  separateMonsters(monsters, player, dungeon.grid)
 
   updateHud(hud, { hp: player.hp, maxHp: PLAYER_MAX_HP, monstersLeft: monsters.length })
 
