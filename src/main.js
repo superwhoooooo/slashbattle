@@ -1,8 +1,18 @@
 import * as THREE from 'three'
 import { createMonsterMesh, updateWobble } from './characters.js'
-import { CAMERA_LERP, CAMERA_OFFSET, HIDDEN_CAMERA_OFFSET, MONSTER_TYPES, PLAYER_MAX_HP } from './config.js'
+import {
+  CAMERA_LERP,
+  CAMERA_OFFSET,
+  HIDDEN_CAMERA_OFFSET,
+  MONSTER_TYPES,
+  PLAYER_MAX_HP,
+  SHAKE_DAMAGE_DURATION,
+  SHAKE_DAMAGE_MAGNITUDE,
+  SHAKE_HIT_DURATION,
+  SHAKE_HIT_MAGNITUDE,
+} from './config.js'
 import { createAttackState, updateMonsterHitReaction, updatePlayerAttack } from './combat.js'
-import { createDungeon } from './dungeon.js'
+import { createDungeon, updateTorchFlicker } from './dungeon.js'
 import { createCrates, createHidingState, updateCrateWiggle, updateHiding } from './hiding.js'
 import { createHud, hideStartCard, showAmbushBanner, showGameOverlay, updateHud } from './hud.js'
 import { Input } from './input.js'
@@ -40,6 +50,34 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight)
 })
 
+// Camera screen shake: a short decaying random offset added on top of
+// the normal follow position. triggerShake restarts it; updateShake
+// advances it and returns the current offset.
+function createShakeState() {
+  return { elapsed: null, duration: 0, magnitude: 0 }
+}
+
+function triggerShake(shake, magnitude, duration) {
+  shake.elapsed = 0
+  shake.magnitude = magnitude
+  shake.duration = duration
+}
+
+function updateShake(shake, deltaSeconds) {
+  if (shake.elapsed === null) return { x: 0, y: 0, z: 0 }
+  shake.elapsed += deltaSeconds
+  if (shake.elapsed >= shake.duration) {
+    shake.elapsed = null
+    return { x: 0, y: 0, z: 0 }
+  }
+  const strength = shake.magnitude * (1 - shake.elapsed / shake.duration)
+  return {
+    x: (Math.random() * 2 - 1) * strength,
+    y: (Math.random() * 2 - 1) * strength,
+    z: (Math.random() * 2 - 1) * strength,
+  }
+}
+
 // Disposes every geometry/material/texture under `object` (recursively),
 // then removes it from the scene. Used on restart so rebuilding the world
 // doesn't leak GPU resources.
@@ -58,9 +96,9 @@ function disposeObject3D(object) {
 }
 
 // Builds a fresh game world: dungeon, grids, player, crates, and
-// monsters, plus the per-run mutable state (attack, hiding). Positions
-// the camera behind the player. Call disposeGame() first if rebuilding
-// on top of an existing game.
+// monsters, plus the per-run mutable state (attack, hiding, shake).
+// Positions the camera behind the player. Call disposeGame() first if
+// rebuilding on top of an existing game.
 function createGame() {
   const dungeon = createDungeon()
   scene.add(dungeon.group)
@@ -114,6 +152,7 @@ function createGame() {
     monsters,
     hidingState: createHidingState(),
     attackState: createAttackState(),
+    shake: createShakeState(),
   }
 }
 
@@ -161,7 +200,7 @@ function animate() {
     return
   }
 
-  const { dungeon, collisionGrid, player, crates, hidingState, attackState } = game
+  const { dungeon, collisionGrid, player, crates, hidingState, attackState, shake } = game
   let monsters = game.monsters
 
   player.update(input, cameraYaw, deltaSeconds)
@@ -178,7 +217,7 @@ function animate() {
   )
   crates.forEach((crate) => updateCrateWiggle(crate, deltaSeconds, elapsedSeconds))
 
-  const { ambushHit } = updatePlayerAttack(attackState, {
+  const { ambushHit, hitAny } = updatePlayerAttack(attackState, {
     player,
     monsters,
     grid: collisionGrid,
@@ -188,6 +227,7 @@ function animate() {
     deltaSeconds,
   })
   if (ambushHit) showAmbushBanner(hud)
+  if (hitAny) triggerShake(shake, SHAKE_HIT_MAGNITUDE, SHAKE_HIT_DURATION)
 
   // Dying monsters skip the idle wobble and just finish their death-pop
   // animation before being removed from the scene and this list.
@@ -204,13 +244,15 @@ function animate() {
     updateWobble(mesh, elapsedSeconds, mesh.userData.wobblePhase)
     // Movement collides with crates (collisionGrid); line of sight does
     // not (dungeon.grid), so a crate can't itself grant cover.
-    updateMonster(mesh, player, collisionGrid, deltaSeconds, elapsedSeconds, dungeon.grid)
+    const { hitPlayer } = updateMonster(mesh, player, collisionGrid, deltaSeconds, elapsedSeconds, dungeon.grid)
+    if (hitPlayer) triggerShake(shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
     updateMonsterHitReaction(mesh, deltaSeconds)
     return true
   })
   game.monsters = monsters
 
   separateMonsters(monsters, player, collisionGrid)
+  updateTorchFlicker(dungeon.torches, elapsedSeconds)
 
   updateHud(hud, {
     hp: player.hp,
@@ -230,6 +272,11 @@ function animate() {
   const lerpFactor = 1 - Math.exp(-CAMERA_LERP * deltaSeconds)
   camera.position.lerp(cameraTarget, lerpFactor)
   camera.lookAt(player.position.x, 1, player.position.z)
+
+  const shakeOffset = updateShake(shake, deltaSeconds)
+  camera.position.x += shakeOffset.x
+  camera.position.y += shakeOffset.y
+  camera.position.z += shakeOffset.z
 
   renderer.render(scene, camera)
   input.endFrame()
