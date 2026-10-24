@@ -1,19 +1,6 @@
-import * as THREE from 'three'
-import { PLAYER_HEIGHT, PLAYER_RADIUS, PLAYER_SPEED, TILE_SIZE } from './config.js'
+import { PLAYER_RADIUS, PLAYER_SPEED, TILE_SIZE } from './config.js'
+import { createPlayerMesh } from './characters.js'
 import { resolveMove } from './logic/grid.js'
-
-// Placeholder player body: a plain colored capsule. The goofy face texture
-// is added in a later milestone.
-function createPlayerMesh() {
-  const geometry = new THREE.CapsuleGeometry(
-    PLAYER_RADIUS,
-    PLAYER_HEIGHT - PLAYER_RADIUS * 2,
-    4,
-    8,
-  )
-  const material = new THREE.MeshStandardMaterial({ color: 0x3388ff })
-  return new THREE.Mesh(geometry, material)
-}
 
 export class Player {
   constructor({ spawn, grid, tileSize = TILE_SIZE }) {
@@ -23,7 +10,8 @@ export class Player {
     this.facing = 0 // yaw, radians
 
     this.mesh = createPlayerMesh()
-    this.mesh.position.set(this.position.x, PLAYER_HEIGHT / 2, this.position.z)
+    this.mesh.position.x = this.position.x
+    this.mesh.position.z = this.position.z
   }
 
   // Moves the player relative to the camera's yaw using WASD/arrow input,
@@ -63,7 +51,8 @@ export class Player {
     this.position = resolved
 
     this.facing = Math.atan2(dirX, dirZ)
-    this.mesh.position.set(this.position.x, PLAYER_HEIGHT / 2, this.position.z)
+    this.mesh.position.x = this.position.x
+    this.mesh.position.z = this.position.z
     this.mesh.rotation.y = this.facing
   }
 }

@@ -1,5 +1,6 @@
 import * as THREE from 'three'
-import { CAMERA_LERP, CAMERA_OFFSET } from './config.js'
+import { createMonsterMesh, updateWobble } from './characters.js'
+import { CAMERA_LERP, CAMERA_OFFSET, MONSTER_TYPES } from './config.js'
 import { createDungeon } from './dungeon.js'
 import { Input } from './input.js'
 import { Player } from './player.js'
@@ -32,6 +33,20 @@ const player = new Player({
 })
 scene.add(player.mesh)
 
+// Spawn one monster per M spawn point, cycling through the monster types.
+// They just stand and wobble for now; AI arrives in a later milestone.
+const monsterTypeNames = Object.keys(MONSTER_TYPES)
+const monsters = dungeon.monsterSpawns.map((spawn, index) => {
+  const type = monsterTypeNames[index % monsterTypeNames.length]
+  const mesh = createMonsterMesh(type)
+  mesh.position.x = spawn.x
+  mesh.position.z = spawn.z
+  mesh.rotation.y = Math.random() * Math.PI * 2
+  mesh.userData.wobblePhase = index * 1.3
+  scene.add(mesh)
+  return mesh
+})
+
 // The camera doesn't rotate yet, so it stays behind the player along a
 // fixed world-space offset and eases toward its target each frame.
 const cameraYaw = 0
@@ -52,8 +67,11 @@ const clock = new THREE.Clock()
 
 function animate() {
   const deltaSeconds = clock.getDelta()
+  const elapsedSeconds = clock.getElapsedTime()
 
   player.update(input, cameraYaw, deltaSeconds)
+  updateWobble(player.mesh, elapsedSeconds, 0)
+  monsters.forEach((mesh) => updateWobble(mesh, elapsedSeconds, mesh.userData.wobblePhase))
 
   cameraTarget.set(
     player.position.x + CAMERA_OFFSET.x,

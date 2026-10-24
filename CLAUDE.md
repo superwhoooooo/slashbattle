@@ -33,9 +33,8 @@ slashbattle/
   test/                # Vitest specs for logic/ (combat, AI transitions, hiding, collision)
 ```
 
-Some files listed above (`faces.js`, `characters.js`, `monster.js`,
-`hiding.js`, `combat.js`, `hud.js`) are added in later milestones and may
-not exist yet.
+Some files listed above (`monster.js`, `hiding.js`, `combat.js`, `hud.js`)
+are added in later milestones and may not exist yet.
 
 ## Conventions
 Testable game rules (distance/arc checks, AI state transitions, collision
