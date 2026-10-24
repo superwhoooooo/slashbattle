@@ -19,22 +19,48 @@ export class Player {
     this.hp = PLAYER_MAX_HP
     this.invulnerableUntil = -Infinity
     this._hitFlashElapsed = null // null means not currently flashing
+    this.hidden = false
+    this.exitedAt = null // seconds elapsed at the last pop-out; drives the ambush window
 
     this.mesh = createPlayerMesh()
     this.mesh.position.x = this.position.x
     this.mesh.position.z = this.position.z
   }
 
-  // Applies damage unless the player is still within invulnerability
-  // frames from a previous hit, and starts a brief red flash. `now` is
-  // seconds elapsed (the same clock the attack cooldown uses). Monsters
-  // call this once they can attack (the AI milestone); nothing calls it
-  // yet.
+  // Applies damage unless hidden (monsters can't see a hidden player, but
+  // this is a no-op either way so nothing can sneak past it) or still
+  // within invulnerability frames from a previous hit, and starts a brief
+  // red flash. `now` is seconds elapsed (the same clock the attack
+  // cooldown uses).
   damagePlayer(amount, now) {
+    if (this.hidden) return
     if (now < this.invulnerableUntil) return
     this.hp = applyDamage({ hp: this.hp }, amount).hp
     this.invulnerableUntil = now + PLAYER_IFRAME_DURATION
     this._hitFlashElapsed = 0
+  }
+
+  // Snaps into a box: position set to the crate's center, hidden, and the
+  // mesh hidden. update() stops moving the player while hidden.
+  enterHiding(boxPos) {
+    this.position.x = boxPos.x
+    this.position.z = boxPos.z
+    this.mesh.position.x = boxPos.x
+    this.mesh.position.z = boxPos.z
+    this.hidden = true
+    this.mesh.visible = false
+  }
+
+  // Pops out at exitPos, shown again, and records exitedAt (seconds
+  // elapsed) so the ambush damage window can start counting down.
+  exitHiding(exitPos, now) {
+    this.position.x = exitPos.x
+    this.position.z = exitPos.z
+    this.mesh.position.x = exitPos.x
+    this.mesh.position.z = exitPos.z
+    this.hidden = false
+    this.mesh.visible = true
+    this.exitedAt = now
   }
 
   // Fades the red hit flash back to normal over HIT_FLASH_DURATION. Runs
@@ -50,9 +76,11 @@ export class Player {
 
   // Moves the player relative to the camera's yaw using WASD/arrow input,
   // resolves the move against the dungeon grid's walls (with sliding), and
-  // turns the mesh to face the direction it just moved in.
+  // turns the mesh to face the direction it just moved in. Does nothing
+  // while hidden.
   update(input, cameraYaw, deltaSeconds) {
     this._updateHitFlash(deltaSeconds)
+    if (this.hidden) return
 
     const forwardInput =
       (input.isDown('KeyW') || input.isDown('ArrowUp') ? 1 : 0) -

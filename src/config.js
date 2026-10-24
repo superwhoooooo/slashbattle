@@ -62,3 +62,17 @@ export const WANDER_TIMEOUT = 4 // seconds before repicking a wander target if n
 export const MONSTER_ARRIVAL_DISTANCE = 0.3 // world units considered "arrived" at a wander/search target
 
 export const SEPARATION_STRENGTH = 0.5 // how much of an overlap is resolved per frame (0-1)
+
+export const CRATE_SIZE = 1.3
+export const HIDE_RANGE = 1.5 // world units within which E enters/is prompted for a box
+
+export const HIDDEN_CAMERA_OFFSET = { x: 0, y: 2, z: 2.5 } // pulled in closer than CAMERA_OFFSET
+
+export const AMBUSH_WINDOW = 1 // seconds after popping out of hiding that attacks deal ambush damage
+export const AMBUSH_BANNER_DURATION = 1 // seconds the "AMBUSH!" HUD banner stays up
+
+export const CRATE_WIGGLE_MIN_INTERVAL = 1 // seconds
+export const CRATE_WIGGLE_MAX_INTERVAL = 2 // seconds
+export const CRATE_WIGGLE_DURATION = 0.3 // seconds
+export const CRATE_WIGGLE_ANGLE = 0.25 // radians, peak rotation during a wiggle
+export const CRATE_WIGGLE_SCALE_PULSE = 0.08 // peak scale increase during a wiggle
