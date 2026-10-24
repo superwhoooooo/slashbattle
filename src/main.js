@@ -1,7 +1,9 @@
 import * as THREE from 'three'
 import { createMonsterMesh, updateWobble } from './characters.js'
-import { CAMERA_LERP, CAMERA_OFFSET, MONSTER_TYPES } from './config.js'
+import { CAMERA_LERP, CAMERA_OFFSET, MONSTER_TYPES, PLAYER_MAX_HP } from './config.js'
+import { createAttackState, updateMonsterHitReaction, updatePlayerAttack } from './combat.js'
 import { createDungeon } from './dungeon.js'
+import { createHud, updateHud } from './hud.js'
 import { Input } from './input.js'
 import { Player } from './player.js'
 
@@ -36,16 +38,22 @@ scene.add(player.mesh)
 // Spawn one monster per M spawn point, cycling through the monster types.
 // They just stand and wobble for now; AI arrives in a later milestone.
 const monsterTypeNames = Object.keys(MONSTER_TYPES)
-const monsters = dungeon.monsterSpawns.map((spawn, index) => {
+let monsters = dungeon.monsterSpawns.map((spawn, index) => {
   const type = monsterTypeNames[index % monsterTypeNames.length]
+  const stats = MONSTER_TYPES[type]
   const mesh = createMonsterMesh(type)
   mesh.position.x = spawn.x
   mesh.position.z = spawn.z
   mesh.rotation.y = Math.random() * Math.PI * 2
   mesh.userData.wobblePhase = index * 1.3
+  mesh.userData.hp = stats.hp
+  mesh.userData.radius = stats.radius
   scene.add(mesh)
   return mesh
 })
+
+const attackState = createAttackState()
+const hud = createHud()
 
 // The camera doesn't rotate yet, so it stays behind the player along a
 // fixed world-space offset and eases toward its target each frame.
@@ -71,7 +79,35 @@ function animate() {
 
   player.update(input, cameraYaw, deltaSeconds)
   updateWobble(player.mesh, elapsedSeconds, 0)
-  monsters.forEach((mesh) => updateWobble(mesh, elapsedSeconds, mesh.userData.wobblePhase))
+
+  updatePlayerAttack(attackState, {
+    player,
+    monsters,
+    grid: dungeon.grid,
+    tileSize: dungeon.tileSize,
+    input,
+    elapsedSeconds,
+    deltaSeconds,
+  })
+
+  // Dying monsters skip the idle wobble and just finish their death-pop
+  // animation before being removed from the scene and this list.
+  monsters = monsters.filter((mesh) => {
+    if (mesh.userData.dying) {
+      const finishedDying = updateMonsterHitReaction(mesh, deltaSeconds)
+      if (finishedDying) {
+        scene.remove(mesh)
+        return false
+      }
+      return true
+    }
+
+    updateWobble(mesh, elapsedSeconds, mesh.userData.wobblePhase)
+    updateMonsterHitReaction(mesh, deltaSeconds)
+    return true
+  })
+
+  updateHud(hud, { hp: player.hp, maxHp: PLAYER_MAX_HP, monstersLeft: monsters.length })
 
   cameraTarget.set(
     player.position.x + CAMERA_OFFSET.x,
