@@ -19,3 +19,16 @@ export const TORCH_LIGHT_DISTANCE = 8
 export const FOG_COLOR = 0x0b0b12
 export const FOG_NEAR = 6
 export const FOG_FAR = 24
+
+// Monster types: size (body scale), color, speed (world units/second), hp,
+// and damage per hit. hp/damage are unused until the combat milestone.
+export const MONSTER_TYPES = {
+  blobbo: { size: 1.4, color: 0x4caf50, speed: 1.2, hp: 60, damage: 8 },
+  zippy: { size: 0.6, color: 0x9c27b0, speed: 5.5, hp: 20, damage: 5 },
+  grumpus: { size: 1.1, color: 0xff5722, speed: 2.0, hp: 100, damage: 15 },
+}
+
+export const WOBBLE_SPEED = 2 // radians per second
+export const WOBBLE_BOB_AMOUNT = 0.05 // world units
+export const WOBBLE_SQUASH_AMOUNT = 0.04
+export const WOBBLE_FACE_JIGGLE_AMOUNT = 0.05 // radians
