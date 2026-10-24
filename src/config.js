@@ -17,6 +17,15 @@ export const AMBIENT_LIGHT_INTENSITY = 0.35
 export const TORCH_LIGHT_COLOR = 0xffaa55
 export const TORCH_LIGHT_INTENSITY = 6
 export const TORCH_LIGHT_DISTANCE = 8
+// Noisy per-light intensity variation: a sum of two sines at different
+// speeds (plus a random per-torch phase) so torches don't flicker in sync.
+export const TORCH_FLICKER_SPEED_A = 7 // radians per second
+export const TORCH_FLICKER_SPEED_B = 13 // radians per second
+export const TORCH_FLICKER_AMOUNT = 0.25 // fraction of TORCH_LIGHT_INTENSITY
+
+export const FLAME_COLOR = 0xffaa33
+export const FLAME_RADIUS = 0.1
+export const FLAME_HEIGHT = 0.25
 
 export const FOG_COLOR = 0x0b0b12
 export const FOG_NEAR = 6
@@ -76,3 +85,10 @@ export const CRATE_WIGGLE_MAX_INTERVAL = 2 // seconds
 export const CRATE_WIGGLE_DURATION = 0.3 // seconds
 export const CRATE_WIGGLE_ANGLE = 0.25 // radians, peak rotation during a wiggle
 export const CRATE_WIGGLE_SCALE_PULSE = 0.08 // peak scale increase during a wiggle
+
+// Camera screen shake: a short decaying random offset. "Damage" is the
+// player getting hit; "hit" is the player's attack landing on a monster.
+export const SHAKE_DAMAGE_MAGNITUDE = 0.25 // world units, peak offset
+export const SHAKE_DAMAGE_DURATION = 0.3 // seconds to decay to nothing
+export const SHAKE_HIT_MAGNITUDE = 0.08
+export const SHAKE_HIT_DURATION = 0.15
