@@ -76,6 +76,46 @@
         user-select: none;
         pointer-events: none;
       }
+
+      .overlay {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        background: rgba(0, 0, 0, 0.75);
+        font-family: system-ui, sans-serif;
+        font-weight: 900;
+        color: #fff;
+        text-align: center;
+        text-shadow: 2px 2px 0 #000;
+        user-select: none;
+      }
+      .overlay h1 {
+        font-size: 56px;
+        margin: 0;
+      }
+      .overlay p {
+        font-size: 18px;
+        margin: 0;
+        font-weight: 400;
+      }
+      .overlay .hint {
+        margin-top: 16px;
+        font-weight: 900;
+      }
+      #win-screen,
+      #lose-screen {
+        display: none;
+      }
+      #win-screen h1 {
+        color: #7cf27c;
+      }
+      #lose-screen h1 {
+        color: #ff5a5a;
+      }
     </style>
   </head>
   <body>
@@ -90,6 +130,23 @@
       <div id="hide-prompt">Press E to hide</div>
     </div>
     <div id="ambush-banner">AMBUSH!</div>
+
+    <div id="start-card" class="overlay">
+      <h1>SlashBattle</h1>
+      <p>WASD move - Click/Space swing - E hide in a crate</p>
+      <p class="hint">Press any key or click to begin</p>
+    </div>
+    <div id="win-screen" class="overlay">
+      <h1>YOU WIN!</h1>
+      <p>The monsters have been thoroughly bonked.</p>
+      <p class="hint">Press R to play again</p>
+    </div>
+    <div id="lose-screen" class="overlay">
+      <h1>GAME OVER</h1>
+      <p>You got goofed.</p>
+      <p class="hint">Press R to play again</p>
+    </div>
+
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

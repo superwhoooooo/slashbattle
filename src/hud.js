@@ -1,6 +1,7 @@
 // Plain DOM/CSS heads-up display: a player health bar, monster counter,
-// hidden indicator, hide prompt, and ambush banner. No Three.js; just
-// reads and writes the overlay markup in index.html.
+// hidden indicator, hide prompt, ambush banner, the start/controls card,
+// and the win/lose screens. No Three.js; just reads and writes the
+// overlay markup in index.html.
 import { AMBUSH_BANNER_DURATION } from './config.js'
 
 // Grabs the HUD elements already present in index.html.
@@ -13,6 +14,9 @@ export function createHud() {
     hidePrompt: document.getElementById('hide-prompt'),
     ambushBanner: document.getElementById('ambush-banner'),
     ambushElapsed: null, // null means the banner isn't showing
+    startCard: document.getElementById('start-card'),
+    winScreen: document.getElementById('win-screen'),
+    loseScreen: document.getElementById('lose-screen'),
   }
 }
 
@@ -21,6 +25,20 @@ export function createHud() {
 export function showAmbushBanner(hud) {
   hud.ambushElapsed = 0
   hud.ambushBanner.style.display = 'block'
+}
+
+// Hides the start/controls card, shown at load until the first key or
+// click.
+export function hideStartCard(hud) {
+  hud.startCard.style.display = 'none'
+}
+
+// Shows the win or lose screen for `state` ('won' or 'lost'), or hides
+// both for any other value (in particular 'playing', and after a
+// restart).
+export function showGameOverlay(hud, state) {
+  hud.winScreen.style.display = state === 'won' ? 'flex' : 'none'
+  hud.loseScreen.style.display = state === 'lost' ? 'flex' : 'none'
 }
 
 // Updates the health bar's width/label, the monster counter, the
