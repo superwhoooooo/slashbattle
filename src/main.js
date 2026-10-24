@@ -1,10 +1,18 @@
 import * as THREE from 'three'
 import { createMonsterMesh, updateWobble } from './characters.js'
-import { CAMERA_LERP, CAMERA_OFFSET, MONSTER_TYPES, PLAYER_MAX_HP } from './config.js'
+import {
+  CAMERA_LERP,
+  CAMERA_OFFSET,
+  HIDDEN_CAMERA_OFFSET,
+  MONSTER_TYPES,
+  PLAYER_MAX_HP,
+} from './config.js'
 import { createAttackState, updateMonsterHitReaction, updatePlayerAttack } from './combat.js'
 import { createDungeon } from './dungeon.js'
-import { createHud, updateHud } from './hud.js'
+import { createCrates, createHidingState, updateCrateWiggle, updateHiding } from './hiding.js'
+import { createHud, showAmbushBanner, updateHud } from './hud.js'
 import { Input } from './input.js'
+import { withObstacles } from './logic/grid.js'
 import { createMonsterAIState, separateMonsters, updateMonster } from './monster.js'
 import { Player } from './player.js'
 
@@ -21,6 +29,11 @@ scene.add(dungeon.group)
 scene.background = new THREE.Color(dungeon.backgroundColor)
 scene.fog = dungeon.fog
 
+// Crates are solid for movement but should NOT block line of sight, so
+// movement/collision uses this grid (walls + crate tiles) while anything
+// checking line of sight keeps using dungeon.grid (walls only).
+const collisionGrid = withObstacles(dungeon.grid, dungeon.grid.boxSpawns)
+
 const camera = new THREE.PerspectiveCamera(
   70,
   window.innerWidth / window.innerHeight,
@@ -31,10 +44,14 @@ const camera = new THREE.PerspectiveCamera(
 const input = new Input()
 const player = new Player({
   spawn: dungeon.playerSpawn,
-  grid: dungeon.grid,
+  grid: collisionGrid,
   tileSize: dungeon.tileSize,
 })
 scene.add(player.mesh)
+
+const crates = createCrates(dungeon.boxSpawns)
+crates.forEach((crate) => scene.add(crate))
+const hidingState = createHidingState()
 
 // Spawn one monster per M spawn point, cycling through the monster types.
 // Each starts out wandering; updateMonster drives wander/chase/attack/search.
@@ -84,15 +101,27 @@ function animate() {
   if (player.hp > 0) player.update(input, cameraYaw, deltaSeconds)
   updateWobble(player.mesh, elapsedSeconds, 0)
 
-  updatePlayerAttack(attackState, {
+  const { showPrompt } = updateHiding(
+    hidingState,
+    player,
+    crates,
+    collisionGrid,
+    dungeon.tileSize,
+    input,
+    elapsedSeconds,
+  )
+  crates.forEach((crate) => updateCrateWiggle(crate, deltaSeconds, elapsedSeconds))
+
+  const { ambushHit } = updatePlayerAttack(attackState, {
     player,
     monsters,
-    grid: dungeon.grid,
+    grid: collisionGrid,
     tileSize: dungeon.tileSize,
     input,
     elapsedSeconds,
     deltaSeconds,
   })
+  if (ambushHit) showAmbushBanner(hud)
 
   // Dying monsters skip the idle wobble and just finish their death-pop
   // animation before being removed from the scene and this list.
@@ -107,25 +136,36 @@ function animate() {
     }
 
     updateWobble(mesh, elapsedSeconds, mesh.userData.wobblePhase)
-    updateMonster(mesh, player, dungeon.grid, deltaSeconds, elapsedSeconds)
+    // Movement collides with crates (collisionGrid); line of sight does
+    // not (dungeon.grid), so a crate can't itself grant cover.
+    updateMonster(mesh, player, collisionGrid, deltaSeconds, elapsedSeconds, dungeon.grid)
     updateMonsterHitReaction(mesh, deltaSeconds)
     return true
   })
 
-  separateMonsters(monsters, player, dungeon.grid)
+  separateMonsters(monsters, player, collisionGrid)
 
-  updateHud(hud, { hp: player.hp, maxHp: PLAYER_MAX_HP, monstersLeft: monsters.length })
+  updateHud(hud, {
+    hp: player.hp,
+    maxHp: PLAYER_MAX_HP,
+    monstersLeft: monsters.length,
+    hidden: player.hidden,
+    showHidePrompt: showPrompt,
+    deltaSeconds,
+  })
 
+  const cameraOffset = player.hidden ? HIDDEN_CAMERA_OFFSET : CAMERA_OFFSET
   cameraTarget.set(
-    player.position.x + CAMERA_OFFSET.x,
-    CAMERA_OFFSET.y,
-    player.position.z + CAMERA_OFFSET.z,
+    player.position.x + cameraOffset.x,
+    cameraOffset.y,
+    player.position.z + cameraOffset.z,
   )
   const lerpFactor = 1 - Math.exp(-CAMERA_LERP * deltaSeconds)
   camera.position.lerp(cameraTarget, lerpFactor)
   camera.lookAt(player.position.x, 1, player.position.z)
 
   renderer.render(scene, camera)
+  input.endFrame()
   requestAnimationFrame(animate)
 }
 

@@ -98,9 +98,12 @@ function updateIndicator(monster, dt) {
 
 // Advances one monster's perception, AI state machine, movement, and (while
 // attacking) damage dealing. `monster` is its Three.js group, carrying its
-// AI fields on userData alongside the type/hp/radius set at spawn. Does
+// AI fields on userData alongside the type/hp/radius set at spawn. `grid`
+// is used for movement collision (crates count as solid); `sightGrid`
+// (defaults to `grid`) is used for the line-of-sight check and should NOT
+// have crates marked as walls, so a crate doesn't itself grant cover. Does
 // nothing for a dying monster (hit-reaction/death-pop owns it instead).
-export function updateMonster(monster, player, grid, dt, now) {
+export function updateMonster(monster, player, grid, dt, now, sightGrid = grid) {
   const ai = monster.userData
   if (ai.dying) return
 
@@ -111,7 +114,8 @@ export function updateMonster(monster, player, grid, dt, now) {
     player.position.z - monsterPos.z,
   )
   const canSeePlayer =
-    distanceToPlayer <= SIGHT_RANGE && hasLineOfSight(grid, monsterPos, player.position, TILE_SIZE)
+    distanceToPlayer <= SIGHT_RANGE &&
+    hasLineOfSight(sightGrid, monsterPos, player.position, TILE_SIZE)
 
   const perception = {
     canSeePlayer,
