@@ -23,8 +23,7 @@ export const FOG_NEAR = 6
 export const FOG_FAR = 24
 
 // Monster types: size (body scale), color, speed (world units/second), hp,
-// damage per hit, and radius (collision/knockback radius). damage is
-// unused until the monster AI milestone.
+// damage per hit, and radius (collision/knockback/separation radius).
 export const MONSTER_TYPES = {
   blobbo: { size: 1.4, color: 0x4caf50, speed: 1.2, hp: 60, damage: 8, radius: 0.6 },
   zippy: { size: 0.6, color: 0x9c27b0, speed: 5.5, hp: 20, damage: 5, radius: 0.25 },
@@ -47,3 +46,19 @@ export const KNOCKBACK_STRENGTH = 1.2 // world units a hit monster is pushed bac
 export const HIT_FLASH_DURATION = 0.1 // seconds for a hit flash to fade out
 export const HIT_SQUASH_DURATION = 0.2 // seconds for a hit squash to rebound
 export const DEATH_POP_DURATION = 0.3 // seconds for the death pop before removal
+
+export const SIGHT_RANGE = 6 // world units a monster can see the player at, line-of-sight permitting
+export const MONSTER_ATTACK_RANGE = 1.2
+export const MONSTER_ATTACK_COOLDOWN = 1.2 // seconds between monster attacks
+export const MONSTER_ATTACK_WINDUP_DURATION = 0.3 // seconds of telegraph lean/grow before the hit lands
+export const MONSTER_ATTACK_WINDUP_GROW = 0.2 // peak size increase during the telegraph
+
+export const SEARCH_DURATION = 3 // seconds spent looking around before giving up and wandering again
+export const SEARCH_SPIN_SPEED = 1.5 // radians per second, while looking around
+
+export const WANDER_RADIUS_TILES = 3
+export const WANDER_TIMEOUT = 4 // seconds before repicking a wander target if not arrived
+
+export const MONSTER_ARRIVAL_DISTANCE = 0.3 // world units considered "arrived" at a wander/search target
+
+export const SEPARATION_STRENGTH = 0.5 // how much of an overlap is resolved per frame (0-1)

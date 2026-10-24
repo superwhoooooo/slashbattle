@@ -38,6 +38,41 @@ function createFacePlane(texture, size) {
   )
 }
 
+const INDICATOR_SIZE = 0.4
+
+// Draws a single bold glyph ("!" or "?") onto a small canvas for use as a
+// sprite texture.
+function createIndicatorTexture(glyph) {
+  const canvas = document.createElement('canvas')
+  canvas.width = 64
+  canvas.height = 64
+  const ctx = canvas.getContext('2d')
+  ctx.clearRect(0, 0, 64, 64)
+  ctx.font = 'bold 48px system-ui, sans-serif'
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.lineWidth = 6
+  ctx.strokeStyle = '#000000'
+  ctx.strokeText(glyph, 32, 34)
+  ctx.fillStyle = '#fff200'
+  ctx.fillText(glyph, 32, 34)
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.needsUpdate = true
+  return texture
+}
+
+function createIndicatorSprite(glyph) {
+  const material = new THREE.SpriteMaterial({
+    map: createIndicatorTexture(glyph),
+    transparent: true,
+    depthTest: false,
+  })
+  const sprite = new THREE.Sprite(material)
+  sprite.scale.set(INDICATOR_SIZE, INDICATOR_SIZE, 1)
+  sprite.visible = false
+  return sprite
+}
+
 // Builds the player's body: a chunky capsule, the goofy preset face on a
 // plane just in front of the body's front (+Z local, so it faces whichever
 // way the player is moving), and a sword held at the side as a child
@@ -95,8 +130,10 @@ const BODY_BUILDERS = {
 }
 
 // Builds one monster of `type` (a key of MONSTER_TYPES) with a randomly
-// generated goofy face. rng is injectable (default Math.random) so the
-// face can be seeded deterministically in tests.
+// generated goofy face, plus a pair of small "!"/"?" indicator sprites
+// above its head that the AI milestone flashes briefly on entering chase
+// or search. rng is injectable (default Math.random) so the face can be
+// seeded deterministically in tests.
 export function createMonsterMesh(type, rng = Math.random) {
   const stats = MONSTER_TYPES[type]
   const group = new THREE.Group()
@@ -109,10 +146,19 @@ export function createMonsterMesh(type, rng = Math.random) {
   face.position.set(0, stats.size * 0.55, stats.size * 0.35 + 0.01)
   group.add(face)
 
+  const chaseIndicator = createIndicatorSprite('!')
+  const searchIndicator = createIndicatorSprite('?')
+  chaseIndicator.position.set(0, stats.size + 0.3, 0)
+  searchIndicator.position.set(0, stats.size + 0.3, 0)
+  group.add(chaseIndicator)
+  group.add(searchIndicator)
+
   group.userData.body = body
   group.userData.face = face
   group.userData.baseY = 0
   group.userData.type = type
+  group.userData.indicators = { chase: chaseIndicator, search: searchIndicator }
+  group.userData.indicatorElapsed = null
 
   return group
 }
