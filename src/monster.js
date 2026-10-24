@@ -103,9 +103,11 @@ function updateIndicator(monster, dt) {
 // (defaults to `grid`) is used for the line-of-sight check and should NOT
 // have crates marked as walls, so a crate doesn't itself grant cover. Does
 // nothing for a dying monster (hit-reaction/death-pop owns it instead).
+// Returns { hitPlayer }: true the one frame this monster's attack actually
+// damaged the player, so the caller can trigger a screen shake.
 export function updateMonster(monster, player, grid, dt, now, sightGrid = grid) {
   const ai = monster.userData
-  if (ai.dying) return
+  if (ai.dying) return { hitPlayer: false }
 
   const stats = MONSTER_TYPES[ai.type]
   const monsterPos = { x: monster.position.x, z: monster.position.z }
@@ -157,6 +159,8 @@ export function updateMonster(monster, player, grid, dt, now, sightGrid = grid) 
   }
   updateIndicator(monster, dt)
 
+  let hitPlayer = false
+
   if (ai.state === 'wander' && ai.wanderTarget) {
     steerToward(monster, ai.wanderTarget, stats.speed, dt, grid)
   } else if (ai.state === 'chase') {
@@ -179,7 +183,7 @@ export function updateMonster(monster, player, grid, dt, now, sightGrid = grid) 
       monster.scale.multiplyScalar(grow)
 
       if (ai.windUpElapsed >= MONSTER_ATTACK_WINDUP_DURATION) {
-        player.damagePlayer(stats.damage, now)
+        hitPlayer = player.damagePlayer(stats.damage, now)
         ai.attackCooldown.trigger(now)
         ai.windUpElapsed = null
       }
@@ -187,6 +191,8 @@ export function updateMonster(monster, player, grid, dt, now, sightGrid = grid) 
       ai.windUpElapsed = null
     }
   }
+
+  return { hitPlayer }
 }
 
 // Pushes apart any monsters (and the player) whose collision circles

@@ -31,13 +31,15 @@ export class Player {
   // this is a no-op either way so nothing can sneak past it) or still
   // within invulnerability frames from a previous hit, and starts a brief
   // red flash. `now` is seconds elapsed (the same clock the attack
-  // cooldown uses).
+  // cooldown uses). Returns whether the damage was actually applied, so
+  // callers can trigger a screen shake only on a real hit.
   damagePlayer(amount, now) {
-    if (this.hidden) return
-    if (now < this.invulnerableUntil) return
+    if (this.hidden) return false
+    if (now < this.invulnerableUntil) return false
     this.hp = applyDamage({ hp: this.hp }, amount).hp
     this.invulnerableUntil = now + PLAYER_IFRAME_DURATION
     this._hitFlashElapsed = 0
+    return true
   }
 
   // Snaps into a box: position set to the crate's center, hidden, and the
