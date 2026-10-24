@@ -60,6 +60,7 @@ export function createPlayerMesh() {
   sword.position.set(PLAYER_RADIUS + 0.1, PLAYER_HEIGHT * 0.35, 0)
   group.add(sword)
 
+  group.userData.body = body
   group.userData.face = face
   group.userData.sword = sword
   group.userData.baseY = 0
@@ -108,6 +109,7 @@ export function createMonsterMesh(type, rng = Math.random) {
   face.position.set(0, stats.size * 0.55, stats.size * 0.35 + 0.01)
   group.add(face)
 
+  group.userData.body = body
   group.userData.face = face
   group.userData.baseY = 0
   group.userData.type = type
