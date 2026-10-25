@@ -26,6 +26,47 @@ export const MONSTER_TYPES = {
   grumpus: { shape: 'box', size: 1.1, color: 0xff5722, edgeColor: 0xffc49d, speed: 2.0, hp: 100, damage: 15, radius: 0.45 },
 }
 
+// 3D face features (src/face3d.js): googly eyeballs with a jiggling
+// pupil, a 3D mouth shape, an optional unibrow/tongue/cheeks/freckles --
+// all built from geometry rather than a flat texture, and attached so
+// they ride the jelly body's deformation. Colors are kept off pure
+// white/black so bloom (BLOOM_THRESHOLD) doesn't wash them out.
+export const FACE_EYE_WHITE_COLOR = 0xeeeeee
+export const FACE_PUPIL_COLOR = 0x111111
+export const FACE_MOUTH_COLOR = 0x160f0a
+export const FACE_TEETH_COLOR = 0xeeeeee
+export const FACE_TONGUE_COLOR = 0xff6f91
+export const FACE_CHEEK_COLOR = 0xff6e82
+export const FACE_FRECKLE_COLOR = 0x6b4430
+
+// Eyeball radius as a fraction of the body's representative radius (see
+// face3d.js's bodyRadiusEstimate), before the per-eye size/type scaling
+// below is applied.
+export const FACE_EYE_RADIUS_FACTOR = 0.22
+
+// A googly pupil's radius (fraction of the eyeball's), how far forward
+// it sits on the eyeball (fraction of the eyeball's radius), and how far
+// it's allowed to drift from dead center (fraction of the eyeball's
+// radius) while jiggling.
+export const FACE_PUPIL_RADIUS_FACTOR = 0.42
+export const FACE_PUPIL_FRONT_FACTOR = 0.82
+export const FACE_PUPIL_MAX_OFFSET_FACTOR = 0.45
+
+// The pupil's spring (reusing jelly.js's springStep): how snappily it
+// chases its target offset, and how much the body's movement-bulge and
+// hit-spring velocities (already computed every frame for the jelly
+// wobble) kick that target around, so pupils lag and jiggle on
+// accelerating/decelerating or getting hit.
+export const FACE_PUPIL_SPRING_STIFFNESS = 140
+export const FACE_PUPIL_SPRING_DAMPING = 10
+export const FACE_PUPIL_ACCEL_KICK = 0.12
+export const FACE_PUPIL_HIT_KICK = 0.3
+
+// Scales every face feature on a monster up or down relative to its
+// body, so a small body (zippy) still reads clearly from the gameplay
+// camera. Keyed by MONSTER_TYPES key; the player isn't scaled.
+export const FACE_SCALE_BY_TYPE = { blobbo: 1, zippy: 1.6, grumpus: 1 }
+
 // Arena platform geometry and the neon grid pulsing across its top.
 export const ARENA_RADIUS = 16
 export const ARENA_THICKNESS = 1.2
@@ -151,11 +192,6 @@ export const JELLY_HIT_STIFFNESS = 140
 export const JELLY_HIT_DAMPING = 8
 export const JELLY_HIT_STRENGTH = 0.9 // impulse applied when hit lands (player or monster)
 export const JELLY_DEATH_INFLATE_STRENGTH = -1.4 // one-shot inflate impulse at the moment of death
-
-// How much the attached face plane pulses (scale) with the body's
-// overall bulge/hit state -- it's fine for the face to only track this
-// roughly rather than every vertex.
-export const JELLY_FACE_PULSE_AMOUNT = 0.5
 
 export const ATTACK_RANGE = 1.4
 export const ATTACK_ARC_RADIANS = Math.PI / 2 // total width of the attack cone

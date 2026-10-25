@@ -1,18 +1,19 @@
 import * as THREE from 'three'
 import {
+  FACE_SCALE_BY_TYPE,
   JELLY_EMISSIVE_INTENSITY,
   JELLY_METALNESS,
   JELLY_ROUGHNESS,
   MONSTER_TYPES,
   PLAYER_BODY_RADIUS,
   PLAYER_EDGE_COLOR,
-  PLAYER_RADIUS,
   SWORD_BLADE_COLOR,
   SWORD_GLOW_SCALE,
   SWORD_HILT_COLOR,
 } from './config.js'
-import { createFaceTexture, PLAYER_FACE, randomGoofyFace } from './faces.js'
+import { createFace3D } from './face3d.js'
 import { createJellyBody } from './jelly.js'
+import { PLAYER_FACE, pickFaceOptions } from './logic/faceOptions.js'
 
 const PLAYER_BODY_COLOR = 0x3388ff
 
@@ -72,13 +73,6 @@ function createSword() {
 
   group.userData.tip = tip
   return group
-}
-
-function createFacePlane(texture, size) {
-  return new THREE.Mesh(
-    new THREE.PlaneGeometry(size, size),
-    new THREE.MeshBasicMaterial({ map: texture, transparent: true }),
-  )
 }
 
 const INDICATOR_SIZE = 0.4
@@ -162,29 +156,35 @@ const GEOMETRY_BUILDERS = {
 }
 
 // Builds the player's body: a faceted, flat-shaded icosahedron jelly body
-// with glowing neon edges, the goofy preset face on a plane in front of
-// it (riding a face anchor that pulses with the jelly's bulge/hit state),
-// and a sword held at the side as a rigid child group.
+// with glowing neon edges, the goofy preset face built from 3D geometry
+// (googly eyes, buck teeth, rosy cheeks) attached so it rides the
+// jelly's deformation, and a sword held at the side as a rigid child
+// group.
 export function createPlayerMesh() {
   const geometry = createPlayerGeometry()
   const material = createJellyMaterial(PLAYER_BODY_COLOR)
   const group = createJellyBody(geometry, material, PLAYER_EDGE_COLOR)
 
-  const { body, edges, faceAnchor } = group.userData.jelly
+  const { body, edges } = group.userData.jelly
   body.position.y = PLAYER_BODY_RADIUS
   body.castShadow = true
   edges.position.y = PLAYER_BODY_RADIUS
 
-  faceAnchor.position.set(0, PLAYER_BODY_RADIUS * 1.1, PLAYER_BODY_RADIUS * 0.85)
-  const face = createFacePlane(createFaceTexture(PLAYER_FACE), PLAYER_RADIUS * 2.4)
-  faceAnchor.add(face)
+  const face = createFace3D({
+    shape: 'icosahedron',
+    size: PLAYER_BODY_RADIUS,
+    bodyCenterY: PLAYER_BODY_RADIUS,
+    bodyColor: PLAYER_BODY_COLOR,
+    options: PLAYER_FACE,
+  })
+  group.add(face.group)
+  group.userData.face3d = face
 
   const sword = createSword()
   sword.position.set(PLAYER_BODY_RADIUS + 0.1, PLAYER_BODY_RADIUS * 0.6, 0)
   group.add(sword)
 
   group.userData.body = body
-  group.userData.face = face
   group.userData.sword = sword
 
   return group
@@ -192,24 +192,33 @@ export function createPlayerMesh() {
 
 // Builds one monster of `type` (a key of MONSTER_TYPES) as a faceted,
 // flat-shaded jelly body in its own shape with glowing neon edges, a
-// randomly generated goofy face on its face anchor, and a pair of small
-// "!"/"?" indicator sprites above its head that the AI milestone flashes
-// briefly on entering chase or search. rng is injectable (default
-// Math.random) so the face can be seeded deterministically in tests.
+// randomly generated goofy 3D face (googly eyes, a mouth shape, and
+// maybe a unibrow/tongue/rosy cheeks/freckles) attached so it rides the
+// jelly's deformation, and a pair of small "!"/"?" indicator sprites
+// above its head that the AI milestone flashes briefly on entering chase
+// or search. rng is injectable (default Math.random) so the face can be
+// seeded deterministically in tests.
 export function createMonsterMesh(type, rng = Math.random) {
   const stats = MONSTER_TYPES[type]
   const geometry = GEOMETRY_BUILDERS[stats.shape](stats.size)
   const material = createJellyMaterial(stats.color)
   const group = createJellyBody(geometry, material, stats.edgeColor)
 
-  const { body, edges, faceAnchor } = group.userData.jelly
+  const { body, edges } = group.userData.jelly
   body.position.y = stats.size / 2
   body.castShadow = true
   edges.position.y = stats.size / 2
 
-  faceAnchor.position.set(0, stats.size * 0.55, stats.size * 0.35 + 0.01)
-  const face = createFacePlane(randomGoofyFace(rng), stats.size * 0.6)
-  faceAnchor.add(face)
+  const face = createFace3D({
+    shape: stats.shape,
+    size: stats.size,
+    bodyCenterY: stats.size / 2,
+    bodyColor: stats.color,
+    options: pickFaceOptions(rng),
+    faceTypeScale: FACE_SCALE_BY_TYPE[type] ?? 1,
+  })
+  group.add(face.group)
+  group.userData.face3d = face
 
   const chaseIndicator = createIndicatorSprite('!')
   const searchIndicator = createIndicatorSprite('?')
@@ -219,7 +228,6 @@ export function createMonsterMesh(type, rng = Math.random) {
   group.add(searchIndicator)
 
   group.userData.body = body
-  group.userData.face = face
   group.userData.type = type
   group.userData.indicators = { chase: chaseIndicator, search: searchIndicator }
   group.userData.indicatorElapsed = null

@@ -53,8 +53,8 @@ slashbattle/
     config.js          # tunable constants (speeds, damage, ranges, HP, arena/visual tuning)
     input.js           # keyboard/mouse state
     arena.js           # the floating platform, starfield/nebula sky, lighting, neon pylons
-    faces.js           # goofy face generator (CanvasTexture: googly eyes, wonky mouths, tongues)
-    characters.js      # build player/monster jelly bodies (shape + face anchor + indicators)
+    face3d.js          # 3D goofy face features (googly eyes, mouths, brow/tongue/cheeks), attached to a jelly body
+    characters.js      # build player/monster jelly bodies (shape + 3D face + indicators)
     jelly.js           # the jelly body: shared-geometry wireframe edges, per-vertex deformation
     spawner.js         # the spawn-in effect: portal ring + beam, monster materialize animation
     highScore.js       # load/save the best score/wave in localStorage (try/catch, zero fallback)
@@ -130,10 +130,35 @@ tear. The jelly state is two springs (`springStep`): a movement bulge
 driven by current speed (so starting/stopping overshoots and wobbles)
 and a shared hit spring that a positive `jellyHit` flattens (the hit
 splat) and a negative one inflates (the attack wind-up and the death
-burst). A face plane rides a `faceAnchor` child that pulses with the
-overall bulge/hit state rather than tracking individual vertices; a
-sword (player only) is attached directly to the body group instead, so
-it stays rigid.
+burst). `jelly.params` stashes that frame's displacement params so a
+3D face (below) can ride the same deformation at its own anchor points;
+a sword (player only) is attached directly to the body group instead,
+so it stays rigid.
+
+## 3D face features
+`src/logic/faceLayout.js` places a body's face features (eyes, brow,
+mouth, tongue, cheeks) just outside its surface rather than sunk inside
+it: `bodySurfaceDistance` gives the exact (box, octahedron) or
+geometrically derived (dodecahedron face planes; the player's
+icosahedron, built with one subdivision level, is close enough to a
+sphere to treat as one) distance from the body's center to its surface
+along any direction, and `faceLayout` offsets each feature along a
+small perturbation of the old flat face's forward-ish direction until
+it clears that surface. `src/face3d.js` builds the actual 3D geometry
+from a `pickFaceOptions()`/`PLAYER_FACE`-shaped options object
+(`src/logic/faceOptions.js`): googly eyes (a matte white eyeball, a
+jiggling pupil constrained to its front face via a spring --
+`springStep`, reused from the jelly's own spring math -- driven by the
+jelly movement-bulge/hit-spring velocities, and a body-colored eyelid
+cap while squinting), a mouth built from real geometry per type (a
+torus arc for a grin/lopsided smile, a wavy tube for derp, a recessed
+torus for the "O"), an optional unibrow, a drooping tongue capsule, and
+rosy cheeks/freckles. Every feature is a child of the character group,
+so it inherits rotation/scale/the spawn-in and death-pop scale for
+free; `updateFace3D` (called alongside `updateJelly` every frame) is
+only responsible for re-evaluating `jellyOffset` at each feature's own
+original anchor point so it rides the wobbling surface, plus the
+pupils' spring jiggle.
 
 ## Polish: particles, trail, popups, HUD
 The sword is a glowing energy blade (an emissive core plus a larger

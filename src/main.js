@@ -8,6 +8,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { createArena, updateArena } from './arena.js'
 import { createMonsterMesh } from './characters.js'
+import { updateFace3D } from './face3d.js'
 import { loadHighScore, saveHighScore } from './highScore.js'
 import { updateJelly } from './jelly.js'
 import {
@@ -331,6 +332,7 @@ function animate() {
     triggerDamageFlash(hud)
   }
   updateJelly(player.mesh, deltaSeconds, elapsedSeconds, { speed: player.speed, moveDir: player.moveDir })
+  updateFace3D(player.mesh, deltaSeconds, elapsedSeconds)
 
   const { showPrompt, nearestPod } = updateHiding(hidingState, player, pods, input, elapsedSeconds)
   pods.forEach((pod) =>
@@ -363,11 +365,13 @@ function animate() {
   monsters = monsters.filter((mesh) => {
     if (mesh.userData.spawning) {
       updateJelly(mesh, deltaSeconds, elapsedSeconds, { speed: 0, moveDir: mesh.userData.moveDir })
+      updateFace3D(mesh, deltaSeconds, elapsedSeconds)
       return true
     }
 
     if (mesh.userData.dying) {
       updateJelly(mesh, deltaSeconds, elapsedSeconds, { speed: 0, moveDir: mesh.userData.moveDir })
+      updateFace3D(mesh, deltaSeconds, elapsedSeconds)
       const finishedDying = updateMonsterHitReaction(mesh, deltaSeconds)
       if (finishedDying) {
         const points = scoreForKill(mesh.userData.type)
@@ -396,6 +400,7 @@ function animate() {
 
     const { hitPlayer } = updateMonster(mesh, player, obstacles, deltaSeconds, elapsedSeconds)
     updateJelly(mesh, deltaSeconds, elapsedSeconds, { speed: mesh.userData.speed, moveDir: mesh.userData.moveDir })
+    updateFace3D(mesh, deltaSeconds, elapsedSeconds)
     if (hitPlayer) {
       triggerShake(shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
       triggerDamageFlash(hud)

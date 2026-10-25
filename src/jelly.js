@@ -4,7 +4,6 @@ import {
   JELLY_BULGE_RESPONSE,
   JELLY_BULGE_STIFFNESS,
   JELLY_EDGE_SCALE,
-  JELLY_FACE_PULSE_AMOUNT,
   JELLY_HIT_DAMPING,
   JELLY_HIT_STIFFNESS,
   JELLY_IDLE_AMPLITUDE,
@@ -16,14 +15,16 @@ import { jellyOffset, springStep } from './logic/jelly.js'
 // second mesh sharing the SAME geometry (so it deforms right along with
 // it) rendered as a bright wireframe, scaled up slightly so the glowing
 // edges read as an outline rather than fighting the solid faces for
-// depth. Also creates an empty `faceAnchor` child group, positioned by
-// the caller, for attaching a face plane that pulses along with the
-// body's overall bulge/hit state without having to track it per-vertex.
+// depth.
 //
 // Clones the geometry's original vertex positions once: every frame,
 // updateJelly displaces each vertex as a pure function of ITS OWN
 // original position (never the previous frame's displaced position), so
 // faces never tear even though flat shading duplicates vertices per face.
+// It also stashes the frame's displacement params on `jelly.params`, so
+// a 3D face feature (src/face3d.js) attached to the same group can
+// evaluate the same jellyOffset at its own original anchor position and
+// ride the wobbling surface instead of floating or sinking.
 export function createJellyBody(geometry, material, edgeColor) {
   const group = new THREE.Group()
 
@@ -34,20 +35,16 @@ export function createJellyBody(geometry, material, edgeColor) {
   edges.scale.setScalar(JELLY_EDGE_SCALE)
   group.add(edges)
 
-  const faceAnchor = new THREE.Group()
-  group.add(faceAnchor)
-
   const position = geometry.attributes.position
   group.userData.jelly = {
     body,
     edges,
-    faceAnchor,
     originalPositions: Float32Array.from(position.array),
     idlePhase: Math.random() * Math.PI * 2,
     bulge: { value: 0, velocity: 0 },
     hit: { value: 0, velocity: 0 },
+    params: null,
   }
-  group.userData.faceAnchor = faceAnchor
 
   return group
 }
@@ -55,9 +52,7 @@ export function createJellyBody(geometry, material, edgeColor) {
 // Advances a jelly body's idle wobble, movement bulge, and hit spring by
 // one tick, and writes the deformed vertex positions back onto the
 // shared geometry (so the solid body and the wireframe overlay move
-// together). Also pulses the face anchor's scale to roughly track the
-// overall bulge/hit state, which is close enough since the face doesn't
-// need to follow individual vertices.
+// together).
 //
 // `speed` is the character's current speed (world units/second, 0 when
 // stopped); `moveDir` is its normalized horizontal movement direction.
@@ -77,6 +72,7 @@ export function updateJelly(jellyBody, dt, time, { speed = 0, moveDir = { x: 0, 
     bulgeDirZ: moveDir.z,
     hit: jelly.hit.value,
   }
+  jelly.params = params
 
   const position = jelly.body.geometry.attributes.position
   const original = jelly.originalPositions
@@ -89,9 +85,6 @@ export function updateJelly(jellyBody, dt, time, { speed = 0, moveDir = { x: 0, 
   }
   position.needsUpdate = true
   jelly.body.geometry.computeBoundingSphere()
-
-  const pulse = 1 + (jelly.bulge.value + Math.abs(jelly.hit.value)) * JELLY_FACE_PULSE_AMOUNT
-  jelly.faceAnchor.scale.setScalar(pulse)
 }
 
 // Pushes an impulse into the hit spring: a positive `strength` flattens

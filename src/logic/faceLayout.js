@@ -133,12 +133,15 @@ function faceDirection(outward, upward) {
 // Computes where each face feature's anchor sits, in positions relative
 // to the character group (i.e. already including `bodyCenterY`, the
 // body mesh's own y offset within that group -- size / 2 for monsters,
-// PLAYER_BODY_RADIUS for the player, matching characters.js).
+// PLAYER_BODY_RADIUS for the player, matching characters.js). Each
+// anchor also carries `dir`, the unit outward surface normal it was
+// placed along, which face3d.js uses to orient the feature and to give
+// a googly pupil a front-of-the-eyeball axis to jiggle within.
 export function faceLayout(shape, size, bodyCenterY) {
   const place = (outward, upward) => {
     const dir = faceDirection(outward, upward)
     const distance = bodySurfaceDistance(shape, size, dir.x, dir.y, dir.z) * PROTRUSION
-    return { x: dir.x * distance, y: bodyCenterY + dir.y * distance, z: dir.z * distance }
+    return { x: dir.x * distance, y: bodyCenterY + dir.y * distance, z: dir.z * distance, dir }
   }
 
   return {

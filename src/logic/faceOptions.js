@@ -1,9 +1,28 @@
 // Pure random face-option picking logic for goofy faces, kept free of
-// canvas/Three.js so it can be unit tested deterministically with an
-// injectable rng. faces.js turns the options this returns into a texture.
+// Three.js so it can be unit tested deterministically with an injectable
+// rng. src/face3d.js turns the options this returns into 3D geometry
+// attached to the character.
 
 export const MOUTH_TYPES = ['buckTooth', 'derp', 'openO', 'lopsided']
 export const SQUINT_SIDES = ['left', 'right']
+
+// Preset face for the player: huge mismatched googly eyes and a
+// buck-tooth grin.
+export const PLAYER_FACE = {
+  eyes: {
+    leftSize: 1.4,
+    rightSize: 0.8,
+    crossEyed: false,
+    squintEye: null,
+  },
+  mouth: {
+    type: 'buckTooth',
+    tongueOut: false,
+  },
+  unibrow: false,
+  rosyCheeks: true,
+  freckles: false,
+}
 
 export const EYE_SIZE_MIN = 0.6
 export const EYE_SIZE_MAX = 1.4
