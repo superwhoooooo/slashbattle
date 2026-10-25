@@ -90,17 +90,17 @@ export const MONSTER_FALL_TUMBLE_SPEED = 3 // radians/second, cosmetic tumble wh
 // can send it over the side.
 export const MONSTER_PLATFORM_MARGIN = 1.5
 
-// Temporary fixed ring of 5 crate positions on the platform (radius 8),
-// standing in as circular obstacles until a later milestone spawns them
-// dynamically and restyles them as cargo pods.
-export const CRATE_POSITIONS = [
+// Temporary fixed ring of 5 cargo pod positions on the platform (radius
+// 8), standing in as circular obstacles until a later milestone spawns
+// them dynamically.
+export const POD_POSITIONS = [
   { x: 0, z: 8 },
   { x: 7.61, z: 2.47 },
   { x: 4.7, z: -6.47 },
   { x: -4.7, z: -6.47 },
   { x: -7.61, z: 2.47 },
 ]
-export const CRATE_OBSTACLE_RADIUS = 0.9
+export const POD_OBSTACLE_RADIUS = 0.75 // matches the hover base's visual footprint, plus a little clipping margin
 
 export const EDGE_SPAWN_MARGIN = 1 // world units in from the platform's edge for edge spawns
 
@@ -183,19 +183,51 @@ export const MONSTER_ARRIVAL_DISTANCE = 0.3 // world units considered "arrived" 
 
 export const SEPARATION_STRENGTH = 0.5 // how much of an overlap is resolved per frame (0-1)
 
-export const CRATE_SIZE = 1.3
-export const HIDE_RANGE = 1.5 // world units within which E enters/is prompted for a box
+export const HIDE_RANGE = 1.5 // world units within which E enters/is prompted for a pod
 
 export const HIDDEN_CAMERA_OFFSET = { x: 0, y: 4, z: 3 } // pulled in closer than CAMERA_OFFSET
 
 export const AMBUSH_WINDOW = 1 // seconds after popping out of hiding that attacks deal ambush damage
 export const AMBUSH_BANNER_DURATION = 1 // seconds the "AMBUSH!" HUD banner stays up
 
-export const CRATE_WIGGLE_MIN_INTERVAL = 1 // seconds
-export const CRATE_WIGGLE_MAX_INTERVAL = 2 // seconds
-export const CRATE_WIGGLE_DURATION = 0.3 // seconds
-export const CRATE_WIGGLE_ANGLE = 0.25 // radians, peak rotation during a wiggle
-export const CRATE_WIGGLE_SCALE_PULSE = 0.08 // peak scale increase during a wiggle
+// Cargo pod geometry: a capsule hull standing on a small hover base,
+// glowing seam rings, a translucent visor band, and a soft floor glow.
+export const POD_HULL_RADIUS = 0.45
+export const POD_HULL_LENGTH = 0.85 // straight cylindrical part of the capsule
+export const POD_HULL_COLOR = 0x2b2f38 // dark gunmetal
+export const POD_BASE_RADIUS = 0.6
+export const POD_BASE_HEIGHT = 0.12
+export const POD_HOVER_GAP = 0.08 // gap between the hover base and the floor glow ring
+export const POD_HOVER_BOB_SPEED = 1.2 // radians/second
+export const POD_HOVER_BOB_AMOUNT = 0.04 // world units
+export const POD_VISOR_COLOR = 0x9be7ff
+export const POD_VISOR_HEIGHT = 0.3
+export const POD_VISOR_ARC = (Math.PI * 2) / 3 // radians of the hull's front the visor band covers
+export const POD_FLOOR_GLOW_COLOR = 0x19e7ff
+export const POD_FLOOR_GLOW_RADIUS = 0.9
+
+// Seam ring colors per state (idle, near enough to enter, occupied) plus
+// a gentle pulse applied to whichever color is current.
+export const POD_SEAM_COLOR_IDLE = 0x1fb6ff
+export const POD_SEAM_COLOR_HIGHLIGHT = 0x7dffb0
+export const POD_SEAM_COLOR_OCCUPIED = 0xff2bd6
+export const POD_SEAM_PULSE_SPEED = 2 // radians/second
+export const POD_SEAM_PULSE_AMOUNT = 0.3 // fraction of the seam color's brightness
+
+// The holographic label sprite floating above the pod.
+export const POD_LABEL_TEXT = 'NOT A PLAYER'
+export const POD_LABEL_SIZE = 0.8
+export const POD_LABEL_BOB_SPEED = 1.5 // radians/second
+export const POD_LABEL_BOB_AMOUNT = 0.05 // world units
+
+// While occupied, the pod wiggles comically (a small random rotation/
+// scale pulse) every POD_WIGGLE_MIN_INTERVAL-POD_WIGGLE_MAX_INTERVAL
+// seconds.
+export const POD_WIGGLE_MIN_INTERVAL = 1 // seconds
+export const POD_WIGGLE_MAX_INTERVAL = 2 // seconds
+export const POD_WIGGLE_DURATION = 0.3 // seconds
+export const POD_WIGGLE_ANGLE = 0.25 // radians, peak rotation during a wiggle
+export const POD_WIGGLE_SCALE_PULSE = 0.08 // peak scale increase during a wiggle
 
 // Camera screen shake: a short decaying random offset. "Damage" is the
 // player getting hit; "hit" is the player's attack landing on a monster.

@@ -55,7 +55,7 @@ export class Player {
     return true
   }
 
-  // Snaps into a box: position set to the crate's center, hidden, and the
+  // Snaps into a pod: position set to the pod's center, hidden, and the
   // mesh hidden. update() stops moving the player while hidden.
   enterHiding(boxPos) {
     this.position.x = boxPos.x

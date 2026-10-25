@@ -3,15 +3,15 @@
 SlashBattle is a 3D goofy neon brawler built with Three.js. The player
 fights wobbly jelly monsters with funny, mismatched faces on a single
 floating circular platform adrift in space, with real-time melee combat
-and crates the player can hide inside to ambush monsters that lose track
-of them.
+and cargo pods the player can hide inside to ambush monsters that lose
+track of them.
 
 ## Gameplay
 There's no win state: monsters (a mix of Blobbo, Zippy, and Grumpus)
 arrive in endless waves, each bigger than the last, trickling in one at
 a time at the platform's edge with a glowing spawn-in effect. Losing all
 your hp loses the game. Monsters wander until they spot you, chase, and
-attack once in range; hiding in a crate breaks their line of sight, so a
+attack once in range; hiding in a pod breaks their line of sight, so a
 chasing or attacking monster gives up and searches your last known spot
 before going back to wandering. Popping out of hiding deals bonus
 "ambush" damage on your next hit for a short window. There are no walls
@@ -33,7 +33,7 @@ record.
 ## Controls
 - WASD / arrow keys — move
 - Left click or Space — swing your sword
-- E — enter or exit a nearby crate to hide
+- E — enter or exit a nearby pod to hide
 - R — restart after losing
 
 ## Commands
@@ -60,7 +60,7 @@ slashbattle/
     highScore.js       # load/save the best score/wave in localStorage (try/catch, zero fallback)
     player.js          # movement, attack swing, health, hide/unhide state, falling
     monster.js         # monster AI state machine, falling
-    hiding.js          # box interaction logic (find nearest box, enter/exit)
+    hiding.js          # cargo pod visuals/states + interaction (find nearest, enter/exit)
     combat.js          # hit detection (range + facing arc), damage, knockback, cooldowns
     hud.js             # DOM HUD updates (health, score, wave, enemies left, banners, game over)
     logic/             # pure, Three-free functions so they can be unit tested
@@ -80,13 +80,23 @@ context.
 The dungeon has been replaced by a single circular platform (radius
 `ARENA_RADIUS`) floating in space, with no walls at the edge -- line of
 sight is always clear, so monsters see the player whenever they're
-within `SIGHT_RANGE` and not hidden. Crates are temporarily placed at a
-few fixed positions on the platform (`CRATE_POSITIONS` in config.js) as
-circular obstacles; a later milestone restyles them as cargo pods and
-spawns them dynamically. Monsters keep their own steering (wander,
-chase, search) away from the very edge (`MONSTER_PLATFORM_MARGIN`), so
-only knockback -- or the player's own choice to walk off -- sends anyone
-over the side.
+within `SIGHT_RANGE` and not hidden. Cargo pods are temporarily placed at
+a few fixed positions on the platform (`POD_POSITIONS` in config.js) as
+circular obstacles; a later milestone spawns them dynamically. Monsters
+keep their own steering (wander, chase, search) away from the very edge
+(`MONSTER_PLATFORM_MARGIN`), so only knockback -- or the player's own
+choice to walk off -- sends anyone over the side.
+
+## Hiding pods
+Each hiding spot (`src/hiding.js`) is a capsule hull on a small hovering
+base, with glowing seam rings, a translucent visor band, a soft floor
+glow, and a bobbing holographic "NOT A PLAYER" label -- restyled from the
+original wooden crates, with the same hide-in/pop-out behavior
+underneath (`src/logic/hiding.js`'s box-named functions are unchanged).
+The seam color reads the pod's state: idle, highlighted when it's the
+nearest one E would enter, or switched to the occupied color with a pair
+of googly eyes peeking out of the visor and the pod wiggling comically
+every second or two.
 
 ## Waves
 `src/logic/waves.js`'s wave controller (`createWaveState`/`stepWaves`)

@@ -15,8 +15,6 @@ import {
   CAMERA_FAR,
   CAMERA_LERP,
   CAMERA_OFFSET,
-  CRATE_OBSTACLE_RADIUS,
-  CRATE_POSITIONS,
   EDGE_SPAWN_MARGIN,
   FALL_DESPAWN_DEPTH,
   FALL_GRAVITY,
@@ -24,6 +22,8 @@ import {
   MONSTER_FALL_TUMBLE_SPEED,
   MONSTER_TYPES,
   PLAYER_MAX_HP,
+  POD_OBSTACLE_RADIUS,
+  POD_POSITIONS,
   SHAKE_DAMAGE_DURATION,
   SHAKE_DAMAGE_MAGNITUDE,
   SHAKE_HIT_DURATION,
@@ -31,7 +31,7 @@ import {
   WAVE_CLEAR_HEAL,
 } from './config.js'
 import { createAttackState, updateMonsterHitReaction, updatePlayerAttack } from './combat.js'
-import { createCrates, createHidingState, updateCrateWiggle, updateHiding } from './hiding.js'
+import { createHidingState, createPods, updateHiding, updatePod } from './hiding.js'
 import { createHud, hideStartCard, showAmbushBanner, showGameOverlay, showWaveClearedBanner, updateHud } from './hud.js'
 import { Input } from './input.js'
 import { edgeSpawnPoint, isOnPlatform } from './logic/arena.js'
@@ -135,7 +135,7 @@ function disposeObject3D(object) {
   scene.remove(object)
 }
 
-// Builds a fresh game world: arena, player, crates, and the per-run
+// Builds a fresh game world: arena, player, pods, and the per-run
 // mutable state (wave controller, score, attack, hiding, shake).
 // Monsters arrive via waves once the game loop starts stepping them --
 // see spawnMonster(). Positions the camera behind the player. Call
@@ -146,15 +146,15 @@ function createGame() {
   scene.background = new THREE.Color(arena.backgroundColor)
   scene.fog = arena.fog
 
-  // Crates stand in as circular obstacles for both movement collision
-  // and knockback; a later milestone spawns them dynamically.
-  const obstacles = CRATE_POSITIONS.map((pos) => ({ x: pos.x, z: pos.z, radius: CRATE_OBSTACLE_RADIUS }))
+  // Pods stand in as circular obstacles for both movement collision and
+  // knockback; a later milestone spawns them dynamically.
+  const obstacles = POD_POSITIONS.map((pos) => ({ x: pos.x, z: pos.z, radius: POD_OBSTACLE_RADIUS }))
 
   const player = new Player({ spawn: { x: 0, z: 0 }, obstacles })
   scene.add(player.mesh)
 
-  const crates = createCrates(CRATE_POSITIONS)
-  crates.forEach((crate) => scene.add(crate))
+  const pods = createPods(POD_POSITIONS)
+  pods.forEach((pod) => scene.add(pod))
 
   camera.position.set(
     player.position.x + CAMERA_OFFSET.x,
@@ -166,7 +166,7 @@ function createGame() {
     arena,
     obstacles,
     player,
-    crates,
+    pods,
     monsters: [],
     spawnEffects: [], // { effect, monster } pairs still materializing in
     waveState: createWaveState(),
@@ -211,7 +211,7 @@ function spawnMonster(game, type) {
 function disposeGame(target) {
   disposeObject3D(target.arena.group)
   disposeObject3D(target.player.mesh)
-  target.crates.forEach((crate) => disposeObject3D(crate))
+  target.pods.forEach((pod) => disposeObject3D(pod))
   target.monsters.forEach((mesh) => disposeObject3D(mesh))
   target.spawnEffects.forEach(({ effect }) => disposeObject3D(effect.group))
 }
@@ -263,7 +263,7 @@ function animate() {
     return
   }
 
-  const { obstacles, player, crates, hidingState, attackState, shake } = game
+  const { obstacles, player, pods, hidingState, attackState, shake } = game
   let monsters = game.monsters
 
   // Steps the wave controller, spawns anything it emits this tick, and
@@ -293,8 +293,10 @@ function animate() {
   if (player.falling) player.updateFalling(deltaSeconds, elapsedSeconds)
   updateJelly(player.mesh, deltaSeconds, elapsedSeconds, { speed: player.speed, moveDir: player.moveDir })
 
-  const { showPrompt } = updateHiding(hidingState, player, crates, input, elapsedSeconds)
-  crates.forEach((crate) => updateCrateWiggle(crate, deltaSeconds, elapsedSeconds))
+  const { showPrompt, nearestPod } = updateHiding(hidingState, player, pods, input, elapsedSeconds)
+  pods.forEach((pod) =>
+    updatePod(pod, deltaSeconds, elapsedSeconds, { isNearestEnterable: pod === nearestPod }),
+  )
 
   const { ambushHit, hitAny } = updatePlayerAttack(attackState, {
     player,

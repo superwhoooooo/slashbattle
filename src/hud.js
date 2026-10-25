@@ -65,7 +65,7 @@ export function showGameOverlay(hud, state, stats) {
 }
 
 // Updates the health bar's width/label, the score/wave/enemies-left
-// counters, the "HIDDEN" indicator, the "Press E to hide" prompt, the
+// counters, the "HIDDEN" indicator, the "Press E to hide in pod" prompt, the
 // wave banner (the intermission countdown, unless a "WAVE CLEARED"
 // banner is still showing), and fades out the ambush banner over time.
 export function updateHud(
