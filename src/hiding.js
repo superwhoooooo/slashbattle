@@ -133,7 +133,7 @@ function createFloorGlow() {
   const material = new THREE.MeshBasicMaterial({
     color: POD_FLOOR_GLOW_COLOR,
     transparent: true,
-    opacity: 0.5,
+    opacity: 0.25,
     side: THREE.DoubleSide,
   })
   const ring = new THREE.Mesh(geometry, material)
@@ -166,7 +166,7 @@ function createVisor() {
   const material = new THREE.MeshStandardMaterial({
     color: POD_VISOR_COLOR,
     emissive: new THREE.Color(POD_VISOR_COLOR),
-    emissiveIntensity: 0.6,
+    emissiveIntensity: 0.3,
     transparent: true,
     opacity: 0.45,
     side: THREE.DoubleSide,

@@ -103,8 +103,8 @@ export function updateSpawnEffect(effect, monster, dt, particleSystem) {
   const t = Math.min(effect.elapsed / SPAWN_EFFECT_DURATION, 1)
 
   const opacity = portalOpacity(t)
-  effect.ring.material.opacity = opacity
-  effect.beam.material.opacity = opacity * 0.6
+  effect.ring.material.opacity = opacity * 0.8
+  effect.beam.material.opacity = opacity * 0.35
 
   monster.scale.setScalar(Math.sin((t * Math.PI) / 2)) // ease-out growth to 1
 

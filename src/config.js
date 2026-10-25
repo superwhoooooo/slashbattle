@@ -78,22 +78,25 @@ export const ARENA_RIM_COLOR = 0x00e5ff
 export const ARENA_RIM_THICKNESS = 0.5
 
 // Glowing thrusters on the platform's tapered underside, so it reads as
-// floating rather than resting on something.
+// floating rather than resting on something. No PointLight anymore --
+// just the dimmed glow mesh itself (removing lots of small lights under
+// the platform was most of the overall brightness cut).
 export const ARENA_THRUSTER_COUNT = 6
 export const ARENA_THRUSTER_COLOR = 0xff2db0
-export const ARENA_THRUSTER_LIGHT_INTENSITY = 4
-export const ARENA_THRUSTER_LIGHT_DISTANCE = 6
+export const ARENA_THRUSTER_EMISSIVE_INTENSITY = 0.8
 export const ARENA_THRUSTER_PULSE_SPEED = 2.2 // radians per second
-export const ARENA_THRUSTER_PULSE_AMOUNT = 0.3 // fraction of ARENA_THRUSTER_LIGHT_INTENSITY
+export const ARENA_THRUSTER_PULSE_AMOUNT = 0.3 // fraction of ARENA_THRUSTER_EMISSIVE_INTENSITY
 
 // Neon light pylons standing around the platform's rim, replacing the
 // dungeon's torches. Each pairs a PointLight with a glowing cap, pulsing
 // gently (a sum of two sines at different speeds, offset by a random
-// per-pylon phase, same idea as the old torch flicker).
-export const PYLON_COUNT = 6
+// per-pylon phase, same idea as the old torch flicker). Down to 3 (from
+// 6) and much dimmer, as part of the overall brightness cut.
+export const PYLON_COUNT = 3
 export const PYLON_COLORS = [0x00e5ff, 0xff2db0, 0x7cff5a]
-export const PYLON_LIGHT_INTENSITY = 6
-export const PYLON_LIGHT_DISTANCE = 10
+export const PYLON_LIGHT_INTENSITY = 1.5
+export const PYLON_LIGHT_DISTANCE = 8
+export const PYLON_CAP_EMISSIVE_INTENSITY = 0.8
 export const PYLON_PULSE_SPEED_A = 1.3 // radians per second
 export const PYLON_PULSE_SPEED_B = 2.1 // radians per second
 export const PYLON_PULSE_AMOUNT = 0.3 // fraction of PYLON_LIGHT_INTENSITY
@@ -103,20 +106,26 @@ export const PYLON_PULSE_AMOUNT = 0.3 // fraction of PYLON_LIGHT_INTENSITY
 export const STARFIELD_COUNT = 4000
 export const STARFIELD_RADIUS = 400
 export const SKY_RADIUS = 450
+export const STARFIELD_COLOR = 0xcfcfcf // dimmed from pure white
+export const STARFIELD_OPACITY = 0.7
 
 // Lighting: a soft hemisphere fill plus a shadow-casting directional key
 // light (the platform receives shadows; characters cast them).
 export const HEMI_LIGHT_SKY_COLOR = 0x8899ff
 export const HEMI_LIGHT_GROUND_COLOR = 0x1a0a2a
-export const HEMI_LIGHT_INTENSITY = 0.6
+export const HEMI_LIGHT_INTENSITY = 0.45
 export const KEY_LIGHT_COLOR = 0xbcd2ff
-export const KEY_LIGHT_INTENSITY = 1.6
+export const KEY_LIGHT_INTENSITY = 1.1
 export const SHADOW_MAP_SIZE = 2048
 
-// Post-processing bloom (EffectComposer + UnrealBloomPass in main.js).
-export const BLOOM_STRENGTH = 0.9
-export const BLOOM_RADIUS = 0.6
-export const BLOOM_THRESHOLD = 0.2
+// Post-processing bloom (EffectComposer + UnrealBloomPass in main.js)
+// and the renderer's own tone mapping exposure -- both turned down a
+// lot from their original values so the neon surfaces glow without
+// washing out the whole scene.
+export const BLOOM_STRENGTH = 0.3
+export const BLOOM_RADIUS = 0.4
+export const BLOOM_THRESHOLD = 0.75
+export const TONE_MAPPING_EXPOSURE = 0.8
 
 export const CAMERA_FAR = 1500
 
@@ -164,16 +173,19 @@ export const SPAWN_BEAM_HEIGHT = 4
 export const SPAWN_INFLATE_STRENGTH = -1.2 // one-shot jelly impulse (negative inflates) as the monster appears
 
 // Jelly body material: flat-shaded faces, a saturated base color, some
-// metalness/roughness, and a low emissive tint so bloom picks the body up
-// a little without washing out the face.
+// metalness/roughness, and no emissive tint, so the characters read as
+// solid colored shapes rather than glowing.
 export const JELLY_METALNESS = 0.25
 export const JELLY_ROUGHNESS = 0.45
-export const JELLY_EMISSIVE_INTENSITY = 0.12
+export const JELLY_EMISSIVE_INTENSITY = 0
 
-// The glowing wireframe overlay: shares the body's geometry (so it
-// deforms with it) at a slightly larger scale, so the edges read as an
-// outline instead of fighting the solid faces for depth.
+// The wireframe overlay: shares the body's geometry (so it deforms with
+// it) at a slightly larger scale, so the edges read as an outline
+// instead of fighting the solid faces for depth. Translucent rather
+// than a fully solid bright line, so it reads as a subtle edge rather
+// than a glow.
 export const JELLY_EDGE_SCALE = 1.01
+export const JELLY_EDGE_OPACITY = 0.35
 
 // Idle wobble: a slow traveling ripple over the body's surface.
 export const JELLY_IDLE_AMPLITUDE = 0.035 // world units
@@ -282,6 +294,7 @@ export const PARTICLE_DRAG = 0.96
 export const PARTICLE_BASE_SIZE = 46 // sprite point size in pixels at 1 world unit from the camera
 export const PARTICLE_LIFE_MIN = 0.3 // seconds
 export const PARTICLE_LIFE_MAX = 0.7 // seconds
+export const PARTICLE_BRIGHTNESS = 0.65 // dims each spark's tint before it's additively blended
 
 // Pooled tumbling shard instances (src/particles.js): a fixed-size
 // InstancedMesh pool of small low-poly tetrahedra, for the big death

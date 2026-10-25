@@ -3,6 +3,7 @@ import {
   JELLY_BULGE_DAMPING,
   JELLY_BULGE_RESPONSE,
   JELLY_BULGE_STIFFNESS,
+  JELLY_EDGE_OPACITY,
   JELLY_EDGE_SCALE,
   JELLY_HIT_DAMPING,
   JELLY_HIT_STIFFNESS,
@@ -13,9 +14,9 @@ import { jellyOffset, springStep } from './logic/jelly.js'
 
 // Builds a jelly body: `geometry`/`material` as the solid mesh, plus a
 // second mesh sharing the SAME geometry (so it deforms right along with
-// it) rendered as a bright wireframe, scaled up slightly so the glowing
-// edges read as an outline rather than fighting the solid faces for
-// depth.
+// it) rendered as a translucent wireframe, scaled up slightly so the
+// edges read as a subtle outline rather than fighting the solid faces
+// for depth or glowing too bright.
 //
 // Clones the geometry's original vertex positions once: every frame,
 // updateJelly displaces each vertex as a pure function of ITS OWN
@@ -31,7 +32,15 @@ export function createJellyBody(geometry, material, edgeColor) {
   const body = new THREE.Mesh(geometry, material)
   group.add(body)
 
-  const edges = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ color: edgeColor, wireframe: true }))
+  const edges = new THREE.Mesh(
+    geometry,
+    new THREE.MeshBasicMaterial({
+      color: edgeColor,
+      wireframe: true,
+      transparent: true,
+      opacity: JELLY_EDGE_OPACITY,
+    }),
+  )
   edges.scale.setScalar(JELLY_EDGE_SCALE)
   group.add(edges)
 

@@ -90,6 +90,13 @@ keep their own steering (wander, chase, search) away from the very edge
 (`MONSTER_PLATFORM_MARGIN`), so only knockback -- or the player's own
 choice to walk off -- sends anyone over the side.
 
+Lighting stays deliberately dim: the hemisphere/key lights are the main
+source, bloom is tuned low and only picks up genuinely bright surfaces
+(`BLOOM_THRESHOLD`), and most small per-object lights (the platform's
+underside thrusters, most of the neon pylons) were cut in favor of
+dimmed emissive materials instead -- a handful of real lights reads
+better than a crowd of dim ones.
+
 ## Hiding pods
 Each hiding spot (`src/hiding.js`) is a capsule hull on a small hovering
 base, with glowing seam rings, a translucent visor band, a soft floor

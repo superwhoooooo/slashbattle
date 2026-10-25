@@ -40,6 +40,7 @@ import {
   SHAKE_HIT_DURATION,
   SHAKE_HIT_MAGNITUDE,
   SWORD_BLADE_COLOR,
+  TONE_MAPPING_EXPOSURE,
   WAVE_CLEAR_HEAL,
 } from './config.js'
 import { createAttackState, updateMonsterHitReaction, updatePlayerAttack } from './combat.js'
@@ -72,6 +73,7 @@ renderer.setSize(window.innerWidth, window.innerHeight)
 renderer.shadowMap.enabled = true
 renderer.shadowMap.type = THREE.PCFSoftShadowMap
 renderer.toneMapping = THREE.ACESFilmicToneMapping
+renderer.toneMappingExposure = TONE_MAPPING_EXPOSURE
 renderer.outputColorSpace = THREE.SRGBColorSpace
 container.appendChild(renderer.domElement)
 

@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import {
   DEATH_SHARD_COUNT,
   PARTICLE_BASE_SIZE,
+  PARTICLE_BRIGHTNESS,
   PARTICLE_DRAG,
   PARTICLE_GRAVITY,
   PARTICLE_LIFE_MAX,
@@ -146,7 +147,7 @@ export function burst(system, position, color, count, speed, upwardBias = 0) {
   const { state, cursor: startCursor } = system.sparkPool
   const { indices, nextCursor } = allocateSlots(startCursor, state.length, count)
   system.sparkPool.cursor = nextCursor
-  const tint = new THREE.Color(color)
+  const tint = new THREE.Color(color).multiplyScalar(PARTICLE_BRIGHTNESS)
 
   for (const index of indices) {
     const particle = state[index]

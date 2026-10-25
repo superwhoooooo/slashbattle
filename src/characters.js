@@ -36,7 +36,7 @@ function createSword() {
     new THREE.MeshStandardMaterial({
       color: SWORD_BLADE_COLOR,
       emissive: new THREE.Color(SWORD_BLADE_COLOR),
-      emissiveIntensity: 2.2,
+      emissiveIntensity: 1,
       metalness: 0.2,
       roughness: 0.2,
     }),
@@ -49,7 +49,7 @@ function createSword() {
     new THREE.MeshBasicMaterial({
       color: SWORD_BLADE_COLOR,
       transparent: true,
-      opacity: 0.35,
+      opacity: 0.2,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
     }),

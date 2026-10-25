@@ -8,8 +8,7 @@ import {
   ARENA_THICKNESS,
   ARENA_THRUSTER_COLOR,
   ARENA_THRUSTER_COUNT,
-  ARENA_THRUSTER_LIGHT_DISTANCE,
-  ARENA_THRUSTER_LIGHT_INTENSITY,
+  ARENA_THRUSTER_EMISSIVE_INTENSITY,
   ARENA_THRUSTER_PULSE_AMOUNT,
   ARENA_THRUSTER_PULSE_SPEED,
   ARENA_TOP_COLOR,
@@ -22,6 +21,7 @@ import {
   HEMI_LIGHT_SKY_COLOR,
   KEY_LIGHT_COLOR,
   KEY_LIGHT_INTENSITY,
+  PYLON_CAP_EMISSIVE_INTENSITY,
   PYLON_COLORS,
   PYLON_COUNT,
   PYLON_LIGHT_DISTANCE,
@@ -31,7 +31,9 @@ import {
   PYLON_PULSE_SPEED_B,
   SHADOW_MAP_SIZE,
   SKY_RADIUS,
+  STARFIELD_COLOR,
   STARFIELD_COUNT,
+  STARFIELD_OPACITY,
   STARFIELD_RADIUS,
 } from './config.js'
 
@@ -79,9 +81,9 @@ function createSkyTexture() {
   canvas.height = 256
   const ctx = canvas.getContext('2d')
   const gradient = ctx.createLinearGradient(0, 0, 0, 256)
-  gradient.addColorStop(0, '#140a2e')
-  gradient.addColorStop(0.45, '#2a1458')
-  gradient.addColorStop(1, '#050208')
+  gradient.addColorStop(0, '#0d0720')
+  gradient.addColorStop(0.45, '#1c0e3c')
+  gradient.addColorStop(1, '#030104')
   ctx.fillStyle = gradient
   ctx.fillRect(0, 0, 2, 256)
 
@@ -115,7 +117,13 @@ function createStarfield() {
   }
   const geometry = new THREE.BufferGeometry()
   geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
-  const material = new THREE.PointsMaterial({ color: 0xffffff, size: 1.2, fog: false })
+  const material = new THREE.PointsMaterial({
+    color: STARFIELD_COLOR,
+    size: 1.2,
+    fog: false,
+    transparent: true,
+    opacity: STARFIELD_OPACITY,
+  })
   return new THREE.Points(geometry, material)
 }
 
@@ -141,7 +149,7 @@ function createPlatform() {
     roughness: 0.35,
     emissive: new THREE.Color(ARENA_GRID_COLOR),
     emissiveMap: createGridTexture(),
-    emissiveIntensity: 0.8,
+    emissiveIntensity: 0.35,
   })
   const bottomMaterial = new THREE.MeshStandardMaterial({
     color: ARENA_UNDERSIDE_COLOR,
@@ -160,7 +168,7 @@ function createPlatform() {
   const rimMaterial = new THREE.MeshStandardMaterial({
     color: ARENA_RIM_COLOR,
     emissive: new THREE.Color(ARENA_RIM_COLOR),
-    emissiveIntensity: 1.5,
+    emissiveIntensity: 0.5,
     metalness: 0.3,
     roughness: 0.2,
   })
@@ -180,27 +188,20 @@ function createPlatform() {
     const radius = bottomRadius * 0.5
     const y = -ARENA_THICKNESS * 2.1
 
-    const glowMesh = new THREE.Mesh(
-      new THREE.ConeGeometry(0.4, 0.6, 12),
-      new THREE.MeshStandardMaterial({
-        color: ARENA_THRUSTER_COLOR,
-        emissive: new THREE.Color(ARENA_THRUSTER_COLOR),
-        emissiveIntensity: 2,
-      }),
-    )
+    const glowMaterial = new THREE.MeshStandardMaterial({
+      color: ARENA_THRUSTER_COLOR,
+      emissive: new THREE.Color(ARENA_THRUSTER_COLOR),
+      emissiveIntensity: ARENA_THRUSTER_EMISSIVE_INTENSITY,
+    })
+    const glowMesh = new THREE.Mesh(new THREE.ConeGeometry(0.4, 0.6, 12), glowMaterial)
     glowMesh.position.set(Math.sin(angle) * radius, y, Math.cos(angle) * radius)
     glowMesh.rotation.x = Math.PI // tip pointing down
     group.add(glowMesh)
 
-    const light = new THREE.PointLight(
-      ARENA_THRUSTER_COLOR,
-      ARENA_THRUSTER_LIGHT_INTENSITY,
-      ARENA_THRUSTER_LIGHT_DISTANCE,
-    )
-    light.position.copy(glowMesh.position)
-    group.add(light)
-
-    thrusters.push({ light, phase: i * 1.3 + Math.random() })
+    // No PointLight here anymore -- just the dimmed glow mesh itself, as
+    // part of the overall brightness cut (a ring of lights under the
+    // platform added up fast).
+    thrusters.push({ glowMaterial, phase: i * 1.3 + Math.random() })
   }
 
   return { group, topMaterial, thrusters }
@@ -231,7 +232,7 @@ function createPylons() {
     const capMaterial = new THREE.MeshStandardMaterial({
       color,
       emissive: new THREE.Color(color),
-      emissiveIntensity: 2,
+      emissiveIntensity: PYLON_CAP_EMISSIVE_INTENSITY,
     })
     const cap = new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 12), capMaterial)
     cap.position.set(postX, post.position.y + 1.2, postZ)
@@ -294,13 +295,13 @@ export function updateArena(arena, elapsedSeconds) {
     const t = elapsedSeconds + pylon.phase
     const noise = Math.sin(t * PYLON_PULSE_SPEED_A) * 0.6 + Math.sin(t * PYLON_PULSE_SPEED_B) * 0.4
     pylon.light.intensity = PYLON_LIGHT_INTENSITY * (1 + noise * PYLON_PULSE_AMOUNT)
-    pylon.capMaterial.emissiveIntensity = 2 * (1 + noise * PYLON_PULSE_AMOUNT)
+    pylon.capMaterial.emissiveIntensity = PYLON_CAP_EMISSIVE_INTENSITY * (1 + noise * PYLON_PULSE_AMOUNT)
   }
 
   for (const thruster of arena.thrusters) {
     const t = elapsedSeconds + thruster.phase
     const noise = Math.sin(t * ARENA_THRUSTER_PULSE_SPEED)
-    thruster.light.intensity = ARENA_THRUSTER_LIGHT_INTENSITY * (1 + noise * ARENA_THRUSTER_PULSE_AMOUNT)
+    thruster.glowMaterial.emissiveIntensity = ARENA_THRUSTER_EMISSIVE_INTENSITY * (1 + noise * ARENA_THRUSTER_PULSE_AMOUNT)
   }
 
   arena.topMaterial.emissiveIntensity = 0.8 + Math.sin(elapsedSeconds * ARENA_GRID_PULSE_SPEED) * 0.3
