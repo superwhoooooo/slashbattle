@@ -28,6 +28,8 @@ import {
   FALL_STREAK_COUNT,
   FALL_STREAK_SPEED,
   HIDDEN_CAMERA_OFFSET,
+  MAX_DELTA_SECONDS,
+  MAX_PIXEL_RATIO,
   MONSTER_FALL_TUMBLE_SPEED,
   MONSTER_TYPES,
   PLAYER_MAX_HP,
@@ -74,8 +76,11 @@ import { clearSwingTrail, createSwingTrail } from './trail.js'
 
 const container = document.querySelector('#app')
 
-const renderer = new THREE.WebGLRenderer({ antialias: true })
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' })
 renderer.setSize(window.innerWidth, window.innerHeight)
+// Capped rather than the raw devicePixelRatio -- a 3x display would
+// otherwise render (and composite) 9x the pixels for no visible gain.
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, MAX_PIXEL_RATIO))
 renderer.shadowMap.enabled = true
 renderer.shadowMap.type = THREE.PCFSoftShadowMap
 renderer.toneMapping = THREE.ACESFilmicToneMapping
@@ -94,8 +99,14 @@ const camera = new THREE.PerspectiveCamera(
 
 // Bloom makes the neon emissive surfaces (the grid, the rim, the pylons)
 // glow without washing out the rest of the scene; OutputPass applies the
-// renderer's tone mapping/color space after the bloom pass runs.
-const composer = new EffectComposer(renderer)
+// renderer's tone mapping/color space after the bloom pass runs. The
+// composer renders into its own target, which bypasses the renderer's
+// own antialias setting -- an explicit multisampled (MSAA) render
+// target keeps edges clean through the post-processing passes instead.
+const renderTarget = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, {
+  samples: 4,
+})
+const composer = new EffectComposer(renderer, renderTarget)
 composer.addPass(new RenderPass(scene, camera))
 const bloomPass = new UnrealBloomPass(
   new THREE.Vector2(window.innerWidth, window.innerHeight),
@@ -128,6 +139,7 @@ const cameraTarget = new THREE.Vector3()
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight
   camera.updateProjectionMatrix()
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, MAX_PIXEL_RATIO))
   renderer.setSize(window.innerWidth, window.innerHeight)
   composer.setSize(window.innerWidth, window.innerHeight)
 })
@@ -294,7 +306,9 @@ let game = createGame()
 const clock = new THREE.Clock()
 
 function animate() {
-  const deltaSeconds = clock.getDelta()
+  // Clamped so a dropped/backgrounded-tab frame doesn't feed a huge dt
+  // into movement/physics and teleport everything forward.
+  const deltaSeconds = Math.min(clock.getDelta(), MAX_DELTA_SECONDS)
   const elapsedSeconds = clock.getElapsedTime()
 
   const gameState = evaluateGameState({ playerHp: game.player.hp })
@@ -324,7 +338,6 @@ function animate() {
     }
     composer.render()
     input.endFrame()
-    requestAnimationFrame(animate)
     return
   }
 
@@ -500,7 +513,8 @@ function animate() {
 
   composer.render()
   input.endFrame()
-  requestAnimationFrame(animate)
 }
 
-animate()
+// setAnimationLoop (rather than a manual requestAnimationFrame chain)
+// is the steadier, recommended driver for a render loop.
+renderer.setAnimationLoop(animate)

@@ -148,6 +148,13 @@ export const TONE_MAPPING_EXPOSURE = 0.8
 
 export const CAMERA_FAR = 1500
 
+// Rendering/loop steadiness: the pixel ratio is capped (a high-DPI
+// display otherwise renders far more pixels than it's worth), and the
+// per-frame delta is clamped so a dropped or backgrounded-tab frame
+// doesn't feed a huge dt into movement/physics.
+export const MAX_PIXEL_RATIO = 2
+export const MAX_DELTA_SECONDS = 1 / 20
+
 // Falling off the platform's edge.
 export const FALL_GRAVITY = 20 // world units/second^2
 export const FALL_DESPAWN_DEPTH = 4 // world units below the platform before a faller is removed/respawned
