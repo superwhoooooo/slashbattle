@@ -45,8 +45,13 @@
         margin-top: 4px;
         font-size: 14px;
       }
-      #monsters-left {
+      #score-counter {
         margin-top: 10px;
+        font-size: 16px;
+      }
+      #wave-counter,
+      #enemies-left {
+        margin-top: 4px;
         font-size: 16px;
       }
       #hidden-indicator {
@@ -72,6 +77,21 @@
         font-weight: 900;
         font-size: 48px;
         color: #ff3355;
+        text-shadow: 3px 3px 0 #000;
+        user-select: none;
+        pointer-events: none;
+      }
+
+      #wave-banner {
+        display: none;
+        position: fixed;
+        top: 16%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        font-family: system-ui, sans-serif;
+        font-weight: 900;
+        font-size: 36px;
+        color: #19e7ff;
         text-shadow: 3px 3px 0 #000;
         user-select: none;
         pointer-events: none;
@@ -106,15 +126,16 @@
         margin-top: 16px;
         font-weight: 900;
       }
-      #win-screen,
       #lose-screen {
         display: none;
       }
-      #win-screen h1 {
-        color: #7cf27c;
-      }
       #lose-screen h1 {
         color: #ff5a5a;
+      }
+      #lose-new-best {
+        display: none;
+        color: #ffe066;
+        font-weight: 900;
       }
     </style>
   </head>
@@ -125,25 +146,27 @@
         <div id="health-fill"></div>
       </div>
       <span id="health-label">100 / 100</span>
-      <div id="monsters-left">Monsters left: 0</div>
+      <div id="score-counter">Score: 0</div>
+      <div id="wave-counter">Wave: 1</div>
+      <div id="enemies-left">Enemies left: 0</div>
       <div id="hidden-indicator">HIDDEN</div>
       <div id="hide-prompt">Press E to hide</div>
     </div>
     <div id="ambush-banner">AMBUSH!</div>
+    <div id="wave-banner"></div>
 
     <div id="start-card" class="overlay">
       <h1>SlashBattle</h1>
       <p>WASD move - Click/Space swing - E hide in a crate</p>
       <p class="hint">Press any key or click to begin</p>
     </div>
-    <div id="win-screen" class="overlay">
-      <h1>YOU WIN!</h1>
-      <p>The monsters have been thoroughly bonked.</p>
-      <p class="hint">Press R to play again</p>
-    </div>
     <div id="lose-screen" class="overlay">
       <h1>GAME OVER</h1>
       <p>You got goofed.</p>
+      <p id="lose-wave">Wave reached: 1</p>
+      <p id="lose-score">Score: 0</p>
+      <p id="lose-best">Best: 0</p>
+      <p id="lose-new-best">NEW BEST!</p>
       <p class="hint">Press R to play again</p>
     </div>
 

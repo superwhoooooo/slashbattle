@@ -7,23 +7,34 @@ and crates the player can hide inside to ambush monsters that lose track
 of them.
 
 ## Gameplay
-Kill every monster (a mix of Blobbo, Zippy, and Grumpus) to win; losing
-all your hp loses the game. Monsters wander until they spot you, chase,
-and attack once in range; hiding in a crate breaks their line of sight,
-so a chasing or attacking monster gives up and searches your last known
-spot before going back to wandering. Popping out of hiding deals bonus
+There's no win state: monsters (a mix of Blobbo, Zippy, and Grumpus)
+arrive in endless waves, each bigger than the last, trickling in one at
+a time at the platform's edge with a glowing spawn-in effect. Losing all
+your hp loses the game. Monsters wander until they spot you, chase, and
+attack once in range; hiding in a crate breaks their line of sight, so a
+chasing or attacking monster gives up and searches your last known spot
+before going back to wandering. Popping out of hiding deals bonus
 "ambush" damage on your next hit for a short window. There are no walls
 at the platform's edge: anyone whose center leaves it falls. A monster
 that falls dies (counts as a kill); a player who falls loses HP and
 respawns at the center with a moment of invulnerability. Attacks knock
-monsters back, which can push them off the edge. R restarts the game at
-any time after winning or losing.
+monsters back, which can push them off the edge. Between waves you heal
+a little, so endless runs stay survivable. R restarts the game (back to
+wave 1, score 0) at any time after losing.
+
+## Scoring
+Every kill (including a fall off the edge) scores points by monster
+type; clearing a wave scores a bonus that grows with the wave number.
+The best score and the best wave reached ever are saved in the browser
+(`localStorage`) and shown on the game-over screen alongside the run
+that just ended, with a "NEW BEST!" callout when you beat your own
+record.
 
 ## Controls
 - WASD / arrow keys — move
 - Left click or Space — swing your sword
 - E — enter or exit a nearby crate to hide
-- R — restart after winning or losing
+- R — restart after losing
 
 ## Commands
 - `npm install` — install dependencies
@@ -36,7 +47,7 @@ any time after winning or losing.
 slashbattle/
   CLAUDE.md            # how to install, run, test, build; project rules
   package.json         # scripts: dev, build, preview, test
-  index.html           # canvas + HUD overlay (health, hidden indicator, game over/win)
+  index.html           # canvas + HUD overlay (health, score/wave, wave banner, game over)
   src/
     main.js            # bootstrap: renderer, scene, camera, post-processing, game loop
     config.js          # tunable constants (speeds, damage, ranges, HP, arena/visual tuning)
@@ -45,13 +56,15 @@ slashbattle/
     faces.js           # goofy face generator (CanvasTexture: googly eyes, wonky mouths, tongues)
     characters.js      # build player/monster jelly bodies (shape + face anchor + indicators)
     jelly.js           # the jelly body: shared-geometry wireframe edges, per-vertex deformation
+    spawner.js         # the spawn-in effect: portal ring + beam, monster materialize animation
+    highScore.js       # load/save the best score/wave in localStorage (try/catch, zero fallback)
     player.js          # movement, attack swing, health, hide/unhide state, falling
     monster.js         # monster AI state machine, falling
     hiding.js          # box interaction logic (find nearest box, enter/exit)
     combat.js          # hit detection (range + facing arc), damage, knockback, cooldowns
-    hud.js             # DOM HUD updates
+    hud.js             # DOM HUD updates (health, score, wave, enemies left, banners, game over)
     logic/             # pure, Three-free functions so they can be unit tested
-  test/                # Vitest specs for logic/ (combat, AI transitions, hiding, arena, falling, jelly)
+  test/                # Vitest specs for logic/ (combat, AI, hiding, arena, falling, jelly, waves)
 ```
 
 All files listed above now exist.
@@ -74,6 +87,21 @@ spawns them dynamically. Monsters keep their own steering (wander,
 chase, search) away from the very edge (`MONSTER_PLATFORM_MARGIN`), so
 only knockback -- or the player's own choice to walk off -- sends anyone
 over the side.
+
+## Waves
+`src/logic/waves.js`'s wave controller (`createWaveState`/`stepWaves`)
+cycles through three phases: `intermission` (a countdown, shown as a
+center banner) -> `spawning` (one enemy right away, then one more every
+`waveSpawnInterval(n)` until `waveSize(n)` have been emitted -- both
+strictly/monotonically tuned by the wave number) -> `clearing` (waits
+for every spawned monster, including ones still materializing in, to be
+gone) -> emits a `waveCleared` event and starts the next intermission.
+`pickMonsterType` weights which type spawns: blobbo only on wave 1,
+zippy from wave 2, grumpus from wave 3 with its share growing slowly.
+main.js steps the controller every frame once the start card is
+dismissed, spawns whatever it emits via `spawnMonster` (through
+`src/spawner.js`'s portal-ring-and-beam effect), and reacts to
+`waveCleared` with a score bonus, a heal, and a banner.
 
 ## Jelly bodies
 Every character (player = icosahedron, blobbo = dodecahedron, zippy =

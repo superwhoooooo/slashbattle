@@ -102,9 +102,6 @@ export const CRATE_POSITIONS = [
 ]
 export const CRATE_OBSTACLE_RADIUS = 0.9
 
-// Milestone A/B kept a fixed starting group of monsters; removed once
-// main.js switches over to spawning them via waves.
-export const STARTING_MONSTER_COUNT = 4
 export const EDGE_SPAWN_MARGIN = 1 // world units in from the platform's edge for edge spawns
 
 // Healed between waves (capped at max hp) so endless runs are survivable.

@@ -1,22 +1,31 @@
-// Plain DOM/CSS heads-up display: a player health bar, monster counter,
-// hidden indicator, hide prompt, ambush banner, the start/controls card,
-// and the win/lose screens. No Three.js; just reads and writes the
-// overlay markup in index.html.
-import { AMBUSH_BANNER_DURATION } from './config.js'
+// Plain DOM/CSS heads-up display: a player health bar, score, wave
+// number, enemies-left counter, hidden indicator, hide prompt, ambush
+// banner, the wave banner (intermission countdown / wave cleared), the
+// start card, and the game-over screen. No Three.js; just reads and
+// writes the overlay markup in index.html.
+import { AMBUSH_BANNER_DURATION, WAVE_CLEARED_BANNER_DURATION } from './config.js'
+import { WAVE_INTERMISSION } from './logic/waves.js'
 
 // Grabs the HUD elements already present in index.html.
 export function createHud() {
   return {
     healthFill: document.getElementById('health-fill'),
     healthLabel: document.getElementById('health-label'),
-    monstersLeft: document.getElementById('monsters-left'),
+    scoreCounter: document.getElementById('score-counter'),
+    waveCounter: document.getElementById('wave-counter'),
+    enemiesLeft: document.getElementById('enemies-left'),
     hiddenIndicator: document.getElementById('hidden-indicator'),
     hidePrompt: document.getElementById('hide-prompt'),
     ambushBanner: document.getElementById('ambush-banner'),
     ambushElapsed: null, // null means the banner isn't showing
+    waveBanner: document.getElementById('wave-banner'),
+    waveClearedElapsed: null, // null means the "WAVE CLEARED" banner isn't showing
     startCard: document.getElementById('start-card'),
-    winScreen: document.getElementById('win-screen'),
     loseScreen: document.getElementById('lose-screen'),
+    loseWave: document.getElementById('lose-wave'),
+    loseScore: document.getElementById('lose-score'),
+    loseBest: document.getElementById('lose-best'),
+    loseNewBest: document.getElementById('lose-new-best'),
   }
 }
 
@@ -33,22 +42,42 @@ export function hideStartCard(hud) {
   hud.startCard.style.display = 'none'
 }
 
-// Shows the win or lose screen for `state` ('won' or 'lost'), or hides
-// both for any other value (in particular 'playing', and after a
-// restart).
-export function showGameOverlay(hud, state) {
-  hud.winScreen.style.display = state === 'won' ? 'flex' : 'none'
-  hud.loseScreen.style.display = state === 'lost' ? 'flex' : 'none'
+// Shows the "WAVE CLEARED +bonus" banner; updateHud switches back to the
+// intermission countdown banner after WAVE_CLEARED_BANNER_DURATION.
+export function showWaveClearedBanner(hud, bonus) {
+  hud.waveClearedElapsed = 0
+  hud.waveBanner.textContent = `WAVE CLEARED +${bonus}`
+  hud.waveBanner.style.display = 'block'
 }
 
-// Updates the health bar's width/label, the monster counter, the
-// "HIDDEN" indicator, the "Press E to hide" prompt, and fades out the
-// ambush banner over time.
-export function updateHud(hud, { hp, maxHp, monstersLeft, hidden, showHidePrompt, deltaSeconds }) {
+// Shows the game-over screen with the run's stats, or hides it for any
+// other state (in particular 'playing', and after a restart). `stats`
+// ({ wave, score, bestScore, isNewBest }) is only read when state is
+// 'lost'.
+export function showGameOverlay(hud, state, stats) {
+  hud.loseScreen.style.display = state === 'lost' ? 'flex' : 'none'
+  if (state !== 'lost' || !stats) return
+
+  hud.loseWave.textContent = `Wave reached: ${stats.wave}`
+  hud.loseScore.textContent = `Score: ${stats.score}`
+  hud.loseBest.textContent = `Best: ${stats.bestScore}`
+  hud.loseNewBest.style.display = stats.isNewBest ? 'block' : 'none'
+}
+
+// Updates the health bar's width/label, the score/wave/enemies-left
+// counters, the "HIDDEN" indicator, the "Press E to hide" prompt, the
+// wave banner (the intermission countdown, unless a "WAVE CLEARED"
+// banner is still showing), and fades out the ambush banner over time.
+export function updateHud(
+  hud,
+  { hp, maxHp, score, wave, enemiesLeft, hidden, showHidePrompt, waveState, deltaSeconds },
+) {
   const ratio = Math.max(0, Math.min(1, hp / maxHp))
   hud.healthFill.style.width = `${ratio * 100}%`
   hud.healthLabel.textContent = `${Math.ceil(Math.max(hp, 0))} / ${maxHp}`
-  hud.monstersLeft.textContent = `Monsters left: ${monstersLeft}`
+  hud.scoreCounter.textContent = `Score: ${score}`
+  hud.waveCounter.textContent = `Wave: ${wave}`
+  hud.enemiesLeft.textContent = `Enemies left: ${enemiesLeft}`
   hud.hiddenIndicator.style.display = hidden ? 'block' : 'none'
   hud.hidePrompt.style.display = showHidePrompt ? 'block' : 'none'
 
@@ -57,6 +86,20 @@ export function updateHud(hud, { hp, maxHp, monstersLeft, hidden, showHidePrompt
     if (hud.ambushElapsed >= AMBUSH_BANNER_DURATION) {
       hud.ambushElapsed = null
       hud.ambushBanner.style.display = 'none'
+    }
+  }
+
+  if (hud.waveClearedElapsed !== null) {
+    hud.waveClearedElapsed += deltaSeconds
+    if (hud.waveClearedElapsed >= WAVE_CLEARED_BANNER_DURATION) hud.waveClearedElapsed = null
+  }
+  if (hud.waveClearedElapsed === null) {
+    if (waveState.phase === 'intermission') {
+      const remaining = Math.max(0, WAVE_INTERMISSION - waveState.phaseElapsed)
+      hud.waveBanner.textContent = `WAVE ${waveState.waveNumber} - ${Math.ceil(remaining)}`
+      hud.waveBanner.style.display = 'block'
+    } else {
+      hud.waveBanner.style.display = 'none'
     }
   }
 }
