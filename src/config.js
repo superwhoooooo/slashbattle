@@ -91,7 +91,6 @@ export const MONSTER_PLATFORM_MARGIN = 1.5
 // Temporary fixed ring of 5 crate positions on the platform (radius 8),
 // standing in as circular obstacles until a later milestone spawns them
 // dynamically and restyles them as cargo pods.
-export const CRATE_RING_RADIUS = 8
 export const CRATE_POSITIONS = [
   { x: 0, z: 8 },
   { x: 7.61, z: 2.47 },
