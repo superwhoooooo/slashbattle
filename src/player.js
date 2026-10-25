@@ -1,5 +1,8 @@
 import * as THREE from 'three'
 import {
+  DAMAGE_SPARK_COLOR,
+  DAMAGE_SPARK_COUNT,
+  DAMAGE_SPARK_SPEED,
   FALL_DAMAGE,
   FALL_DESPAWN_DEPTH,
   FALL_GRAVITY,
@@ -15,12 +18,14 @@ import { resolveArenaMove } from './logic/arena.js'
 import { applyDamage } from './logic/combat.js'
 import { stepFall } from './logic/falling.js'
 import { jellyHit } from './jelly.js'
+import { burst } from './particles.js'
 
 const HIT_FLASH_COLOR = new THREE.Color(1, 0, 0)
 
 export class Player {
-  constructor({ spawn, obstacles = [] }) {
+  constructor({ spawn, obstacles = [], particleSystem = null }) {
     this.obstacles = obstacles
+    this.particleSystem = particleSystem
     this.position = { x: spawn.x, z: spawn.z }
     this.facing = 0 // yaw, radians
     this.hp = PLAYER_MAX_HP
@@ -52,7 +57,22 @@ export class Player {
     this.invulnerableUntil = now + PLAYER_IFRAME_DURATION
     this._hitFlashElapsed = 0
     jellyHit(this.mesh, JELLY_HIT_STRENGTH)
+    this._damageSpark()
     return true
+  }
+
+  // A small red spark burst at roughly chest height, for any damage the
+  // player takes (a monster's hit or a fall). No-op if this Player
+  // wasn't given a particle system to burst into.
+  _damageSpark() {
+    if (!this.particleSystem) return
+    burst(
+      this.particleSystem,
+      { x: this.position.x, y: 1, z: this.position.z },
+      DAMAGE_SPARK_COLOR,
+      DAMAGE_SPARK_COUNT,
+      DAMAGE_SPARK_SPEED,
+    )
   }
 
   // Snaps into a pod: position set to the pod's center, hidden, and the
@@ -90,20 +110,25 @@ export class Player {
   // FALL_DESPAWN_DEPTH, applies FALL_DAMAGE -- bypassing i-frames and the
   // hidden check, since falling off isn't an attack a hidden player could
   // dodge -- and respawns at the platform's center with fresh i-frames.
+  // Returns whether the fall damage was actually applied this tick, so
+  // callers can trigger the same shake/flash feedback a monster's hit
+  // does.
   updateFalling(deltaSeconds, now) {
     this.fallState = stepFall(this.fallState, deltaSeconds, FALL_GRAVITY)
     this.mesh.position.y = -this.fallState.fallenY
-    if (this.fallState.fallenY < FALL_DESPAWN_DEPTH) return
+    if (this.fallState.fallenY < FALL_DESPAWN_DEPTH) return false
 
     this.hp = applyDamage({ hp: this.hp }, FALL_DAMAGE).hp
     this.invulnerableUntil = now + PLAYER_IFRAME_DURATION
     this._hitFlashElapsed = 0
     jellyHit(this.mesh, JELLY_HIT_STRENGTH)
+    this._damageSpark()
 
     this.falling = false
     this.position.x = 0
     this.position.z = 0
     this.mesh.position.set(0, 0, 0)
+    return true
   }
 
   // Fades the red hit flash back to the body material's own baseline

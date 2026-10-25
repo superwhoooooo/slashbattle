@@ -7,8 +7,12 @@ import {
   SPAWN_INFLATE_STRENGTH,
   SPAWN_RING_COLOR,
   SPAWN_RING_RADIUS,
+  SPAWN_SWIRL_COUNT,
+  SPAWN_SWIRL_SPEED,
+  SPAWN_SWIRL_UPWARD_BIAS,
 } from './config.js'
 import { jellyHit } from './jelly.js'
+import { burst } from './particles.js'
 
 const BLACK = new THREE.Color(0x000000)
 
@@ -75,15 +79,24 @@ function portalOpacity(t) {
 // Advances a spawn-in effect by one tick: fades the portal ring/beam in
 // and out, and materializes `monster` -- scaling it up from 0 (with a
 // one-shot jelly inflate impulse, so it wobbles as it grows in) while its
-// body color fades in from black. The caller is responsible for keeping
-// the monster out of AI/combat (e.g. a `spawning` flag) and for still
-// ticking its jelly (idle ripple + the inflate wobble) every frame.
+// body color fades in from black. A swirl of particles kicks off in the
+// beam the moment the effect starts. The caller is responsible for
+// keeping the monster out of AI/combat (e.g. a `spawning` flag) and for
+// still ticking its jelly (idle ripple + the inflate wobble) every frame.
 // Returns true once SPAWN_EFFECT_DURATION has elapsed, meaning the
 // caller should dispose the effect's group and clear that flag.
-export function updateSpawnEffect(effect, monster, dt) {
+export function updateSpawnEffect(effect, monster, dt, particleSystem) {
   if (effect.elapsed === 0) {
     monster.scale.setScalar(0)
     jellyHit(monster, SPAWN_INFLATE_STRENGTH)
+    burst(
+      particleSystem,
+      { x: effect.group.position.x, y: 0.2, z: effect.group.position.z },
+      SPAWN_RING_COLOR,
+      SPAWN_SWIRL_COUNT,
+      SPAWN_SWIRL_SPEED,
+      SPAWN_SWIRL_UPWARD_BIAS,
+    )
   }
 
   effect.elapsed += dt

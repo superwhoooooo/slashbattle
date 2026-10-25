@@ -7,10 +7,18 @@ import {
   ATTACK_RANGE,
   ATTACK_SWING_DURATION,
   DEATH_POP_DURATION,
+  DEATH_SHARD_COUNT,
+  DEATH_SHARD_SPEED,
   HIT_FLASH_DURATION,
+  HIT_SPARK_COUNT,
+  HIT_SPARK_SPEED,
+  HIT_SPARK_WHITE_COLOR,
+  HIT_SPARK_WHITE_COUNT,
+  HIT_SPARK_WHITE_SPEED,
   JELLY_DEATH_INFLATE_STRENGTH,
   JELLY_HIT_STRENGTH,
   KNOCKBACK_STRENGTH,
+  MONSTER_TYPES,
 } from './config.js'
 import { resolveArenaMove } from './logic/arena.js'
 import {
@@ -22,8 +30,11 @@ import {
 } from './logic/combat.js'
 import { isAmbushActive } from './logic/hiding.js'
 import { jellyHit } from './jelly.js'
+import { burst, shardBurst } from './particles.js'
+import { clearSwingTrail, updateSwingTrail } from './trail.js'
 
 const HIT_FLASH_COLOR = new THREE.Color(1, 1, 1)
+const scratchTipPosition = new THREE.Vector3()
 
 // The sword rotates through this arc (radians, around its local Z axis)
 // over the swing, and the hit is checked once the swing crosses the
@@ -54,7 +65,7 @@ export function createAttackState() {
 // hit landed, so the caller can trigger a (smaller) screen shake.
 export function updatePlayerAttack(
   attackState,
-  { player, monsters, obstacles, input, elapsedSeconds, deltaSeconds },
+  { player, monsters, obstacles, input, elapsedSeconds, deltaSeconds, particleSystem, swingTrail },
 ) {
   if (player.hidden) return { ambushHit: false, hitAny: false }
 
@@ -77,16 +88,20 @@ export function updatePlayerAttack(
   const progress = Math.min(attackState.swingElapsed / ATTACK_SWING_DURATION, 1)
   sword.rotation.z = THREE.MathUtils.lerp(SWING_START_ANGLE, SWING_END_ANGLE, progress)
 
+  sword.userData.tip.getWorldPosition(scratchTipPosition)
+  updateSwingTrail(swingTrail, scratchTipPosition)
+
   let ambushHit = false
   let hitAny = false
   if (!attackState.hasHitThisSwing && progress >= SWING_HIT_FRACTION) {
     attackState.hasHitThisSwing = true
-    ;({ ambushHit, hitAny } = resolveAttackHits(player, monsters, obstacles, elapsedSeconds))
+    ;({ ambushHit, hitAny } = resolveAttackHits(player, monsters, obstacles, elapsedSeconds, particleSystem))
   }
 
   if (progress >= 1) {
     attackState.swingElapsed = null
     sword.rotation.z = 0
+    clearSwingTrail(swingTrail)
   }
 
   return { ambushHit, hitAny }
@@ -96,12 +111,14 @@ export function updatePlayerAttack(
 // damage (boosted if the player is still within the ambush window after
 // popping out of hiding), a knockback that slides around obstacles (but,
 // deliberately, is not stopped by the platform's edge -- it can shove a
-// monster off), a hit flash, and a jelly splat. A lethal hit starts the
-// monster's death pop (plus a one-shot jelly inflate burst) instead of
-// removing it immediately, so updateMonsterHitReaction can animate it out
-// first. A monster still materializing in (spawning) can't be hit.
-// Returns { ambushHit, hitAny } for the whole swing.
-function resolveAttackHits(player, monsters, obstacles, now) {
+// monster off), a hit flash, a jelly splat, and a small spark burst (the
+// monster's edge color plus a brief white spark). A lethal hit starts
+// the monster's death pop (plus a one-shot jelly inflate burst and a big
+// tumbling shard burst in the monster's color) instead of removing it
+// immediately, so updateMonsterHitReaction can animate it out first. A
+// monster still materializing in (spawning) can't be hit. Returns
+// { ambushHit, hitAny } for the whole swing.
+function resolveAttackHits(player, monsters, obstacles, now, particleSystem) {
   const attackerPos = player.position
   const ambush = isAmbushActive(now, player.exitedAt, AMBUSH_WINDOW)
   let ambushHit = false
@@ -131,10 +148,16 @@ function resolveAttackHits(player, monsters, obstacles, now) {
     monster.userData.hitFlashElapsed = 0
     jellyHit(monster, JELLY_HIT_STRENGTH)
 
+    const stats = MONSTER_TYPES[monster.userData.type]
+    const hitPoint = { x: monster.position.x, y: monster.position.y + stats.size * 0.5, z: monster.position.z }
+    burst(particleSystem, hitPoint, stats.edgeColor, HIT_SPARK_COUNT, HIT_SPARK_SPEED)
+    burst(particleSystem, hitPoint, HIT_SPARK_WHITE_COLOR, HIT_SPARK_WHITE_COUNT, HIT_SPARK_WHITE_SPEED)
+
     if (lethal) {
       monster.userData.dying = true
       monster.userData.deathPopElapsed = 0
       jellyHit(monster, JELLY_DEATH_INFLATE_STRENGTH)
+      shardBurst(particleSystem, hitPoint, stats.color, DEATH_SHARD_COUNT, DEATH_SHARD_SPEED)
     }
   }
 

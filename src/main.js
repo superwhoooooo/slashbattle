@@ -1,3 +1,6 @@
+import '@fontsource/orbitron/400.css'
+import '@fontsource/orbitron/700.css'
+import '@fontsource/orbitron/900.css'
 import * as THREE from 'three'
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
@@ -18,29 +21,48 @@ import {
   EDGE_SPAWN_MARGIN,
   FALL_DESPAWN_DEPTH,
   FALL_GRAVITY,
+  FALL_PUFF_COLOR,
+  FALL_PUFF_COUNT,
+  FALL_PUFF_SPEED,
+  FALL_STREAK_COUNT,
+  FALL_STREAK_SPEED,
   HIDDEN_CAMERA_OFFSET,
   MONSTER_FALL_TUMBLE_SPEED,
   MONSTER_TYPES,
   PLAYER_MAX_HP,
   POD_OBSTACLE_RADIUS,
   POD_POSITIONS,
+  POPUP_KILL_COLOR,
+  POPUP_RING_OUT_COLOR,
   SHAKE_DAMAGE_DURATION,
   SHAKE_DAMAGE_MAGNITUDE,
   SHAKE_HIT_DURATION,
   SHAKE_HIT_MAGNITUDE,
+  SWORD_BLADE_COLOR,
   WAVE_CLEAR_HEAL,
 } from './config.js'
 import { createAttackState, updateMonsterHitReaction, updatePlayerAttack } from './combat.js'
 import { createHidingState, createPods, updateHiding, updatePod } from './hiding.js'
-import { createHud, hideStartCard, showAmbushBanner, showGameOverlay, showWaveClearedBanner, updateHud } from './hud.js'
+import {
+  createHud,
+  hideStartCard,
+  showAmbushBanner,
+  showGameOverlay,
+  showWaveClearedBanner,
+  triggerDamageFlash,
+  updateHud,
+} from './hud.js'
 import { Input } from './input.js'
 import { edgeSpawnPoint, isOnPlatform } from './logic/arena.js'
 import { stepFall } from './logic/falling.js'
 import { evaluateGameState } from './logic/gameState.js'
 import { createWaveState, scoreForKill, stepWaves, waveClearBonus, waveSize } from './logic/waves.js'
 import { createMonsterAIState, separateMonsters, updateMonster } from './monster.js'
+import { burst, createParticleSystem, resetParticles, updateParticles } from './particles.js'
 import { Player } from './player.js'
+import { createPopupPool, resetPopups, showPopup, updatePopups } from './popups.js'
 import { createSpawnEffect, updateSpawnEffect } from './spawner.js'
+import { clearSwingTrail, createSwingTrail } from './trail.js'
 
 const container = document.querySelector('#app')
 
@@ -77,6 +99,17 @@ composer.addPass(new OutputPass())
 
 const input = new Input()
 const hud = createHud()
+
+// Pooled visual effects are per-session singletons, like the composer
+// and HUD above: created once, added to the scene once, and reset
+// (never disposed/recreated) on restart, since they don't belong to any
+// one game run.
+const particleSystem = createParticleSystem()
+scene.add(particleSystem.group)
+const swingTrail = createSwingTrail(SWORD_BLADE_COLOR)
+scene.add(swingTrail.mesh)
+const popupPool = createPopupPool()
+scene.add(popupPool.group)
 
 // The camera doesn't rotate yet, so it stays behind the player along a
 // fixed world-space offset and eases toward its target each frame.
@@ -150,7 +183,7 @@ function createGame() {
   // knockback; a later milestone spawns them dynamically.
   const obstacles = POD_POSITIONS.map((pos) => ({ x: pos.x, z: pos.z, radius: POD_OBSTACLE_RADIUS }))
 
-  const player = new Player({ spawn: { x: 0, z: 0 }, obstacles })
+  const player = new Player({ spawn: { x: 0, z: 0 }, obstacles, particleSystem })
   scene.add(player.mesh)
 
   const pods = createPods(POD_POSITIONS)
@@ -256,6 +289,9 @@ function animate() {
     if (started && gameState !== 'playing' && input.wasPressed('KeyR')) {
       disposeGame(game)
       game = createGame()
+      resetParticles(particleSystem)
+      resetPopups(popupPool)
+      clearSwingTrail(swingTrail)
     }
     composer.render()
     input.endFrame()
@@ -290,7 +326,10 @@ function animate() {
   if (!player.falling && !player.hidden && !isOnPlatform(player.position, ARENA_RADIUS)) {
     player.startFalling()
   }
-  if (player.falling) player.updateFalling(deltaSeconds, elapsedSeconds)
+  if (player.falling && player.updateFalling(deltaSeconds, elapsedSeconds)) {
+    triggerShake(shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
+    triggerDamageFlash(hud)
+  }
   updateJelly(player.mesh, deltaSeconds, elapsedSeconds, { speed: player.speed, moveDir: player.moveDir })
 
   const { showPrompt, nearestPod } = updateHiding(hidingState, player, pods, input, elapsedSeconds)
@@ -305,6 +344,8 @@ function animate() {
     input,
     elapsedSeconds,
     deltaSeconds,
+    particleSystem,
+    swingTrail,
   })
   if (ambushHit) showAmbushBanner(hud)
   if (hitAny) triggerShake(shake, SHAKE_HIT_MAGNITUDE, SHAKE_HIT_DURATION)
@@ -329,7 +370,9 @@ function animate() {
       updateJelly(mesh, deltaSeconds, elapsedSeconds, { speed: 0, moveDir: mesh.userData.moveDir })
       const finishedDying = updateMonsterHitReaction(mesh, deltaSeconds)
       if (finishedDying) {
-        game.score += scoreForKill(mesh.userData.type)
+        const points = scoreForKill(mesh.userData.type)
+        game.score += points
+        showPopup(popupPool, mesh.position, `+${points}`, POPUP_KILL_COLOR)
         scene.remove(mesh)
         return false
       }
@@ -342,7 +385,9 @@ function animate() {
       mesh.rotation.x += deltaSeconds * MONSTER_FALL_TUMBLE_SPEED
       mesh.rotation.z += deltaSeconds * MONSTER_FALL_TUMBLE_SPEED * 0.6
       if (mesh.userData.fallState.fallenY >= FALL_DESPAWN_DEPTH) {
-        game.score += scoreForKill(mesh.userData.type)
+        const points = scoreForKill(mesh.userData.type)
+        game.score += points
+        showPopup(popupPool, { x: mesh.position.x, y: 0, z: mesh.position.z }, 'RING OUT!', POPUP_RING_OUT_COLOR)
         scene.remove(mesh)
         return false
       }
@@ -351,12 +396,18 @@ function animate() {
 
     const { hitPlayer } = updateMonster(mesh, player, obstacles, deltaSeconds, elapsedSeconds)
     updateJelly(mesh, deltaSeconds, elapsedSeconds, { speed: mesh.userData.speed, moveDir: mesh.userData.moveDir })
-    if (hitPlayer) triggerShake(shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
+    if (hitPlayer) {
+      triggerShake(shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
+      triggerDamageFlash(hud)
+    }
     updateMonsterHitReaction(mesh, deltaSeconds)
 
     if (!isOnPlatform({ x: mesh.position.x, z: mesh.position.z }, ARENA_RADIUS)) {
       mesh.userData.falling = true
       mesh.userData.fallState = { velocityY: 0, fallenY: 0 }
+      const fallPoint = { x: mesh.position.x, y: mesh.userData.radius, z: mesh.position.z }
+      burst(particleSystem, fallPoint, FALL_PUFF_COLOR, FALL_PUFF_COUNT, FALL_PUFF_SPEED)
+      burst(particleSystem, fallPoint, MONSTER_TYPES[mesh.userData.type].edgeColor, FALL_STREAK_COUNT, FALL_STREAK_SPEED)
     }
     return true
   })
@@ -366,7 +417,7 @@ function animate() {
   // scale/color materialize); once one finishes, the monster can start
   // running AI/combat and the effect's meshes are disposed.
   game.spawnEffects = game.spawnEffects.filter(({ effect, monster }) => {
-    const finished = updateSpawnEffect(effect, monster, deltaSeconds)
+    const finished = updateSpawnEffect(effect, monster, deltaSeconds, particleSystem)
     if (finished) {
       monster.userData.spawning = false
       disposeObject3D(effect.group)
@@ -376,6 +427,8 @@ function animate() {
 
   separateMonsters(monsters, player, obstacles)
   updateArena(game.arena, elapsedSeconds)
+  updateParticles(particleSystem, deltaSeconds)
+  updatePopups(popupPool, deltaSeconds)
 
   const enemiesLeft = waveSize(game.waveState.waveNumber) - game.waveState.spawnedCount + monsters.length
   updateHud(hud, {

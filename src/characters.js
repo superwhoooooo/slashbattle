@@ -7,32 +7,70 @@ import {
   PLAYER_BODY_RADIUS,
   PLAYER_EDGE_COLOR,
   PLAYER_RADIUS,
+  SWORD_BLADE_COLOR,
+  SWORD_GLOW_SCALE,
+  SWORD_HILT_COLOR,
 } from './config.js'
 import { createFaceTexture, PLAYER_FACE, randomGoofyFace } from './faces.js'
 import { createJellyBody } from './jelly.js'
 
 const PLAYER_BODY_COLOR = 0x3388ff
 
-// A simple sword prop: a blade box plus a crossguard box, grouped so
-// later milestones can animate the whole swing as one object. Attached
-// directly to the body group (not the face anchor), so it stays rigid
-// and doesn't pulse with the jelly bulge/hit state.
+const BLADE_LENGTH = 0.8
+
+// A glowing energy sword: a bright emissive blade core plus a slightly
+// larger, additive "glow" twin of the same shape (the same trick the
+// jelly bodies use for their neon edges) so it blooms, on a dark metal
+// hilt (grip + crossguard). Grouped so later milestones can animate the
+// whole swing as one object; a `tip` child marks the blade's far end in
+// local space, for the swing trail to read as a world position each
+// frame. Attached directly to the body group (not the face anchor), so
+// it stays rigid and doesn't pulse with the jelly bulge/hit state.
 function createSword() {
   const group = new THREE.Group()
 
+  const bladeGeometry = new THREE.BoxGeometry(0.05, BLADE_LENGTH, 0.025)
   const blade = new THREE.Mesh(
-    new THREE.BoxGeometry(0.06, 0.8, 0.03),
-    new THREE.MeshStandardMaterial({ color: 0xcfd4da, metalness: 0.6, roughness: 0.3 }),
+    bladeGeometry,
+    new THREE.MeshStandardMaterial({
+      color: SWORD_BLADE_COLOR,
+      emissive: new THREE.Color(SWORD_BLADE_COLOR),
+      emissiveIntensity: 2.2,
+      metalness: 0.2,
+      roughness: 0.2,
+    }),
   )
-  blade.position.y = 0.4
+  blade.position.y = BLADE_LENGTH / 2
   group.add(blade)
 
-  const crossguard = new THREE.Mesh(
-    new THREE.BoxGeometry(0.26, 0.06, 0.06),
-    new THREE.MeshStandardMaterial({ color: 0x8b5a2b }),
+  const glow = new THREE.Mesh(
+    bladeGeometry,
+    new THREE.MeshBasicMaterial({
+      color: SWORD_BLADE_COLOR,
+      transparent: true,
+      opacity: 0.35,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    }),
   )
+  glow.position.y = blade.position.y
+  glow.scale.set(SWORD_GLOW_SCALE, 1, SWORD_GLOW_SCALE)
+  group.add(glow)
+
+  const hiltMaterial = new THREE.MeshStandardMaterial({ color: SWORD_HILT_COLOR, metalness: 0.7, roughness: 0.4 })
+
+  const crossguard = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.06, 0.06), hiltMaterial)
   group.add(crossguard)
 
+  const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.035, 0.22, 8), hiltMaterial)
+  grip.position.y = -0.14
+  group.add(grip)
+
+  const tip = new THREE.Object3D()
+  tip.position.y = BLADE_LENGTH
+  group.add(tip)
+
+  group.userData.tip = tip
   return group
 }
 

@@ -58,13 +58,16 @@ slashbattle/
     jelly.js           # the jelly body: shared-geometry wireframe edges, per-vertex deformation
     spawner.js         # the spawn-in effect: portal ring + beam, monster materialize animation
     highScore.js       # load/save the best score/wave in localStorage (try/catch, zero fallback)
+    particles.js       # pooled spark (Points) and tumbling-shard (InstancedMesh) bursts
+    trail.js           # the sword's fading swing-trail ribbon (tip position history)
+    popups.js          # floating "+100" / "RING OUT!" score popups (a sprite pool)
     player.js          # movement, attack swing, health, hide/unhide state, falling
     monster.js         # monster AI state machine, falling
     hiding.js          # cargo pod visuals/states + interaction (find nearest, enter/exit)
     combat.js          # hit detection (range + facing arc), damage, knockback, cooldowns
     hud.js             # DOM HUD updates (health, score, wave, enemies left, banners, game over)
     logic/             # pure, Three-free functions so they can be unit tested
-  test/                # Vitest specs for logic/ (combat, AI, hiding, arena, falling, jelly, waves)
+  test/                # Vitest specs for logic/ (combat, AI, hiding, arena, falling, jelly, waves, particles, trail)
 ```
 
 All files listed above now exist.
@@ -131,3 +134,32 @@ burst). A face plane rides a `faceAnchor` child that pulses with the
 overall bulge/hit state rather than tracking individual vertices; a
 sword (player only) is attached directly to the body group instead, so
 it stays rigid.
+
+## Polish: particles, trail, popups, HUD
+The sword is a glowing energy blade (an emissive core plus a larger
+additive "glow" twin, the same trick the jelly edges use) on a dark
+hilt, with a fading swing-trail ribbon following its tip
+(`src/trail.js`; `src/logic/trail.js`'s `pushTrailPoint`/`trailAlphaAt`
+keep the point history and the per-point fade pure and testable).
+`src/particles.js` pools two kinds of bursts -- `burst` (a THREE.Points
+pool, for sparks/puffs/swirls) and `shardBurst` (an InstancedMesh pool
+of tumbling tetrahedra, for the big death burst) -- both ring-buffered
+(`src/logic/particles.js`'s `allocateSlots`) so a burst never allocates;
+`stepParticle`/`particleAlpha`/`particleScale` (also pure) drive
+gravity/drag/fade/shrink. They fire on a hit (a spark burst in the
+monster's edge color plus a white spark), a death (a big tumbling shard
+burst), falling off the edge (a puff plus a streak), a spawn-in (an
+upward swirl in the beam), and the player taking damage (a red spark).
+`src/popups.js` floats a small pool of "+100"-style sprites (or "RING
+OUT!" for a fall) up and fades them out when a monster dies. The
+particle system, the swing trail, and the popup pool are all per-session
+singletons -- created once alongside the HUD and composer, added to the
+scene once, and reset (not disposed/recreated) on restart.
+
+The HUD itself uses the self-hosted `@fontsource/orbitron` font (no
+external network fonts) on glassy, translucent, neon-bordered panels; the
+health bar is segmented and pulses red at/under `LOW_HP_PULSE_THRESHOLD`;
+the wave banner scales in; the start card lays out its controls with key
+caps. A fixed vignette gently darkens the screen's edges, and a brief
+red screen flash (`triggerDamageFlash`) accompanies every point the
+player takes damage, alongside the existing screen shake.
