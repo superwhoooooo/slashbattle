@@ -6,6 +6,19 @@ const UP = new THREE.Vector3(0, 1, 0)
 const scratchDir = new THREE.Vector3()
 const scratchSide = new THREE.Vector3()
 
+// A fixed-size round-robin pool of TRAIL_MAX_POINTS Vector3s for the
+// trail's history points, so updateSwingTrail never allocates a new one
+// per frame (tipWorldPosition.clone(), every frame a swing is in
+// flight). By the time a pool slot is reused, pushTrailPoint has long
+// since dropped whatever history entry it held (the history never holds
+// more than TRAIL_MAX_POINTS entries, and the pool has exactly that
+// many slots).
+function createPointPool() {
+  const pool = []
+  for (let i = 0; i < TRAIL_MAX_POINTS; i++) pool.push(new THREE.Vector3())
+  return pool
+}
+
 // Builds an empty swing-trail ribbon: a pre-allocated triangle strip
 // (two vertices per history point) with vertex colors used for the fade
 // -- additive blending with the color darkening toward the oldest end
@@ -44,7 +57,7 @@ export function createSwingTrail(color) {
   const mesh = new THREE.Mesh(geometry, material)
   mesh.frustumCulled = false
 
-  return { mesh, history: [], color: new THREE.Color(color) }
+  return { mesh, history: [], color: new THREE.Color(color), pointPool: createPointPool(), poolCursor: 0 }
 }
 
 // Appends the blade tip's current world position to the trail's history
@@ -53,7 +66,10 @@ export function createSwingTrail(color) {
 // to the segment direction and world up) for width, with color fading
 // toward black at the oldest end. Call every frame a swing is in flight.
 export function updateSwingTrail(trail, tipWorldPosition) {
-  trail.history = pushTrailPoint(trail.history, tipWorldPosition.clone(), TRAIL_MAX_POINTS)
+  const pooledPoint = trail.pointPool[trail.poolCursor]
+  pooledPoint.copy(tipWorldPosition)
+  trail.poolCursor = (trail.poolCursor + 1) % trail.pointPool.length
+  trail.history = pushTrailPoint(trail.history, pooledPoint, TRAIL_MAX_POINTS)
   const { history } = trail
   const position = trail.mesh.geometry.attributes.position
   const color = trail.mesh.geometry.attributes.color
