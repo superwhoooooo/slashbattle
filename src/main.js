@@ -34,8 +34,20 @@ import {
   MONSTER_TYPES,
   PLAYER_MAX_HP,
   PLAYER_SPEED,
+  POD_FLOOR_GLOW_COLOR,
+  POD_INITIAL_COUNT_MAX,
+  POD_INITIAL_COUNT_MIN,
+  POD_MAX_ACTIVE,
+  POD_MIN_PLAYER_DISTANCE,
+  POD_MIN_SPACING,
+  POD_MONSTER_AVOID_RADIUS,
   POD_OBSTACLE_RADIUS,
-  POD_POSITIONS,
+  POD_SPAWN_BURST_COUNT,
+  POD_SPAWN_BURST_SPEED,
+  POD_SPAWN_DELAY_MAX,
+  POD_SPAWN_DELAY_MIN,
+  POD_SPAWN_MARGIN,
+  POD_SPAWN_MAX_ATTEMPTS,
   POPUP_KILL_COLOR,
   POPUP_RING_OUT_COLOR,
   SHAKE_DAMAGE_DURATION,
@@ -52,7 +64,7 @@ import {
   WAVE_CLEAR_HEAL,
 } from './config.js'
 import { createAttackState, updateMonsterHitReaction, updatePlayerAttack } from './combat.js'
-import { createHidingState, createPods, updateHiding, updatePod } from './hiding.js'
+import { createHidingState, createPod, startPodDematerialize, updateHiding, updatePod } from './hiding.js'
 import {
   createHud,
   hideStartCard,
@@ -66,6 +78,7 @@ import { Input } from './input.js'
 import { isOnPlatform, spawnPointNearPlayer } from './logic/arena.js'
 import { stepFall } from './logic/falling.js'
 import { evaluateGameState } from './logic/gameState.js'
+import { createPodSpawnerState, pickPodSpawnPoint, stepPodSpawner } from './logic/podSpawner.js'
 import { createWaveState, scoreForKill, stepWaves, waveClearBonus, waveSize } from './logic/waves.js'
 import { createMonsterAIState, separateMonsters, updateMonster } from './monster.js'
 import { burst, createParticleSystem, resetParticles, updateParticles } from './particles.js'
@@ -211,27 +224,22 @@ function createGame() {
   scene.background = new THREE.Color(arena.backgroundColor)
   scene.fog = arena.fog
 
-  // Pods stand in as circular obstacles for both movement collision and
-  // knockback; a later milestone spawns them dynamically.
-  const obstacles = POD_POSITIONS.map((pos) => ({ x: pos.x, z: pos.z, radius: POD_OBSTACLE_RADIUS }))
+  // Pods are dynamic circular obstacles (src/logic/podSpawner.js decides
+  // where/when); `obstacles` is mutated in place as they spawn/despawn
+  // (via trySpawnPod/despawnPod) so the player and monsters, which hold
+  // this same array, stay in sync without it ever being reassigned.
+  const obstacles = []
 
   const player = new Player({ spawn: { x: 0, z: 0 }, obstacles, particleSystem })
   scene.add(player.mesh)
 
-  const pods = createPods(POD_POSITIONS)
-  pods.forEach((pod) => scene.add(pod))
-
-  camera.position.set(
-    player.position.x + CAMERA_OFFSET.x,
-    CAMERA_OFFSET.y,
-    player.position.z + CAMERA_OFFSET.z,
-  )
-
-  return {
+  const game = {
     arena,
     obstacles,
     player,
-    pods,
+    pods: [],
+    despawningPods: [], // pod meshes mid-dematerialize: still animating, no longer collidable or counted toward POD_MAX_ACTIVE
+    podSpawnerState: createPodSpawnerState(),
     monsters: [],
     spawnEffects: [], // { effect, monster } pairs still materializing in
     waveState: createWaveState(),
@@ -242,6 +250,76 @@ function createGame() {
     gameOverRecorded: false,
     gameOverStats: null,
   }
+
+  const initialPodCount =
+    POD_INITIAL_COUNT_MIN + Math.floor(Math.random() * (POD_INITIAL_COUNT_MAX - POD_INITIAL_COUNT_MIN + 1))
+  for (let i = 0; i < initialPodCount; i++) trySpawnPod(game)
+
+  camera.position.set(
+    player.position.x + CAMERA_OFFSET.x,
+    CAMERA_OFFSET.y,
+    player.position.z + CAMERA_OFFSET.z,
+  )
+
+  return game
+}
+
+// Picks a valid spot for a new pod -- random on the platform, spaced
+// from other pods/the player/any monster (src/logic/podSpawner.js's
+// pickPodSpawnPoint) -- and spawns it there with a materialize effect
+// (the pod mesh's own grow-in animation, see hiding.js's updatePod)
+// plus a particle flash. A no-op if nothing fit in the attempt budget,
+// per pickPodSpawnPoint's contract: this spawn attempt is just skipped,
+// not forced into a bad position.
+function trySpawnPod(game) {
+  const point = pickPodSpawnPoint(Math.random, {
+    arenaRadius: ARENA_RADIUS,
+    margin: POD_SPAWN_MARGIN,
+    existingPods: game.pods.map((pod) => ({ x: pod.position.x, z: pod.position.z })),
+    minSpacing: POD_MIN_SPACING,
+    playerPos: game.player.position,
+    minPlayerDistance: POD_MIN_PLAYER_DISTANCE,
+    monsterPositions: game.monsters.map((mesh) => ({ x: mesh.position.x, z: mesh.position.z })),
+    monsterAvoidRadius: POD_MONSTER_AVOID_RADIUS,
+    maxAttempts: POD_SPAWN_MAX_ATTEMPTS,
+  })
+  if (point === null) return
+
+  const pod = createPod(point)
+  const obstacle = { x: point.x, z: point.z, radius: POD_OBSTACLE_RADIUS }
+  pod.userData.obstacle = obstacle
+  scene.add(pod)
+  game.pods.push(pod)
+  game.obstacles.push(obstacle)
+  burst(
+    particleSystem,
+    { x: point.x, y: 0.4, z: point.z },
+    POD_FLOOR_GLOW_COLOR,
+    POD_SPAWN_BURST_COUNT,
+    POD_SPAWN_BURST_SPEED,
+  )
+}
+
+// Starts a pod's dematerialize (shrink-away) animation and moves it
+// out of the active lists (so it stops blocking movement and no longer
+// counts toward POD_MAX_ACTIVE) into despawningPods, where it keeps
+// animating/rendering until that finishes -- the main loop disposes it
+// then. Pods are single-use: every path that vacates one (exiting
+// early with E, or the hide-limit ejecting the player) calls this.
+function despawnPod(game, pod) {
+  const obstacleIndex = game.obstacles.indexOf(pod.userData.obstacle)
+  if (obstacleIndex !== -1) game.obstacles.splice(obstacleIndex, 1)
+  const podIndex = game.pods.indexOf(pod)
+  if (podIndex !== -1) game.pods.splice(podIndex, 1)
+  game.despawningPods.push(pod)
+  startPodDematerialize(pod)
+  burst(
+    particleSystem,
+    { x: pod.position.x, y: 0.4, z: pod.position.z },
+    POD_FLOOR_GLOW_COLOR,
+    POD_SPAWN_BURST_COUNT,
+    POD_SPAWN_BURST_SPEED,
+  )
 }
 
 // Spawns one monster of `type` on a ring around the PLAYER's current
@@ -286,6 +364,7 @@ function disposeGame(target) {
   disposeObject3D(target.arena.group)
   disposeObject3D(target.player.mesh)
   target.pods.forEach((pod) => disposeObject3D(pod))
+  target.despawningPods.forEach((pod) => disposeObject3D(pod))
   target.monsters.forEach((mesh) => disposeObject3D(mesh))
   target.spawnEffects.forEach(({ effect }) => disposeObject3D(effect.group))
 }
@@ -364,6 +443,19 @@ function animate() {
     player.hp = Math.min(PLAYER_MAX_HP, player.hp + WAVE_CLEAR_HEAL)
   }
 
+  // Steps the pod spawn timer and spawns one if it's due -- see
+  // trySpawnPod (a no-op if nothing fit).
+  const { state: nextPodSpawnerState, spawnNow } = stepPodSpawner(
+    game.podSpawnerState,
+    elapsedSeconds,
+    pods.length,
+    POD_MAX_ACTIVE,
+    [POD_SPAWN_DELAY_MIN, POD_SPAWN_DELAY_MAX],
+    Math.random,
+  )
+  game.podSpawnerState = nextPodSpawnerState
+  if (spawnNow) trySpawnPod(game)
+
   player.update(input, cameraYaw, deltaSeconds)
   if (!player.falling && !player.hidden && !isOnPlatform(player.position, ARENA_RADIUS)) {
     player.startFalling()
@@ -375,10 +467,18 @@ function animate() {
   updateJelly(player.mesh, deltaSeconds, elapsedSeconds, { speed: player.speed, moveDir: player.moveDir })
   updateFace3D(player.mesh, deltaSeconds, elapsedSeconds)
 
-  const { showPrompt, nearestPod } = updateHiding(hidingState, player, pods, input, elapsedSeconds)
-  pods.forEach((pod) =>
-    updatePod(pod, deltaSeconds, elapsedSeconds, { isNearestEnterable: pod === nearestPod }),
-  )
+  // vacatedPod is the pod the player just left (early with E) this
+  // frame, if any; pods are single-use, so it always starts
+  // despawning.
+  const { showPrompt, nearestPod, vacatedPod } = updateHiding(hidingState, player, pods, input, elapsedSeconds)
+  if (vacatedPod) despawnPod(game, vacatedPod)
+
+  pods.forEach((pod) => updatePod(pod, deltaSeconds, elapsedSeconds, { isNearestEnterable: pod === nearestPod }))
+  game.despawningPods = game.despawningPods.filter((pod) => {
+    const finished = updatePod(pod, deltaSeconds, elapsedSeconds, {})
+    if (finished) disposeObject3D(pod)
+    return !finished
+  })
 
   const { ambushHit, hitAny } = updatePlayerAttack(attackState, {
     player,

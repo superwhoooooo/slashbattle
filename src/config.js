@@ -330,28 +330,49 @@ export const POD_VISOR_ARC = (Math.PI * 2) / 3 // radians of the hull's front th
 export const POD_FLOOR_GLOW_COLOR = 0x19e7ff
 export const POD_FLOOR_GLOW_RADIUS = 0.9
 
-// Seam ring colors per state (idle, near enough to enter, occupied) plus
+// How far outside the pod the player pops out to -- a bit further for
+// a hide-limit eject than a voluntary exit, so it reads as a knockback.
+export const POD_EXIT_MARGIN = 0.3
+export const POD_EJECT_EXIT_MARGIN = 0.8
+
+// Seam ring colors per state (idle, near enough to enter, occupied,
+// urgent -- the last POD_HIDE_URGENT_THRESHOLD seconds of hiding) plus
 // a gentle pulse applied to whichever color is current.
 export const POD_SEAM_COLOR_IDLE = 0x1fb6ff
 export const POD_SEAM_COLOR_HIGHLIGHT = 0x7dffb0
 export const POD_SEAM_COLOR_OCCUPIED = 0xff2bd6
+export const POD_SEAM_COLOR_URGENT = 0xff3355
 export const POD_SEAM_PULSE_SPEED = 2 // radians/second
 export const POD_SEAM_PULSE_AMOUNT = 0.3 // fraction of the seam color's brightness
 
-// The holographic label sprite floating above the pod.
+// The holographic label sprite floating above the pod, and the hide-
+// limit countdown sprite just above that (shown while occupied).
 export const POD_LABEL_TEXT = 'NOT A PLAYER'
 export const POD_LABEL_SIZE = 0.8
 export const POD_LABEL_BOB_SPEED = 1.5 // radians/second
 export const POD_LABEL_BOB_AMOUNT = 0.05 // world units
+export const POD_COUNTDOWN_SIZE = 0.5
+export const POD_COUNTDOWN_COLOR = '#9be7ff'
+export const POD_COUNTDOWN_URGENT_COLOR = '#ff3355'
 
 // While occupied, the pod wiggles comically (a small random rotation/
 // scale pulse) every POD_WIGGLE_MIN_INTERVAL-POD_WIGGLE_MAX_INTERVAL
-// seconds.
+// seconds -- harder and more often (both scaled by these factors) once
+// urgent.
 export const POD_WIGGLE_MIN_INTERVAL = 1 // seconds
 export const POD_WIGGLE_MAX_INTERVAL = 2 // seconds
 export const POD_WIGGLE_DURATION = 0.3 // seconds
 export const POD_WIGGLE_ANGLE = 0.25 // radians, peak rotation during a wiggle
 export const POD_WIGGLE_SCALE_PULSE = 0.08 // peak scale increase during a wiggle
+export const POD_URGENT_WIGGLE_SCALE = 2 // multiplies the wiggle angle/scale pulse
+export const POD_URGENT_WIGGLE_SPEEDUP = 4 // divides the wiggle interval
+
+// The pod's materialize (grow in) / dematerialize (shrink away)
+// animation, played when src/logic/podSpawner.js spawns/despawns one.
+export const POD_MATERIALIZE_DURATION = 0.4 // seconds
+export const POD_DEMATERIALIZE_DURATION = 0.3 // seconds
+export const POD_SPAWN_BURST_COUNT = 14
+export const POD_SPAWN_BURST_SPEED = 2.2
 
 // Camera screen shake: a short decaying smooth-noise offset (a sum of
 // two sines per axis, not a fresh random value every frame, so it
