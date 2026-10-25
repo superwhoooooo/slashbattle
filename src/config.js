@@ -102,10 +102,28 @@ export const CRATE_POSITIONS = [
 ]
 export const CRATE_OBSTACLE_RADIUS = 0.9
 
-// Milestone A keeps a fixed starting group of monsters (waves arrive in
-// a later milestone), spawned at the platform's edge.
+// Milestone A/B kept a fixed starting group of monsters; removed once
+// main.js switches over to spawning them via waves.
 export const STARTING_MONSTER_COUNT = 4
 export const EDGE_SPAWN_MARGIN = 1 // world units in from the platform's edge for edge spawns
+
+// Healed between waves (capped at max hp) so endless runs are survivable.
+export const WAVE_CLEAR_HEAL = 20
+
+// How long the "WAVE CLEARED +bonus" banner stays up before the
+// intermission countdown banner takes over for the rest of the break.
+export const WAVE_CLEARED_BANNER_DURATION = 1.5
+
+// The spawn-in effect: a glowing portal ring flush with the platform plus
+// a vertical light beam, while the monster itself scales up from 0 (with
+// a jelly inflate wobble) and its color fades in from black.
+export const SPAWN_EFFECT_DURATION = 0.8 // seconds
+export const SPAWN_RING_COLOR = 0x00e5ff
+export const SPAWN_RING_RADIUS = 1.1
+export const SPAWN_BEAM_COLOR = 0x80f0ff
+export const SPAWN_BEAM_RADIUS = 0.5
+export const SPAWN_BEAM_HEIGHT = 4
+export const SPAWN_INFLATE_STRENGTH = -1.2 // one-shot jelly impulse (negative inflates) as the monster appears
 
 // Jelly body material: flat-shaded faces, a saturated base color, some
 // metalness/roughness, and a low emissive tint so bloom picks the body up

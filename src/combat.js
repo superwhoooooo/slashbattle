@@ -99,7 +99,8 @@ export function updatePlayerAttack(
 // monster off), a hit flash, and a jelly splat. A lethal hit starts the
 // monster's death pop (plus a one-shot jelly inflate burst) instead of
 // removing it immediately, so updateMonsterHitReaction can animate it out
-// first. Returns { ambushHit, hitAny } for the whole swing.
+// first. A monster still materializing in (spawning) can't be hit.
+// Returns { ambushHit, hitAny } for the whole swing.
 function resolveAttackHits(player, monsters, obstacles, now) {
   const attackerPos = player.position
   const ambush = isAmbushActive(now, player.exitedAt, AMBUSH_WINDOW)
@@ -107,7 +108,7 @@ function resolveAttackHits(player, monsters, obstacles, now) {
   let hitAny = false
 
   for (const monster of monsters) {
-    if (monster.userData.dying) continue
+    if (monster.userData.dying || monster.userData.spawning) continue
 
     const targetPos = { x: monster.position.x, z: monster.position.z }
     if (

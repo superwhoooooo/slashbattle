@@ -205,18 +205,20 @@ export function updateMonster(monster, player, obstacles, dt, now) {
 // overlap, so they don't stack on each other. Only monsters move; the
 // player's own position is left alone. Resolved through resolveArenaMove
 // so the push never shoves anyone through a pod (it can, deliberately,
-// push a monster off the platform's edge).
+// push a monster off the platform's edge). Dying or still-spawning-in
+// monsters aren't really physically present yet/anymore, so they're
+// skipped on both sides of the push.
 export function separateMonsters(monsters, player, obstacles) {
   for (let i = 0; i < monsters.length; i++) {
     const monster = monsters[i]
-    if (monster.userData.dying) continue
+    if (monster.userData.dying || monster.userData.spawning) continue
     const radius = monster.userData.radius
 
     pushApart(monster, radius, player.position, PLAYER_RADIUS, obstacles)
 
     for (let j = i + 1; j < monsters.length; j++) {
       const other = monsters[j]
-      if (other.userData.dying) continue
+      if (other.userData.dying || other.userData.spawning) continue
       pushApartPair(monster, radius, other, other.userData.radius, obstacles)
     }
   }
