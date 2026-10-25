@@ -14,11 +14,13 @@ import {
   PLAYER_MAX_HP,
   PLAYER_RADIUS,
   PLAYER_SPEED,
+  POD_EJECT_PENALTY_FRACTION,
 } from './config.js'
 import { createPlayerMesh } from './characters.js'
 import { resolveArenaMove } from './logic/arena.js'
 import { applyDamage } from './logic/combat.js'
 import { stepFall } from './logic/falling.js'
+import { ejectPenalty } from './logic/hiding.js'
 import { jellyHit } from './jelly.js'
 import { burst } from './particles.js'
 import { dampAngle, rampToward } from './logic/smoothing.js'
@@ -99,6 +101,26 @@ export class Player {
     this.hidden = false
     this.mesh.visible = true
     this.exitedAt = now
+  }
+
+  // Ejects the player from hiding: the hide-limit timer ran out rather
+  // than a voluntary exit. Pops out at exitPos (a knockback-sized
+  // margin, picked by the caller) the same way exitHiding does -- the
+  // ambush window still starts -- but also applies the eject penalty,
+  // bypassing the hidden check (by definition they're being forced out
+  // of it right now), with the same hit flash/jelly splat/spark a
+  // monster's hit gets. Always returns true, so callers can trigger the
+  // same shake/flash feedback a monster's hit does.
+  ejectFromHiding(exitPos, now) {
+    this.exitHiding(exitPos, now)
+
+    const penalty = ejectPenalty(PLAYER_MAX_HP, POD_EJECT_PENALTY_FRACTION)
+    this.hp = applyDamage({ hp: this.hp }, penalty).hp
+    this.invulnerableUntil = now + PLAYER_IFRAME_DURATION
+    this._hitFlashElapsed = 0
+    jellyHit(this.mesh, JELLY_HIT_STRENGTH)
+    this._damageSpark()
+    return true
   }
 
   // Starts the player falling off the platform: update() stops moving the

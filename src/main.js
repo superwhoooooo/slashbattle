@@ -35,6 +35,7 @@ import {
   PLAYER_MAX_HP,
   PLAYER_SPEED,
   POD_FLOOR_GLOW_COLOR,
+  POD_HIDE_LIMIT,
   POD_INITIAL_COUNT_MAX,
   POD_INITIAL_COUNT_MIN,
   POD_MAX_ACTIVE,
@@ -78,6 +79,7 @@ import { Input } from './input.js'
 import { isOnPlatform, spawnPointNearPlayer } from './logic/arena.js'
 import { stepFall } from './logic/falling.js'
 import { evaluateGameState } from './logic/gameState.js'
+import { hideTimeRemaining } from './logic/hiding.js'
 import { createPodSpawnerState, pickPodSpawnPoint, stepPodSpawner } from './logic/podSpawner.js'
 import { createWaveState, scoreForKill, stepWaves, waveClearBonus, waveSize } from './logic/waves.js'
 import { createMonsterAIState, separateMonsters, updateMonster } from './monster.js'
@@ -467,13 +469,30 @@ function animate() {
   updateJelly(player.mesh, deltaSeconds, elapsedSeconds, { speed: player.speed, moveDir: player.moveDir })
   updateFace3D(player.mesh, deltaSeconds, elapsedSeconds)
 
-  // vacatedPod is the pod the player just left (early with E) this
-  // frame, if any; pods are single-use, so it always starts
-  // despawning.
-  const { showPrompt, nearestPod, vacatedPod } = updateHiding(hidingState, player, pods, input, elapsedSeconds)
+  // vacatedPod is the pod the player just left (early with E, or forced
+  // out by the hide-limit timer -- `ejected`) this frame, if any; pods
+  // are single-use, so it always starts despawning. An eject also
+  // triggers the same shake/flash feedback a monster's hit does.
+  const { showPrompt, nearestPod, vacatedPod, ejected } = updateHiding(
+    hidingState,
+    player,
+    pods,
+    input,
+    elapsedSeconds,
+    POD_HIDE_LIMIT,
+  )
   if (vacatedPod) despawnPod(game, vacatedPod)
+  if (ejected) {
+    triggerShake(shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
+    triggerDamageFlash(hud)
+  }
 
-  pods.forEach((pod) => updatePod(pod, deltaSeconds, elapsedSeconds, { isNearestEnterable: pod === nearestPod }))
+  pods.forEach((pod) => {
+    const remaining = pod.userData.occupied
+      ? hideTimeRemaining(hidingState.enteredAt, elapsedSeconds, POD_HIDE_LIMIT)
+      : null
+    updatePod(pod, deltaSeconds, elapsedSeconds, { isNearestEnterable: pod === nearestPod, hideTimeRemaining: remaining })
+  })
   game.despawningPods = game.despawningPods.filter((pod) => {
     const finished = updatePod(pod, deltaSeconds, elapsedSeconds, {})
     if (finished) disposeObject3D(pod)
@@ -584,6 +603,8 @@ function animate() {
     wave: game.waveState.waveNumber,
     enemiesLeft,
     hidden: player.hidden,
+    hideTimeRemaining: player.hidden ? hideTimeRemaining(hidingState.enteredAt, elapsedSeconds, POD_HIDE_LIMIT) : null,
+    hideLimit: POD_HIDE_LIMIT,
     showHidePrompt: showPrompt,
     waveState: game.waveState,
     deltaSeconds,

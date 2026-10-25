@@ -3,7 +3,13 @@
 // banner, the wave banner (intermission countdown / wave cleared), a
 // screen-wide damage flash, the start card, and the game-over screen.
 // No Three.js; just reads and writes the overlay markup in index.html.
-import { AMBUSH_BANNER_DURATION, DAMAGE_FLASH_DURATION, LOW_HP_PULSE_THRESHOLD, WAVE_CLEARED_BANNER_DURATION } from './config.js'
+import {
+  AMBUSH_BANNER_DURATION,
+  DAMAGE_FLASH_DURATION,
+  LOW_HP_PULSE_THRESHOLD,
+  POD_HIDE_URGENT_THRESHOLD,
+  WAVE_CLEARED_BANNER_DURATION,
+} from './config.js'
 import { WAVE_INTERMISSION } from './logic/waves.js'
 
 // Grabs the HUD elements already present in index.html.
@@ -16,6 +22,9 @@ export function createHud() {
     waveCounter: document.getElementById('wave-counter'),
     enemiesLeft: document.getElementById('enemies-left'),
     hiddenIndicator: document.getElementById('hidden-indicator'),
+    hideCountdown: document.getElementById('hide-countdown'),
+    hideCountdownRing: document.getElementById('hide-countdown-ring'),
+    hideCountdownSeconds: document.getElementById('hide-countdown-seconds'),
     hidePrompt: document.getElementById('hide-prompt'),
     ambushBanner: document.getElementById('ambush-banner'),
     ambushElapsed: null, // null means the banner isn't showing
@@ -93,7 +102,19 @@ export function showGameOverlay(hud, state, stats) {
 // over time.
 export function updateHud(
   hud,
-  { hp, maxHp, score, wave, enemiesLeft, hidden, showHidePrompt, waveState, deltaSeconds },
+  {
+    hp,
+    maxHp,
+    score,
+    wave,
+    enemiesLeft,
+    hidden,
+    hideTimeRemaining,
+    hideLimit,
+    showHidePrompt,
+    waveState,
+    deltaSeconds,
+  },
 ) {
   const ratio = Math.max(0, Math.min(1, hp / maxHp))
   setIfChanged(hud, 'healthRatio', ratio, (r) => {
@@ -107,6 +128,18 @@ export function updateHud(
   setIfChanged(hud, 'wave', wave, (v) => (hud.waveCounter.textContent = `Wave: ${v}`))
   setIfChanged(hud, 'enemiesLeft', enemiesLeft, (v) => (hud.enemiesLeft.textContent = `Enemies left: ${v}`))
   setIfChanged(hud, 'hidden', hidden, (v) => (hud.hiddenIndicator.style.display = v ? 'block' : 'none'))
+
+  // The hide-limit countdown ring + seconds, next to the HIDDEN
+  // indicator: a CSS conic-gradient driven by a --hide-fraction custom
+  // property, turning red/urgent in the last few seconds.
+  if (hidden && hideTimeRemaining != null) {
+    const fraction = hideLimit > 0 ? hideTimeRemaining / hideLimit : 0
+    const seconds = String(Math.ceil(hideTimeRemaining))
+    const urgent = hideTimeRemaining <= POD_HIDE_URGENT_THRESHOLD
+    setIfChanged(hud, 'hideFraction', fraction, (v) => hud.hideCountdownRing.style.setProperty('--hide-fraction', v))
+    setIfChanged(hud, 'hideSeconds', seconds, (v) => (hud.hideCountdownSeconds.textContent = v))
+    setIfChanged(hud, 'hideUrgent', urgent, (v) => hud.hideCountdown.classList.toggle('urgent', v))
+  }
   setIfChanged(hud, 'showHidePrompt', showHidePrompt, (v) => (hud.hidePrompt.style.display = v ? 'block' : 'none'))
 
   if (hud.ambushElapsed !== null) {

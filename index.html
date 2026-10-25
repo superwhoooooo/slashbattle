@@ -111,6 +111,35 @@
         color: var(--neon-green);
         text-shadow: 0 0 5px rgba(125, 255, 176, 0.55);
       }
+      #hide-countdown {
+        margin-top: 6px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      #hide-countdown-ring {
+        width: 26px;
+        height: 26px;
+        border-radius: 50%;
+        background: conic-gradient(
+          var(--neon-green) calc(var(--hide-fraction, 1) * 360deg),
+          rgba(255, 255, 255, 0.15) 0
+        );
+      }
+      #hide-countdown.urgent #hide-countdown-ring {
+        background: conic-gradient(
+          var(--neon-red) calc(var(--hide-fraction, 1) * 360deg),
+          rgba(255, 255, 255, 0.15) 0
+        );
+      }
+      #hide-countdown-seconds {
+        font-size: 14px;
+        font-weight: 400;
+        color: #cfeaff;
+      }
+      #hide-countdown.urgent #hide-countdown-seconds {
+        color: var(--neon-red);
+      }
       #hide-prompt {
         display: none;
         margin-top: 10px;
@@ -289,7 +318,13 @@
       <div id="score-counter">Score: 0</div>
       <div id="wave-counter">Wave: 1</div>
       <div id="enemies-left">Enemies left: 0</div>
-      <div id="hidden-indicator">HIDDEN</div>
+      <div id="hidden-indicator">
+        HIDDEN
+        <div id="hide-countdown">
+          <div id="hide-countdown-ring"></div>
+          <span id="hide-countdown-seconds">10</span>
+        </div>
+      </div>
       <div id="hide-prompt">Press E to hide in pod</div>
     </div>
     <div id="ambush-banner">AMBUSH!</div>

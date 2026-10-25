@@ -112,7 +112,25 @@ underneath (`src/logic/hiding.js`'s box-named functions are unchanged).
 The seam color reads the pod's state: idle, highlighted when it's the
 nearest one E would enter, or switched to the occupied color with a pair
 of googly eyes peeking out of the visor and the pod wiggling comically
-every second or two.
+every second or two (harder and more often in the last
+`POD_HIDE_URGENT_THRESHOLD` seconds of hiding, turning the seam/
+countdown red).
+
+Pods are dynamic and single-use rather than fixed: `src/logic/
+podSpawner.js`'s `pickPodSpawnPoint`/`stepPodSpawner` decide where and
+when the next one appears -- at most `POD_MAX_ACTIVE` (3) at a time,
+each spawning after a random delay, spaced from other pods/the player/
+any monster -- and `src/main.js`'s `trySpawnPod`/`despawnPod` drive the
+mesh lifecycle (a grow-in materialize / shrink-away dematerialize, each
+with a particle flash). A game starts with 1-2 already placed. Hiding
+has a `POD_HIDE_LIMIT` (10s): a visible countdown shows both in the HUD
+(a ring + seconds next to the HIDDEN indicator) and as a small sprite
+over the pod itself, and once it runs out the player is ejected --
+popped out with a knockback-sized push, losing `POD_EJECT_PENALTY_FRACTION`
+(10%) of max HP through the normal damage path (same shake/flash a
+monster's hit gets). Leaving early with E avoids that penalty, but
+either way the pod disappears -- it's a one-time hiding spot, and a new
+one takes its turn once a slot frees up.
 
 ## Waves
 `src/logic/waves.js`'s wave controller (`createWaveState`/`stepWaves`)
