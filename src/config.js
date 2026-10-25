@@ -16,6 +16,7 @@ export const PLAYER_IFRAME_DURATION = 0.5 // seconds of invulnerability after ta
 
 export const CAMERA_OFFSET = { x: 0, y: 11, z: 8 } // behind, above, and looking down at the open platform
 export const CAMERA_LERP = 6 // higher = camera catches up to the player faster
+export const CAMERA_LOOKAHEAD = 1.2 // world units, peak offset in the player's movement direction at full speed
 
 // Deep purple/blue, far enough out that it doesn't hide the platform
 // (ARENA_RADIUS 48) but still gives the starfield some depth and keeps
@@ -318,12 +319,16 @@ export const POD_WIGGLE_DURATION = 0.3 // seconds
 export const POD_WIGGLE_ANGLE = 0.25 // radians, peak rotation during a wiggle
 export const POD_WIGGLE_SCALE_PULSE = 0.08 // peak scale increase during a wiggle
 
-// Camera screen shake: a short decaying random offset. "Damage" is the
-// player getting hit; "hit" is the player's attack landing on a monster.
+// Camera screen shake: a short decaying smooth-noise offset (a sum of
+// two sines per axis, not a fresh random value every frame, so it
+// reads as a shake rather than a flicker). "Damage" is the player
+// getting hit; "hit" is the player's attack landing on a monster.
 export const SHAKE_DAMAGE_MAGNITUDE = 0.25 // world units, peak offset
 export const SHAKE_DAMAGE_DURATION = 0.3 // seconds to decay to nothing
 export const SHAKE_HIT_MAGNITUDE = 0.08
 export const SHAKE_HIT_DURATION = 0.15
+export const SHAKE_NOISE_FREQUENCY_A = 37 // radians/second
+export const SHAKE_NOISE_FREQUENCY_B = 71 // radians/second
 
 // Pooled spark/spray particles (src/particles.js): a fixed-size Points
 // pool, ring-buffered so a burst never allocates. Gravity/drag apply to

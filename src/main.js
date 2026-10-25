@@ -18,6 +18,7 @@ import {
   BLOOM_THRESHOLD,
   CAMERA_FAR,
   CAMERA_LERP,
+  CAMERA_LOOKAHEAD,
   CAMERA_OFFSET,
   FALL_DESPAWN_DEPTH,
   FALL_GRAVITY,
@@ -30,6 +31,7 @@ import {
   MONSTER_FALL_TUMBLE_SPEED,
   MONSTER_TYPES,
   PLAYER_MAX_HP,
+  PLAYER_SPEED,
   POD_OBSTACLE_RADIUS,
   POD_POSITIONS,
   POPUP_KILL_COLOR,
@@ -38,6 +40,8 @@ import {
   SHAKE_DAMAGE_MAGNITUDE,
   SHAKE_HIT_DURATION,
   SHAKE_HIT_MAGNITUDE,
+  SHAKE_NOISE_FREQUENCY_A,
+  SHAKE_NOISE_FREQUENCY_B,
   SPAWN_NEAR_PLAYER_MARGIN,
   SPAWN_NEAR_PLAYER_MAX_DIST,
   SPAWN_NEAR_PLAYER_MIN_DIST,
@@ -128,32 +132,43 @@ window.addEventListener('resize', () => {
   composer.setSize(window.innerWidth, window.innerHeight)
 })
 
-// Camera screen shake: a short decaying random offset added on top of
-// the normal follow position. triggerShake restarts it; updateShake
-// advances it and returns the current offset.
+// Camera screen shake: a short decaying offset added on top of the
+// normal follow position. triggerShake restarts it (with a random phase
+// per axis so repeated shakes don't look identical); updateShake
+// advances it and returns the current offset -- smooth noise (a sum of
+// two sines per axis at incommensurate frequencies) rather than a fresh
+// random value every frame, which reads as a jittery flicker instead of
+// a shake.
+const shakeResult = { x: 0, y: 0, z: 0 }
+
 function createShakeState() {
-  return { elapsed: null, duration: 0, magnitude: 0 }
+  return { elapsed: null, duration: 0, magnitude: 0, phase: { x: 0, y: 0, z: 0 } }
 }
 
 function triggerShake(shake, magnitude, duration) {
   shake.elapsed = 0
   shake.magnitude = magnitude
   shake.duration = duration
+  shake.phase = { x: Math.random() * Math.PI * 2, y: Math.random() * Math.PI * 2, z: Math.random() * Math.PI * 2 }
+}
+
+function smoothNoise(t, phase) {
+  return Math.sin(t * SHAKE_NOISE_FREQUENCY_A + phase) * 0.6 + Math.sin(t * SHAKE_NOISE_FREQUENCY_B + phase * 1.7) * 0.4
 }
 
 function updateShake(shake, deltaSeconds) {
-  if (shake.elapsed === null) return { x: 0, y: 0, z: 0 }
+  shakeResult.x = shakeResult.y = shakeResult.z = 0
+  if (shake.elapsed === null) return shakeResult
   shake.elapsed += deltaSeconds
   if (shake.elapsed >= shake.duration) {
     shake.elapsed = null
-    return { x: 0, y: 0, z: 0 }
+    return shakeResult
   }
   const strength = shake.magnitude * (1 - shake.elapsed / shake.duration)
-  return {
-    x: (Math.random() * 2 - 1) * strength,
-    y: (Math.random() * 2 - 1) * strength,
-    z: (Math.random() * 2 - 1) * strength,
-  }
+  shakeResult.x = smoothNoise(shake.elapsed, shake.phase.x) * strength
+  shakeResult.y = smoothNoise(shake.elapsed, shake.phase.y) * strength
+  shakeResult.z = smoothNoise(shake.elapsed, shake.phase.z) * strength
+  return shakeResult
 }
 
 // Disposes every geometry/material/texture under `object` (recursively),
@@ -461,12 +476,19 @@ function animate() {
     deltaSeconds,
   })
 
+  // A slight look-ahead in the player's current movement direction,
+  // scaled by how close to full speed they're actually moving (so it
+  // eases in/out along with the movement ramp rather than snapping).
+  const lookAheadAmount = CAMERA_LOOKAHEAD * (player.speed / PLAYER_SPEED)
   const cameraOffset = player.hidden ? HIDDEN_CAMERA_OFFSET : CAMERA_OFFSET
   cameraTarget.set(
-    player.position.x + cameraOffset.x,
+    player.position.x + cameraOffset.x + player.moveDir.x * lookAheadAmount,
     cameraOffset.y,
-    player.position.z + cameraOffset.z,
+    player.position.z + cameraOffset.z + player.moveDir.z * lookAheadAmount,
   )
+  // Frame-rate-independent exponential smoothing: 1 - exp(-lambda * dt)
+  // is the same damp() uses elsewhere, just expressed as the single
+  // alpha THREE.Vector3.lerp takes.
   const lerpFactor = 1 - Math.exp(-CAMERA_LERP * deltaSeconds)
   camera.position.lerp(cameraTarget, lerpFactor)
   camera.lookAt(player.position.x, 1, player.position.z)
