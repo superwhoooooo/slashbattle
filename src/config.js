@@ -191,6 +191,26 @@ export const POD_POSITIONS = [
 ]
 export const POD_OBSTACLE_RADIUS = 0.75 // matches the hover base's visual footprint, plus a little clipping margin
 
+// Dynamic pod spawning (src/logic/podSpawner.js): at most POD_MAX_ACTIVE
+// pods on the field at once; while below that, the next one spawns
+// after a random POD_SPAWN_DELAY_MIN-MAX second delay, at a random spot
+// on the platform (POD_SPAWN_MARGIN in from the edge) at least
+// POD_MIN_SPACING from other pods, POD_MIN_PLAYER_DISTANCE from the
+// player, and POD_MONSTER_AVOID_RADIUS from any monster -- retried up
+// to POD_SPAWN_MAX_ATTEMPTS times before giving up on that attempt.
+// Each game starts with a random count in
+// [POD_INITIAL_COUNT_MIN, POD_INITIAL_COUNT_MAX] already placed.
+export const POD_MAX_ACTIVE = 3
+export const POD_SPAWN_DELAY_MIN = 4 // seconds
+export const POD_SPAWN_DELAY_MAX = 10 // seconds
+export const POD_SPAWN_MARGIN = 4 // world units in from the platform's edge
+export const POD_MIN_SPACING = 10 // world units between pods
+export const POD_MIN_PLAYER_DISTANCE = 4 // world units from the player
+export const POD_MONSTER_AVOID_RADIUS = 2 // world units from any monster
+export const POD_SPAWN_MAX_ATTEMPTS = 20
+export const POD_INITIAL_COUNT_MIN = 1
+export const POD_INITIAL_COUNT_MAX = 2
+
 // Monsters spawn on a ring this far from the PLAYER's current position
 // (not the platform's edge -- at ARENA_RADIUS 48 that would take far too
 // long to close in), clamped onto the platform with this margin in from
