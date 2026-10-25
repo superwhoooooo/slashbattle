@@ -85,6 +85,7 @@ export function createPlayerMesh() {
     new THREE.MeshStandardMaterial({ color: 0x3388ff }),
   )
   body.position.y = PLAYER_HEIGHT / 2
+  body.castShadow = true
   group.add(body)
 
   const face = createFacePlane(createFaceTexture(PLAYER_FACE), PLAYER_RADIUS * 2.4)
@@ -140,6 +141,7 @@ export function createMonsterMesh(type, rng = Math.random) {
 
   const body = BODY_BUILDERS[type](stats.size, stats.color)
   body.position.y = stats.size / 2
+  body.castShadow = true
   group.add(body)
 
   const face = createFacePlane(randomGoofyFace(rng), stats.size * 0.6)
