@@ -1,10 +1,10 @@
 # SlashBattle
 
 SlashBattle is a 3D goofy neon brawler built with Three.js. The player
-fights monsters with funny, mismatched faces on a single floating
-circular platform adrift in space, with real-time melee combat and
-crates the player can hide inside to ambush monsters that lose track of
-them.
+fights wobbly jelly monsters with funny, mismatched faces on a single
+floating circular platform adrift in space, with real-time melee combat
+and crates the player can hide inside to ambush monsters that lose track
+of them.
 
 ## Gameplay
 Kill every monster (a mix of Blobbo, Zippy, and Grumpus) to win; losing
@@ -43,14 +43,15 @@ slashbattle/
     input.js           # keyboard/mouse state
     arena.js           # the floating platform, starfield/nebula sky, lighting, neon pylons
     faces.js           # goofy face generator (CanvasTexture: googly eyes, wonky mouths, tongues)
-    characters.js      # build player/monster meshes (body + face plane + bobbing/wobble)
+    characters.js      # build player/monster jelly bodies (shape + face anchor + indicators)
+    jelly.js           # the jelly body: shared-geometry wireframe edges, per-vertex deformation
     player.js          # movement, attack swing, health, hide/unhide state, falling
     monster.js         # monster AI state machine, falling
     hiding.js          # box interaction logic (find nearest box, enter/exit)
     combat.js          # hit detection (range + facing arc), damage, knockback, cooldowns
     hud.js             # DOM HUD updates
     logic/             # pure, Three-free functions so they can be unit tested
-  test/                # Vitest specs for logic/ (combat, AI transitions, hiding, arena, falling)
+  test/                # Vitest specs for logic/ (combat, AI transitions, hiding, arena, falling, jelly)
 ```
 
 All files listed above now exist.
@@ -73,3 +74,22 @@ spawns them dynamically. Monsters keep their own steering (wander,
 chase, search) away from the very edge (`MONSTER_PLATFORM_MARGIN`), so
 only knockback -- or the player's own choice to walk off -- sends anyone
 over the side.
+
+## Jelly bodies
+Every character (player = icosahedron, blobbo = dodecahedron, zippy =
+octahedron, grumpus = a multi-segment box) is one faceted, flat-shaded
+low-poly mesh with a glowing wireframe overlay that shares its geometry,
+so the edges deform right along with it. `createJellyBody` clones the
+geometry's original vertex positions once; every frame `updateJelly`
+displaces each vertex as a pure function (`src/logic/jelly.js`'s
+`jellyOffset`) of that ORIGINAL position, the current time, and the
+jelly state -- never the previous frame's displaced position, so
+duplicated flat-shaded vertices always move together and faces never
+tear. The jelly state is two springs (`springStep`): a movement bulge
+driven by current speed (so starting/stopping overshoots and wobbles)
+and a shared hit spring that a positive `jellyHit` flattens (the hit
+splat) and a negative one inflates (the attack wind-up and the death
+burst). A face plane rides a `faceAnchor` child that pulses with the
+overall bulge/hit state rather than tracking individual vertices; a
+sword (player only) is attached directly to the body group instead, so
+it stays rigid.

@@ -1,17 +1,22 @@
+import * as THREE from 'three'
 import {
   FALL_DAMAGE,
   FALL_DESPAWN_DEPTH,
   FALL_GRAVITY,
   HIT_FLASH_DURATION,
+  JELLY_HIT_STRENGTH,
   PLAYER_IFRAME_DURATION,
   PLAYER_MAX_HP,
   PLAYER_RADIUS,
   PLAYER_SPEED,
 } from './config.js'
 import { createPlayerMesh } from './characters.js'
-import { applyDamage } from './logic/combat.js'
 import { resolveArenaMove } from './logic/arena.js'
+import { applyDamage } from './logic/combat.js'
 import { stepFall } from './logic/falling.js'
+import { jellyHit } from './jelly.js'
+
+const HIT_FLASH_COLOR = new THREE.Color(1, 0, 0)
 
 export class Player {
   constructor({ spawn, obstacles = [] }) {
@@ -25,6 +30,8 @@ export class Player {
     this.exitedAt = null // seconds elapsed at the last pop-out; drives the ambush window
     this.falling = false
     this.fallState = { velocityY: 0, fallenY: 0 }
+    this.speed = 0 // world units/second, for the jelly movement bulge
+    this.moveDir = { x: 0, z: 1 } // normalized horizontal movement direction, for the jelly movement bulge
 
     this.mesh = createPlayerMesh()
     this.mesh.position.x = this.position.x
@@ -34,15 +41,17 @@ export class Player {
   // Applies damage unless hidden (monsters can't see a hidden player, but
   // this is a no-op either way so nothing can sneak past it) or still
   // within invulnerability frames from a previous hit, and starts a brief
-  // red flash. `now` is seconds elapsed (the same clock the attack
-  // cooldown uses). Returns whether the damage was actually applied, so
-  // callers can trigger a screen shake only on a real hit.
+  // red flash plus a jelly hit splat. `now` is seconds elapsed (the same
+  // clock the attack cooldown uses). Returns whether the damage was
+  // actually applied, so callers can trigger a screen shake only on a
+  // real hit.
   damagePlayer(amount, now) {
     if (this.hidden) return false
     if (now < this.invulnerableUntil) return false
     this.hp = applyDamage({ hp: this.hp }, amount).hp
     this.invulnerableUntil = now + PLAYER_IFRAME_DURATION
     this._hitFlashElapsed = 0
+    jellyHit(this.mesh, JELLY_HIT_STRENGTH)
     return true
   }
 
@@ -89,6 +98,7 @@ export class Player {
     this.hp = applyDamage({ hp: this.hp }, FALL_DAMAGE).hp
     this.invulnerableUntil = now + PLAYER_IFRAME_DURATION
     this._hitFlashElapsed = 0
+    jellyHit(this.mesh, JELLY_HIT_STRENGTH)
 
     this.falling = false
     this.position.x = 0
@@ -96,14 +106,16 @@ export class Player {
     this.mesh.position.set(0, 0, 0)
   }
 
-  // Fades the red hit flash back to normal over HIT_FLASH_DURATION. Runs
-  // every frame via update() so it keeps progressing even while the
-  // player stands still.
+  // Fades the red hit flash back to the body material's own baseline
+  // emissive tint (not to black) over HIT_FLASH_DURATION. Runs every
+  // frame via update() so it keeps progressing even while the player
+  // stands still.
   _updateHitFlash(deltaSeconds) {
     if (this._hitFlashElapsed === null) return
     this._hitFlashElapsed += deltaSeconds
     const t = Math.min(this._hitFlashElapsed / HIT_FLASH_DURATION, 1)
-    this.mesh.userData.body.material.emissive.setRGB(1 - t, 0, 0)
+    const material = this.mesh.userData.body.material
+    material.emissive.lerpColors(HIT_FLASH_COLOR, material.userData.baseEmissive, t)
     if (t >= 1) this._hitFlashElapsed = null
   }
 
@@ -124,7 +136,10 @@ export class Player {
       (input.isDown('KeyD') || input.isDown('ArrowRight') ? 1 : 0) -
       (input.isDown('KeyA') || input.isDown('ArrowLeft') ? 1 : 0)
 
-    if (forwardInput === 0 && strafeInput === 0) return
+    if (forwardInput === 0 && strafeInput === 0) {
+      this.speed = 0
+      return
+    }
 
     // Camera-relative forward/right axes: at yaw 0 the camera looks down -Z.
     const forwardX = -Math.sin(cameraYaw)
@@ -135,7 +150,10 @@ export class Player {
     let dirX = forwardInput * forwardX + strafeInput * rightX
     let dirZ = forwardInput * forwardZ + strafeInput * rightZ
     const length = Math.hypot(dirX, dirZ)
-    if (length === 0) return
+    if (length === 0) {
+      this.speed = 0
+      return
+    }
     dirX /= length
     dirZ /= length
 
@@ -149,6 +167,8 @@ export class Player {
     this.position = resolved
 
     this.facing = Math.atan2(dirX, dirZ)
+    this.speed = PLAYER_SPEED
+    this.moveDir = { x: dirX, z: dirZ }
     this.mesh.position.x = this.position.x
     this.mesh.position.z = this.position.z
     this.mesh.rotation.y = this.facing

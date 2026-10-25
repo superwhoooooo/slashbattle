@@ -8,7 +8,8 @@ import {
   ATTACK_SWING_DURATION,
   DEATH_POP_DURATION,
   HIT_FLASH_DURATION,
-  HIT_SQUASH_DURATION,
+  JELLY_DEATH_INFLATE_STRENGTH,
+  JELLY_HIT_STRENGTH,
   KNOCKBACK_STRENGTH,
 } from './config.js'
 import { resolveArenaMove } from './logic/arena.js'
@@ -20,6 +21,9 @@ import {
   knockbackVector,
 } from './logic/combat.js'
 import { isAmbushActive } from './logic/hiding.js'
+import { jellyHit } from './jelly.js'
+
+const HIT_FLASH_COLOR = new THREE.Color(1, 1, 1)
 
 // The sword rotates through this arc (radians, around its local Z axis)
 // over the swing, and the hit is checked once the swing crosses the
@@ -43,8 +47,8 @@ export function createAttackState() {
 // Drives the player's melee attack each frame: reads the attack button
 // (left mouse or Space), animates the sword swing, and at the swing's hit
 // moment checks every living monster for a hit, applying damage,
-// knockback, and a hit flash/squash, starting a death pop on a lethal
-// hit. Disabled entirely while hidden. Returns { ambushHit, hitAny }:
+// knockback, a hit flash, and a jelly splat, starting a death pop on a
+// lethal hit. Disabled entirely while hidden. Returns { ambushHit, hitAny }:
 // ambushHit is true the one frame an ambush-boosted hit landed, so the
 // caller can flash the "AMBUSH!" banner; hitAny is true the one frame any
 // hit landed, so the caller can trigger a (smaller) screen shake.
@@ -92,10 +96,10 @@ export function updatePlayerAttack(
 // damage (boosted if the player is still within the ambush window after
 // popping out of hiding), a knockback that slides around obstacles (but,
 // deliberately, is not stopped by the platform's edge -- it can shove a
-// monster off), and the flash/squash reaction. A lethal hit starts the
-// monster's death pop instead of removing it immediately, so
-// updateMonsterHitReaction can animate it out first. Returns { ambushHit,
-// hitAny } for the whole swing.
+// monster off), a hit flash, and a jelly splat. A lethal hit starts the
+// monster's death pop (plus a one-shot jelly inflate burst) instead of
+// removing it immediately, so updateMonsterHitReaction can animate it out
+// first. Returns { ambushHit, hitAny } for the whole swing.
 function resolveAttackHits(player, monsters, obstacles, now) {
   const attackerPos = player.position
   const ambush = isAmbushActive(now, player.exitedAt, AMBUSH_WINDOW)
@@ -124,41 +128,32 @@ function resolveAttackHits(player, monsters, obstacles, now) {
     monster.position.z = resolved.z
 
     monster.userData.hitFlashElapsed = 0
-    monster.userData.hitSquashElapsed = 0
+    jellyHit(monster, JELLY_HIT_STRENGTH)
 
     if (lethal) {
       monster.userData.dying = true
       monster.userData.deathPopElapsed = 0
+      jellyHit(monster, JELLY_DEATH_INFLATE_STRENGTH)
     }
   }
 
   return { ambushHit, hitAny }
 }
 
-// Advances one monster's hit-flash, hit-squash, and death-pop animation by
-// one frame. Call for every living monster every frame, hit or not; call
-// it instead of updateWobble (never both) once a monster is dying. Returns
-// true once the death pop has finished, meaning the caller should remove
-// the monster from the scene and its monster list.
+// Advances one monster's hit-flash and death-pop animation by one frame
+// (the per-vertex jelly splat/wind-up/death-burst wobble is driven
+// separately, by the caller's own updateJelly tick). Call for every
+// living monster every frame, hit or not. Returns true once the death
+// pop has finished, meaning the caller should remove the monster from
+// the scene and its monster list.
 export function updateMonsterHitReaction(monster, deltaSeconds) {
   const body = monster.userData.body
 
   if (monster.userData.hitFlashElapsed != null) {
     monster.userData.hitFlashElapsed += deltaSeconds
     const t = Math.min(monster.userData.hitFlashElapsed / HIT_FLASH_DURATION, 1)
-    body.material.emissive.setScalar(1 - t)
+    body.material.emissive.lerpColors(HIT_FLASH_COLOR, body.material.userData.baseEmissive, t)
     if (t >= 1) monster.userData.hitFlashElapsed = null
-  }
-
-  if (monster.userData.hitSquashElapsed != null) {
-    monster.userData.hitSquashElapsed += deltaSeconds
-    const t = Math.min(monster.userData.hitSquashElapsed / HIT_SQUASH_DURATION, 1)
-    // Compress on impact, then rebound back to normal.
-    const squash = 1 - Math.sin(t * Math.PI) * 0.3
-    monster.scale.y *= squash
-    monster.scale.x *= 1 / Math.sqrt(squash)
-    monster.scale.z *= 1 / Math.sqrt(squash)
-    if (t >= 1) monster.userData.hitSquashElapsed = null
   }
 
   if (monster.userData.dying) {

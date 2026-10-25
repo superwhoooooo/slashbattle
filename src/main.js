@@ -4,7 +4,8 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { createArena, updateArena } from './arena.js'
-import { createMonsterMesh, updateWobble } from './characters.js'
+import { createMonsterMesh } from './characters.js'
+import { updateJelly } from './jelly.js'
 import {
   ARENA_RADIUS,
   BLOOM_RADIUS,
@@ -163,7 +164,6 @@ function createGame() {
     mesh.position.x = spawn.x
     mesh.position.z = spawn.z
     mesh.rotation.y = Math.random() * Math.PI * 2
-    mesh.userData.wobblePhase = index * 1.3
     mesh.userData.hp = stats.hp
     mesh.userData.radius = stats.radius
     mesh.userData.falling = false
@@ -243,7 +243,7 @@ function animate() {
     player.startFalling()
   }
   if (player.falling) player.updateFalling(deltaSeconds, elapsedSeconds)
-  updateWobble(player.mesh, elapsedSeconds, 0)
+  updateJelly(player.mesh, deltaSeconds, elapsedSeconds, { speed: player.speed, moveDir: player.moveDir })
 
   const { showPrompt } = updateHiding(hidingState, player, crates, input, elapsedSeconds)
   crates.forEach((crate) => updateCrateWiggle(crate, deltaSeconds, elapsedSeconds))
@@ -259,13 +259,16 @@ function animate() {
   if (ambushHit) showAmbushBanner(hud)
   if (hitAny) triggerShake(shake, SHAKE_HIT_MAGNITUDE, SHAKE_HIT_DURATION)
 
-  // Dying monsters skip the idle wobble and just finish their death-pop
-  // animation before being removed from the scene and this list. Falling
-  // monsters (walked, chased, or knocked off the edge) skip it too,
-  // tumbling down out of view before the same removal happens -- it
-  // counts as a kill exactly like a death pop does, by leaving the list.
+  // Dying monsters keep ticking their jelly (so the death-burst inflate
+  // still wobbles per-vertex while the uniform death-pop scale plays)
+  // until that pop finishes, then get removed from the scene and this
+  // list. Falling monsters (walked, chased, or knocked off the edge) skip
+  // the jelly tick, tumbling down out of view before the same removal
+  // happens -- it counts as a kill exactly like a death pop does, by
+  // leaving the list.
   monsters = monsters.filter((mesh) => {
     if (mesh.userData.dying) {
+      updateJelly(mesh, deltaSeconds, elapsedSeconds, { speed: 0, moveDir: mesh.userData.moveDir })
       const finishedDying = updateMonsterHitReaction(mesh, deltaSeconds)
       if (finishedDying) {
         scene.remove(mesh)
@@ -286,8 +289,8 @@ function animate() {
       return true
     }
 
-    updateWobble(mesh, elapsedSeconds, mesh.userData.wobblePhase)
     const { hitPlayer } = updateMonster(mesh, player, obstacles, deltaSeconds, elapsedSeconds)
+    updateJelly(mesh, deltaSeconds, elapsedSeconds, { speed: mesh.userData.speed, moveDir: mesh.userData.moveDir })
     if (hitPlayer) triggerShake(shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
     updateMonsterHitReaction(mesh, deltaSeconds)
 

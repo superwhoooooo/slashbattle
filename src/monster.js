@@ -4,7 +4,7 @@ import {
   MONSTER_ATTACK_COOLDOWN,
   MONSTER_ATTACK_RANGE,
   MONSTER_ATTACK_WINDUP_DURATION,
-  MONSTER_ATTACK_WINDUP_GROW,
+  MONSTER_ATTACK_WINDUP_INFLATE_RATE,
   MONSTER_PLATFORM_MARGIN,
   MONSTER_TYPES,
   PLAYER_RADIUS,
@@ -16,6 +16,7 @@ import {
 } from './config.js'
 import { clampToPlatform, resolveArenaMove } from './logic/arena.js'
 import { createCooldown } from './logic/combat.js'
+import { jellyHit } from './jelly.js'
 import { nextMonsterState } from './logic/monsterAI.js'
 
 const INDICATOR_DURATION = 0.6
@@ -35,6 +36,8 @@ export function createMonsterAIState() {
     attackCooldown: createCooldown(MONSTER_ATTACK_COOLDOWN),
     windUpElapsed: null,
     indicatorElapsed: null,
+    speed: 0, // world units/second, for the jelly movement bulge
+    moveDir: { x: 0, z: 1 }, // normalized horizontal movement direction, for the jelly movement bulge
   }
 }
 
@@ -157,24 +160,31 @@ export function updateMonster(monster, player, obstacles, dt, now) {
 
   if (ai.state === 'wander' && ai.wanderTarget) {
     steerToward(monster, ai.wanderTarget, stats.speed, dt, obstacles)
+    ai.speed = stats.speed
   } else if (ai.state === 'chase') {
     steerToward(monster, player.position, stats.speed, dt, obstacles)
+    ai.speed = stats.speed
   } else if (ai.state === 'search') {
     if (ai.searchPhase === 'approach' && ai.lastKnownPos) {
       steerToward(monster, ai.lastKnownPos, stats.speed, dt, obstacles)
+      ai.speed = stats.speed
     } else {
       monster.rotation.y += dt * SEARCH_SPIN_SPEED
+      ai.speed = 0
     }
   } else if (ai.state === 'attack') {
     const dx = player.position.x - monster.position.x
     const dz = player.position.z - monster.position.z
     monster.rotation.y = Math.atan2(dx, dz)
+    ai.speed = 0
 
     if (ai.attackCooldown.ready(now)) {
       ai.windUpElapsed = (ai.windUpElapsed ?? 0) + dt
-      const windUpProgress = Math.min(ai.windUpElapsed / MONSTER_ATTACK_WINDUP_DURATION, 1)
-      const grow = 1 + windUpProgress * MONSTER_ATTACK_WINDUP_GROW
-      monster.scale.multiplyScalar(grow)
+      // Feeds the jelly hit spring a little inflate every frame of the
+      // telegraph, so the body visibly puffs up as it charges the hit;
+      // once the hit lands (or the state changes), the spring naturally
+      // rebounds back past zero before settling.
+      jellyHit(monster, -MONSTER_ATTACK_WINDUP_INFLATE_RATE * dt)
 
       if (ai.windUpElapsed >= MONSTER_ATTACK_WINDUP_DURATION) {
         hitPlayer = player.damagePlayer(stats.damage, now)
@@ -185,6 +195,8 @@ export function updateMonster(monster, player, obstacles, dt, now) {
       ai.windUpElapsed = null
     }
   }
+
+  ai.moveDir = { x: Math.sin(monster.rotation.y), z: Math.cos(monster.rotation.y) }
 
   return { hitPlayer }
 }

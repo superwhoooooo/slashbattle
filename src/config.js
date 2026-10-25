@@ -2,7 +2,6 @@
 // mostly cares about them; values are in world units unless noted.
 
 export const PLAYER_RADIUS = 0.35
-export const PLAYER_HEIGHT = 1.6
 export const PLAYER_BODY_RADIUS = 0.6 // icosahedron radius for the player's jelly body (visual only; PLAYER_RADIUS stays the collision radius)
 export const PLAYER_EDGE_COLOR = 0x5fd4ff
 export const PLAYER_SPEED = 4 // world units per second
@@ -108,11 +107,6 @@ export const CRATE_OBSTACLE_RADIUS = 0.9
 export const STARTING_MONSTER_COUNT = 4
 export const EDGE_SPAWN_MARGIN = 1 // world units in from the platform's edge for edge spawns
 
-export const WOBBLE_SPEED = 2 // radians per second
-export const WOBBLE_BOB_AMOUNT = 0.05 // world units
-export const WOBBLE_SQUASH_AMOUNT = 0.04
-export const WOBBLE_FACE_JIGGLE_AMOUNT = 0.05 // radians
-
 // Jelly body material: flat-shaded faces, a saturated base color, some
 // metalness/roughness, and a low emissive tint so bloom picks the body up
 // a little without washing out the face.
@@ -157,14 +151,12 @@ export const ATTACK_SWING_DURATION = 0.25 // seconds for the sword to swing thro
 export const KNOCKBACK_STRENGTH = 1.2 // world units a hit monster is pushed back
 
 export const HIT_FLASH_DURATION = 0.1 // seconds for a hit flash to fade out
-export const HIT_SQUASH_DURATION = 0.2 // seconds for a hit squash to rebound
 export const DEATH_POP_DURATION = 0.3 // seconds for the death pop before removal
 
 export const SIGHT_RANGE = 14 // world units a monster can see the player at (the arena has no walls to block it)
 export const MONSTER_ATTACK_RANGE = 1.2
 export const MONSTER_ATTACK_COOLDOWN = 1.2 // seconds between monster attacks
 export const MONSTER_ATTACK_WINDUP_DURATION = 0.3 // seconds of telegraph lean/grow before the hit lands
-export const MONSTER_ATTACK_WINDUP_GROW = 0.2 // peak size increase during the telegraph (superseded by the jelly wind-up inflate below, removed once monster.js switches over)
 export const MONSTER_ATTACK_WINDUP_INFLATE_RATE = 2.5 // jelly inflate fed into the hit spring per second during the telegraph
 
 export const SEARCH_DURATION = 3 // seconds spent looking around before giving up and wandering again
