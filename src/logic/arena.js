@@ -4,6 +4,20 @@
 // at its edge). Kept free of Three.js imports so Vitest can exercise it
 // without WebGL. The platform is centered at the world origin.
 
+// The platform disc's vertical layout, derived from its thickness.
+// Every character/pod/particle treats y = 0 as the ground they stand
+// on, so `topY` is always 0 -- it's the disc's CENTER (discCenterY) and
+// bottom (bottomY) that move to keep the disc's actual top surface
+// flush with that ground plane, rather than the disc sitting centered
+// on y = 0 (which used to leave its top at +thickness/2, burying
+// everything standing "on" y = 0 by that much).
+export function platformLayout(thickness) {
+  const topY = 0
+  const discCenterY = topY - thickness / 2
+  const bottomY = discCenterY - thickness / 2
+  return { topY, discCenterY, bottomY }
+}
+
 // True if a point (world {x, z}) is still within the platform's radius.
 // False means its owner has walked/been knocked off the edge.
 export function isOnPlatform(pos, arenaRadius) {

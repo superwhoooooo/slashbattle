@@ -1,12 +1,62 @@
 import { describe, expect, it } from 'vitest'
+import { bodySurfaceDistance } from '../src/logic/faceLayout.js'
 import {
   clampToPlatform,
   isOnPlatform,
+  platformLayout,
   randomPointNear,
   randomPointOnPlatform,
   resolveArenaMove,
   spawnPointNearPlayer,
 } from '../src/logic/arena.js'
+
+describe('platformLayout', () => {
+  it('always puts the top surface at y = 0, the ground plane everything else stands on', () => {
+    expect(platformLayout(1.2).topY).toBe(0)
+    expect(platformLayout(3).topY).toBe(0)
+  })
+
+  it('centers the disc, and sets its bottom, below the top by half/all of its thickness', () => {
+    const layout = platformLayout(1.2)
+    expect(layout.discCenterY).toBeCloseTo(-0.6, 10)
+    expect(layout.bottomY).toBeCloseTo(-1.2, 10)
+  })
+})
+
+// Every character's resting body bottom (centerY - the straight-down
+// surface distance, reusing faceLayout's own bodySurfaceDistance) must
+// reach the platform's top (platformLayout's topY, 0) -- not sunk
+// inside it, per characters.js's actual resting center heights:
+// icosahedron (player) at R; dodecahedron/box at size/2; the octahedron
+// (zippy, stretched OCTAHEDRON_VERTICAL_STRETCH = 1.3x vertically) at
+// size * 0.65 so its lower, stretched tip still lands exactly on y = 0.
+describe('character resting heights reach the platform (not buried)', () => {
+  const topY = platformLayout(1.2).topY
+
+  function bottomY(shape, size, centerY) {
+    return centerY - bodySurfaceDistance(shape, size, 0, -1, 0)
+  }
+
+  it('player (icosahedron)', () => {
+    const R = 0.6
+    expect(bottomY('icosahedron', R, R)).toBeCloseTo(topY, 5)
+  })
+
+  it('blobbo (dodecahedron)', () => {
+    const size = 1.4
+    expect(bottomY('dodecahedron', size, size / 2)).toBeGreaterThanOrEqual(topY)
+  })
+
+  it('zippy (octahedron, stretched 1.3x vertically)', () => {
+    const size = 0.6
+    expect(bottomY('octahedron', size, size * 0.65)).toBeCloseTo(topY, 5)
+  })
+
+  it('grumpus (box)', () => {
+    const size = 1.1
+    expect(bottomY('box', size, size / 2)).toBeCloseTo(topY, 5)
+  })
+})
 
 describe('isOnPlatform', () => {
   it('is true at the center', () => {
