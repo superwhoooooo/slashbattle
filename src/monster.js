@@ -1,22 +1,21 @@
 import {
+  ARENA_RADIUS,
   MONSTER_ARRIVAL_DISTANCE,
   MONSTER_ATTACK_COOLDOWN,
   MONSTER_ATTACK_RANGE,
   MONSTER_ATTACK_WINDUP_DURATION,
   MONSTER_ATTACK_WINDUP_GROW,
+  MONSTER_PLATFORM_MARGIN,
   MONSTER_TYPES,
   PLAYER_RADIUS,
   SEARCH_DURATION,
   SEARCH_SPIN_SPEED,
   SEPARATION_STRENGTH,
   SIGHT_RANGE,
-  TILE_SIZE,
-  WANDER_RADIUS_TILES,
   WANDER_TIMEOUT,
 } from './config.js'
+import { clampToPlatform, resolveArenaMove } from './logic/arena.js'
 import { createCooldown } from './logic/combat.js'
-import { resolveMove } from './logic/grid.js'
-import { hasLineOfSight } from './logic/lineOfSight.js'
 import { nextMonsterState } from './logic/monsterAI.js'
 
 const INDICATOR_DURATION = 0.6
@@ -39,13 +38,17 @@ export function createMonsterAIState() {
   }
 }
 
-// Moves `monster` a step toward targetPos at `speed`, resolved against the
-// grid (sliding along walls). If the wall blocks most of the intended
-// move, nudges sideways too, so direct steering doesn't stick on corners.
-// Faces the mesh toward the direction actually moved.
-function steerToward(monster, targetPos, speed, dt, grid) {
-  const dx = targetPos.x - monster.position.x
-  const dz = targetPos.z - monster.position.z
+// Moves `monster` a step toward targetPos at `speed`, resolved against
+// obstacles (sliding along their edges). targetPos is first clamped to
+// stay on the platform (MONSTER_PLATFORM_MARGIN in from the edge), so a
+// monster's own steering -- wander, chase, or search -- never walks it
+// off; only knockback can do that. If an obstacle blocks most of the
+// intended move, nudges sideways too, so direct steering doesn't stick on
+// its edge. Faces the mesh toward the direction actually moved.
+function steerToward(monster, targetPos, speed, dt, obstacles) {
+  const clampedTarget = clampToPlatform(targetPos, ARENA_RADIUS - MONSTER_PLATFORM_MARGIN)
+  const dx = clampedTarget.x - monster.position.x
+  const dz = clampedTarget.z - monster.position.z
   const distance = Math.hypot(dx, dz)
   if (distance < 1e-6) return
 
@@ -54,20 +57,14 @@ function steerToward(monster, targetPos, speed, dt, grid) {
   const step = Math.min(speed * dt, distance)
   const radius = monster.userData.radius
 
-  const moved = resolveMove(grid, TILE_SIZE, monster.position, radius, {
-    x: dirX * step,
-    z: dirZ * step,
-  })
+  const moved = resolveArenaMove(monster.position, { x: dirX * step, z: dirZ * step }, radius, obstacles)
   const movedDistance = Math.hypot(moved.x - monster.position.x, moved.z - monster.position.z)
 
   let finalPos = moved
   if (movedDistance < step * 0.5) {
-    // Likely stuck against a wall/corner: nudge sideways so it can slide
-    // around rather than stall there.
-    const nudge = resolveMove(grid, TILE_SIZE, moved, radius, {
-      x: -dirZ * step * 0.5,
-      z: dirX * step * 0.5,
-    })
+    // Likely stuck against an obstacle's edge: nudge sideways so it can
+    // slide around rather than stall there.
+    const nudge = resolveArenaMove(moved, { x: -dirZ * step * 0.5, z: dirX * step * 0.5 }, radius, obstacles)
     finalPos = nudge
   }
 
@@ -98,14 +95,14 @@ function updateIndicator(monster, dt) {
 
 // Advances one monster's perception, AI state machine, movement, and (while
 // attacking) damage dealing. `monster` is its Three.js group, carrying its
-// AI fields on userData alongside the type/hp/radius set at spawn. `grid`
-// is used for movement collision (crates count as solid); `sightGrid`
-// (defaults to `grid`) is used for the line-of-sight check and should NOT
-// have crates marked as walls, so a crate doesn't itself grant cover. Does
-// nothing for a dying monster (hit-reaction/death-pop owns it instead).
+// AI fields on userData alongside the type/hp/radius set at spawn.
+// `obstacles` (pods) is used for movement collision. There are no walls on
+// the open platform, so line of sight is always clear: a monster sees the
+// player whenever they're within SIGHT_RANGE and not hidden. Does nothing
+// for a dying monster (hit-reaction/death-pop owns it instead).
 // Returns { hitPlayer }: true the one frame this monster's attack actually
 // damaged the player, so the caller can trigger a screen shake.
-export function updateMonster(monster, player, grid, dt, now, sightGrid = grid) {
+export function updateMonster(monster, player, obstacles, dt, now) {
   const ai = monster.userData
   if (ai.dying) return { hitPlayer: false }
 
@@ -115,9 +112,7 @@ export function updateMonster(monster, player, grid, dt, now, sightGrid = grid) 
     player.position.x - monsterPos.x,
     player.position.z - monsterPos.z,
   )
-  const canSeePlayer =
-    distanceToPlayer <= SIGHT_RANGE &&
-    hasLineOfSight(sightGrid, monsterPos, player.position, TILE_SIZE)
+  const canSeePlayer = distanceToPlayer <= SIGHT_RANGE
 
   const perception = {
     canSeePlayer,
@@ -140,11 +135,10 @@ export function updateMonster(monster, player, grid, dt, now, sightGrid = grid) 
     perception,
     now,
     {
-      grid,
-      tileSize: TILE_SIZE,
+      arenaRadius: ARENA_RADIUS,
+      wanderMargin: MONSTER_PLATFORM_MARGIN,
       attackRange: MONSTER_ATTACK_RANGE,
       searchDuration: SEARCH_DURATION,
-      wanderRadiusTiles: WANDER_RADIUS_TILES,
       wanderTimeout: WANDER_TIMEOUT,
       arrivalDistance: MONSTER_ARRIVAL_DISTANCE,
     },
@@ -162,12 +156,12 @@ export function updateMonster(monster, player, grid, dt, now, sightGrid = grid) 
   let hitPlayer = false
 
   if (ai.state === 'wander' && ai.wanderTarget) {
-    steerToward(monster, ai.wanderTarget, stats.speed, dt, grid)
+    steerToward(monster, ai.wanderTarget, stats.speed, dt, obstacles)
   } else if (ai.state === 'chase') {
-    steerToward(monster, player.position, stats.speed, dt, grid)
+    steerToward(monster, player.position, stats.speed, dt, obstacles)
   } else if (ai.state === 'search') {
     if (ai.searchPhase === 'approach' && ai.lastKnownPos) {
-      steerToward(monster, ai.lastKnownPos, stats.speed, dt, grid)
+      steerToward(monster, ai.lastKnownPos, stats.speed, dt, obstacles)
     } else {
       monster.rotation.y += dt * SEARCH_SPIN_SPEED
     }
@@ -197,20 +191,21 @@ export function updateMonster(monster, player, grid, dt, now, sightGrid = grid) 
 
 // Pushes apart any monsters (and the player) whose collision circles
 // overlap, so they don't stack on each other. Only monsters move; the
-// player's own position is left alone. Resolved through resolveMove so
-// the push never shoves anyone through a wall.
-export function separateMonsters(monsters, player, grid) {
+// player's own position is left alone. Resolved through resolveArenaMove
+// so the push never shoves anyone through a pod (it can, deliberately,
+// push a monster off the platform's edge).
+export function separateMonsters(monsters, player, obstacles) {
   for (let i = 0; i < monsters.length; i++) {
     const monster = monsters[i]
     if (monster.userData.dying) continue
     const radius = monster.userData.radius
 
-    pushApart(monster, radius, player.position, PLAYER_RADIUS, grid)
+    pushApart(monster, radius, player.position, PLAYER_RADIUS, obstacles)
 
     for (let j = i + 1; j < monsters.length; j++) {
       const other = monsters[j]
       if (other.userData.dying) continue
-      pushApartPair(monster, radius, other, other.userData.radius, grid)
+      pushApartPair(monster, radius, other, other.userData.radius, obstacles)
     }
   }
 }
@@ -227,29 +222,23 @@ function separationPush(posA, radiusA, posB, radiusB) {
   return { x: dx * factor, z: dz * factor }
 }
 
-function pushApart(monster, radius, otherPos, otherRadius, grid) {
+function pushApart(monster, radius, otherPos, otherRadius, obstacles) {
   const push = separationPush(monster.position, radius, otherPos, otherRadius)
   if (!push) return
-  const resolved = resolveMove(grid, TILE_SIZE, monster.position, radius, push)
+  const resolved = resolveArenaMove(monster.position, push, radius, obstacles)
   monster.position.x = resolved.x
   monster.position.z = resolved.z
 }
 
-function pushApartPair(monsterA, radiusA, monsterB, radiusB, grid) {
+function pushApartPair(monsterA, radiusA, monsterB, radiusB, obstacles) {
   const push = separationPush(monsterA.position, radiusA, monsterB.position, radiusB)
   if (!push) return
 
-  const resolvedA = resolveMove(grid, TILE_SIZE, monsterA.position, radiusA, {
-    x: push.x * 0.5,
-    z: push.z * 0.5,
-  })
+  const resolvedA = resolveArenaMove(monsterA.position, { x: push.x * 0.5, z: push.z * 0.5 }, radiusA, obstacles)
   monsterA.position.x = resolvedA.x
   monsterA.position.z = resolvedA.z
 
-  const resolvedB = resolveMove(grid, TILE_SIZE, monsterB.position, radiusB, {
-    x: -push.x * 0.5,
-    z: -push.z * 0.5,
-  })
+  const resolvedB = resolveArenaMove(monsterB.position, { x: -push.x * 0.5, z: -push.z * 0.5 }, radiusB, obstacles)
   monsterB.position.x = resolvedB.x
   monsterB.position.z = resolvedB.z
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { canEnterBox, findNearestBox, isAmbushActive } from '../src/logic/hiding.js'
+import { canEnterBox, findNearestBox, isAmbushActive, pickExitPoint } from '../src/logic/hiding.js'
 
 describe('findNearestBox', () => {
   const playerPos = { x: 0, z: 0 }
@@ -45,6 +45,26 @@ describe('canEnterBox', () => {
 
   it('is true when alive, not hidden, the box is free, and in range', () => {
     expect(canEnterBox(alivePlayer, box, 2)).toBe(true)
+  })
+})
+
+describe('pickExitPoint', () => {
+  it('lands just outside the box, in the facing direction', () => {
+    const point = pickExitPoint({ x: 0, z: 0 }, 1, 0, 16, 0.3)
+    // Facing angle 0 points toward +Z.
+    expect(point.x).toBeCloseTo(0)
+    expect(point.z).toBeCloseTo(1.3)
+  })
+
+  it('lands outside the box circle for a sideways facing angle too', () => {
+    const point = pickExitPoint({ x: 2, z: 2 }, 1, Math.PI / 2, 16, 0.3)
+    const distance = Math.hypot(point.x - 2, point.z - 2)
+    expect(distance).toBeCloseTo(1.3)
+  })
+
+  it('is pulled back onto the platform when it would otherwise land past the edge', () => {
+    const point = pickExitPoint({ x: 0, z: 15 }, 1, 0, 16, 0.3)
+    expect(Math.hypot(point.x, point.z)).toBeLessThanOrEqual(16 + 1e-9)
   })
 })
 

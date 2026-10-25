@@ -1,5 +1,7 @@
 import * as THREE from 'three'
 import {
+  ARENA_RADIUS,
+  CRATE_OBSTACLE_RADIUS,
   CRATE_SIZE,
   CRATE_WIGGLE_ANGLE,
   CRATE_WIGGLE_DURATION,
@@ -8,8 +10,7 @@ import {
   CRATE_WIGGLE_SCALE_PULSE,
   HIDE_RANGE,
 } from './config.js'
-import { worldToGrid } from './logic/grid.js'
-import { canEnterBox, findNearestBox, pickExitTile } from './logic/hiding.js'
+import { canEnterBox, findNearestBox, pickExitPoint } from './logic/hiding.js'
 
 // Draws a plank-look texture: brown with darker plank lines and a goofy
 // stencil, since this is obviously not a player.
@@ -60,8 +61,9 @@ function createCrateMesh() {
   return mesh
 }
 
-// Builds one crate mesh per box spawn point (world positions from the
-// dungeon). Unoccupied and not wiggling until the player hides in one.
+// Builds one crate mesh per box spawn point (world positions; currently
+// the fixed ring in config.CRATE_POSITIONS). Unoccupied and not wiggling
+// until the player hides in one.
 export function createCrates(boxSpawns) {
   return boxSpawns.map((spawn) => {
     const mesh = createCrateMesh()
@@ -114,15 +116,19 @@ export function createHidingState() {
 
 // Reads edge-triggered E to enter/exit hiding. Entering snaps the player
 // into the nearest enterable crate (and starts its wiggle schedule);
-// exiting pops the player out to a walkable tile next to that crate,
+// exiting pops the player out to a point just outside that crate,
 // preferring the side closest to the player's facing. Returns whether the
 // "Press E to hide" HUD prompt should show.
-export function updateHiding(hidingState, player, crates, grid, tileSize, input, now) {
+export function updateHiding(hidingState, player, crates, input, now) {
   if (player.hidden) {
     if (input.wasPressed('KeyE')) {
       const crate = hidingState.currentCrate
-      const crateGridPos = worldToGrid(crate.position.x, crate.position.z, tileSize)
-      const exitPos = pickExitTile(grid, tileSize, crateGridPos, player.facing)
+      const exitPos = pickExitPoint(
+        { x: crate.position.x, z: crate.position.z },
+        CRATE_OBSTACLE_RADIUS,
+        player.facing,
+        ARENA_RADIUS,
+      )
       player.exitHiding(exitPos, now)
       crate.userData.occupied = false
       hidingState.currentCrate = null

@@ -1,7 +1,7 @@
 // Pure, Three-free monster AI state machine. Kept free of Three.js imports
 // so Vitest can exercise it without WebGL; the Three-side driver lives in
 // src/monster.js.
-import { gridToWorld, isWalkable, worldToGrid } from './grid.js'
+import { randomPointOnPlatform } from './arena.js'
 
 export const MONSTER_STATES = {
   WANDER: 'wander',
@@ -11,29 +11,20 @@ export const MONSTER_STATES = {
 }
 
 const DEFAULT_ARRIVAL_DISTANCE = 0.3
-const DEFAULT_WANDER_RADIUS_TILES = 3
+const DEFAULT_WANDER_MARGIN = 1.5
 const DEFAULT_WANDER_TIMEOUT = 4
 
 function distanceBetween(a, b) {
   return Math.hypot(a.x - b.x, a.z - b.z)
 }
 
-// Picks a random walkable tile within wanderRadiusTiles of the monster's
-// current tile (a few tries; falls back to staying put in a tight
-// dead-end). rng is injectable (default Math.random) for deterministic
-// tests.
-function pickWanderTarget(monster, cfg) {
-  const { grid, tileSize, rng = Math.random, wanderRadiusTiles = DEFAULT_WANDER_RADIUS_TILES } = cfg
-  const center = worldToGrid(monster.position.x, monster.position.z, tileSize)
-  const span = wanderRadiusTiles * 2 + 1
-
-  for (let attempt = 0; attempt < 10; attempt++) {
-    const gx = center.x + Math.floor(rng() * span) - wanderRadiusTiles
-    const gz = center.z + Math.floor(rng() * span) - wanderRadiusTiles
-    if (isWalkable(grid, gx, gz)) return gridToWorld(gx, gz, tileSize)
-  }
-
-  return { x: monster.position.x, z: monster.position.z }
+// Picks a random point anywhere on the platform (kept wanderMargin away
+// from the edge, like the margin that keeps steering targets on the
+// platform generally) to wander toward next. rng is injectable (default
+// Math.random) for deterministic tests.
+function pickWanderTarget(cfg) {
+  const { rng = Math.random, arenaRadius, wanderMargin = DEFAULT_WANDER_MARGIN } = cfg
+  return randomPointOnPlatform(rng, arenaRadius, wanderMargin)
 }
 
 // Advances one monster's AI state machine by one tick.
@@ -43,9 +34,9 @@ function pickWanderTarget(monster, cfg) {
 // lookStartedAt. `perception` is computed by the caller every tick:
 // { canSeePlayer, distanceToPlayer, playerPos, playerHidden }. A hidden
 // player is always treated as not seen, regardless of canSeePlayer.
-// `cfg` carries grid/tileSize/rng (for picking wander targets) plus the
-// tunable thresholds: attackRange, searchDuration, wanderRadiusTiles,
-// wanderTimeout, arrivalDistance.
+// `cfg` carries arenaRadius/wanderMargin/rng (for picking wander targets)
+// plus the tunable thresholds: attackRange, searchDuration, wanderTimeout,
+// arrivalDistance.
 //
 // Returns the next tick's AI fields; the caller merges them back onto the
 // monster (it does not mutate `monster`).
@@ -134,7 +125,7 @@ export function nextMonsterState(monster, perception, now, cfg) {
           state: MONSTER_STATES.WANDER,
           stateEnteredAt: now,
           lastKnownPos: null,
-          wanderTarget: pickWanderTarget(monster, cfg),
+          wanderTarget: pickWanderTarget(cfg),
           wanderPickedAt: now,
         }
       }
@@ -166,7 +157,7 @@ export function nextMonsterState(monster, perception, now, cfg) {
         return {
           state: MONSTER_STATES.WANDER,
           stateEnteredAt: monster.stateEnteredAt ?? now,
-          wanderTarget: pickWanderTarget(monster, cfg),
+          wanderTarget: pickWanderTarget(cfg),
           wanderPickedAt: now,
         }
       }

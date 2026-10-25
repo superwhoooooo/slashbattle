@@ -1,35 +1,20 @@
 // Tunable constants shared across the game. Grouped by the system that
 // mostly cares about them; values are in world units unless noted.
 
-export const TILE_SIZE = 2
-export const WALL_HEIGHT = 2.5
-
 export const PLAYER_RADIUS = 0.35
 export const PLAYER_HEIGHT = 1.6
 export const PLAYER_SPEED = 4 // world units per second
 export const PLAYER_MAX_HP = 100
 export const PLAYER_IFRAME_DURATION = 0.5 // seconds of invulnerability after taking damage
 
-export const CAMERA_OFFSET = { x: 0, y: 5, z: 6 } // behind and above the player
+export const CAMERA_OFFSET = { x: 0, y: 11, z: 8 } // behind, above, and looking down at the open platform
 export const CAMERA_LERP = 6 // higher = camera catches up to the player faster
 
-export const AMBIENT_LIGHT_INTENSITY = 0.35
-export const TORCH_LIGHT_COLOR = 0xffaa55
-export const TORCH_LIGHT_INTENSITY = 6
-export const TORCH_LIGHT_DISTANCE = 8
-// Noisy per-light intensity variation: a sum of two sines at different
-// speeds (plus a random per-torch phase) so torches don't flicker in sync.
-export const TORCH_FLICKER_SPEED_A = 7 // radians per second
-export const TORCH_FLICKER_SPEED_B = 13 // radians per second
-export const TORCH_FLICKER_AMOUNT = 0.25 // fraction of TORCH_LIGHT_INTENSITY
-
-export const FLAME_COLOR = 0xffaa33
-export const FLAME_RADIUS = 0.1
-export const FLAME_HEIGHT = 0.25
-
-export const FOG_COLOR = 0x0b0b12
-export const FOG_NEAR = 6
-export const FOG_FAR = 24
+// Deep purple/blue, far enough out that it doesn't hide the platform
+// (ARENA_RADIUS 16) but still gives the starfield some depth.
+export const FOG_COLOR = 0x140a2e
+export const FOG_NEAR = 40
+export const FOG_FAR = 300
 
 // Monster types: size (body scale), color, speed (world units/second), hp,
 // damage per hit, and radius (collision/knockback/separation radius).
@@ -138,7 +123,7 @@ export const HIT_FLASH_DURATION = 0.1 // seconds for a hit flash to fade out
 export const HIT_SQUASH_DURATION = 0.2 // seconds for a hit squash to rebound
 export const DEATH_POP_DURATION = 0.3 // seconds for the death pop before removal
 
-export const SIGHT_RANGE = 6 // world units a monster can see the player at, line-of-sight permitting
+export const SIGHT_RANGE = 14 // world units a monster can see the player at (the arena has no walls to block it)
 export const MONSTER_ATTACK_RANGE = 1.2
 export const MONSTER_ATTACK_COOLDOWN = 1.2 // seconds between monster attacks
 export const MONSTER_ATTACK_WINDUP_DURATION = 0.3 // seconds of telegraph lean/grow before the hit lands
@@ -147,7 +132,6 @@ export const MONSTER_ATTACK_WINDUP_GROW = 0.2 // peak size increase during the t
 export const SEARCH_DURATION = 3 // seconds spent looking around before giving up and wandering again
 export const SEARCH_SPIN_SPEED = 1.5 // radians per second, while looking around
 
-export const WANDER_RADIUS_TILES = 3
 export const WANDER_TIMEOUT = 4 // seconds before repicking a wander target if not arrived
 
 export const MONSTER_ARRIVAL_DISTANCE = 0.3 // world units considered "arrived" at a wander/search target
@@ -157,7 +141,7 @@ export const SEPARATION_STRENGTH = 0.5 // how much of an overlap is resolved per
 export const CRATE_SIZE = 1.3
 export const HIDE_RANGE = 1.5 // world units within which E enters/is prompted for a box
 
-export const HIDDEN_CAMERA_OFFSET = { x: 0, y: 2, z: 2.5 } // pulled in closer than CAMERA_OFFSET
+export const HIDDEN_CAMERA_OFFSET = { x: 0, y: 4, z: 3 } // pulled in closer than CAMERA_OFFSET
 
 export const AMBUSH_WINDOW = 1 // seconds after popping out of hiding that attacks deal ambush damage
 export const AMBUSH_BANNER_DURATION = 1 // seconds the "AMBUSH!" HUD banner stays up

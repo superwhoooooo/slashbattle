@@ -1,9 +1,9 @@
 // Pure, Three-free hiding logic: finding a nearby box, whether the player
-// can enter one, picking a tile to pop back out onto, and the ambush
+// can enter one, picking a point to pop back out onto, and the ambush
 // damage window after exiting. Kept free of Three.js imports so Vitest
 // can exercise it without WebGL. The Three-side driver lives in
 // src/hiding.js.
-import { gridToWorld, isWalkable } from './grid.js'
+import { clampToPlatform } from './arena.js'
 
 function distanceBetween(a, b) {
   return Math.hypot(a.x - b.x, a.z - b.z)
@@ -37,34 +37,17 @@ export function canEnterBox(playerState, box, range) {
   return distanceBetween(playerState.position, box.position) <= range
 }
 
-// Candidate exit directions as grid offsets, each paired with the facing
-// angle that direction represents (the same atan2(dx, dz) convention used
-// throughout: 0 = +Z, PI/2 = +X, PI = -Z, -PI/2 = -X).
-const EXIT_DIRECTIONS = [
-  { dx: 0, dz: 1, angle: 0 },
-  { dx: 1, dz: 0, angle: Math.PI / 2 },
-  { dx: 0, dz: -1, angle: Math.PI },
-  { dx: -1, dz: 0, angle: -Math.PI / 2 },
-]
-
-function normalizeAngle(angle) {
-  return Math.atan2(Math.sin(angle), Math.cos(angle))
-}
-
-// Picks a walkable tile adjacent to the box's grid tile to pop the player
-// out onto, preferring whichever side is closest to facingAngle. Falls
-// back to the box's own tile if every side is blocked.
-export function pickExitTile(grid, tileSize, boxGridPos, facingAngle) {
-  const candidates = EXIT_DIRECTIONS.map((dir) => ({
-    x: boxGridPos.x + dir.dx,
-    z: boxGridPos.z + dir.dz,
-    angleDiff: Math.abs(normalizeAngle(dir.angle - facingAngle)),
-  }))
-    .filter((candidate) => isWalkable(grid, candidate.x, candidate.z))
-    .sort((a, b) => a.angleDiff - b.angleDiff)
-
-  const chosen = candidates[0] ?? boxGridPos
-  return gridToWorld(chosen.x, chosen.z, tileSize)
+// Picks a point just outside the box's circle to pop the player out onto,
+// along facingAngle (the same atan2(dx, dz) convention used throughout:
+// 0 = +Z, PI/2 = +X, PI = -Z, -PI/2 = -X), pulled back onto the platform
+// if that would otherwise land past the edge.
+export function pickExitPoint(boxPos, boxRadius, facingAngle, arenaRadius, exitMargin = 0.3) {
+  const exitDistance = boxRadius + exitMargin
+  const point = {
+    x: boxPos.x + Math.sin(facingAngle) * exitDistance,
+    z: boxPos.z + Math.cos(facingAngle) * exitDistance,
+  }
+  return clampToPlatform(point, arenaRadius)
 }
 
 // True if `now` is within `window` seconds after exitedAt, i.e. the

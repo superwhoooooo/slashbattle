@@ -1,19 +1,21 @@
 import {
+  FALL_DAMAGE,
+  FALL_DESPAWN_DEPTH,
+  FALL_GRAVITY,
   HIT_FLASH_DURATION,
   PLAYER_IFRAME_DURATION,
   PLAYER_MAX_HP,
   PLAYER_RADIUS,
   PLAYER_SPEED,
-  TILE_SIZE,
 } from './config.js'
 import { createPlayerMesh } from './characters.js'
 import { applyDamage } from './logic/combat.js'
-import { resolveMove } from './logic/grid.js'
+import { resolveArenaMove } from './logic/arena.js'
+import { stepFall } from './logic/falling.js'
 
 export class Player {
-  constructor({ spawn, grid, tileSize = TILE_SIZE }) {
-    this.grid = grid
-    this.tileSize = tileSize
+  constructor({ spawn, obstacles = [] }) {
+    this.obstacles = obstacles
     this.position = { x: spawn.x, z: spawn.z }
     this.facing = 0 // yaw, radians
     this.hp = PLAYER_MAX_HP
@@ -21,6 +23,8 @@ export class Player {
     this._hitFlashElapsed = null // null means not currently flashing
     this.hidden = false
     this.exitedAt = null // seconds elapsed at the last pop-out; drives the ambush window
+    this.falling = false
+    this.fallState = { velocityY: 0, fallenY: 0 }
 
     this.mesh = createPlayerMesh()
     this.mesh.position.x = this.position.x
@@ -65,6 +69,33 @@ export class Player {
     this.exitedAt = now
   }
 
+  // Starts the player falling off the platform: update() stops moving the
+  // player while this is true, so main.js's updateFalling() owns the
+  // player's vertical position until the fall ends.
+  startFalling() {
+    this.falling = true
+    this.fallState = { velocityY: 0, fallenY: 0 }
+  }
+
+  // Advances a fall in progress. Once the player has dropped
+  // FALL_DESPAWN_DEPTH, applies FALL_DAMAGE -- bypassing i-frames and the
+  // hidden check, since falling off isn't an attack a hidden player could
+  // dodge -- and respawns at the platform's center with fresh i-frames.
+  updateFalling(deltaSeconds, now) {
+    this.fallState = stepFall(this.fallState, deltaSeconds, FALL_GRAVITY)
+    this.mesh.position.y = -this.fallState.fallenY
+    if (this.fallState.fallenY < FALL_DESPAWN_DEPTH) return
+
+    this.hp = applyDamage({ hp: this.hp }, FALL_DAMAGE).hp
+    this.invulnerableUntil = now + PLAYER_IFRAME_DURATION
+    this._hitFlashElapsed = 0
+
+    this.falling = false
+    this.position.x = 0
+    this.position.z = 0
+    this.mesh.position.set(0, 0, 0)
+  }
+
   // Fades the red hit flash back to normal over HIT_FLASH_DURATION. Runs
   // every frame via update() so it keeps progressing even while the
   // player stands still.
@@ -77,12 +108,14 @@ export class Player {
   }
 
   // Moves the player relative to the camera's yaw using WASD/arrow input,
-  // resolves the move against the dungeon grid's walls (with sliding), and
-  // turns the mesh to face the direction it just moved in. Does nothing
-  // while hidden.
+  // resolves the move against the platform's obstacles (with sliding),
+  // and turns the mesh to face the direction it just moved in. Does
+  // nothing while hidden or while falling off the platform. Does NOT stop
+  // the player from walking off the platform's edge -- main.js checks
+  // isOnPlatform after calling this and starts a fall if it has.
   update(input, cameraYaw, deltaSeconds) {
     this._updateHitFlash(deltaSeconds)
-    if (this.hidden) return
+    if (this.hidden || this.falling) return
 
     const forwardInput =
       (input.isDown('KeyW') || input.isDown('ArrowUp') ? 1 : 0) -
@@ -107,12 +140,11 @@ export class Player {
     dirZ /= length
 
     const distance = PLAYER_SPEED * deltaSeconds
-    const resolved = resolveMove(
-      this.grid,
-      this.tileSize,
+    const resolved = resolveArenaMove(
       this.position,
-      PLAYER_RADIUS,
       { x: dirX * distance, z: dirZ * distance },
+      PLAYER_RADIUS,
+      this.obstacles,
     )
     this.position = resolved
 

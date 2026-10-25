@@ -11,6 +11,7 @@ import {
   HIT_SQUASH_DURATION,
   KNOCKBACK_STRENGTH,
 } from './config.js'
+import { resolveArenaMove } from './logic/arena.js'
 import {
   applyDamage,
   computeDamage,
@@ -18,7 +19,6 @@ import {
   isInAttackArc,
   knockbackVector,
 } from './logic/combat.js'
-import { resolveMove } from './logic/grid.js'
 import { isAmbushActive } from './logic/hiding.js'
 
 // The sword rotates through this arc (radians, around its local Z axis)
@@ -50,7 +50,7 @@ export function createAttackState() {
 // hit landed, so the caller can trigger a (smaller) screen shake.
 export function updatePlayerAttack(
   attackState,
-  { player, monsters, grid, tileSize, input, elapsedSeconds, deltaSeconds },
+  { player, monsters, obstacles, input, elapsedSeconds, deltaSeconds },
 ) {
   if (player.hidden) return { ambushHit: false, hitAny: false }
 
@@ -77,7 +77,7 @@ export function updatePlayerAttack(
   let hitAny = false
   if (!attackState.hasHitThisSwing && progress >= SWING_HIT_FRACTION) {
     attackState.hasHitThisSwing = true
-    ;({ ambushHit, hitAny } = resolveAttackHits(player, monsters, grid, tileSize, elapsedSeconds))
+    ;({ ambushHit, hitAny } = resolveAttackHits(player, monsters, obstacles, elapsedSeconds))
   }
 
   if (progress >= 1) {
@@ -90,11 +90,13 @@ export function updatePlayerAttack(
 
 // Checks every living monster against the attack arc and applies the hit:
 // damage (boosted if the player is still within the ambush window after
-// popping out of hiding), a wall-safe knockback, and the flash/squash
-// reaction. A lethal hit starts the monster's death pop instead of
-// removing it immediately, so updateMonsterHitReaction can animate it out
-// first. Returns { ambushHit, hitAny } for the whole swing.
-function resolveAttackHits(player, monsters, grid, tileSize, now) {
+// popping out of hiding), a knockback that slides around obstacles (but,
+// deliberately, is not stopped by the platform's edge -- it can shove a
+// monster off), and the flash/squash reaction. A lethal hit starts the
+// monster's death pop instead of removing it immediately, so
+// updateMonsterHitReaction can animate it out first. Returns { ambushHit,
+// hitAny } for the whole swing.
+function resolveAttackHits(player, monsters, obstacles, now) {
   const attackerPos = player.position
   const ambush = isAmbushActive(now, player.exitedAt, AMBUSH_WINDOW)
   let ambushHit = false
@@ -117,7 +119,7 @@ function resolveAttackHits(player, monsters, grid, tileSize, now) {
     if (ambush) ambushHit = true
 
     const knockback = knockbackVector(attackerPos, targetPos, KNOCKBACK_STRENGTH)
-    const resolved = resolveMove(grid, tileSize, targetPos, monster.userData.radius, knockback)
+    const resolved = resolveArenaMove(targetPos, knockback, monster.userData.radius, obstacles)
     monster.position.x = resolved.x
     monster.position.z = resolved.z
 

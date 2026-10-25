@@ -1,23 +1,40 @@
 import * as THREE from 'three'
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
+import { createArena, updateArena } from './arena.js'
 import { createMonsterMesh, updateWobble } from './characters.js'
 import {
+  ARENA_RADIUS,
+  BLOOM_RADIUS,
+  BLOOM_STRENGTH,
+  BLOOM_THRESHOLD,
+  CAMERA_FAR,
   CAMERA_LERP,
   CAMERA_OFFSET,
+  CRATE_OBSTACLE_RADIUS,
+  CRATE_POSITIONS,
+  EDGE_SPAWN_MARGIN,
+  FALL_DESPAWN_DEPTH,
+  FALL_GRAVITY,
   HIDDEN_CAMERA_OFFSET,
+  MONSTER_FALL_TUMBLE_SPEED,
   MONSTER_TYPES,
   PLAYER_MAX_HP,
   SHAKE_DAMAGE_DURATION,
   SHAKE_DAMAGE_MAGNITUDE,
   SHAKE_HIT_DURATION,
   SHAKE_HIT_MAGNITUDE,
+  STARTING_MONSTER_COUNT,
 } from './config.js'
 import { createAttackState, updateMonsterHitReaction, updatePlayerAttack } from './combat.js'
-import { createDungeon, updateTorchFlicker } from './dungeon.js'
 import { createCrates, createHidingState, updateCrateWiggle, updateHiding } from './hiding.js'
 import { createHud, hideStartCard, showAmbushBanner, showGameOverlay, updateHud } from './hud.js'
 import { Input } from './input.js'
+import { edgeSpawnPoint, isOnPlatform } from './logic/arena.js'
+import { stepFall } from './logic/falling.js'
 import { evaluateGameState } from './logic/gameState.js'
-import { withObstacles } from './logic/grid.js'
 import { createMonsterAIState, separateMonsters, updateMonster } from './monster.js'
 import { Player } from './player.js'
 
@@ -25,6 +42,10 @@ const container = document.querySelector('#app')
 
 const renderer = new THREE.WebGLRenderer({ antialias: true })
 renderer.setSize(window.innerWidth, window.innerHeight)
+renderer.shadowMap.enabled = true
+renderer.shadowMap.type = THREE.PCFSoftShadowMap
+renderer.toneMapping = THREE.ACESFilmicToneMapping
+renderer.outputColorSpace = THREE.SRGBColorSpace
 container.appendChild(renderer.domElement)
 
 const scene = new THREE.Scene()
@@ -33,8 +54,22 @@ const camera = new THREE.PerspectiveCamera(
   70,
   window.innerWidth / window.innerHeight,
   0.1,
-  100,
+  CAMERA_FAR,
 )
+
+// Bloom makes the neon emissive surfaces (the grid, the rim, the pylons)
+// glow without washing out the rest of the scene; OutputPass applies the
+// renderer's tone mapping/color space after the bloom pass runs.
+const composer = new EffectComposer(renderer)
+composer.addPass(new RenderPass(scene, camera))
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  BLOOM_STRENGTH,
+  BLOOM_RADIUS,
+  BLOOM_THRESHOLD,
+)
+composer.addPass(bloomPass)
+composer.addPass(new OutputPass())
 
 const input = new Input()
 const hud = createHud()
@@ -48,6 +83,7 @@ window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight
   camera.updateProjectionMatrix()
   renderer.setSize(window.innerWidth, window.innerHeight)
+  composer.setSize(window.innerWidth, window.innerHeight)
 })
 
 // Camera screen shake: a short decaying random offset added on top of
@@ -95,37 +131,34 @@ function disposeObject3D(object) {
   scene.remove(object)
 }
 
-// Builds a fresh game world: dungeon, grids, player, crates, and
-// monsters, plus the per-run mutable state (attack, hiding, shake).
-// Positions the camera behind the player. Call disposeGame() first if
-// rebuilding on top of an existing game.
+// Builds a fresh game world: arena, player, crates, and monsters, plus
+// the per-run mutable state (attack, hiding, shake). Positions the camera
+// behind the player. Call disposeGame() first if rebuilding on top of an
+// existing game.
 function createGame() {
-  const dungeon = createDungeon()
-  scene.add(dungeon.group)
-  scene.background = new THREE.Color(dungeon.backgroundColor)
-  scene.fog = dungeon.fog
+  const arena = createArena()
+  scene.add(arena.group)
+  scene.background = new THREE.Color(arena.backgroundColor)
+  scene.fog = arena.fog
 
-  // Crates are solid for movement but should NOT block line of sight, so
-  // movement/collision uses this grid (walls + crate tiles) while anything
-  // checking line of sight keeps using dungeon.grid (walls only).
-  const collisionGrid = withObstacles(dungeon.grid, dungeon.grid.boxSpawns)
+  // Crates stand in as circular obstacles for both movement collision
+  // and knockback; a later milestone spawns them dynamically.
+  const obstacles = CRATE_POSITIONS.map((pos) => ({ x: pos.x, z: pos.z, radius: CRATE_OBSTACLE_RADIUS }))
 
-  const player = new Player({
-    spawn: dungeon.playerSpawn,
-    grid: collisionGrid,
-    tileSize: dungeon.tileSize,
-  })
+  const player = new Player({ spawn: { x: 0, z: 0 }, obstacles })
   scene.add(player.mesh)
 
-  const crates = createCrates(dungeon.boxSpawns)
+  const crates = createCrates(CRATE_POSITIONS)
   crates.forEach((crate) => scene.add(crate))
 
-  // Spawn one monster per M spawn point, cycling through the monster
-  // types. Each starts out wandering; updateMonster drives the rest.
+  // A fixed starting group, cycling through the monster types, spawned
+  // at the platform's edge. Each starts out wandering; updateMonster
+  // drives the rest. Waves arrive in a later milestone.
   const monsterTypeNames = Object.keys(MONSTER_TYPES)
-  const monsters = dungeon.monsterSpawns.map((spawn, index) => {
+  const monsters = Array.from({ length: STARTING_MONSTER_COUNT }, (_, index) => {
     const type = monsterTypeNames[index % monsterTypeNames.length]
     const stats = MONSTER_TYPES[type]
+    const spawn = edgeSpawnPoint(Math.random, ARENA_RADIUS, EDGE_SPAWN_MARGIN)
     const mesh = createMonsterMesh(type)
     mesh.position.x = spawn.x
     mesh.position.z = spawn.z
@@ -133,6 +166,8 @@ function createGame() {
     mesh.userData.wobblePhase = index * 1.3
     mesh.userData.hp = stats.hp
     mesh.userData.radius = stats.radius
+    mesh.userData.falling = false
+    mesh.userData.fallState = { velocityY: 0, fallenY: 0 }
     Object.assign(mesh.userData, createMonsterAIState())
     scene.add(mesh)
     return mesh
@@ -145,8 +180,8 @@ function createGame() {
   )
 
   return {
-    dungeon,
-    collisionGrid,
+    arena,
+    obstacles,
     player,
     crates,
     monsters,
@@ -158,7 +193,7 @@ function createGame() {
 
 // Removes and disposes everything createGame() added to the scene.
 function disposeGame(target) {
-  disposeObject3D(target.dungeon.group)
+  disposeObject3D(target.arena.group)
   disposeObject3D(target.player.mesh)
   target.crates.forEach((crate) => disposeObject3D(crate))
   target.monsters.forEach((mesh) => disposeObject3D(mesh))
@@ -194,34 +229,29 @@ function animate() {
       disposeGame(game)
       game = createGame()
     }
-    renderer.render(scene, camera)
+    composer.render()
     input.endFrame()
     requestAnimationFrame(animate)
     return
   }
 
-  const { dungeon, collisionGrid, player, crates, hidingState, attackState, shake } = game
+  const { obstacles, player, crates, hidingState, attackState, shake } = game
   let monsters = game.monsters
 
   player.update(input, cameraYaw, deltaSeconds)
+  if (!player.falling && !player.hidden && !isOnPlatform(player.position, ARENA_RADIUS)) {
+    player.startFalling()
+  }
+  if (player.falling) player.updateFalling(deltaSeconds, elapsedSeconds)
   updateWobble(player.mesh, elapsedSeconds, 0)
 
-  const { showPrompt } = updateHiding(
-    hidingState,
-    player,
-    crates,
-    collisionGrid,
-    dungeon.tileSize,
-    input,
-    elapsedSeconds,
-  )
+  const { showPrompt } = updateHiding(hidingState, player, crates, input, elapsedSeconds)
   crates.forEach((crate) => updateCrateWiggle(crate, deltaSeconds, elapsedSeconds))
 
   const { ambushHit, hitAny } = updatePlayerAttack(attackState, {
     player,
     monsters,
-    grid: collisionGrid,
-    tileSize: dungeon.tileSize,
+    obstacles,
     input,
     elapsedSeconds,
     deltaSeconds,
@@ -230,7 +260,10 @@ function animate() {
   if (hitAny) triggerShake(shake, SHAKE_HIT_MAGNITUDE, SHAKE_HIT_DURATION)
 
   // Dying monsters skip the idle wobble and just finish their death-pop
-  // animation before being removed from the scene and this list.
+  // animation before being removed from the scene and this list. Falling
+  // monsters (walked, chased, or knocked off the edge) skip it too,
+  // tumbling down out of view before the same removal happens -- it
+  // counts as a kill exactly like a death pop does, by leaving the list.
   monsters = monsters.filter((mesh) => {
     if (mesh.userData.dying) {
       const finishedDying = updateMonsterHitReaction(mesh, deltaSeconds)
@@ -241,18 +274,33 @@ function animate() {
       return true
     }
 
+    if (mesh.userData.falling) {
+      mesh.userData.fallState = stepFall(mesh.userData.fallState, deltaSeconds, FALL_GRAVITY)
+      mesh.position.y = -mesh.userData.fallState.fallenY
+      mesh.rotation.x += deltaSeconds * MONSTER_FALL_TUMBLE_SPEED
+      mesh.rotation.z += deltaSeconds * MONSTER_FALL_TUMBLE_SPEED * 0.6
+      if (mesh.userData.fallState.fallenY >= FALL_DESPAWN_DEPTH) {
+        scene.remove(mesh)
+        return false
+      }
+      return true
+    }
+
     updateWobble(mesh, elapsedSeconds, mesh.userData.wobblePhase)
-    // Movement collides with crates (collisionGrid); line of sight does
-    // not (dungeon.grid), so a crate can't itself grant cover.
-    const { hitPlayer } = updateMonster(mesh, player, collisionGrid, deltaSeconds, elapsedSeconds, dungeon.grid)
+    const { hitPlayer } = updateMonster(mesh, player, obstacles, deltaSeconds, elapsedSeconds)
     if (hitPlayer) triggerShake(shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
     updateMonsterHitReaction(mesh, deltaSeconds)
+
+    if (!isOnPlatform({ x: mesh.position.x, z: mesh.position.z }, ARENA_RADIUS)) {
+      mesh.userData.falling = true
+      mesh.userData.fallState = { velocityY: 0, fallenY: 0 }
+    }
     return true
   })
   game.monsters = monsters
 
-  separateMonsters(monsters, player, collisionGrid)
-  updateTorchFlicker(dungeon.torches, elapsedSeconds)
+  separateMonsters(monsters, player, obstacles)
+  updateArena(game.arena, elapsedSeconds)
 
   updateHud(hud, {
     hp: player.hp,
@@ -278,7 +326,7 @@ function animate() {
   camera.position.y += shakeOffset.y
   camera.position.z += shakeOffset.z
 
-  renderer.render(scene, camera)
+  composer.render()
   input.endFrame()
   requestAnimationFrame(animate)
 }

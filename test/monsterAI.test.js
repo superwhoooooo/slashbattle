@@ -1,18 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { parseMap } from '../src/logic/grid.js'
 import { nextMonsterState } from '../src/logic/monsterAI.js'
 
-const MAP = ['#####', '#...#', '#...#', '#...#', '#####']
-const grid = parseMap(MAP)
-const tileSize = 1
-
 const cfg = {
-  grid,
-  tileSize,
-  rng: () => 0.5, // deterministic: always lands on the center offset
+  arenaRadius: 10,
+  wanderMargin: 1,
+  rng: () => 0.5, // deterministic: always lands on the same wander point
   attackRange: 1.5,
   searchDuration: 3,
-  wanderRadiusTiles: 1,
   wanderTimeout: 4,
   arrivalDistance: 0.3,
 }
