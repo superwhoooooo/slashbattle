@@ -39,6 +39,7 @@ import {
   STARFIELD_OPACITY,
   STARFIELD_RADIUS,
 } from './config.js'
+import { platformLayout } from './logic/arena.js'
 
 // Draws a neon grid (concentric rings + radial spokes) for the platform's
 // top surface, used as an emissive map so it glows against the dark
@@ -146,6 +147,11 @@ function createPlatform() {
   const group = new THREE.Group()
   const topRadius = ARENA_RADIUS
   const bottomRadius = ARENA_RADIUS * 0.7
+  // Keeps the disc's top surface flush with y = 0, the ground plane
+  // every character/pod/particle stands on, instead of the disc's own
+  // vertical center sitting there (which used to bury everything
+  // standing on y = 0 by half the disc's thickness).
+  const { discCenterY } = platformLayout(ARENA_THICKNESS)
 
   const sideMaterial = new THREE.MeshStandardMaterial({
     color: ARENA_UNDERSIDE_COLOR,
@@ -170,6 +176,7 @@ function createPlatform() {
   // that order, so an array of three materials gives each its own look.
   const discGeometry = new THREE.CylinderGeometry(topRadius, bottomRadius, ARENA_THICKNESS, 64)
   const disc = new THREE.Mesh(discGeometry, [sideMaterial, topMaterial, bottomMaterial])
+  disc.position.y = discCenterY
   disc.receiveShadow = true
   group.add(disc)
 
@@ -183,19 +190,19 @@ function createPlatform() {
   })
   const rim = new THREE.Mesh(rimGeometry, rimMaterial)
   rim.rotation.x = Math.PI / 2
-  rim.position.y = ARENA_THICKNESS / 2
+  rim.position.y = discCenterY + ARENA_THICKNESS / 2
   group.add(rim)
 
   const taperGeometry = new THREE.CylinderGeometry(bottomRadius, bottomRadius * 0.15, ARENA_THICKNESS * 1.6, 48)
   const taper = new THREE.Mesh(taperGeometry, bottomMaterial)
-  taper.position.y = -ARENA_THICKNESS * 1.3
+  taper.position.y = discCenterY - ARENA_THICKNESS * 1.3
   group.add(taper)
 
   const thrusters = []
   for (let i = 0; i < ARENA_THRUSTER_COUNT; i++) {
     const angle = (i / ARENA_THRUSTER_COUNT) * Math.PI * 2
     const radius = bottomRadius * 0.5
-    const y = -ARENA_THICKNESS * 2.1
+    const y = discCenterY - ARENA_THICKNESS * 2.1
 
     const glowMaterial = new THREE.MeshStandardMaterial({
       color: ARENA_THRUSTER_COLOR,
@@ -223,6 +230,7 @@ function createPylons() {
   const group = new THREE.Group()
   const pylons = []
   const radius = ARENA_RADIUS * 0.85
+  const { topY } = platformLayout(ARENA_THICKNESS)
 
   for (let i = 0; i < PYLON_COUNT; i++) {
     const angle = (i / PYLON_COUNT) * Math.PI * 2
@@ -234,7 +242,7 @@ function createPylons() {
       new THREE.CylinderGeometry(0.12, 0.12, 2.2, 8),
       new THREE.MeshStandardMaterial({ color: 0x222233, metalness: 0.6, roughness: 0.4 }),
     )
-    post.position.set(postX, ARENA_THICKNESS / 2 + 1.1, postZ)
+    post.position.set(postX, topY + 1.1, postZ)
     post.castShadow = true
     group.add(post)
 

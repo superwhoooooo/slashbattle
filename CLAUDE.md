@@ -148,6 +148,17 @@ burst). `jelly.params` stashes that frame's displacement params so a
 a sword (player only) is attached directly to the body group instead,
 so it stays rigid.
 
+Every body's resting center height (`createJellyBody`'s `restY`) is set
+so its lowest point touches y = 0 -- `src/logic/arena.js`'s
+`platformLayout` keeps the platform's own top surface there too, rather
+than at its vertical center, so nothing stands half-buried in it.
+`updateJelly` also re-pins the body's lowest ORIGINAL vertex to that
+same height every frame (adjusting body/edges' group-local y by
+whatever the hit spring's squash/inflate moved that vertex), so the
+body's feet stay planted instead of floating or sinking as it
+squashes/inflates; `face3d.js` applies the same correction to its
+features so they don't detach from the body.
+
 ## 3D face features
 `src/logic/faceLayout.js` places a body's face features (eyes, brow,
 mouth, tongue, cheeks) just outside its surface rather than sunk inside

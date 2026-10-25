@@ -316,11 +316,20 @@ export function updateFace3D(characterGroup, dt, time) {
 
   const jelly = characterGroup.userData.jelly
   const params = jelly ? jelly.params : null
+  // The same vertical correction jelly.js applies to the body/edges so
+  // the body's bottom stays pinned to the ground through a squash/
+  // inflate -- applied here too so the face doesn't visually detach
+  // from the body it's riding.
+  const groundAnchorOffset = jelly ? jelly.groundAnchorOffset : 0
 
   if (params) {
     for (const feature of face.features) {
       const [dx, dy, dz] = jellyOffset(feature.rel.x, feature.rel.y, feature.rel.z, time, params)
-      feature.anchorGroup.position.set(feature.rest.x + dx, feature.rest.y + dy, feature.rest.z + dz)
+      feature.anchorGroup.position.set(
+        feature.rest.x + dx,
+        feature.rest.y + dy + groundAnchorOffset,
+        feature.rest.z + dz,
+      )
     }
   }
 

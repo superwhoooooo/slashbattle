@@ -14,6 +14,7 @@ import {
 import { createFace3D } from './face3d.js'
 import { createJellyBody } from './jelly.js'
 import { PLAYER_FACE, pickFaceOptions } from './logic/faceOptions.js'
+import { bodySurfaceDistance } from './logic/faceLayout.js'
 
 const PLAYER_BODY_COLOR = 0x3388ff
 
@@ -155,6 +156,19 @@ const GEOMETRY_BUILDERS = {
   box: createGrumpusGeometry,
 }
 
+// The body's resting center height so its lowest point touches the
+// ground (y = 0, the platform's top surface per platformLayout).
+// size/2 is correct for the dodecahedron/box (symmetric top-to-bottom),
+// but zippy's octahedron is stretched 1.3x vertically (see
+// createZippyGeometry), so centering it at size/2 used to leave its
+// lower, stretched tip poking 0.15 * size below the ground; reusing
+// faceLayout's own bodySurfaceDistance (straight down) gives the exact
+// height instead (size * 0.65), so this stays correct if the stretch
+// ever changes.
+function monsterBodyCenterY(stats) {
+  return stats.shape === 'octahedron' ? bodySurfaceDistance(stats.shape, stats.size, 0, -1, 0) : stats.size / 2
+}
+
 // Builds the player's body: a faceted, flat-shaded icosahedron jelly body
 // with glowing neon edges, the goofy preset face built from 3D geometry
 // (googly eyes, buck teeth, rosy cheeks) attached so it rides the
@@ -163,12 +177,10 @@ const GEOMETRY_BUILDERS = {
 export function createPlayerMesh() {
   const geometry = createPlayerGeometry()
   const material = createJellyMaterial(PLAYER_BODY_COLOR)
-  const group = createJellyBody(geometry, material, PLAYER_EDGE_COLOR)
+  const group = createJellyBody(geometry, material, PLAYER_EDGE_COLOR, PLAYER_BODY_RADIUS)
 
-  const { body, edges } = group.userData.jelly
-  body.position.y = PLAYER_BODY_RADIUS
+  const { body } = group.userData.jelly
   body.castShadow = true
-  edges.position.y = PLAYER_BODY_RADIUS
 
   const face = createFace3D({
     shape: 'icosahedron',
@@ -202,17 +214,16 @@ export function createMonsterMesh(type, rng = Math.random) {
   const stats = MONSTER_TYPES[type]
   const geometry = GEOMETRY_BUILDERS[stats.shape](stats.size)
   const material = createJellyMaterial(stats.color)
-  const group = createJellyBody(geometry, material, stats.edgeColor)
+  const bodyCenterY = monsterBodyCenterY(stats)
+  const group = createJellyBody(geometry, material, stats.edgeColor, bodyCenterY)
 
-  const { body, edges } = group.userData.jelly
-  body.position.y = stats.size / 2
+  const { body } = group.userData.jelly
   body.castShadow = true
-  edges.position.y = stats.size / 2
 
   const face = createFace3D({
     shape: stats.shape,
     size: stats.size,
-    bodyCenterY: stats.size / 2,
+    bodyCenterY,
     bodyColor: stats.color,
     options: pickFaceOptions(rng),
     faceTypeScale: FACE_SCALE_BY_TYPE[type] ?? 1,
