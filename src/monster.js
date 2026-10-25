@@ -12,6 +12,7 @@ import {
   SEARCH_SPIN_SPEED,
   SEPARATION_STRENGTH,
   SIGHT_RANGE,
+  WANDER_BIAS_RADIUS,
   WANDER_TIMEOUT,
 } from './config.js'
 import { clampToPlatform, resolveArenaMove } from './logic/arena.js'
@@ -140,6 +141,7 @@ export function updateMonster(monster, player, obstacles, dt, now) {
     {
       arenaRadius: ARENA_RADIUS,
       wanderMargin: MONSTER_PLATFORM_MARGIN,
+      wanderBiasRadius: WANDER_BIAS_RADIUS,
       attackRange: MONSTER_ATTACK_RANGE,
       searchDuration: SEARCH_DURATION,
       wanderTimeout: WANDER_TIMEOUT,

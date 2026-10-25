@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import {
   ARENA_GRID_COLOR,
   ARENA_GRID_PULSE_SPEED,
+  ARENA_GRID_RING_SPACING,
   ARENA_RADIUS,
   ARENA_RIM_COLOR,
   ARENA_RIM_THICKNESS,
@@ -21,6 +22,8 @@ import {
   HEMI_LIGHT_SKY_COLOR,
   KEY_LIGHT_COLOR,
   KEY_LIGHT_INTENSITY,
+  KEY_LIGHT_OFFSET,
+  KEY_LIGHT_SHADOW_EXTENT,
   PYLON_CAP_EMISSIVE_INTENSITY,
   PYLON_COLORS,
   PYLON_COUNT,
@@ -54,7 +57,13 @@ function createGridTexture() {
 
   ctx.strokeStyle = ARENA_GRID_COLOR
   ctx.lineWidth = 2
-  for (let r = size / 12; r < center; r += size / 12) {
+  // Ring count scales with ARENA_RADIUS (rather than a fixed count) so
+  // each ring stays ARENA_GRID_RING_SPACING world units apart however
+  // big the platform is -- the texture always maps onto the platform's
+  // full radius, so a fixed ring count would stretch the cells.
+  const ringCount = Math.max(1, Math.round(ARENA_RADIUS / ARENA_GRID_RING_SPACING))
+  for (let i = 1; i <= ringCount; i++) {
+    const r = (i / ringCount) * center
     ctx.beginPath()
     ctx.arc(center, center, r, 0, Math.PI * 2)
     ctx.stroke()
@@ -258,19 +267,24 @@ export function createArena() {
   const hemiLight = new THREE.HemisphereLight(HEMI_LIGHT_SKY_COLOR, HEMI_LIGHT_GROUND_COLOR, HEMI_LIGHT_INTENSITY)
   group.add(hemiLight)
 
+  // The shadow frustum is a small, fixed size (KEY_LIGHT_SHADOW_EXTENT)
+  // rather than scaled to ARENA_RADIUS, so it stays crisp on a big
+  // arena; updateArena re-centers both the light and its target on the
+  // player every frame (at the same KEY_LIGHT_OFFSET this sets them at
+  // initially) so that fixed frustum still covers wherever play is
+  // actually happening.
   const keyLight = new THREE.DirectionalLight(KEY_LIGHT_COLOR, KEY_LIGHT_INTENSITY)
-  keyLight.position.set(12, 22, 10)
+  keyLight.position.set(KEY_LIGHT_OFFSET.x, KEY_LIGHT_OFFSET.y, KEY_LIGHT_OFFSET.z)
   keyLight.castShadow = true
   keyLight.shadow.mapSize.set(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE)
-  keyLight.shadow.camera.left = -ARENA_RADIUS * 1.2
-  keyLight.shadow.camera.right = ARENA_RADIUS * 1.2
-  keyLight.shadow.camera.top = ARENA_RADIUS * 1.2
-  keyLight.shadow.camera.bottom = -ARENA_RADIUS * 1.2
+  keyLight.shadow.camera.left = -KEY_LIGHT_SHADOW_EXTENT
+  keyLight.shadow.camera.right = KEY_LIGHT_SHADOW_EXTENT
+  keyLight.shadow.camera.top = KEY_LIGHT_SHADOW_EXTENT
+  keyLight.shadow.camera.bottom = -KEY_LIGHT_SHADOW_EXTENT
   keyLight.shadow.camera.near = 1
   keyLight.shadow.camera.far = 60
   group.add(keyLight)
-  // keyLight.target stays at its default (0, 0, 0), which is the
-  // platform's center, so it doesn't need to be added to the graph.
+  group.add(keyLight.target) // needs to be in the graph for its moving position to take effect
 
   const { group: platformGroup, topMaterial, thrusters } = createPlatform()
   group.add(platformGroup)
@@ -283,14 +297,17 @@ export function createArena() {
 
   const fog = new THREE.Fog(FOG_COLOR, FOG_NEAR, FOG_FAR)
 
-  return { group, fog, backgroundColor: FOG_COLOR, topMaterial, pylons, thrusters }
+  return { group, fog, backgroundColor: FOG_COLOR, topMaterial, pylons, thrusters, keyLight }
 }
 
 // Gives each pylon's light/cap and each thruster's light a gentle neon
 // pulse (a sum of two sines at different speeds, offset by a random
-// per-light phase so they don't pulse in sync), and slowly pulses the
-// platform's grid glow.
-export function updateArena(arena, elapsedSeconds) {
+// per-light phase so they don't pulse in sync), slowly pulses the
+// platform's grid glow, and -- given the player's current position --
+// re-centers the key light and its shadow target on the player, so its
+// small fixed shadow frustum (KEY_LIGHT_SHADOW_EXTENT) stays over
+// wherever play actually is on a big arena.
+export function updateArena(arena, elapsedSeconds, playerPos) {
   for (const pylon of arena.pylons) {
     const t = elapsedSeconds + pylon.phase
     const noise = Math.sin(t * PYLON_PULSE_SPEED_A) * 0.6 + Math.sin(t * PYLON_PULSE_SPEED_B) * 0.4
@@ -304,5 +321,14 @@ export function updateArena(arena, elapsedSeconds) {
     thruster.glowMaterial.emissiveIntensity = ARENA_THRUSTER_EMISSIVE_INTENSITY * (1 + noise * ARENA_THRUSTER_PULSE_AMOUNT)
   }
 
-  arena.topMaterial.emissiveIntensity = 0.8 + Math.sin(elapsedSeconds * ARENA_GRID_PULSE_SPEED) * 0.3
+  arena.topMaterial.emissiveIntensity = 0.35 + Math.sin(elapsedSeconds * ARENA_GRID_PULSE_SPEED) * 0.1
+
+  if (playerPos) {
+    arena.keyLight.target.position.set(playerPos.x, 0, playerPos.z)
+    arena.keyLight.position.set(
+      playerPos.x + KEY_LIGHT_OFFSET.x,
+      KEY_LIGHT_OFFSET.y,
+      playerPos.z + KEY_LIGHT_OFFSET.z,
+    )
+  }
 }

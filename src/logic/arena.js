@@ -67,11 +67,26 @@ export function randomPointOnPlatform(rng = Math.random, arenaRadius, margin = 0
   return { x: Math.sin(angle) * radius, z: Math.cos(angle) * radius }
 }
 
-// A random point at a fixed inward margin from the platform's edge, used
-// to spawn monsters arriving at the rim. rng is injectable (default
-// Math.random) for deterministic tests.
-export function edgeSpawnPoint(rng = Math.random, arenaRadius, margin = 0) {
+// A uniformly-random point within `maxDist` of `center` (area-uniform,
+// same sqrt(rng()) trick as randomPointOnPlatform), clamped onto the
+// platform. Used to bias a monster's wander target to stay near where
+// it already is, rather than trekking clean across a big arena.
+export function randomPointNear(rng = Math.random, center, maxDist, arenaRadius, margin = 0) {
   const angle = rng() * Math.PI * 2
-  const radius = Math.max(arenaRadius - margin, 0)
-  return { x: Math.sin(angle) * radius, z: Math.cos(angle) * radius }
+  const distance = Math.sqrt(rng()) * maxDist
+  const point = { x: center.x + Math.sin(angle) * distance, z: center.z + Math.cos(angle) * distance }
+  return clampToPlatform(point, Math.max(arenaRadius - margin, 0))
+}
+
+// A random point on a ring `minDist`-`maxDist` from the PLAYER's current
+// position, clamped onto the platform with `margin` in from the edge --
+// used to spawn monsters close enough to the player to reach them in a
+// reasonable time on a big arena, rather than always walking in from the
+// platform's actual edge. rng is injectable (default Math.random) for
+// deterministic tests.
+export function spawnPointNearPlayer(rng = Math.random, playerPos, minDist, maxDist, arenaRadius, margin = 0) {
+  const angle = rng() * Math.PI * 2
+  const distance = minDist + rng() * (maxDist - minDist)
+  const point = { x: playerPos.x + Math.sin(angle) * distance, z: playerPos.z + Math.cos(angle) * distance }
+  return clampToPlatform(point, Math.max(arenaRadius - margin, 0))
 }

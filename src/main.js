@@ -19,7 +19,6 @@ import {
   CAMERA_FAR,
   CAMERA_LERP,
   CAMERA_OFFSET,
-  EDGE_SPAWN_MARGIN,
   FALL_DESPAWN_DEPTH,
   FALL_GRAVITY,
   FALL_PUFF_COLOR,
@@ -39,6 +38,9 @@ import {
   SHAKE_DAMAGE_MAGNITUDE,
   SHAKE_HIT_DURATION,
   SHAKE_HIT_MAGNITUDE,
+  SPAWN_NEAR_PLAYER_MARGIN,
+  SPAWN_NEAR_PLAYER_MAX_DIST,
+  SPAWN_NEAR_PLAYER_MIN_DIST,
   SWORD_BLADE_COLOR,
   TONE_MAPPING_EXPOSURE,
   WAVE_CLEAR_HEAL,
@@ -55,7 +57,7 @@ import {
   updateHud,
 } from './hud.js'
 import { Input } from './input.js'
-import { edgeSpawnPoint, isOnPlatform } from './logic/arena.js'
+import { isOnPlatform, spawnPointNearPlayer } from './logic/arena.js'
 import { stepFall } from './logic/falling.js'
 import { evaluateGameState } from './logic/gameState.js'
 import { createWaveState, scoreForKill, stepWaves, waveClearBonus, waveSize } from './logic/waves.js'
@@ -215,14 +217,23 @@ function createGame() {
   }
 }
 
-// Spawns one monster of `type` at the platform's edge, wandering once it
-// finishes materializing. Added to the scene and game.monsters right
-// away (marked userData.spawning so AI/combat/separation skip it), with
-// a matching spawn-in effect tracked in game.spawnEffects until it
+// Spawns one monster of `type` on a ring around the PLAYER's current
+// position (not the platform's actual edge -- on a radius-48 arena that
+// would take far too long to close in), wandering once it finishes
+// materializing. Added to the scene and game.monsters right away
+// (marked userData.spawning so AI/combat/separation skip it), with a
+// matching spawn-in effect tracked in game.spawnEffects until it
 // finishes.
 function spawnMonster(game, type) {
   const stats = MONSTER_TYPES[type]
-  const spawn = edgeSpawnPoint(Math.random, ARENA_RADIUS, EDGE_SPAWN_MARGIN)
+  const spawn = spawnPointNearPlayer(
+    Math.random,
+    game.player.position,
+    SPAWN_NEAR_PLAYER_MIN_DIST,
+    SPAWN_NEAR_PLAYER_MAX_DIST,
+    ARENA_RADIUS,
+    SPAWN_NEAR_PLAYER_MARGIN,
+  )
 
   const mesh = createMonsterMesh(type)
   mesh.position.x = spawn.x
@@ -433,7 +444,7 @@ function animate() {
   })
 
   separateMonsters(monsters, player, obstacles)
-  updateArena(game.arena, elapsedSeconds)
+  updateArena(game.arena, elapsedSeconds, player.position)
   updateParticles(particleSystem, deltaSeconds)
   updatePopups(popupPool, deltaSeconds)
 

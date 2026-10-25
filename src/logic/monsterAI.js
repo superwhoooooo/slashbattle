@@ -1,7 +1,7 @@
 // Pure, Three-free monster AI state machine. Kept free of Three.js imports
 // so Vitest can exercise it without WebGL; the Three-side driver lives in
 // src/monster.js.
-import { randomPointOnPlatform } from './arena.js'
+import { randomPointNear } from './arena.js'
 
 export const MONSTER_STATES = {
   WANDER: 'wander',
@@ -13,18 +13,26 @@ export const MONSTER_STATES = {
 const DEFAULT_ARRIVAL_DISTANCE = 0.3
 const DEFAULT_WANDER_MARGIN = 1.5
 const DEFAULT_WANDER_TIMEOUT = 4
+const DEFAULT_WANDER_BIAS_RADIUS = 15
 
 function distanceBetween(a, b) {
   return Math.hypot(a.x - b.x, a.z - b.z)
 }
 
-// Picks a random point anywhere on the platform (kept wanderMargin away
-// from the edge, like the margin that keeps steering targets on the
-// platform generally) to wander toward next. rng is injectable (default
-// Math.random) for deterministic tests.
-function pickWanderTarget(cfg) {
-  const { rng = Math.random, arenaRadius, wanderMargin = DEFAULT_WANDER_MARGIN } = cfg
-  return randomPointOnPlatform(rng, arenaRadius, wanderMargin)
+// Picks a point near the monster's current position (kept wanderMargin
+// away from the edge, like the margin that keeps steering targets on the
+// platform generally) to wander toward next -- biased to within
+// wanderBiasRadius of `position` so a wandering monster doesn't trek
+// clean across a big arena. rng is injectable (default Math.random) for
+// deterministic tests.
+function pickWanderTarget(position, cfg) {
+  const {
+    rng = Math.random,
+    arenaRadius,
+    wanderMargin = DEFAULT_WANDER_MARGIN,
+    wanderBiasRadius = DEFAULT_WANDER_BIAS_RADIUS,
+  } = cfg
+  return randomPointNear(rng, position, wanderBiasRadius, arenaRadius, wanderMargin)
 }
 
 // Advances one monster's AI state machine by one tick.
@@ -125,7 +133,7 @@ export function nextMonsterState(monster, perception, now, cfg) {
           state: MONSTER_STATES.WANDER,
           stateEnteredAt: now,
           lastKnownPos: null,
-          wanderTarget: pickWanderTarget(cfg),
+          wanderTarget: pickWanderTarget(monster.position, cfg),
           wanderPickedAt: now,
         }
       }
@@ -157,7 +165,7 @@ export function nextMonsterState(monster, perception, now, cfg) {
         return {
           state: MONSTER_STATES.WANDER,
           stateEnteredAt: monster.stateEnteredAt ?? now,
-          wanderTarget: pickWanderTarget(cfg),
+          wanderTarget: pickWanderTarget(monster.position, cfg),
           wanderPickedAt: now,
         }
       }

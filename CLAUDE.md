@@ -9,7 +9,10 @@ track of them.
 ## Gameplay
 There's no win state: monsters (a mix of Blobbo, Zippy, and Grumpus)
 arrive in endless waves, each bigger than the last, trickling in one at
-a time at the platform's edge with a glowing spawn-in effect. Losing all
+a time with a glowing spawn-in effect on a ring 14-22 units out from the
+PLAYER's current position (not the platform's actual edge -- the
+platform's much bigger than that now, and an edge spawn would take too
+long to close in), clamped onto the platform. Losing all
 your hp loses the game. Monsters wander until they spot you, chase, and
 attack once in range; hiding in a pod breaks their line of sight, so a
 chasing or attacking monster gives up and searches your last known spot
@@ -81,14 +84,17 @@ context.
 
 ## Arena
 The dungeon has been replaced by a single circular platform (radius
-`ARENA_RADIUS`) floating in space, with no walls at the edge -- line of
-sight is always clear, so monsters see the player whenever they're
+`ARENA_RADIUS`, 48) floating in space, with no walls at the edge -- line
+of sight is always clear, so monsters see the player whenever they're
 within `SIGHT_RANGE` and not hidden. Cargo pods are temporarily placed at
-a few fixed positions on the platform (`POD_POSITIONS` in config.js) as
-circular obstacles; a later milestone spawns them dynamically. Monsters
-keep their own steering (wander, chase, search) away from the very edge
-(`MONSTER_PLATFORM_MARGIN`), so only knockback -- or the player's own
-choice to walk off -- sends anyone over the side.
+a few fixed positions on the platform (`POD_POSITIONS` in config.js, 12
+of them in two rings) as circular obstacles; a later milestone spawns
+them dynamically. Monsters keep their own steering (wander, chase,
+search) away from the very edge (`MONSTER_PLATFORM_MARGIN`), so only
+knockback -- or the player's own choice to walk off -- sends anyone over
+the side. A wandering monster's target is biased to within
+`WANDER_BIAS_RADIUS` of its current position (`randomPointNear` in
+`src/logic/arena.js`), so it doesn't trek clean across the arena.
 
 Lighting stays deliberately dim: the hemisphere/key lights are the main
 source, bloom is tuned low and only picks up genuinely bright surfaces

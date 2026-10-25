@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
   clampToPlatform,
-  edgeSpawnPoint,
   isOnPlatform,
+  randomPointNear,
   randomPointOnPlatform,
   resolveArenaMove,
+  spawnPointNearPlayer,
 } from '../src/logic/arena.js'
 
 describe('isOnPlatform', () => {
@@ -87,17 +88,49 @@ describe('randomPointOnPlatform', () => {
   })
 })
 
-describe('edgeSpawnPoint', () => {
-  it('lies at the given inward margin from the edge', () => {
-    const point = edgeSpawnPoint(() => 0.25, 16, 1)
-    expect(Math.hypot(point.x, point.z)).toBeCloseTo(15, 5)
+describe('randomPointNear', () => {
+  it('stays within maxDist of the center across many seeds', () => {
+    const center = { x: 3, z: -4 }
+    for (let seed = 0; seed < 200; seed++) {
+      const point = randomPointNear(createSeededRng(seed), center, 15, 48, 0)
+      const distance = Math.hypot(point.x - center.x, point.z - center.z)
+      expect(distance).toBeLessThanOrEqual(15 + 1e-9)
+    }
   })
 
-  it('lies near the edge across a range of angles', () => {
+  it('stays on the platform even when the bias radius would otherwise overshoot the edge', () => {
+    const center = { x: 46, z: 0 } // near the edge of a radius-48 platform
+    for (let seed = 0; seed < 200; seed++) {
+      const point = randomPointNear(createSeededRng(seed), center, 15, 48, 1.5)
+      expect(isOnPlatform(point, 48)).toBe(true)
+    }
+  })
+})
+
+describe('spawnPointNearPlayer', () => {
+  it('lies between minDist and maxDist of the player across a range of angles', () => {
+    const playerPos = { x: 5, z: -2 }
     for (let i = 0; i < 20; i++) {
-      const point = edgeSpawnPoint(() => i / 20, 16, 1)
-      expect(Math.hypot(point.x, point.z)).toBeCloseTo(15, 5)
-      expect(isOnPlatform(point, 16)).toBe(true)
+      const point = spawnPointNearPlayer(() => i / 20, playerPos, 14, 22, 48, 3)
+      const distance = Math.hypot(point.x - playerPos.x, point.z - playerPos.z)
+      expect(distance).toBeGreaterThanOrEqual(14 - 1e-9)
+      expect(distance).toBeLessThanOrEqual(22 + 1e-9)
+    }
+  })
+
+  it('stays within arenaRadius - margin of the platform center', () => {
+    const playerPos = { x: 0, z: 0 }
+    for (let seed = 0; seed < 200; seed++) {
+      const point = spawnPointNearPlayer(createSeededRng(seed), playerPos, 14, 22, 48, 3)
+      expect(Math.hypot(point.x, point.z)).toBeLessThanOrEqual(48 - 3 + 1e-9)
+    }
+  })
+
+  it('clamps onto the platform when the player is near the edge', () => {
+    const playerPos = { x: 45, z: 0 } // near the edge of a radius-48 platform
+    for (let seed = 0; seed < 200; seed++) {
+      const point = spawnPointNearPlayer(createSeededRng(seed), playerPos, 14, 22, 48, 3)
+      expect(Math.hypot(point.x, point.z)).toBeLessThanOrEqual(48 - 3 + 1e-9)
     }
   })
 })

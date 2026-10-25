@@ -12,10 +12,12 @@ export const CAMERA_OFFSET = { x: 0, y: 11, z: 8 } // behind, above, and looking
 export const CAMERA_LERP = 6 // higher = camera catches up to the player faster
 
 // Deep purple/blue, far enough out that it doesn't hide the platform
-// (ARENA_RADIUS 16) but still gives the starfield some depth.
+// (ARENA_RADIUS 48) but still gives the starfield some depth and keeps
+// the space mood -- the far edge of the 48-radius platform still fades
+// into it a little, rather than staying crisp all the way out.
 export const FOG_COLOR = 0x140a2e
-export const FOG_NEAR = 40
-export const FOG_FAR = 300
+export const FOG_NEAR = 70
+export const FOG_FAR = 260
 
 // Monster types: shape (jelly body geometry), size (body scale), color,
 // edgeColor (the glowing wireframe overlay), speed (world units/second),
@@ -68,12 +70,16 @@ export const FACE_PUPIL_HIT_KICK = 0.3
 export const FACE_SCALE_BY_TYPE = { blobbo: 1, zippy: 1.6, grumpus: 1 }
 
 // Arena platform geometry and the neon grid pulsing across its top.
-export const ARENA_RADIUS = 16
+export const ARENA_RADIUS = 48
 export const ARENA_THICKNESS = 1.2
 export const ARENA_TOP_COLOR = 0x14141c
 export const ARENA_UNDERSIDE_COLOR = 0x0a0a10
 export const ARENA_GRID_COLOR = '#19e7ff'
 export const ARENA_GRID_PULSE_SPEED = 1.5 // radians per second
+// How many world units apart the grid's concentric rings are drawn --
+// kept constant as ARENA_RADIUS changes (the grid texture redraws with
+// however many rings that takes) so the cells don't stretch.
+export const ARENA_GRID_RING_SPACING = 16 / 11
 export const ARENA_RIM_COLOR = 0x00e5ff
 export const ARENA_RIM_THICKNESS = 0.5
 
@@ -117,6 +123,12 @@ export const HEMI_LIGHT_INTENSITY = 0.45
 export const KEY_LIGHT_COLOR = 0xbcd2ff
 export const KEY_LIGHT_INTENSITY = 1.1
 export const SHADOW_MAP_SIZE = 2048
+// The key light (and its target) follow the player every frame at this
+// fixed world-space offset, rather than staying fixed over the
+// platform's center, so a shadow frustum this small stays crisp however
+// big the arena is.
+export const KEY_LIGHT_OFFSET = { x: 12, y: 22, z: 10 }
+export const KEY_LIGHT_SHADOW_EXTENT = 25
 
 // Post-processing bloom (EffectComposer + UnrealBloomPass in main.js)
 // and the renderer's own tone mapping exposure -- both turned down a
@@ -140,19 +152,38 @@ export const MONSTER_FALL_TUMBLE_SPEED = 3 // radians/second, cosmetic tumble wh
 // can send it over the side.
 export const MONSTER_PLATFORM_MARGIN = 1.5
 
-// Temporary fixed ring of 5 cargo pod positions on the platform (radius
-// 8), standing in as circular obstacles until a later milestone spawns
-// them dynamically.
+// Wander targets are biased to within this many world units of the
+// monster's current position (still clamped onto the platform), so a
+// wandering monster doesn't trek clean across the much bigger arena.
+export const WANDER_BIAS_RADIUS = 15
+
+// Temporary fixed ring of 12 cargo pod positions on the platform, in two
+// rings (radius 14 and radius 32, offset 30 degrees from each other),
+// standing in as circular obstacles until a later milestone spawns them
+// dynamically.
 export const POD_POSITIONS = [
-  { x: 0, z: 8 },
-  { x: 7.61, z: 2.47 },
-  { x: 4.7, z: -6.47 },
-  { x: -4.7, z: -6.47 },
-  { x: -7.61, z: 2.47 },
+  { x: 0, z: 14 },
+  { x: 12.12, z: 7 },
+  { x: 12.12, z: -7 },
+  { x: 0, z: -14 },
+  { x: -12.12, z: -7 },
+  { x: -12.12, z: 7 },
+  { x: 16, z: 27.71 },
+  { x: 32, z: 0 },
+  { x: 16, z: -27.71 },
+  { x: -16, z: -27.71 },
+  { x: -32, z: 0 },
+  { x: -16, z: 27.71 },
 ]
 export const POD_OBSTACLE_RADIUS = 0.75 // matches the hover base's visual footprint, plus a little clipping margin
 
-export const EDGE_SPAWN_MARGIN = 1 // world units in from the platform's edge for edge spawns
+// Monsters spawn on a ring this far from the PLAYER's current position
+// (not the platform's edge -- at ARENA_RADIUS 48 that would take far too
+// long to close in), clamped onto the platform with this margin in from
+// the edge.
+export const SPAWN_NEAR_PLAYER_MIN_DIST = 14
+export const SPAWN_NEAR_PLAYER_MAX_DIST = 22
+export const SPAWN_NEAR_PLAYER_MARGIN = 3
 
 // Healed between waves (capped at max hp) so endless runs are survivable.
 export const WAVE_CLEAR_HEAL = 20
@@ -216,7 +247,7 @@ export const KNOCKBACK_STRENGTH = 1.2 // world units a hit monster is pushed bac
 export const HIT_FLASH_DURATION = 0.1 // seconds for a hit flash to fade out
 export const DEATH_POP_DURATION = 0.3 // seconds for the death pop before removal
 
-export const SIGHT_RANGE = 14 // world units a monster can see the player at (the arena has no walls to block it)
+export const SIGHT_RANGE = 24 // world units a monster can see the player at (the arena has no walls to block it) -- raised with ARENA_RADIUS so freshly spawned monsters notice the player
 export const MONSTER_ATTACK_RANGE = 1.2
 export const MONSTER_ATTACK_COOLDOWN = 1.2 // seconds between monster attacks
 export const MONSTER_ATTACK_WINDUP_DURATION = 0.3 // seconds of telegraph lean/grow before the hit lands
