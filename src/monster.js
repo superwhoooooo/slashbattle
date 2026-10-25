@@ -10,6 +10,7 @@ import {
   PLAYER_RADIUS,
   SEARCH_DURATION,
   SEARCH_SPIN_SPEED,
+  MONSTER_FACING_DAMPING,
   SEPARATION_STRENGTH,
   SIGHT_RANGE,
   WANDER_BIAS_RADIUS,
@@ -19,6 +20,7 @@ import { clampToPlatform, resolveArenaMove } from './logic/arena.js'
 import { createCooldown } from './logic/combat.js'
 import { jellyHit } from './jelly.js'
 import { nextMonsterState } from './logic/monsterAI.js'
+import { dampAngle } from './logic/smoothing.js'
 
 const INDICATOR_DURATION = 0.6
 
@@ -48,7 +50,8 @@ export function createMonsterAIState() {
 // monster's own steering -- wander, chase, or search -- never walks it
 // off; only knockback can do that. If an obstacle blocks most of the
 // intended move, nudges sideways too, so direct steering doesn't stick on
-// its edge. Faces the mesh toward the direction actually moved.
+// its edge. Turns the mesh smoothly (dampAngle, shortest way around)
+// toward the direction actually moved, instead of snapping to face it.
 function steerToward(monster, targetPos, speed, dt, obstacles) {
   const clampedTarget = clampToPlatform(targetPos, ARENA_RADIUS - MONSTER_PLATFORM_MARGIN)
   const dx = clampedTarget.x - monster.position.x
@@ -74,7 +77,7 @@ function steerToward(monster, targetPos, speed, dt, obstacles) {
 
   monster.position.x = finalPos.x
   monster.position.z = finalPos.z
-  monster.rotation.y = Math.atan2(dirX, dirZ)
+  monster.rotation.y = dampAngle(monster.rotation.y, Math.atan2(dirX, dirZ), MONSTER_FACING_DAMPING, dt)
 }
 
 // Shows one indicator sprite ("chase" or "search") for INDICATOR_DURATION
@@ -177,7 +180,7 @@ export function updateMonster(monster, player, obstacles, dt, now) {
   } else if (ai.state === 'attack') {
     const dx = player.position.x - monster.position.x
     const dz = player.position.z - monster.position.z
-    monster.rotation.y = Math.atan2(dx, dz)
+    monster.rotation.y = dampAngle(monster.rotation.y, Math.atan2(dx, dz), MONSTER_FACING_DAMPING, dt)
     ai.speed = 0
 
     if (ai.attackCooldown.ready(now)) {

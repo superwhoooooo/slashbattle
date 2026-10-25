@@ -262,6 +262,10 @@ export const MONSTER_ATTACK_WINDUP_INFLATE_RATE = 2.5 // jelly inflate fed into 
 export const SEARCH_DURATION = 3 // seconds spent looking around before giving up and wandering again
 export const SEARCH_SPIN_SPEED = 1.5 // radians per second, while looking around
 
+// How snappily a monster's visual rotation (dampAngle) catches up to
+// the direction it's actually steering/attacking toward.
+export const MONSTER_FACING_DAMPING = 15
+
 export const WANDER_TIMEOUT = 4 // seconds before repicking a wander target if not arrived
 
 export const MONSTER_ARRIVAL_DISTANCE = 0.3 // world units considered "arrived" at a wander/search target
