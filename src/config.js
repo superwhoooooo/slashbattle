@@ -5,6 +5,12 @@ export const PLAYER_RADIUS = 0.35
 export const PLAYER_BODY_RADIUS = 0.6 // icosahedron radius for the player's jelly body (visual only; PLAYER_RADIUS stays the collision radius)
 export const PLAYER_EDGE_COLOR = 0x5fd4ff
 export const PLAYER_SPEED = 4 // world units per second
+// Speed eases into/out of PLAYER_SPEED over this many seconds (a
+// rampToward, not an instant snap) instead of starting/stopping dead.
+export const PLAYER_ACCEL_TIME = 0.1
+// How snappily the mesh's visual rotation (dampAngle) catches up to the
+// player's actual facing direction -- higher converges faster.
+export const PLAYER_FACING_DAMPING = 20
 export const PLAYER_MAX_HP = 100
 export const PLAYER_IFRAME_DURATION = 0.5 // seconds of invulnerability after taking damage
 

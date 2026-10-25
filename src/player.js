@@ -8,6 +8,8 @@ import {
   FALL_GRAVITY,
   HIT_FLASH_DURATION,
   JELLY_HIT_STRENGTH,
+  PLAYER_ACCEL_TIME,
+  PLAYER_FACING_DAMPING,
   PLAYER_IFRAME_DURATION,
   PLAYER_MAX_HP,
   PLAYER_RADIUS,
@@ -19,6 +21,7 @@ import { applyDamage } from './logic/combat.js'
 import { stepFall } from './logic/falling.js'
 import { jellyHit } from './jelly.js'
 import { burst } from './particles.js'
+import { dampAngle, rampToward } from './logic/smoothing.js'
 
 const HIT_FLASH_COLOR = new THREE.Color(1, 0, 0)
 
@@ -150,6 +153,12 @@ export class Player {
   // nothing while hidden or while falling off the platform. Does NOT stop
   // the player from walking off the platform's edge -- main.js checks
   // isOnPlatform after calling this and starts a fall if it has.
+  //
+  // Speed eases into/out of PLAYER_SPEED over PLAYER_ACCEL_TIME (a
+  // rampToward, not an instant snap) instead of starting/stopping dead;
+  // the mesh's visual rotation separately damps toward the (instant)
+  // facing direction via dampAngle, always turning the shortest way, so
+  // turns look smooth without lagging input itself.
   update(input, cameraYaw, deltaSeconds) {
     this._updateHitFlash(deltaSeconds)
     if (this.hidden || this.falling) return
@@ -161,41 +170,43 @@ export class Player {
       (input.isDown('KeyD') || input.isDown('ArrowRight') ? 1 : 0) -
       (input.isDown('KeyA') || input.isDown('ArrowLeft') ? 1 : 0)
 
-    if (forwardInput === 0 && strafeInput === 0) {
-      this.speed = 0
-      return
+    let dirX = 0
+    let dirZ = 0
+    let hasInput = forwardInput !== 0 || strafeInput !== 0
+    if (hasInput) {
+      // Camera-relative forward/right axes: at yaw 0 the camera looks down -Z.
+      const forwardX = -Math.sin(cameraYaw)
+      const forwardZ = -Math.cos(cameraYaw)
+      const rightX = Math.cos(cameraYaw)
+      const rightZ = -Math.sin(cameraYaw)
+
+      dirX = forwardInput * forwardX + strafeInput * rightX
+      dirZ = forwardInput * forwardZ + strafeInput * rightZ
+      const length = Math.hypot(dirX, dirZ)
+      hasInput = length > 0
+      if (hasInput) {
+        dirX /= length
+        dirZ /= length
+        this.facing = Math.atan2(dirX, dirZ)
+        this.moveDir = { x: dirX, z: dirZ }
+      }
     }
 
-    // Camera-relative forward/right axes: at yaw 0 the camera looks down -Z.
-    const forwardX = -Math.sin(cameraYaw)
-    const forwardZ = -Math.cos(cameraYaw)
-    const rightX = Math.cos(cameraYaw)
-    const rightZ = -Math.sin(cameraYaw)
+    const targetSpeed = hasInput ? PLAYER_SPEED : 0
+    this.speed = rampToward(this.speed, targetSpeed, PLAYER_SPEED / PLAYER_ACCEL_TIME, deltaSeconds)
+    this.mesh.rotation.y = dampAngle(this.mesh.rotation.y, this.facing, PLAYER_FACING_DAMPING, deltaSeconds)
 
-    let dirX = forwardInput * forwardX + strafeInput * rightX
-    let dirZ = forwardInput * forwardZ + strafeInput * rightZ
-    const length = Math.hypot(dirX, dirZ)
-    if (length === 0) {
-      this.speed = 0
-      return
-    }
-    dirX /= length
-    dirZ /= length
+    if (this.speed <= 1e-4) return
 
-    const distance = PLAYER_SPEED * deltaSeconds
+    const distance = this.speed * deltaSeconds
     const resolved = resolveArenaMove(
       this.position,
-      { x: dirX * distance, z: dirZ * distance },
+      { x: this.moveDir.x * distance, z: this.moveDir.z * distance },
       PLAYER_RADIUS,
       this.obstacles,
     )
     this.position = resolved
-
-    this.facing = Math.atan2(dirX, dirZ)
-    this.speed = PLAYER_SPEED
-    this.moveDir = { x: dirX, z: dirZ }
     this.mesh.position.x = this.position.x
     this.mesh.position.z = this.position.z
-    this.mesh.rotation.y = this.facing
   }
 }
