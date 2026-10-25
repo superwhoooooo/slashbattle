@@ -29,7 +29,18 @@ export function createHud() {
     loseScore: document.getElementById('lose-score'),
     loseBest: document.getElementById('lose-best'),
     loseNewBest: document.getElementById('lose-new-best'),
+    _last: {}, // dirty-check cache for updateHud's setIfChanged, so it skips DOM writes when nothing changed
   }
+}
+
+// Calls `apply(value)` (a DOM write) only if `value` differs from the
+// last value written under `key` -- most HUD fields are unchanged most
+// frames (score/wave/enemies-left especially), so this skips a lot of
+// needless layout-dirtying DOM writes.
+function setIfChanged(hud, key, value, apply) {
+  if (hud._last[key] === value) return
+  hud._last[key] = value
+  apply(value)
 }
 
 // Flashes the full-screen damage overlay; updateHud fades it back out
@@ -85,14 +96,18 @@ export function updateHud(
   { hp, maxHp, score, wave, enemiesLeft, hidden, showHidePrompt, waveState, deltaSeconds },
 ) {
   const ratio = Math.max(0, Math.min(1, hp / maxHp))
-  hud.healthFill.style.width = `${ratio * 100}%`
-  hud.healthLabel.textContent = `${Math.ceil(Math.max(hp, 0))} / ${maxHp}`
-  hud.healthBar.classList.toggle('low', ratio <= LOW_HP_PULSE_THRESHOLD)
-  hud.scoreCounter.textContent = `Score: ${score}`
-  hud.waveCounter.textContent = `Wave: ${wave}`
-  hud.enemiesLeft.textContent = `Enemies left: ${enemiesLeft}`
-  hud.hiddenIndicator.style.display = hidden ? 'block' : 'none'
-  hud.hidePrompt.style.display = showHidePrompt ? 'block' : 'none'
+  setIfChanged(hud, 'healthRatio', ratio, (r) => {
+    hud.healthFill.style.width = `${r * 100}%`
+    hud.healthBar.classList.toggle('low', r <= LOW_HP_PULSE_THRESHOLD)
+  })
+  setIfChanged(hud, 'healthLabel', `${Math.ceil(Math.max(hp, 0))} / ${maxHp}`, (v) => {
+    hud.healthLabel.textContent = v
+  })
+  setIfChanged(hud, 'score', score, (v) => (hud.scoreCounter.textContent = `Score: ${v}`))
+  setIfChanged(hud, 'wave', wave, (v) => (hud.waveCounter.textContent = `Wave: ${v}`))
+  setIfChanged(hud, 'enemiesLeft', enemiesLeft, (v) => (hud.enemiesLeft.textContent = `Enemies left: ${v}`))
+  setIfChanged(hud, 'hidden', hidden, (v) => (hud.hiddenIndicator.style.display = v ? 'block' : 'none'))
+  setIfChanged(hud, 'showHidePrompt', showHidePrompt, (v) => (hud.hidePrompt.style.display = v ? 'block' : 'none'))
 
   if (hud.ambushElapsed !== null) {
     hud.ambushElapsed += deltaSeconds
@@ -117,10 +132,11 @@ export function updateHud(
   if (hud.waveClearedElapsed === null) {
     if (waveState.phase === 'intermission') {
       const remaining = Math.max(0, WAVE_INTERMISSION - waveState.phaseElapsed)
-      hud.waveBanner.textContent = `WAVE ${waveState.waveNumber} - ${Math.ceil(remaining)}`
-      hud.waveBanner.style.display = 'block'
+      const text = `WAVE ${waveState.waveNumber} - ${Math.ceil(remaining)}`
+      setIfChanged(hud, 'waveBannerText', text, (v) => (hud.waveBanner.textContent = v))
+      setIfChanged(hud, 'waveBannerDisplay', 'block', (v) => (hud.waveBanner.style.display = v))
     } else {
-      hud.waveBanner.style.display = 'none'
+      setIfChanged(hud, 'waveBannerDisplay', 'none', (v) => (hud.waveBanner.style.display = v))
     }
   }
 }
