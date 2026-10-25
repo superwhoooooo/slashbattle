@@ -1,14 +1,15 @@
 // Plain DOM/CSS heads-up display: a player health bar, score, wave
 // number, enemies-left counter, hidden indicator, hide prompt, ambush
-// banner, the wave banner (intermission countdown / wave cleared), the
-// start card, and the game-over screen. No Three.js; just reads and
-// writes the overlay markup in index.html.
-import { AMBUSH_BANNER_DURATION, WAVE_CLEARED_BANNER_DURATION } from './config.js'
+// banner, the wave banner (intermission countdown / wave cleared), a
+// screen-wide damage flash, the start card, and the game-over screen.
+// No Three.js; just reads and writes the overlay markup in index.html.
+import { AMBUSH_BANNER_DURATION, DAMAGE_FLASH_DURATION, LOW_HP_PULSE_THRESHOLD, WAVE_CLEARED_BANNER_DURATION } from './config.js'
 import { WAVE_INTERMISSION } from './logic/waves.js'
 
 // Grabs the HUD elements already present in index.html.
 export function createHud() {
   return {
+    healthBar: document.getElementById('health-bar'),
     healthFill: document.getElementById('health-fill'),
     healthLabel: document.getElementById('health-label'),
     scoreCounter: document.getElementById('score-counter'),
@@ -20,6 +21,8 @@ export function createHud() {
     ambushElapsed: null, // null means the banner isn't showing
     waveBanner: document.getElementById('wave-banner'),
     waveClearedElapsed: null, // null means the "WAVE CLEARED" banner isn't showing
+    damageFlash: document.getElementById('damage-flash'),
+    damageFlashElapsed: null, // null means the flash isn't showing
     startCard: document.getElementById('start-card'),
     loseScreen: document.getElementById('lose-screen'),
     loseWave: document.getElementById('lose-wave'),
@@ -27,6 +30,13 @@ export function createHud() {
     loseBest: document.getElementById('lose-best'),
     loseNewBest: document.getElementById('lose-new-best'),
   }
+}
+
+// Flashes the full-screen damage overlay; updateHud fades it back out
+// after DAMAGE_FLASH_DURATION.
+export function triggerDamageFlash(hud) {
+  hud.damageFlashElapsed = 0
+  hud.damageFlash.classList.add('active')
 }
 
 // Shows the "AMBUSH!" banner; updateHud fades it back out after
@@ -64,10 +74,12 @@ export function showGameOverlay(hud, state, stats) {
   hud.loseNewBest.style.display = stats.isNewBest ? 'block' : 'none'
 }
 
-// Updates the health bar's width/label, the score/wave/enemies-left
-// counters, the "HIDDEN" indicator, the "Press E to hide in pod" prompt, the
-// wave banner (the intermission countdown, unless a "WAVE CLEARED"
-// banner is still showing), and fades out the ambush banner over time.
+// Updates the health bar's width/label (pulsing red at/under
+// LOW_HP_PULSE_THRESHOLD), the score/wave/enemies-left counters, the
+// "HIDDEN" indicator, the "Press E to hide in pod" prompt, the wave
+// banner (the intermission countdown, unless a "WAVE CLEARED" banner is
+// still showing), and fades out the ambush banner and the damage flash
+// over time.
 export function updateHud(
   hud,
   { hp, maxHp, score, wave, enemiesLeft, hidden, showHidePrompt, waveState, deltaSeconds },
@@ -75,6 +87,7 @@ export function updateHud(
   const ratio = Math.max(0, Math.min(1, hp / maxHp))
   hud.healthFill.style.width = `${ratio * 100}%`
   hud.healthLabel.textContent = `${Math.ceil(Math.max(hp, 0))} / ${maxHp}`
+  hud.healthBar.classList.toggle('low', ratio <= LOW_HP_PULSE_THRESHOLD)
   hud.scoreCounter.textContent = `Score: ${score}`
   hud.waveCounter.textContent = `Wave: ${wave}`
   hud.enemiesLeft.textContent = `Enemies left: ${enemiesLeft}`
@@ -86,6 +99,14 @@ export function updateHud(
     if (hud.ambushElapsed >= AMBUSH_BANNER_DURATION) {
       hud.ambushElapsed = null
       hud.ambushBanner.style.display = 'none'
+    }
+  }
+
+  if (hud.damageFlashElapsed !== null) {
+    hud.damageFlashElapsed += deltaSeconds
+    if (hud.damageFlashElapsed >= DAMAGE_FLASH_DURATION) {
+      hud.damageFlashElapsed = null
+      hud.damageFlash.classList.remove('active')
     }
   }
 

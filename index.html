@@ -5,65 +5,117 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SlashBattle</title>
     <style>
+      :root {
+        --neon-cyan: #19e7ff;
+        --neon-magenta: #ff2bd6;
+        --neon-green: #7dffb0;
+        --neon-red: #ff3355;
+        --panel-bg: rgba(10, 16, 28, 0.55);
+      }
+
       html, body {
         margin: 0;
         height: 100%;
         overflow: hidden;
+      }
+      body {
+        font-family: 'Orbitron', system-ui, sans-serif;
       }
       #app {
         width: 100vw;
         height: 100vh;
       }
 
+      .panel {
+        background: var(--panel-bg);
+        backdrop-filter: blur(6px);
+        border: 1px solid rgba(25, 231, 255, 0.5);
+        border-radius: 10px;
+        box-shadow: 0 0 16px rgba(25, 231, 255, 0.25), inset 0 0 20px rgba(25, 231, 255, 0.05);
+      }
+
       #hud {
         position: fixed;
         top: 16px;
         left: 16px;
-        font-family: system-ui, sans-serif;
-        font-weight: 900;
-        color: #fff;
-        text-shadow: 2px 2px 0 #000;
+        padding: 14px 18px;
+        font-weight: 700;
+        color: #e7faff;
+        text-shadow: 0 0 6px rgba(25, 231, 255, 0.6);
         user-select: none;
       }
       #health-bar {
+        position: relative;
         width: 220px;
-        height: 28px;
-        border: 3px solid #000;
-        border-radius: 8px;
-        background: #3a3a42;
-        box-shadow: 2px 2px 0 #000;
+        height: 24px;
+        border: 2px solid var(--neon-cyan);
+        border-radius: 6px;
+        background: #1a1f2e;
+        box-shadow: 0 0 10px rgba(25, 231, 255, 0.5);
         overflow: hidden;
       }
       #health-fill {
         height: 100%;
         width: 100%;
-        background: #e3372a;
-        transition: width 0.15s ease-out;
+        background: linear-gradient(90deg, #19e7ff, #7dffb0);
+        transition: width 0.15s ease-out, background 0.3s ease-out;
+      }
+      /* Segmented look: thin dark seams layered over the fill. */
+      #health-bar::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background-image: repeating-linear-gradient(
+          90deg,
+          transparent 0,
+          transparent 17px,
+          rgba(10, 14, 22, 0.75) 17px,
+          rgba(10, 14, 22, 0.75) 20px
+        );
+        pointer-events: none;
+      }
+      #health-bar.low #health-fill {
+        background: linear-gradient(90deg, #ff3355, #ff8a4c);
+      }
+      #health-bar.low {
+        animation: hp-pulse 0.7s ease-in-out infinite;
+      }
+      @keyframes hp-pulse {
+        0%, 100% { box-shadow: 0 0 8px rgba(255, 51, 85, 0.5); }
+        50% { box-shadow: 0 0 22px rgba(255, 51, 85, 0.95); }
       }
       #health-label {
         display: block;
-        margin-top: 4px;
-        font-size: 14px;
+        margin-top: 6px;
+        font-size: 13px;
+        letter-spacing: 0.05em;
       }
       #score-counter {
-        margin-top: 10px;
+        margin-top: 12px;
         font-size: 16px;
+        color: #ffe066;
+        text-shadow: 0 0 6px rgba(255, 224, 102, 0.6);
       }
       #wave-counter,
       #enemies-left {
         margin-top: 4px;
-        font-size: 16px;
+        font-size: 13px;
+        font-weight: 400;
+        color: #cfeaff;
+        letter-spacing: 0.04em;
       }
       #hidden-indicator {
         display: none;
         margin-top: 10px;
-        font-size: 18px;
-        color: #ffe066;
+        font-size: 16px;
+        color: var(--neon-green);
+        text-shadow: 0 0 8px rgba(125, 255, 176, 0.8);
       }
       #hide-prompt {
         display: none;
         margin-top: 10px;
-        font-size: 14px;
+        font-size: 12px;
+        font-weight: 400;
         color: #cfeaff;
       }
 
@@ -73,11 +125,10 @@
         top: 30%;
         left: 50%;
         transform: translate(-50%, -50%);
-        font-family: system-ui, sans-serif;
         font-weight: 900;
         font-size: 48px;
-        color: #ff3355;
-        text-shadow: 3px 3px 0 #000;
+        color: var(--neon-red);
+        text-shadow: 0 0 10px rgba(255, 51, 85, 0.9), 0 0 24px rgba(255, 51, 85, 0.6);
         user-select: none;
         pointer-events: none;
       }
@@ -87,14 +138,43 @@
         position: fixed;
         top: 16%;
         left: 50%;
-        transform: translate(-50%, -50%);
-        font-family: system-ui, sans-serif;
+        transform: translate(-50%, -50%) scale(0.6);
         font-weight: 900;
-        font-size: 36px;
-        color: #19e7ff;
-        text-shadow: 3px 3px 0 #000;
+        font-size: 40px;
+        letter-spacing: 0.08em;
+        color: var(--neon-cyan);
+        text-shadow: 0 0 10px rgba(25, 231, 255, 0.9), 0 0 28px rgba(25, 231, 255, 0.6);
         user-select: none;
         pointer-events: none;
+        animation: wave-banner-in 0.35s ease-out forwards;
+      }
+      @keyframes wave-banner-in {
+        from { transform: translate(-50%, -50%) scale(0.5); opacity: 0; }
+        to { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+      }
+
+      /* A gentle, always-on darkening of the screen's edges. */
+      #vignette {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 55%, rgba(0, 0, 0, 0.55) 100%);
+        z-index: 5;
+      }
+      /* A brief red flash across the whole screen on player damage. */
+      #damage-flash {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        opacity: 0;
+        background: radial-gradient(ellipse at center, rgba(255, 20, 50, 0.05) 40%, rgba(255, 20, 50, 0.45) 100%);
+        mix-blend-mode: screen;
+        transition: opacity 0.15s ease-out;
+        z-index: 6;
+      }
+      #damage-flash.active {
+        opacity: 1;
+        transition: opacity 0s;
       }
 
       .overlay {
@@ -104,44 +184,104 @@
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        gap: 10px;
-        background: rgba(0, 0, 0, 0.75);
-        font-family: system-ui, sans-serif;
-        font-weight: 900;
-        color: #fff;
+        gap: 12px;
+        background: rgba(4, 6, 14, 0.82);
+        color: #e7faff;
         text-align: center;
-        text-shadow: 2px 2px 0 #000;
         user-select: none;
+        z-index: 10;
+      }
+      .overlay .card {
+        padding: 36px 48px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
       }
       .overlay h1 {
-        font-size: 56px;
+        font-size: 48px;
+        font-weight: 900;
         margin: 0;
+        letter-spacing: 0.06em;
+        color: var(--neon-cyan);
+        text-shadow: 0 0 10px rgba(25, 231, 255, 0.8), 0 0 30px rgba(25, 231, 255, 0.5);
       }
       .overlay p {
-        font-size: 18px;
+        font-size: 15px;
         margin: 0;
         font-weight: 400;
+        color: #cfeaff;
       }
       .overlay .hint {
-        margin-top: 16px;
-        font-weight: 900;
+        margin-top: 10px;
+        font-weight: 700;
+        color: var(--neon-green);
       }
-      #lose-screen {
-        display: none;
+
+      .controls {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        margin: 4px 0;
       }
+      .control-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 13px;
+        font-weight: 400;
+      }
+      kbd {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 28px;
+        height: 28px;
+        padding: 0 8px;
+        font-family: 'Orbitron', system-ui, sans-serif;
+        font-size: 12px;
+        font-weight: 700;
+        color: #e7faff;
+        background: linear-gradient(180deg, #202838, #121722);
+        border: 1px solid var(--neon-cyan);
+        border-radius: 5px;
+        box-shadow: 0 0 6px rgba(25, 231, 255, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+      }
+
       #lose-screen h1 {
-        color: #ff5a5a;
+        color: var(--neon-red);
+        text-shadow: 0 0 10px rgba(255, 51, 85, 0.8), 0 0 30px rgba(255, 51, 85, 0.5);
       }
       #lose-new-best {
         display: none;
         color: #ffe066;
         font-weight: 900;
+        text-shadow: 0 0 10px rgba(255, 224, 102, 0.8);
+      }
+
+      /* Phone-width readability: shrink the HUD and overlay card a touch. */
+      @media (max-width: 480px) {
+        #hud {
+          padding: 10px 12px;
+        }
+        #health-bar {
+          width: 160px;
+        }
+        .overlay h1 {
+          font-size: 34px;
+        }
+        .overlay .card {
+          padding: 24px 20px;
+        }
       }
     </style>
   </head>
   <body>
     <div id="app"></div>
-    <div id="hud">
+    <div id="vignette"></div>
+    <div id="damage-flash"></div>
+
+    <div id="hud" class="panel">
       <div id="health-bar">
         <div id="health-fill"></div>
       </div>
@@ -156,18 +296,27 @@
     <div id="wave-banner"></div>
 
     <div id="start-card" class="overlay">
-      <h1>SlashBattle</h1>
-      <p>WASD move - Click/Space swing - E hide in a pod</p>
-      <p class="hint">Press any key or click to begin</p>
+      <div class="card panel">
+        <h1>SlashBattle</h1>
+        <div class="controls">
+          <div class="control-row"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span>move</span></div>
+          <div class="control-row"><kbd>Click</kbd><kbd>Space</kbd><span>swing sword</span></div>
+          <div class="control-row"><kbd>E</kbd><span>hide in / exit a pod</span></div>
+          <div class="control-row"><kbd>R</kbd><span>restart after losing</span></div>
+        </div>
+        <p class="hint">Press any key or click to begin</p>
+      </div>
     </div>
     <div id="lose-screen" class="overlay">
-      <h1>GAME OVER</h1>
-      <p>You got goofed.</p>
-      <p id="lose-wave">Wave reached: 1</p>
-      <p id="lose-score">Score: 0</p>
-      <p id="lose-best">Best: 0</p>
-      <p id="lose-new-best">NEW BEST!</p>
-      <p class="hint">Press R to play again</p>
+      <div class="card panel">
+        <h1>GAME OVER</h1>
+        <p>You got goofed.</p>
+        <p id="lose-wave">Wave reached: 1</p>
+        <p id="lose-score">Score: 0</p>
+        <p id="lose-best">Best: 0</p>
+        <p id="lose-new-best">NEW BEST!</p>
+        <p class="hint">Press R to play again</p>
+      </div>
     </div>
 
     <script type="module" src="/src/main.js"></script>
