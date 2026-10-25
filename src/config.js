@@ -307,6 +307,13 @@ export const HIDDEN_CAMERA_OFFSET = { x: 0, y: 4, z: 3 } // pulled in closer tha
 export const AMBUSH_WINDOW = 1 // seconds after popping out of hiding that attacks deal ambush damage
 export const AMBUSH_BANNER_DURATION = 1 // seconds the "AMBUSH!" HUD banner stays up
 
+// A hidden player is ejected (knocked out, losing HP) after this many
+// seconds; exiting early with E avoids the penalty. Either way the pod
+// is single-use -- it disappears once vacated.
+export const POD_HIDE_LIMIT = 10 // seconds
+export const POD_EJECT_PENALTY_FRACTION = 0.1 // fraction of PLAYER_MAX_HP
+export const POD_HIDE_URGENT_THRESHOLD = 3 // seconds left when the countdown/pod shake turns urgent
+
 // Cargo pod geometry: a capsule hull standing on a small hover base,
 // glowing seam rings, a translucent visor band, and a soft floor glow.
 export const POD_HULL_RADIUS = 0.45

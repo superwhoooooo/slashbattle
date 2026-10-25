@@ -57,3 +57,22 @@ export function isAmbushActive(now, exitedAt, window) {
   if (exitedAt == null) return false
   return now - exitedAt <= window
 }
+
+// Seconds left before a player hidden since `enteredAt` is ejected at
+// `limit` (clamped to 0, so a caller driving a countdown display never
+// has to clamp it themselves).
+export function hideTimeRemaining(enteredAt, now, limit) {
+  return Math.max(0, limit - (now - enteredAt))
+}
+
+// True once a player hidden since `enteredAt` has reached `limit`
+// seconds in hiding -- the moment they should be ejected.
+export function shouldEject(enteredAt, now, limit) {
+  return now - enteredAt >= limit
+}
+
+// The HP penalty for being ejected: `fraction` of `maxHp` (e.g. 0.1 for
+// a 10% penalty).
+export function ejectPenalty(maxHp, fraction) {
+  return maxHp * fraction
+}

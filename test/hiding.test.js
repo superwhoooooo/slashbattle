@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { canEnterBox, findNearestBox, isAmbushActive, pickExitPoint } from '../src/logic/hiding.js'
+import {
+  canEnterBox,
+  ejectPenalty,
+  findNearestBox,
+  hideTimeRemaining,
+  isAmbushActive,
+  pickExitPoint,
+  shouldEject,
+} from '../src/logic/hiding.js'
 
 describe('findNearestBox', () => {
   const playerPos = { x: 0, z: 0 }
@@ -84,5 +92,39 @@ describe('isAmbushActive', () => {
   it('is false when the player has never exited a box', () => {
     expect(isAmbushActive(10.5, null, 1)).toBe(false)
     expect(isAmbushActive(10.5, undefined, 1)).toBe(false)
+  })
+})
+
+describe('hideTimeRemaining', () => {
+  it('counts down linearly as time passes', () => {
+    expect(hideTimeRemaining(0, 0, 10)).toBe(10)
+    expect(hideTimeRemaining(0, 4, 10)).toBe(6)
+    expect(hideTimeRemaining(5, 8, 10)).toBe(7)
+  })
+
+  it('clamps at 0 rather than going negative once past the limit', () => {
+    expect(hideTimeRemaining(0, 15, 10)).toBe(0)
+    expect(hideTimeRemaining(0, 10, 10)).toBe(0)
+  })
+})
+
+describe('shouldEject', () => {
+  it('is false before the limit', () => {
+    expect(shouldEject(0, 9.99, 10)).toBe(false)
+  })
+
+  it('is true exactly at the limit', () => {
+    expect(shouldEject(0, 10, 10)).toBe(true)
+  })
+
+  it('is true after the limit', () => {
+    expect(shouldEject(0, 12, 10)).toBe(true)
+  })
+})
+
+describe('ejectPenalty', () => {
+  it('is the given fraction of max HP', () => {
+    expect(ejectPenalty(100, 0.1)).toBe(10)
+    expect(ejectPenalty(100, 0.5)).toBe(50)
   })
 })
