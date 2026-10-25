@@ -235,3 +235,76 @@ export const SHAKE_DAMAGE_MAGNITUDE = 0.25 // world units, peak offset
 export const SHAKE_DAMAGE_DURATION = 0.3 // seconds to decay to nothing
 export const SHAKE_HIT_MAGNITUDE = 0.08
 export const SHAKE_HIT_DURATION = 0.15
+
+// Pooled spark/spray particles (src/particles.js): a fixed-size Points
+// pool, ring-buffered so a burst never allocates. Gravity/drag apply to
+// every live particle every frame; each one also fades and shrinks
+// linearly over its own randomized life.
+export const PARTICLE_POOL_SIZE = 300
+export const PARTICLE_GRAVITY = 9
+export const PARTICLE_DRAG = 0.96
+export const PARTICLE_BASE_SIZE = 46 // sprite point size in pixels at 1 world unit from the camera
+export const PARTICLE_LIFE_MIN = 0.3 // seconds
+export const PARTICLE_LIFE_MAX = 0.7 // seconds
+
+// Pooled tumbling shard instances (src/particles.js): a fixed-size
+// InstancedMesh pool of small low-poly tetrahedra, for the big death
+// burst that plain point sprites can't convincingly fake.
+export const SHARD_POOL_SIZE = 90
+export const SHARD_GRAVITY = 14
+export const SHARD_DRAG = 0.97
+export const SHARD_BASE_SIZE = 0.16
+export const SHARD_LIFE_MIN = 0.5 // seconds
+export const SHARD_LIFE_MAX = 1 // seconds
+export const SHARD_SPIN_SPEED = 6 // radians/second, max per-shard tumble
+
+// Per-effect burst tuning (count, speed, color). "Spark" bursts use the
+// Points pool; "shard" bursts use the InstancedMesh pool.
+export const HIT_SPARK_COUNT = 10
+export const HIT_SPARK_SPEED = 3
+export const HIT_SPARK_WHITE_COUNT = 5
+export const HIT_SPARK_WHITE_SPEED = 4
+export const HIT_SPARK_WHITE_COLOR = 0xffffff
+
+export const DEATH_SHARD_COUNT = 18
+export const DEATH_SHARD_SPEED = 4.5
+
+export const FALL_PUFF_COUNT = 14
+export const FALL_PUFF_SPEED = 2
+export const FALL_PUFF_COLOR = 0xcccccc
+export const FALL_STREAK_COUNT = 8
+export const FALL_STREAK_SPEED = 1.5
+
+export const SPAWN_SWIRL_COUNT = 16
+export const SPAWN_SWIRL_SPEED = 1.8
+export const SPAWN_SWIRL_UPWARD_BIAS = 0.7 // 0 = fully random spherical, 1 = straight up
+
+export const DAMAGE_SPARK_COUNT = 14
+export const DAMAGE_SPARK_SPEED = 3.5
+export const DAMAGE_SPARK_COLOR = 0xff3344
+
+// Energy sword: a glowing emissive blade (plus a slightly larger,
+// additive "glow" twin for a bloom-friendly blur) and a dark hilt.
+export const SWORD_BLADE_COLOR = 0x30e0ff
+export const SWORD_GLOW_SCALE = 1.4
+export const SWORD_HILT_COLOR = 0x20222a
+
+// The swing trail: a fixed-length ribbon of the blade tip's recent world
+// positions, additive-blended with the color fading toward black at the
+// oldest end (so the fade reads without a custom per-vertex-alpha shader).
+export const TRAIL_MAX_POINTS = 10
+export const TRAIL_WIDTH = 0.12
+
+// Floating damage-number popups (src/popups.js): a small pool of sprites
+// showing "+100"-style text (or "RING OUT!" for a fall), rising and
+// fading over their life.
+export const POPUP_POOL_SIZE = 12
+export const POPUP_LIFE = 0.9 // seconds
+export const POPUP_RISE_SPEED = 1.2 // world units over the popup's life
+export const POPUP_KILL_COLOR = '#ffe066'
+export const POPUP_RING_OUT_COLOR = '#7dd3ff'
+
+// A brief red flash over the whole screen (CSS) when the player takes
+// damage, and the health bar's low-hp pulse threshold.
+export const DAMAGE_FLASH_DURATION = 0.15 // seconds
+export const LOW_HP_PULSE_THRESHOLD = 0.25 // fraction of max hp
