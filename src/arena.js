@@ -308,12 +308,25 @@ export function createArena() {
   return { group, fog, backgroundColor: FOG_COLOR, topMaterial, pylons, thrusters, keyLight }
 }
 
+// The shadow map's world-space texel size (the frustum spans 2x the
+// extent, over SHADOW_MAP_SIZE texels along that span) -- snapping the
+// light/target's position to a multiple of this before moving them
+// stops the shadow from shimmering as the light continuously follows
+// the player (each texel samples the same world point every frame,
+// instead of the sampled points sliding by a fraction of a texel).
+const SHADOW_TEXEL_SIZE = (KEY_LIGHT_SHADOW_EXTENT * 2) / SHADOW_MAP_SIZE
+
+function snapToTexel(value) {
+  return Math.round(value / SHADOW_TEXEL_SIZE) * SHADOW_TEXEL_SIZE
+}
+
 // Gives each pylon's light/cap and each thruster's light a gentle neon
 // pulse (a sum of two sines at different speeds, offset by a random
 // per-light phase so they don't pulse in sync), slowly pulses the
 // platform's grid glow, and -- given the player's current position --
-// re-centers the key light and its shadow target on the player, so its
-// small fixed shadow frustum (KEY_LIGHT_SHADOW_EXTENT) stays over
+// re-centers the key light and its shadow target on the player (snapped
+// to the shadow map's texel grid, so the shadow doesn't shimmer), so
+// its small fixed shadow frustum (KEY_LIGHT_SHADOW_EXTENT) stays over
 // wherever play actually is on a big arena.
 export function updateArena(arena, elapsedSeconds, playerPos) {
   for (const pylon of arena.pylons) {
@@ -332,11 +345,9 @@ export function updateArena(arena, elapsedSeconds, playerPos) {
   arena.topMaterial.emissiveIntensity = 0.35 + Math.sin(elapsedSeconds * ARENA_GRID_PULSE_SPEED) * 0.1
 
   if (playerPos) {
-    arena.keyLight.target.position.set(playerPos.x, 0, playerPos.z)
-    arena.keyLight.position.set(
-      playerPos.x + KEY_LIGHT_OFFSET.x,
-      KEY_LIGHT_OFFSET.y,
-      playerPos.z + KEY_LIGHT_OFFSET.z,
-    )
+    const snappedX = snapToTexel(playerPos.x)
+    const snappedZ = snapToTexel(playerPos.z)
+    arena.keyLight.target.position.set(snappedX, 0, snappedZ)
+    arena.keyLight.position.set(snappedX + KEY_LIGHT_OFFSET.x, KEY_LIGHT_OFFSET.y, snappedZ + KEY_LIGHT_OFFSET.z)
   }
 }
