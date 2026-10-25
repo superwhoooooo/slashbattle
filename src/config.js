@@ -3,6 +3,8 @@
 
 export const PLAYER_RADIUS = 0.35
 export const PLAYER_HEIGHT = 1.6
+export const PLAYER_BODY_RADIUS = 0.6 // icosahedron radius for the player's jelly body (visual only; PLAYER_RADIUS stays the collision radius)
+export const PLAYER_EDGE_COLOR = 0x5fd4ff
 export const PLAYER_SPEED = 4 // world units per second
 export const PLAYER_MAX_HP = 100
 export const PLAYER_IFRAME_DURATION = 0.5 // seconds of invulnerability after taking damage
@@ -16,12 +18,13 @@ export const FOG_COLOR = 0x140a2e
 export const FOG_NEAR = 40
 export const FOG_FAR = 300
 
-// Monster types: size (body scale), color, speed (world units/second), hp,
-// damage per hit, and radius (collision/knockback/separation radius).
+// Monster types: shape (jelly body geometry), size (body scale), color,
+// edgeColor (the glowing wireframe overlay), speed (world units/second),
+// hp, damage per hit, and radius (collision/knockback/separation radius).
 export const MONSTER_TYPES = {
-  blobbo: { size: 1.4, color: 0x4caf50, speed: 1.2, hp: 60, damage: 8, radius: 0.6 },
-  zippy: { size: 0.6, color: 0x9c27b0, speed: 5.5, hp: 20, damage: 5, radius: 0.25 },
-  grumpus: { size: 1.1, color: 0xff5722, speed: 2.0, hp: 100, damage: 15, radius: 0.45 },
+  blobbo: { shape: 'dodecahedron', size: 1.4, color: 0x4caf50, edgeColor: 0x9dffb0, speed: 1.2, hp: 60, damage: 8, radius: 0.6 },
+  zippy: { shape: 'octahedron', size: 0.6, color: 0x9c27b0, edgeColor: 0xe9a3ff, speed: 5.5, hp: 20, damage: 5, radius: 0.25 },
+  grumpus: { shape: 'box', size: 1.1, color: 0xff5722, edgeColor: 0xffc49d, speed: 2.0, hp: 100, damage: 15, radius: 0.45 },
 }
 
 // Arena platform geometry and the neon grid pulsing across its top.
@@ -110,6 +113,41 @@ export const WOBBLE_BOB_AMOUNT = 0.05 // world units
 export const WOBBLE_SQUASH_AMOUNT = 0.04
 export const WOBBLE_FACE_JIGGLE_AMOUNT = 0.05 // radians
 
+// Jelly body material: flat-shaded faces, a saturated base color, some
+// metalness/roughness, and a low emissive tint so bloom picks the body up
+// a little without washing out the face.
+export const JELLY_METALNESS = 0.25
+export const JELLY_ROUGHNESS = 0.45
+export const JELLY_EMISSIVE_INTENSITY = 0.12
+
+// The glowing wireframe overlay: shares the body's geometry (so it
+// deforms with it) at a slightly larger scale, so the edges read as an
+// outline instead of fighting the solid faces for depth.
+export const JELLY_EDGE_SCALE = 1.01
+
+// Idle wobble: a slow traveling ripple over the body's surface.
+export const JELLY_IDLE_AMPLITUDE = 0.035 // world units
+export const JELLY_IDLE_SPEED = 2.4 // radians per second
+
+// Movement bulge: a spring toward a target driven by current speed, so
+// starting or stopping overshoots and wobbles instead of snapping.
+export const JELLY_BULGE_RESPONSE = 0.05 // target bulge per world unit/second of speed
+export const JELLY_BULGE_STIFFNESS = 90
+export const JELLY_BULGE_DAMPING = 9
+
+// The hit spring, shared by the hit splat, the attack wind-up, and the
+// death burst (see JELLY_HIT_STRENGTH and JELLY_DEATH_INFLATE_STRENGTH
+// below, and MONSTER_ATTACK_WINDUP_INFLATE_RATE further down).
+export const JELLY_HIT_STIFFNESS = 140
+export const JELLY_HIT_DAMPING = 8
+export const JELLY_HIT_STRENGTH = 0.9 // impulse applied when hit lands (player or monster)
+export const JELLY_DEATH_INFLATE_STRENGTH = -1.4 // one-shot inflate impulse at the moment of death
+
+// How much the attached face plane pulses (scale) with the body's
+// overall bulge/hit state -- it's fine for the face to only track this
+// roughly rather than every vertex.
+export const JELLY_FACE_PULSE_AMOUNT = 0.5
+
 export const ATTACK_RANGE = 1.4
 export const ATTACK_ARC_RADIANS = Math.PI / 2 // total width of the attack cone
 export const ATTACK_COOLDOWN = 0.4 // seconds between swings
@@ -126,7 +164,8 @@ export const SIGHT_RANGE = 14 // world units a monster can see the player at (th
 export const MONSTER_ATTACK_RANGE = 1.2
 export const MONSTER_ATTACK_COOLDOWN = 1.2 // seconds between monster attacks
 export const MONSTER_ATTACK_WINDUP_DURATION = 0.3 // seconds of telegraph lean/grow before the hit lands
-export const MONSTER_ATTACK_WINDUP_GROW = 0.2 // peak size increase during the telegraph
+export const MONSTER_ATTACK_WINDUP_GROW = 0.2 // peak size increase during the telegraph (superseded by the jelly wind-up inflate below, removed once monster.js switches over)
+export const MONSTER_ATTACK_WINDUP_INFLATE_RATE = 2.5 // jelly inflate fed into the hit spring per second during the telegraph
 
 export const SEARCH_DURATION = 3 // seconds spent looking around before giving up and wandering again
 export const SEARCH_SPIN_SPEED = 1.5 // radians per second, while looking around
