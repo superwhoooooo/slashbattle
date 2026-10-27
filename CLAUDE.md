@@ -38,6 +38,7 @@ record.
 - Left click or Space — swing your sword
 - E — enter or exit a nearby pod to hide
 - R — restart after losing
+- M — mute / unmute the music (remembered in `localStorage`)
 
 ## Commands
 - `npm install` — install dependencies
@@ -60,6 +61,7 @@ slashbattle/
     characters.js      # build player/monster jelly bodies (shape + 3D face + indicators)
     jelly.js           # the jelly body: shared-geometry wireframe edges, per-vertex deformation
     spawner.js         # the spawn-in effect: portal ring + beam, monster materialize animation
+    music.js           # procedural Web Audio background track (lookahead scheduler, synth voices, mute)
     highScore.js       # load/save the best score/wave in localStorage (try/catch, zero fallback)
     particles.js       # pooled spark (Points) and tumbling-shard (InstancedMesh) bursts
     trail.js           # the sword's fading swing-trail ribbon (tip position history)
@@ -230,3 +232,13 @@ the wave banner scales in; the start card lays out its controls with key
 caps. A fixed vignette gently darkens the screen's edges, and a brief
 red screen flash (`triggerDamageFlash`) accompanies every point the
 player takes damage, alongside the existing screen shake.
+
+## Music
+The background track is synthesized live (no audio files): `src/logic/music.js`
+holds the pure pattern -- an 8-bar, 134 BPM loop in D minor (Dm-Bb-F-C, then
+Dm-Bb-F-A) where `eventsForStep` returns the drums, bouncy bass, off-beat stabs,
+and either an arpeggio (bars 1-4) or the lead hook (bars 5-8) landing on each
+16th -- and `src/music.js` voices those with Web Audio oscillators/noise via a
+lookahead scheduler. It starts when the start card is dismissed (browsers need a
+user gesture), M toggles mute (saved in `localStorage`), and a low-pass ducks it
+on the game-over screen.

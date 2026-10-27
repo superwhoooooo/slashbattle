@@ -10,6 +10,7 @@ import { createArena, updateArena } from './arena.js'
 import { createMonsterMesh } from './characters.js'
 import { updateFace3D } from './face3d.js'
 import { loadHighScore, saveHighScore } from './highScore.js'
+import { createMusic } from './music.js'
 import { updateJelly } from './jelly.js'
 import {
   ARENA_RADIUS,
@@ -122,6 +123,10 @@ const renderTarget = new THREE.WebGLRenderTarget(window.innerWidth, window.inner
   samples: 4,
 })
 const composer = new EffectComposer(renderer, renderTarget)
+// Handing the composer its own render target pins its pixel ratio to 1,
+// so on a high-DPI display the whole scene was rendered at CSS-pixel
+// resolution and upscaled -- blurry and pixelated. Match the renderer's.
+composer.setPixelRatio(renderer.getPixelRatio())
 composer.addPass(new RenderPass(scene, camera))
 const bloomPass = new UnrealBloomPass(
   new THREE.Vector2(window.innerWidth, window.innerHeight),
@@ -156,6 +161,7 @@ window.addEventListener('resize', () => {
   camera.updateProjectionMatrix()
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, MAX_PIXEL_RATIO))
   renderer.setSize(window.innerWidth, window.innerHeight)
+  composer.setPixelRatio(renderer.getPixelRatio())
   composer.setSize(window.innerWidth, window.innerHeight)
 })
 
@@ -371,9 +377,14 @@ function disposeGame(target) {
   target.spawnEffects.forEach(({ effect }) => disposeObject3D(effect.group))
 }
 
+// Browsers only allow audio after a user gesture, so the track starts
+// when the start card is dismissed. M mutes/unmutes it (remembered).
+const music = createMusic()
+
 let started = false
 function dismissStartCard() {
   started = true
+  music.start()
   hideStartCard(hud)
   // The key/click that dismisses the card shouldn't also register as a
   // held attack button or key on gameplay's first frame.
@@ -393,6 +404,9 @@ function animate() {
   const elapsedSeconds = clock.getElapsedTime()
 
   const gameState = evaluateGameState({ playerHp: game.player.hp })
+
+  if (input.wasPressed('KeyM')) music.toggleMuted()
+  music.setMuffled(gameState !== 'playing')
 
   // Recorded once, the frame the player dies: compares this run against
   // the saved high score, persists the new best, and freezes the stats

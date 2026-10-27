@@ -46,7 +46,7 @@ import { platformLayout } from './logic/arena.js'
 // metal base color. A CanvasTexture rather than a custom shader, per the
 // "a CanvasTexture with emissive lines is fine" note.
 function createGridTexture() {
-  const size = 512
+  const size = 2048
   const center = size / 2
   const canvas = document.createElement('canvas')
   canvas.width = size
@@ -57,7 +57,7 @@ function createGridTexture() {
   ctx.fillRect(0, 0, size, size)
 
   ctx.strokeStyle = ARENA_GRID_COLOR
-  ctx.lineWidth = 2
+  ctx.lineWidth = 6
   // Ring count scales with ARENA_RADIUS (rather than a fixed count) so
   // each ring stays ARENA_GRID_RING_SPACING world units apart however
   // big the platform is -- the texture always maps onto the platform's
@@ -79,6 +79,10 @@ function createGridTexture() {
   }
 
   const texture = new THREE.CanvasTexture(canvas)
+  // The texture spans the whole platform and is viewed at a grazing
+  // angle, so mipmaps + anisotropic filtering (clamped by three to what
+  // the GPU supports) keep the grid lines crisp instead of smeared.
+  texture.anisotropy = 16
   texture.needsUpdate = true
   return texture
 }
