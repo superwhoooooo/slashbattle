@@ -35,6 +35,9 @@ export class Player {
     this.facing = 0 // yaw, radians
     this.hp = PLAYER_MAX_HP
     this.invulnerableUntil = -Infinity
+    this.shieldUntil = -Infinity // the Bubble Shield ability: no damage at all until then
+    this.rageUntil = -Infinity // the Rage ability: weapon damage multiplied until then
+    this.damageTakenMultiplier = 1 // < 1 with a guard pet
     this._hitFlashElapsed = null // null means not currently flashing
     this.hidden = false
     this.exitedAt = null // seconds elapsed at the last pop-out; drives the ambush window
@@ -46,6 +49,21 @@ export class Player {
     this.mesh = createPlayerMesh()
     this.mesh.position.x = this.position.x
     this.mesh.position.z = this.position.z
+
+    this.shieldBubble = new THREE.Mesh(
+      new THREE.SphereGeometry(1.05, 20, 14),
+      new THREE.MeshBasicMaterial({ color: 0x66f0ff, transparent: true, opacity: 0.28, blending: THREE.AdditiveBlending, depthWrite: false }),
+    )
+    this.shieldBubble.position.y = 0.65
+    this.shieldBubble.visible = false
+    this.mesh.add(this.shieldBubble)
+  }
+
+  // Shows the shield bubble (pulsing) while the Bubble Shield is up.
+  updateStatusEffects(now) {
+    const shielded = now < this.shieldUntil
+    this.shieldBubble.visible = shielded
+    if (shielded) this.shieldBubble.material.opacity = 0.22 + 0.1 * Math.sin(now * 9)
   }
 
   // Applies damage unless hidden (monsters can't see a hidden player, but
@@ -58,7 +76,8 @@ export class Player {
   damagePlayer(amount, now) {
     if (this.hidden) return false
     if (now < this.invulnerableUntil) return false
-    this.hp = applyDamage({ hp: this.hp }, amount).hp
+    if (now < this.shieldUntil) return false
+    this.hp = applyDamage({ hp: this.hp }, amount * this.damageTakenMultiplier).hp
     this.invulnerableUntil = now + PLAYER_IFRAME_DURATION
     this._hitFlashElapsed = 0
     jellyHit(this.mesh, JELLY_HIT_STRENGTH)

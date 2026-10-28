@@ -476,3 +476,27 @@ export const POPUP_RING_OUT_COLOR = '#7dd3ff'
 // damage, and the health bar's low-hp pulse threshold.
 export const DAMAGE_FLASH_DURATION = 0.15 // seconds
 export const LOW_HP_PULSE_THRESHOLD = 0.25 // fraction of max hp
+
+// Treasure chests (src/chests.js): up to CHEST_MAX_ACTIVE at once, a new
+// one every CHEST_SPAWN_DELAY_MIN-MAX seconds, spaced like pods. Walk
+// within CHEST_INTERACT_RANGE and press F to open one.
+export const CHEST_MAX_ACTIVE = 2
+export const CHEST_SPAWN_DELAY_MIN = 14
+export const CHEST_SPAWN_DELAY_MAX = 24
+export const CHEST_SPAWN_MARGIN = 5 // world units in from the platform's edge
+export const CHEST_MIN_SPACING = 14 // world units between chests/pods
+export const CHEST_OBSTACLE_RADIUS = 0.85
+export const CHEST_INTERACT_RANGE = 2.6
+export const CHEST_FLASH_COLOR = 0xffc93d
+export const CHEST_ALL_OWNED_SCORE = 500 // consolation prize once a chest has nothing left to give
+export const CHEST_ALL_OWNED_HEAL = 40
+
+// Ability tuning (src/logic/items.js has names/cooldowns).
+export const BLINK_DISTANCE = 6
+export const BLINK_IFRAMES = 0.3 // seconds of invulnerability after a blink
+export const SHOCKWAVE_RADIUS = 5.5
+export const SHOCKWAVE_DAMAGE = 30
+export const SHOCKWAVE_KNOCKBACK = 4
+export const SHOCKWAVE_COLOR = 0x19e7ff
+export const HEAL_PULSE_AMOUNT = 30
+export const RAGE_DAMAGE_MULTIPLIER = 1.8

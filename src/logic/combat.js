@@ -58,8 +58,9 @@ export function createCooldown(seconds) {
     ready(now) {
       return now >= readyAt
     },
-    trigger(now) {
-      readyAt = now + seconds
+    // `overrideSeconds` lets a different weapon use its own cooldown.
+    trigger(now, overrideSeconds = seconds) {
+      readyAt = now + overrideSeconds
     },
   }
 }

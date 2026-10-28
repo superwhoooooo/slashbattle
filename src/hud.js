@@ -10,11 +10,44 @@ import {
   POD_HIDE_URGENT_THRESHOLD,
   WAVE_CLEARED_BANNER_DURATION,
 } from './config.js'
+import { ABILITIES, ABILITY_KEYS, ABILITY_SLOTS, HOTBAR_SLOTS, PETS, WEAPONS } from './logic/items.js'
+import { abilityCooldownFraction } from './logic/inventory.js'
 import { WAVE_INTERMISSION } from './logic/waves.js'
 
-// Grabs the HUD elements already present in index.html.
+// A bottom-bar slot: a glassy square with an optional key label, an icon,
+// and a cooldown overlay.
+function createSlot(keyLabel, extraClass = '') {
+  const element = document.createElement('div')
+  element.className = `slot panel empty ${extraClass}`.trim()
+  const key = document.createElement('span')
+  key.className = 'slot-key'
+  key.textContent = keyLabel
+  const icon = document.createElement('span')
+  const cooldown = document.createElement('div')
+  cooldown.className = 'cooldown'
+  element.append(icon, cooldown, key)
+  return { element, icon, cooldown }
+}
+
+// Grabs the HUD elements already present in index.html (and builds the
+// hotbar / ability slots inside their containers).
 export function createHud() {
+  const hotbarSlots = Array.from({ length: HOTBAR_SLOTS }, (_, i) => createSlot(String(i + 1)))
+  document.getElementById('hotbar').append(...hotbarSlots.map((s) => s.element))
+  const abilitySlots = Array.from({ length: ABILITY_SLOTS }, (_, i) =>
+    createSlot(ABILITY_KEYS[i].replace('Key', ''), 'small'),
+  )
+  document.getElementById('ability-bar').append(...abilitySlots.map((s) => s.element))
   return {
+    hotbarSlots,
+    abilitySlots,
+    petBar: document.getElementById('pet-bar'),
+    crystalCounter: document.getElementById('crystal-counter'),
+    chestPrompt: document.getElementById('chest-prompt'),
+    lootToast: document.getElementById('loot-toast'),
+    lootToastTitle: document.getElementById('loot-toast-title'),
+    lootToastName: document.getElementById('loot-toast-name'),
+    lootToastBlurb: document.getElementById('loot-toast-blurb'),
     healthBar: document.getElementById('health-bar'),
     healthFill: document.getElementById('health-fill'),
     healthLabel: document.getElementById('health-label'),
@@ -91,6 +124,64 @@ export function showCutscene(hud, view) {
   setIfChanged(hud, 'cutsceneTitleName', view.boss.name, (v) => (hud.cutsceneTitleName.textContent = v))
   setIfChanged(hud, 'cutsceneTitleSub', view.boss.title, (v) => (hud.cutsceneTitleSub.textContent = v))
   setIfChanged(hud, 'cutsceneText', view.text, (v) => (hud.cutsceneText.textContent = v))
+}
+
+// Redraws the crystal count, the weapon hotbar (filled slots, the
+// selected one lifted), the ability slots (with cooldown overlays) and
+// the pet icons from the inventory. `now` is game time, for cooldowns.
+export function updateInventoryHud(hud, inventory, now) {
+  setIfChanged(hud, 'crystals', inventory.crystals, (v) => (hud.crystalCounter.textContent = `💎 ${v}`))
+
+  hud.hotbarSlots.forEach((slot, i) => {
+    const id = inventory.weapons[i]
+    setIfChanged(hud, `weapon${i}`, id ?? '', (v) => {
+      slot.icon.textContent = v ? WEAPONS[v].icon : ''
+      slot.element.classList.toggle('empty', !v)
+    })
+    setIfChanged(hud, `selected${i}`, i === inventory.selected, (v) => slot.element.classList.toggle('selected', v))
+  })
+
+  hud.abilitySlots.forEach((slot, i) => {
+    const id = inventory.abilities[i]
+    setIfChanged(hud, `ability${i}`, id ?? '', (v) => {
+      slot.icon.textContent = v ? ABILITIES[v].icon : ''
+      slot.element.classList.toggle('empty', !v)
+    })
+    if (!id) return
+    const fraction = abilityCooldownFraction(inventory, id, now)
+    setIfChanged(hud, `cd${i}`, Math.round(fraction * 50), (v) => (slot.cooldown.style.height = `${v * 2}%`))
+    setIfChanged(hud, `ready${i}`, fraction === 0, (v) => slot.element.classList.toggle('ready', v))
+  })
+
+  setIfChanged(hud, 'pets', inventory.pets.join(','), () => {
+    hud.petBar.replaceChildren(
+      ...inventory.pets.map((id) => {
+        const slot = createSlot('')
+        slot.element.classList.remove('empty')
+        slot.icon.textContent = PETS[id].icon
+        return slot.element
+      }),
+    )
+  })
+}
+
+// Shows (or hides, with null) the chest prompt; `poor` styles it red.
+export function setChestPrompt(hud, text, poor = false) {
+  setIfChanged(hud, 'chestPrompt', `${text ?? ''}|${poor}`, () => {
+    hud.chestPrompt.style.display = text ? 'block' : 'none'
+    hud.chestPrompt.textContent = text ?? ''
+    hud.chestPrompt.classList.toggle('poor', poor)
+  })
+}
+
+// Pops the "NEW WEAPON: ..." toast for what a chest just gave.
+export function showLootToast(hud, { title, name, blurb }) {
+  hud.lootToastTitle.textContent = title
+  hud.lootToastName.textContent = name
+  hud.lootToastBlurb.textContent = blurb
+  hud.lootToast.classList.remove('show')
+  void hud.lootToast.offsetWidth // restart the CSS animation
+  hud.lootToast.classList.add('show')
 }
 
 // Hides the start/controls card, shown at load until the first key or

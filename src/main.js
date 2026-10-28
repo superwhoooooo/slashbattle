@@ -20,12 +20,24 @@ import {
   CAMERA_FAR,
   CAMERA_LERP,
   CAMERA_LOOKAHEAD,
+  BLINK_DISTANCE,
+  BLINK_IFRAMES,
   BOSS_DEFEAT_HEAL_MULTIPLIER,
   BOSS_SPAWN_DISTANCE,
   BOSS_SPAWN_EFFECT_DURATION,
   BOSS_SPAWN_EFFECT_SCALE,
   BOSS_SPAWN_MARGIN,
   CAMERA_OFFSET,
+  CHEST_ALL_OWNED_HEAL,
+  CHEST_ALL_OWNED_SCORE,
+  CHEST_FLASH_COLOR,
+  CHEST_INTERACT_RANGE,
+  CHEST_MAX_ACTIVE,
+  CHEST_MIN_SPACING,
+  CHEST_OBSTACLE_RADIUS,
+  CHEST_SPAWN_DELAY_MAX,
+  CHEST_SPAWN_DELAY_MIN,
+  CHEST_SPAWN_MARGIN,
   CUTSCENE_CAMERA_LERP,
   FALL_DESPAWN_DEPTH,
   FALL_GRAVITY,
@@ -34,6 +46,7 @@ import {
   FALL_PUFF_SPEED,
   FALL_STREAK_COUNT,
   FALL_STREAK_SPEED,
+  HEAL_PULSE_AMOUNT,
   HIDDEN_CAMERA_OFFSET,
   JELLY_DEATH_INFLATE_STRENGTH,
   MAX_DELTA_SECONDS,
@@ -41,6 +54,7 @@ import {
   MONSTER_FALL_TUMBLE_SPEED,
   MONSTER_TYPES,
   PLAYER_MAX_HP,
+  PLAYER_RADIUS,
   PLAYER_SPEED,
   POD_FLOOR_GLOW_COLOR,
   POD_HIDE_LIMIT,
@@ -59,12 +73,17 @@ import {
   POD_SPAWN_MAX_ATTEMPTS,
   POPUP_KILL_COLOR,
   POPUP_RING_OUT_COLOR,
+  RAGE_DAMAGE_MULTIPLIER,
   SHAKE_DAMAGE_DURATION,
   SHAKE_DAMAGE_MAGNITUDE,
   SHAKE_HIT_DURATION,
   SHAKE_HIT_MAGNITUDE,
   SHAKE_NOISE_FREQUENCY_A,
   SHAKE_NOISE_FREQUENCY_B,
+  SHOCKWAVE_COLOR,
+  SHOCKWAVE_DAMAGE,
+  SHOCKWAVE_KNOCKBACK,
+  SHOCKWAVE_RADIUS,
   SPAWN_NEAR_PLAYER_MARGIN,
   SPAWN_NEAR_PLAYER_MAX_DIST,
   SPAWN_NEAR_PLAYER_MIN_DIST,
@@ -72,23 +91,42 @@ import {
   TONE_MAPPING_EXPOSURE,
   WAVE_CLEAR_HEAL,
 } from './config.js'
-import { createAttackState, updateMonsterHitReaction, updatePlayerAttack } from './combat.js'
+import { setPlayerWeapon } from './characters.js'
+import { createChest, openChest, updateChest } from './chests.js'
+import { createAttackState, damageMonster, updateMonsterHitReaction, updatePlayerAttack } from './combat.js'
+import { attractAllCrystals, createCrystalSystem, dropCrystals, resetCrystals, updateCrystals } from './crystals.js'
 import { createHidingState, createPod, startPodDematerialize, updateHiding, updatePod } from './hiding.js'
 import {
   createHud,
   hideStartCard,
+  setChestPrompt,
   showAmbushBanner,
   showCutscene,
   showGameOverlay,
+  showLootToast,
   showWaveClearedBanner,
   triggerDamageFlash,
   updateHud,
+  updateInventoryHud,
 } from './hud.js'
 import { Input } from './input.js'
 import { bossById, bossHpScale } from './logic/bosses.js'
 import { fanVelocities } from './logic/projectiles.js'
-import { clampToPlatform, isOnPlatform, spawnPointNearPlayer } from './logic/arena.js'
+import { clampToPlatform, isOnPlatform, resolveArenaMove, spawnPointNearPlayer } from './logic/arena.js'
+import { crystalDrops } from './logic/crystals.js'
 import { createCutscene, stepCutscene, visibleChars } from './logic/cutscene.js'
+import {
+  addCrystals,
+  chestCost,
+  createInventory,
+  grantItem,
+  rollChestLoot,
+  selectWeaponSlot,
+  selectedWeaponId,
+  spendCrystals,
+  useAbility,
+} from './logic/inventory.js'
+import { ABILITIES, ABILITY_KEYS, HOTBAR_KEYS, PETS, WEAPONS, petEffects } from './logic/items.js'
 import { stepFall } from './logic/falling.js'
 import { evaluateGameState } from './logic/gameState.js'
 import { hideTimeRemaining } from './logic/hiding.js'
@@ -104,7 +142,8 @@ import {
   waveSize,
 } from './logic/waves.js'
 import { createMonsterAIState, separateMonsters, updateMonster } from './monster.js'
-import { burst, createParticleSystem, resetParticles, updateParticles } from './particles.js'
+import { burst, createParticleSystem, resetParticles, shardBurst, updateParticles } from './particles.js'
+import { createPet, disposePets, updatePets } from './pets.js'
 import { Player } from './player.js'
 import { createProjectilePool, fireProjectile, resetProjectiles, updateProjectiles } from './projectiles.js'
 import { createShockwavePool, resetShockwaves, spawnShockwave, updateShockwaves } from './shockwave.js'
@@ -172,6 +211,8 @@ const swingTrail = createSwingTrail(SWORD_BLADE_COLOR)
 scene.add(swingTrail.mesh)
 const popupPool = createPopupPool()
 scene.add(popupPool.group)
+const crystalSystem = createCrystalSystem()
+scene.add(crystalSystem.mesh)
 const projectilePool = createProjectilePool()
 scene.add(projectilePool.group)
 const shockwavePool = createShockwavePool()
@@ -277,6 +318,10 @@ function createGame() {
     monsters: [],
     spawnEffects: [], // { effect, monster } pairs still materializing in
     waveState: createWaveState(),
+    inventory: createInventory(), // crystals, the weapon hotbar, abilities, pets (see logic/inventory.js)
+    pets: [], // live pet objects (src/pets.js) for inventory.pets
+    chests: [], // chest meshes on the platform
+    chestSpawnerState: createPodSpawnerState(),
     cutscene: null, // { boss, mesh, dir, state } while a boss intro is playing; freezes gameplay
     score: 0,
     hidingState: createHidingState(),
@@ -289,6 +334,7 @@ function createGame() {
   const initialPodCount =
     POD_INITIAL_COUNT_MIN + Math.floor(Math.random() * (POD_INITIAL_COUNT_MAX - POD_INITIAL_COUNT_MIN + 1))
   for (let i = 0; i < initialPodCount; i++) trySpawnPod(game)
+  trySpawnChest(game)
 
   camera.position.set(
     player.position.x + CAMERA_OFFSET.x,
@@ -333,6 +379,139 @@ function trySpawnPod(game) {
     POD_SPAWN_BURST_COUNT,
     POD_SPAWN_BURST_SPEED,
   )
+}
+
+// Places a chest: at `at` if given (a boss's free reward chest), otherwise
+// somewhere valid on the platform (spaced from other chests/pods, the
+// player and monsters, like pods). `cost` defaults to the next price on
+// the climbing scale. A no-op if nothing fit.
+function trySpawnChest(game, { at = null, cost = null } = {}) {
+  const point =
+    at ??
+    pickPodSpawnPoint(Math.random, {
+      arenaRadius: ARENA_RADIUS,
+      margin: CHEST_SPAWN_MARGIN,
+      existingPods: [...game.pods, ...game.chests].map((m) => ({ x: m.position.x, z: m.position.z })),
+      minSpacing: CHEST_MIN_SPACING,
+      playerPos: game.player.position,
+      minPlayerDistance: POD_MIN_PLAYER_DISTANCE,
+      monsterPositions: game.monsters.map((mesh) => ({ x: mesh.position.x, z: mesh.position.z })),
+      monsterAvoidRadius: POD_MONSTER_AVOID_RADIUS,
+      maxAttempts: POD_SPAWN_MAX_ATTEMPTS,
+    })
+  if (point === null) return
+
+  const chest = createChest(point, cost ?? chestCost(game.inventory.chestsOpened))
+  const obstacle = { x: point.x, z: point.z, radius: CHEST_OBSTACLE_RADIUS }
+  chest.userData.obstacle = obstacle
+  scene.add(chest)
+  game.chests.push(chest)
+  game.obstacles.push(obstacle)
+  burst(particleSystem, { x: point.x, y: 0.5, z: point.z }, CHEST_FLASH_COLOR, POD_SPAWN_BURST_COUNT, POD_SPAWN_BURST_SPEED)
+}
+
+// Switches the hotbar to `slot` (if filled) and swaps the sword model.
+function selectWeapon(game, slot) {
+  const next = selectWeaponSlot(game.inventory, slot)
+  if (next.selected === game.inventory.selected) return
+  game.inventory = next
+  setPlayerWeapon(game.player.mesh, selectedWeaponId(next))
+  // Cancel any swing in flight (it was animating the old model).
+  game.attackState.swingElapsed = null
+  clearSwingTrail(swingTrail)
+}
+
+// Fires the ability in `slot` if it's ready, applying its effect.
+function activateAbility(game, slot, now) {
+  const used = useAbility(game.inventory, slot, now)
+  if (!used.abilityId) return
+  game.inventory = used.inventory
+  const { player } = game
+  const center = { x: player.position.x, y: 0.8, z: player.position.z }
+
+  if (used.abilityId === 'blink') {
+    const target = clampToPlatform(
+      resolveArenaMove(
+        player.position,
+        { x: Math.sin(player.facing) * BLINK_DISTANCE, z: Math.cos(player.facing) * BLINK_DISTANCE },
+        PLAYER_RADIUS,
+        game.obstacles,
+      ),
+      ARENA_RADIUS - 1,
+    )
+    burst(particleSystem, center, 0xe9a3ff, 24, 3)
+    player.position = target
+    player.mesh.position.x = target.x
+    player.mesh.position.z = target.z
+    player.invulnerableUntil = Math.max(player.invulnerableUntil, now + BLINK_IFRAMES)
+    burst(particleSystem, { x: target.x, y: 0.8, z: target.z }, 0xe9a3ff, 24, 3)
+  } else if (used.abilityId === 'shockwave') {
+    spawnShockwave(shockwavePool, player.position.x, player.position.z, SHOCKWAVE_RADIUS, SHOCKWAVE_COLOR)
+    burst(particleSystem, center, SHOCKWAVE_COLOR, 36, 5)
+    triggerShake(game.shake, SHAKE_HIT_MAGNITUDE, SHAKE_HIT_DURATION)
+    for (const mesh of game.monsters) {
+      if (mesh.userData.dying || mesh.userData.spawning || mesh.userData.falling) continue
+      const distance = Math.hypot(mesh.position.x - player.position.x, mesh.position.z - player.position.z)
+      if (distance > SHOCKWAVE_RADIUS + (mesh.userData.reachBonus ?? 0)) continue
+      damageMonster(mesh, SHOCKWAVE_DAMAGE, {
+        fromPos: player.position,
+        knockback: SHOCKWAVE_KNOCKBACK,
+        obstacles: game.obstacles,
+        particleSystem,
+      })
+    }
+  } else if (used.abilityId === 'heal') {
+    player.hp = Math.min(PLAYER_MAX_HP, player.hp + HEAL_PULSE_AMOUNT)
+    burst(particleSystem, center, 0x7dffb0, 30, 2.5, 1)
+  } else if (used.abilityId === 'shield') {
+    player.shieldUntil = now + ABILITIES.shield.duration
+    burst(particleSystem, center, 0x66f0ff, 24, 2.5)
+  } else if (used.abilityId === 'rage') {
+    player.rageUntil = now + ABILITIES.rage.duration
+    burst(particleSystem, center, 0xff4a3a, 30, 3.5, 0.5)
+  }
+}
+
+// Pays for and opens a chest, then hands out what rolled: a hotbar weapon
+// (equipped right away), an ability (bound to the next free key), or a
+// pet. Once you own everything it pays out score and a heal instead.
+function openChestNow(game, chest, now) {
+  const { cost } = chest.userData
+  const paid = spendCrystals(game.inventory, cost)
+  if (!paid.ok) return
+  game.inventory = cost > 0 ? { ...paid.inventory, chestsOpened: paid.inventory.chestsOpened + 1 } : paid.inventory
+  openChest(chest)
+  const obstacleIndex = game.obstacles.indexOf(chest.userData.obstacle)
+  if (obstacleIndex !== -1) game.obstacles.splice(obstacleIndex, 1)
+
+  const point = { x: chest.position.x, y: 0.8, z: chest.position.z }
+  burst(particleSystem, point, CHEST_FLASH_COLOR, 40, 4, 1)
+  shardBurst(particleSystem, point, CHEST_FLASH_COLOR, 16, 3)
+
+  const loot = rollChestLoot(game.inventory)
+  if (!loot) {
+    game.score += CHEST_ALL_OWNED_SCORE
+    game.player.hp = Math.min(PLAYER_MAX_HP, game.player.hp + CHEST_ALL_OWNED_HEAL)
+    showLootToast(hud, { title: 'YOU OWN EVERYTHING', name: `+${CHEST_ALL_OWNED_SCORE} SCORE`, blurb: 'Plus a big heal' })
+    return
+  }
+
+  game.inventory = grantItem(game.inventory, loot)
+  if (loot.kind === 'weapon') {
+    setPlayerWeapon(game.player.mesh, loot.id)
+    game.attackState.swingElapsed = null
+    clearSwingTrail(swingTrail)
+    const weapon = WEAPONS[loot.id]
+    showLootToast(hud, { title: `NEW WEAPON  [${game.inventory.weapons.length}]`, name: `${weapon.icon} ${weapon.name}`, blurb: weapon.blurb })
+  } else if (loot.kind === 'ability') {
+    const ability = ABILITIES[loot.id]
+    const key = ABILITY_KEYS[game.inventory.abilities.indexOf(loot.id)].replace('Key', '')
+    showLootToast(hud, { title: `NEW ABILITY  [${key}]`, name: `${ability.icon} ${ability.name}`, blurb: ability.blurb })
+  } else {
+    game.pets.push(createPet(loot.id, scene, game.player))
+    const pet = PETS[loot.id]
+    showLootToast(hud, { title: 'NEW PET', name: `${pet.icon} ${pet.name}`, blurb: pet.blurb })
+  }
 }
 
 // Starts a pod's dematerialize (shrink-away) animation and moves it
@@ -556,6 +735,8 @@ function disposeGame(target) {
   target.despawningPods.forEach((pod) => disposeObject3D(pod))
   target.monsters.forEach((mesh) => disposeObject3D(mesh))
   target.spawnEffects.forEach(({ effect }) => disposeObject3D(effect.group))
+  target.chests.forEach((chest) => disposeObject3D(chest))
+  disposePets(target.pets, scene)
 }
 
 // Browsers only allow audio after a user gesture, so the track starts
@@ -611,6 +792,8 @@ function animate() {
       resetParticles(particleSystem)
       resetPopups(popupPool)
       resetProjectiles(projectilePool)
+      resetCrystals(crystalSystem)
+      setChestPrompt(hud, null)
       resetShockwaves(shockwavePool)
       pendingSummons.length = 0
       clearSwingTrail(swingTrail)
@@ -657,6 +840,7 @@ function animate() {
     showWaveClearedBanner(hud, bonus, `${bossBeforeStep.name} DEFEATED`)
     player.hp = Math.min(PLAYER_MAX_HP, player.hp + WAVE_CLEAR_HEAL * BOSS_DEFEAT_HEAL_MULTIPLIER)
   }
+  if (events.includes('waveCleared') || events.includes('bossDefeated')) attractAllCrystals(crystalSystem)
   if (events.includes('bossIntro')) startBossCutscene(game)
 
   // Steps the pod spawn timer and spawns one if it's due -- see
@@ -671,6 +855,17 @@ function animate() {
   )
   game.podSpawnerState = nextPodSpawnerState
   if (spawnNow) trySpawnPod(game)
+
+  const { state: nextChestSpawnerState, spawnNow: chestSpawnNow } = stepPodSpawner(
+    game.chestSpawnerState,
+    elapsedSeconds,
+    game.chests.filter((chest) => !chest.userData.opened).length,
+    CHEST_MAX_ACTIVE,
+    [CHEST_SPAWN_DELAY_MIN, CHEST_SPAWN_DELAY_MAX],
+    Math.random,
+  )
+  game.chestSpawnerState = nextChestSpawnerState
+  if (chestSpawnNow) trySpawnChest(game)
 
   player.update(input, cameraYaw, deltaSeconds)
   if (!player.falling && !player.hidden && !isOnPlatform(player.position, ARENA_RADIUS)) {
@@ -713,6 +908,16 @@ function animate() {
     return !finished
   })
 
+  // The weapon hotbar (1-5) and ability keys (Q Z X C V).
+  HOTBAR_KEYS.forEach((key, slot) => {
+    if (input.wasPressed(key)) selectWeapon(game, slot)
+  })
+  if (!player.hidden) {
+    ABILITY_KEYS.forEach((key, slot) => {
+      if (input.wasPressed(key)) activateAbility(game, slot, elapsedSeconds)
+    })
+  }
+
   const { ambushHit, hitAny } = updatePlayerAttack(attackState, {
     player,
     monsters,
@@ -722,6 +927,8 @@ function animate() {
     deltaSeconds,
     particleSystem,
     swingTrail,
+    weaponId: selectedWeaponId(game.inventory),
+    damageMultiplier: elapsedSeconds < player.rageUntil ? RAGE_DAMAGE_MULTIPLIER : 1,
   })
   if (ambushHit) showAmbushBanner(hud)
   if (hitAny) triggerShake(shake, SHAKE_HIT_MAGNITUDE, SHAKE_HIT_DURATION)
@@ -737,6 +944,7 @@ function animate() {
   // jelly tick, tumbling down out of view before the same scored removal
   // happens.
   let bossGone = false
+  let bossDeathPoint = null
   monsters = monsters.filter((mesh) => {
     if (mesh.userData.spawning) {
       updateJelly(mesh, deltaSeconds, elapsedSeconds, { speed: 0, moveDir: mesh.userData.moveDir })
@@ -752,8 +960,12 @@ function animate() {
         const points = scoreForKill(mesh.userData.type)
         game.score += points
         showPopup(popupPool, mesh.position, `+${points}`, POPUP_KILL_COLOR)
+        dropCrystals(crystalSystem, mesh.position.x, mesh.position.z, crystalDrops(mesh.userData.type, mesh.userData.isBoss))
         scene.remove(mesh)
-        if (mesh.userData.isBoss) bossGone = true
+        if (mesh.userData.isBoss) {
+          bossGone = true
+          bossDeathPoint = { x: mesh.position.x, z: mesh.position.z }
+        }
         return false
       }
       return true
@@ -796,7 +1008,14 @@ function animate() {
   })
   game.monsters = monsters
   pendingSummons.splice(0).forEach(({ bossMesh, count, maxMinions }) => summonMinions(game, bossMesh, count, maxMinions))
-  if (bossGone) popMinions(game)
+  if (bossGone) {
+    popMinions(game)
+    attractAllCrystals(crystalSystem)
+    // A boss leaves a free chest where it fell (when it died on the platform).
+    if (bossDeathPoint) {
+      trySpawnChest(game, { at: clampToPlatform(bossDeathPoint, ARENA_RADIUS - CHEST_SPAWN_MARGIN), cost: 0 })
+    }
+  }
 
   updateSpawnEffects(game, deltaSeconds)
 
@@ -809,6 +1028,55 @@ function animate() {
     triggerShake(shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
     triggerDamageFlash(hud)
   }
+
+  // Pets follow and help, crystals scatter/home/get collected, and chests
+  // animate; F opens the nearest one in reach if you can afford it.
+  const petFx = petEffects(game.inventory.pets)
+  player.damageTakenMultiplier = petFx.damageTakenMultiplier
+  player.updateStatusEffects(elapsedSeconds)
+  updatePets(game.pets, { dt: deltaSeconds, elapsed: elapsedSeconds, player, monsters: game.monsters, obstacles, particleSystem })
+  const collected = updateCrystals(crystalSystem, deltaSeconds, elapsedSeconds, player.position.x, player.position.z, petFx.magnetRadius)
+  if (collected > 0) game.inventory = addCrystals(game.inventory, collected)
+
+  let nearestChest = null
+  if (!player.hidden) {
+    let nearestDistance = CHEST_INTERACT_RANGE
+    for (const chest of game.chests) {
+      if (chest.userData.opened) continue
+      const distance = Math.hypot(chest.position.x - player.position.x, chest.position.z - player.position.z)
+      if (distance < nearestDistance) {
+        nearestDistance = distance
+        nearestChest = chest
+      }
+    }
+  }
+  if (nearestChest && input.wasPressed('KeyF') && game.inventory.crystals >= nearestChest.userData.cost) {
+    openChestNow(game, nearestChest, elapsedSeconds)
+  }
+  game.chests = game.chests.filter((chest) => {
+    const finished = updateChest(chest, deltaSeconds, elapsedSeconds, {
+      affordable: game.inventory.crystals >= chest.userData.cost,
+      highlighted: chest === nearestChest && !chest.userData.opened,
+    })
+    if (finished) disposeObject3D(chest)
+    return !finished
+  })
+  if (nearestChest && !nearestChest.userData.opened) {
+    const { cost } = nearestChest.userData
+    const affordable = game.inventory.crystals >= cost
+    setChestPrompt(
+      hud,
+      affordable
+        ? cost === 0
+          ? 'Press F to open the FREE chest'
+          : `Press F to open chest (💎 ${cost})`
+        : `Chest needs 💎 ${cost} (you have ${game.inventory.crystals})`,
+      !affordable,
+    )
+  } else {
+    setChestPrompt(hud, null)
+  }
+  updateInventoryHud(hud, game.inventory, elapsedSeconds)
 
   const inBossFight = game.waveState.phase === 'bossFight'
   const enemiesLeft = inBossFight

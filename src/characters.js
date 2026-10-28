@@ -81,6 +81,112 @@ function createSword() {
   return group
 }
 
+const WEAPON_COLORS = { dagger: 0xffa94d, spear: 0x7cffb0, hammer: 0xff4fa3, scythe: 0xb48cff }
+
+function glowMaterial(color, intensity = 1) {
+  return new THREE.MeshStandardMaterial({
+    color,
+    emissive: new THREE.Color(color),
+    emissiveIntensity: intensity,
+    metalness: 0.2,
+    roughness: 0.25,
+  })
+}
+
+// A weapon-sized glowing part: an emissive box plus (optionally) an
+// additive glow twin, the same trick the sword blade uses.
+function glowBox(width, height, depth, color, y, { glow = true, x = 0, rotationZ = 0 } = {}) {
+  const geometry = new THREE.BoxGeometry(width, height, depth)
+  const part = new THREE.Group()
+  const core = new THREE.Mesh(geometry, glowMaterial(color))
+  part.add(core)
+  if (glow) {
+    const twin = new THREE.Mesh(
+      geometry,
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.2, blending: THREE.AdditiveBlending, depthWrite: false }),
+    )
+    twin.scale.set(SWORD_GLOW_SCALE, 1.05, SWORD_GLOW_SCALE)
+    part.add(twin)
+  }
+  part.position.set(x, y, 0)
+  part.rotation.z = rotationZ
+  return part
+}
+
+function darkPole(length, radius, y) {
+  const mesh = new THREE.Mesh(
+    new THREE.CylinderGeometry(radius, radius, length, 8),
+    new THREE.MeshStandardMaterial({ color: SWORD_HILT_COLOR, metalness: 0.7, roughness: 0.4 }),
+  )
+  mesh.position.y = y
+  return mesh
+}
+
+// Builds the hotbar weapon `id` as a group whose origin is the grip and
+// whose +y runs toward the business end, with a `tip` child at the far
+// end for the swing trail -- the same contract the original sword had, so
+// the swing animation (rotation.z) drives any of them.
+function createWeaponMesh(id) {
+  if (id === 'sword') return createSword()
+  const group = new THREE.Group()
+  const color = WEAPON_COLORS[id]
+  let tipY
+
+  if (id === 'dagger') {
+    group.add(glowBox(0.045, 0.45, 0.02, color, 0.22))
+    group.add(glowBox(0.18, 0.05, 0.05, color, 0, { glow: false }))
+    group.add(darkPole(0.16, 0.03, -0.1))
+    tipY = 0.45
+  } else if (id === 'spear') {
+    group.add(darkPole(1.4, 0.025, 0.45))
+    group.add(glowBox(0.1, 0.34, 0.03, color, 1.28))
+    group.add(glowBox(0.05, 0.12, 0.03, color, 1.1, { glow: false, rotationZ: 0 }))
+    tipY = 1.45
+  } else if (id === 'hammer') {
+    group.add(darkPole(0.95, 0.04, 0.4))
+    group.add(glowBox(0.5, 0.32, 0.34, color, 0.95))
+    tipY = 1.12
+  } else {
+    // scythe: a long pole with a crescent blade swept off its top
+    group.add(darkPole(1.3, 0.03, 0.45))
+    group.add(glowBox(0.55, 0.07, 0.03, color, 1.15, { x: 0.25, rotationZ: -0.25 }))
+    group.add(glowBox(0.3, 0.07, 0.03, color, 1.0, { x: 0.58, rotationZ: -0.95 }))
+    tipY = 1.0
+  }
+
+  const tip = new THREE.Object3D()
+  tip.position.y = tipY
+  if (id === 'scythe') tip.position.x = 0.7
+  group.add(tip)
+  group.userData.tip = tip
+  return group
+}
+
+function disposeObject(object) {
+  object.traverse((child) => {
+    if (child.geometry) child.geometry.dispose()
+    if (child.material) {
+      const materials = Array.isArray(child.material) ? child.material : [child.material]
+      materials.forEach((material) => material.dispose())
+    }
+  })
+}
+
+// Swaps the weapon the player is holding (hotbar selection) for weapon
+// `id`, keeping it at the same spot on the body. The previous model is
+// disposed.
+export function setPlayerWeapon(playerMesh, id) {
+  const old = playerMesh.userData.sword
+  const next = createWeaponMesh(id)
+  if (old) {
+    next.position.copy(old.position)
+    playerMesh.remove(old)
+    disposeObject(old)
+  }
+  playerMesh.add(next)
+  playerMesh.userData.sword = next
+}
+
 const INDICATOR_SIZE = 0.4
 
 // Draws a single bold glyph ("!" or "?") onto a small canvas for use as a
@@ -236,6 +342,30 @@ export function createPlayerMesh() {
   group.userData.body = body
   group.userData.sword = sword
 
+  return group
+}
+
+// Builds a pet: a small, cute jelly in the pet's own shape and color with
+// a goofy face, hovering rather than standing (pets.js lifts it off the
+// ground). Same body/face structure as a monster so updateJelly and
+// updateFace3D can animate it.
+const PET_SIZE = 0.8
+export function createPetMesh(pet, rng = Math.random) {
+  const geometry = GEOMETRY_BUILDERS[pet.shape](PET_SIZE)
+  const bodyCenterY = monsterBodyCenterY({ shape: pet.shape, size: PET_SIZE }, geometry)
+  const edgeColor = new THREE.Color(pet.color).lerp(new THREE.Color(0xffffff), 0.5).getHex()
+  const group = createJellyBody(geometry, createJellyMaterial(pet.color), edgeColor, bodyCenterY)
+  const face = createFace3D({
+    shape: pet.shape,
+    size: PET_SIZE,
+    bodyCenterY,
+    bodyColor: pet.color,
+    options: pickFaceOptions(rng),
+    faceTypeScale: 1.5,
+  })
+  group.add(face.group)
+  group.userData.face3d = face
+  group.userData.body = group.userData.jelly.body
   return group
 }
 

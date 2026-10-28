@@ -41,6 +41,9 @@ record.
 - E — enter or exit a nearby pod to hide
 - R — restart after losing
 - M — mute / unmute the music (remembered in `localStorage`)
+- F — open the nearest chest (costs crystals)
+- 1-5 — pick a weapon from the hotbar
+- Q / Z / X / C / V — use your abilities, in the order you found them
 
 ## Commands
 - `npm install` — install dependencies
@@ -63,6 +66,15 @@ slashbattle/
     characters.js      # build player/monster jelly bodies (shape + 3D face + indicators)
     jelly.js           # the jelly body: shared-geometry wireframe edges, per-vertex deformation
     spawner.js         # the spawn-in effect: portal ring + beam, monster materialize animation
+    crystals.js        # the dropped-crystal pool (InstancedMesh); scatter/pull/collect
+    chests.js          # treasure chests with a crystal price over them
+    pets.js            # pets that orbit the player and zap/heal
+    projectiles.js     # pooled boss-barrage orbs
+    shockwave.js       # expanding ground rings (boss slam, player Shockwave)
+    logic/items.js     # weapon / ability / pet catalogs
+    logic/inventory.js # crystals, hotbar, ability cooldowns, chest loot rolls
+    logic/crystals.js  # crystal drops + movement rules
+    logic/projectiles.js # fan velocities, projectile stepping/hits
     logic/bosses.js    # the seven bosses (stats, specials, dialogue), boss order/scaling
     logic/cutscene.js  # the boss-intro cutscene timeline (enter -> talk -> title -> done)
     music.js           # procedural Web Audio background track (lookahead scheduler, synth voices, mute)
@@ -281,3 +293,33 @@ is held too). `runCutscene` pans the camera to the boss and steps
 (Space / Enter / click skips ahead), and its name slams on screen -- then calls
 `beginBossFight`. A boss health bar shows during the fight; beating it (or
 knocking it off the edge) pops its minions, scores bonus points, and heals extra.
+
+## Crystals, chests, and loot
+Every kill that finishes its death pop drops crystals (`crystalDrops`: a couple
+of 1s for blobbo, a 2 for zippy, three 2s for grumpus, eight 5s for a boss; a
+monster that just falls off the edge drops nothing). They scatter, rest, and
+home in once you're within a magnet radius (`src/crystals.js` /
+`logic/crystals.js`); clearing a wave or boss pulls every leftover to you.
+
+Chests (`src/chests.js`) stand on the platform with a price floating over them
+(`chestCost` climbs with how many you've opened; green when affordable, red
+when not). At most `CHEST_MAX_ACTIVE` exist at once, placed like pods (reusing
+`pickPodSpawnPoint`/`stepPodSpawner`), and a boss leaves a FREE one where it
+fell. Press F within `CHEST_INTERACT_RANGE` to pay and open one; it rolls
+(`rollChestLoot`) a weapon, ability or pet you don't own yet, or -- once you own
+all 14 items -- a score and heal bonus.
+
+- **Weapons** (`WEAPONS`, the 1-5 hotbar): Energy Sword (start), Twin Dagger,
+  Neon Spear, Mega Hammer, Moon Scythe, each with its own damage / range / arc /
+  cooldown / knockback and 3D model. `combat.js`'s `updatePlayerAttack` takes the
+  selected `weaponId`; a new weapon is equipped when found.
+- **Abilities** (`ABILITIES`, keys Q Z X C V in pickup order, each on a
+  cooldown shown on its slot): Blink, Shockwave, Heal Pulse, Bubble Shield,
+  Rage. Effects live in `main.js`'s `activateAbility`.
+- **Pets** (`PETS`): Sparky and Blasty zap the nearest enemy, Healbit heals,
+  Magneto widens the crystal pull, Shieldy softens every hit (`petEffects`).
+  They orbit you and can't be hurt (`src/pets.js`).
+
+`combat.js`'s `damageMonster` is the one place a monster takes a hit (sword,
+pet zap, shockwave all use it). The inventory HUD (crystal count, hotbar,
+ability bar, pet icons, chest prompt, loot toast) is in `hud.js`.
