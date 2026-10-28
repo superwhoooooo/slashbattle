@@ -42,6 +42,26 @@ const DODECAHEDRON_FACE_NORMALS = [
 // the same factor.
 export const OCTAHEDRON_VERTICAL_STRETCH = 1.3
 
+// Proportions of the bosses' extra shapes (shared with characters.js's
+// geometry builders so the surface math always matches the mesh): the
+// cylinder is a radius of CYLINDER_RADIUS_FACTOR * size and `size` tall;
+// the cone is a base radius of CONE_RADIUS_FACTOR * size and
+// CONE_HEIGHT_FACTOR * size tall, apex up. 'sphere' and 'tetrahedron'
+// take `size / 2` as their (circum)radius, like the dodecahedron.
+export const CYLINDER_RADIUS_FACTOR = 0.4
+export const CONE_RADIUS_FACTOR = 0.5
+export const CONE_HEIGHT_FACTOR = 1.1
+
+// A regular tetrahedron's face normals point away from its vertices
+// (which sit at the cube corners (1,1,1), (-1,-1,1), (-1,1,-1),
+// (1,-1,-1)), and its faces lie 1/3 of the circumradius from the center.
+const TETRAHEDRON_FACE_NORMALS = [
+  [-1, -1, -1], [1, 1, -1], [1, -1, 1], [-1, 1, 1],
+].map(([x, y, z]) => {
+  const length = Math.hypot(x, y, z)
+  return { x: x / length, y: y / length, z: z / length }
+})
+
 function normalize(x, y, z) {
   const length = Math.hypot(x, y, z) || 1
   return { x: x / length, y: y / length, z: z / length }
@@ -102,6 +122,47 @@ export function bodySurfaceDistance(shape, size, dirX, dirY, dirZ) {
       if (Math.abs(d.x) > 1e-9) minDistance = Math.min(minDistance, halfExtents.x / Math.abs(d.x))
       if (Math.abs(d.y) > 1e-9) minDistance = Math.min(minDistance, halfExtents.y / Math.abs(d.y))
       if (Math.abs(d.z) > 1e-9) minDistance = Math.min(minDistance, halfExtents.z / Math.abs(d.z))
+      return minDistance
+    }
+
+    case 'sphere': {
+      // IcosahedronGeometry(size / 2, 1) -- the same near-sphere as the
+      // player's body, just sized like the other monsters.
+      return size / 2
+    }
+
+    case 'tetrahedron': {
+      // Exact: the smallest, over the faces the direction points out
+      // through, of (circumradius / 3) / (faceNormal . direction).
+      const insphere = size / 2 / 3
+      let minDistance = Infinity
+      for (const n of TETRAHEDRON_FACE_NORMALS) {
+        const alignment = n.x * d.x + n.y * d.y + n.z * d.z
+        if (alignment > 1e-9) minDistance = Math.min(minDistance, insphere / alignment)
+      }
+      return minDistance
+    }
+
+    case 'cylinder': {
+      // Exact: the sooner of hitting the curved side or a flat cap.
+      const radius = size * CYLINDER_RADIUS_FACTOR
+      const horizontal = Math.hypot(d.x, d.z)
+      let minDistance = Infinity
+      if (horizontal > 1e-9) minDistance = radius / horizontal
+      if (Math.abs(d.y) > 1e-9) minDistance = Math.min(minDistance, size / 2 / Math.abs(d.y))
+      return minDistance
+    }
+
+    case 'cone': {
+      // Exact, apex up: the ray leaves through the slanted side where
+      // horizontal * t = R * (h/2 - y) / h, or through the flat base.
+      const baseRadius = size * CONE_RADIUS_FACTOR
+      const height = size * CONE_HEIGHT_FACTOR
+      const horizontal = Math.hypot(d.x, d.z)
+      let minDistance = Infinity
+      const sideDenominator = horizontal + (baseRadius / height) * d.y
+      if (sideDenominator > 1e-9) minDistance = baseRadius / 2 / sideDenominator
+      if (d.y < -1e-9) minDistance = Math.min(minDistance, height / 2 / -d.y)
       return minDistance
     }
 

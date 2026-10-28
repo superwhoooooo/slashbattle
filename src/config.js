@@ -40,17 +40,12 @@ export const MONSTER_TYPES = {
 }
 
 // Boss fights: where the boss materializes for its intro cutscene
-// (straight ahead of the player, in the camera's view), and its specials.
+// (straight ahead of the player, in the camera's view). The specials'
+// tuning lives in logic/bosses.js's BOSS_SPECIALS.
 export const BOSS_SPAWN_DISTANCE = 15
 export const BOSS_SPAWN_MARGIN = 7 // world units in from the platform's edge
 export const BOSS_SPAWN_EFFECT_SCALE = 2.6 // portal ring/beam widened for a boss
 export const BOSS_SPAWN_EFFECT_DURATION = 1.8 // seconds, matches CUTSCENE_ENTER_DURATION
-export const BOSS_SUMMON_INTERVAL = 8 // seconds between a summoner boss's minion calls
-export const BOSS_SUMMON_COUNT = 2
-export const BOSS_MAX_MINIONS = 5 // a summoner stops calling in more past this many living minions
-export const BOSS_CHARGE_INTERVAL = 6 // seconds between a charger boss's dashes
-export const BOSS_CHARGE_DURATION = 1.2
-export const BOSS_CHARGE_SPEED_MULTIPLIER = 2.6
 export const BOSS_DEFEAT_HEAL_MULTIPLIER = 2 // beating a boss heals WAVE_CLEAR_HEAL times this
 export const BOSS_DEATH_SHARD_MULTIPLIER = 3
 export const CUTSCENE_CAMERA_LERP = 3.5

@@ -14,7 +14,12 @@ import {
 import { createFace3D } from './face3d.js'
 import { createJellyBody } from './jelly.js'
 import { PLAYER_FACE, pickFaceOptions } from './logic/faceOptions.js'
-import { bodySurfaceDistance } from './logic/faceLayout.js'
+import {
+  CONE_HEIGHT_FACTOR,
+  CONE_RADIUS_FACTOR,
+  CYLINDER_RADIUS_FACTOR,
+  bodySurfaceDistance,
+} from './logic/faceLayout.js'
 
 const PLAYER_BODY_COLOR = 0x3388ff
 
@@ -150,10 +155,35 @@ function createGrumpusGeometry(size) {
   return new THREE.BoxGeometry(size * 0.7, size, size * 0.7, 3, 3, 3)
 }
 
+// The bosses' extra shapes (their proportions live in faceLayout.js so
+// the face math matches). The sphere/cylinder/cone have enough segments
+// for the jelly deformation to have vertices to jiggle; the tetrahedron
+// is left at detail 0 (any subdivision would round it into a sphere), so
+// only its four corners wobble.
+function createSphereGeometry(size) {
+  return new THREE.IcosahedronGeometry(size / 2, 1)
+}
+
+function createTetrahedronGeometry(size) {
+  return new THREE.TetrahedronGeometry(size / 2)
+}
+
+function createCylinderGeometry(size) {
+  return new THREE.CylinderGeometry(size * CYLINDER_RADIUS_FACTOR, size * CYLINDER_RADIUS_FACTOR, size, 14, 4)
+}
+
+function createConeGeometry(size) {
+  return new THREE.ConeGeometry(size * CONE_RADIUS_FACTOR, size * CONE_HEIGHT_FACTOR, 14, 4)
+}
+
 const GEOMETRY_BUILDERS = {
   dodecahedron: createBlobboGeometry,
   octahedron: createZippyGeometry,
   box: createGrumpusGeometry,
+  sphere: createSphereGeometry,
+  tetrahedron: createTetrahedronGeometry,
+  cylinder: createCylinderGeometry,
+  cone: createConeGeometry,
 }
 
 // The body's resting center height so its lowest point touches the
@@ -165,8 +195,15 @@ const GEOMETRY_BUILDERS = {
 // faceLayout's own bodySurfaceDistance (straight down) gives the exact
 // height instead (size * 0.65), so this stays correct if the stretch
 // ever changes.
-function monsterBodyCenterY(stats) {
-  return stats.shape === 'octahedron' ? bodySurfaceDistance(stats.shape, stats.size, 0, -1, 0) : stats.size / 2
+function monsterBodyCenterY(stats, geometry) {
+  if (stats.shape === 'octahedron') return bodySurfaceDistance(stats.shape, stats.size, 0, -1, 0)
+  // The bosses' extra shapes aren't symmetric top-to-bottom (a tetrahedron
+  // or cone), so read the exact lowest point off the geometry itself.
+  if (!['dodecahedron', 'box'].includes(stats.shape)) {
+    geometry.computeBoundingBox()
+    return -geometry.boundingBox.min.y
+  }
+  return stats.size / 2
 }
 
 // Builds the player's body: a faceted, flat-shaded icosahedron jelly body
@@ -214,7 +251,7 @@ export function createMonsterMesh(type, rng = Math.random) {
   const stats = MONSTER_TYPES[type]
   const geometry = GEOMETRY_BUILDERS[stats.shape](stats.size)
   const material = createJellyMaterial(stats.color)
-  const bodyCenterY = monsterBodyCenterY(stats)
+  const bodyCenterY = monsterBodyCenterY(stats, geometry)
   const group = createJellyBody(geometry, material, stats.edgeColor, bodyCenterY)
 
   const { body } = group.userData.jelly
@@ -241,6 +278,20 @@ export function createMonsterMesh(type, rng = Math.random) {
   searchIndicator.scale.multiplyScalar(indicatorScale)
   group.add(chaseIndicator)
   group.add(searchIndicator)
+
+  if (stats.boss) {
+    // A flat red ring on the ground that a boss's slam/spin wind-up
+    // shows (scaled to the move's radius, see monster.js); hidden until then.
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(0.93, 1, 56),
+      new THREE.MeshBasicMaterial({ color: 0xff3355, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false }),
+    )
+    ring.rotation.x = -Math.PI / 2
+    ring.position.y = 0.06
+    ring.visible = false
+    group.add(ring)
+    group.userData.telegraph = ring
+  }
 
   group.userData.body = body
   group.userData.type = type

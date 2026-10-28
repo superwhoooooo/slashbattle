@@ -103,3 +103,42 @@ describe('faceLayout', () => {
     expect(layout.tongue.y).toBeLessThan(layout.mouth.y)
   })
 })
+
+describe('bodySurfaceDistance: boss shapes', () => {
+  it('treats the sphere as a ball of radius size / 2', () => {
+    expect(bodySurfaceDistance('sphere', 4, 1, 2, 3)).toBeCloseTo(2, 5)
+  })
+
+  it('puts the tetrahedron face 1/3 of the circumradius out along a face normal', () => {
+    // size 6 -> circumradius 3 -> insphere 1; straight along a face normal.
+    expect(bodySurfaceDistance('tetrahedron', 6, 1, 1, -1)).toBeCloseTo(1, 5)
+    // ...and reaches a vertex (the full circumradius) pointing at one.
+    expect(bodySurfaceDistance('tetrahedron', 6, 1, 1, 1)).toBeCloseTo(3, 5)
+  })
+
+  it('hits the cylinder side or a cap, whichever is first', () => {
+    expect(bodySurfaceDistance('cylinder', 5, 1, 0, 0)).toBeCloseTo(2, 5) // radius 0.4 * 5
+    expect(bodySurfaceDistance('cylinder', 5, 0, 1, 0)).toBeCloseTo(2.5, 5) // half height
+    expect(bodySurfaceDistance('cylinder', 5, 0, -1, 0)).toBeCloseTo(2.5, 5)
+  })
+
+  it('narrows the cone toward its apex and flares to the base', () => {
+    // size 4: base radius 2, height 4.4. Straight up reaches the apex; straight down the base.
+    expect(bodySurfaceDistance('cone', 4, 0, 1, 0)).toBeCloseTo(2.2, 5)
+    expect(bodySurfaceDistance('cone', 4, 0, -1, 0)).toBeCloseTo(2.2, 5)
+    // Sideways from the middle: half the base radius (the slant is halfway up).
+    expect(bodySurfaceDistance('cone', 4, 1, 0, 0)).toBeCloseTo(1, 5)
+  })
+
+  it('never returns a non-positive or infinite distance, in any direction', () => {
+    for (const shape of ['sphere', 'tetrahedron', 'cylinder', 'cone']) {
+      for (let i = 0; i < 200; i++) {
+        const a = i * 0.731
+        const b = i * 1.377
+        const distance = bodySurfaceDistance(shape, 3, Math.cos(a) * Math.cos(b), Math.sin(b), Math.sin(a) * Math.cos(b))
+        expect(distance).toBeGreaterThan(0)
+        expect(Number.isFinite(distance)).toBe(true)
+      }
+    }
+  })
+})

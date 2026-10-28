@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   BOSSES,
   BOSS_COUNT,
+  BOSS_SPECIALS,
   BOSS_MONSTER_TYPES,
   bossById,
   bossForFight,
@@ -27,7 +28,8 @@ describe('BOSSES', () => {
     expect(new Set(BOSSES.map((b) => b.name)).size).toBe(7)
     for (const boss of BOSSES) {
       expect(boss.lines.length).toBeGreaterThanOrEqual(2)
-      expect(['none', 'charge', 'summon']).toContain(boss.special)
+      expect(boss.specials.length).toBeGreaterThanOrEqual(1)
+      for (const name of boss.specials) expect(BOSS_SPECIALS[name]).toBeDefined()
       expect(boss.stats.hp).toBeGreaterThan(200)
       expect(boss.stats.radius).toBeGreaterThan(1)
       expect(boss.stats.attackRange).toBeGreaterThan(boss.stats.radius)
@@ -38,7 +40,23 @@ describe('BOSSES', () => {
   it('is folded into MONSTER_TYPES so spawning/combat find boss stats by id', () => {
     for (const boss of BOSSES) expect(MONSTER_TYPES[boss.id]).toBe(BOSS_MONSTER_TYPES[boss.id])
     expect(bossById('boss_gloop').name).toBe('KING GLOOP')
+    expect(bossById('boss_conefather').name).toBe('THE CONE FATHER')
     expect(bossById('blobbo')).toBeNull()
+  })
+})
+
+describe('boss variety', () => {
+  it('gives every boss a different body shape', () => {
+    expect(new Set(BOSSES.map((b) => b.stats.shape)).size).toBe(7)
+  })
+
+  it('uses the shapes bodySurfaceDistance knows how to place a face on', () => {
+    const known = ['sphere', 'tetrahedron', 'box', 'cylinder', 'cone', 'octahedron', 'dodecahedron']
+    for (const boss of BOSSES) expect(known).toContain(boss.stats.shape)
+  })
+
+  it('does not give two bosses the same set of abilities', () => {
+    expect(new Set(BOSSES.map((b) => [...b.specials].sort().join('+'))).size).toBe(7)
   })
 })
 

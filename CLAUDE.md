@@ -250,15 +250,27 @@ on the game-over screen.
 ## Bosses
 After one regular wave a boss fight, then two waves and a boss, then three,
 and so on (`wavesBeforeBoss`). `src/logic/bosses.js` defines seven bosses --
-King Gloop, Zipzilla, Sir Grumpsalot, Doctor Wobble, The Cube Father, Madam
-Mayhem, Omega Jello -- each a big jelly in one of the existing shapes with its
-own stats, a special (`none`, `charge` dashes, or `summon` calls minions) and
+King Gloop (sphere), Zipzilla (tetrahedron), Sir Grumpsalot (box), Doctor
+Wobble (cylinder), The Cone Father (cone), Madam Mayhem (octahedron), Omega
+Jello (dodecahedron) -- each with its own stats, one or two `specials`, and
 goofy dialogue. Their stats are folded into `MONSTER_TYPES` (keyed by id) so
 spawning, combat and rendering treat them like any monster; boss-only stat
 fields are `attackRange`/`reachBonus` (so big bodies can still hit and be hit),
-`knockbackScale`, `attackCooldown` and `special`. A run shuffles the seven
+`knockbackScale`, `attackCooldown` and `specials`. The extra shapes
+(`sphere`/`tetrahedron`/`cylinder`/`cone`) have exact surface math in
+`faceLayout.js`'s `bodySurfaceDistance`, so faces sit right on them, and a
+body's resting height comes off its bounding box. A run shuffles the seven
 (`shuffleBossOrder`), so all appear before any repeats; later visits have more
 hp (`bossHpScale`).
+
+Specials (tuned in `BOSS_SPECIALS`): `charge` (dash), `summon` (minions),
+`slam` (ground-pound with a red danger ring during its wind-up), `blink`
+(teleport next to you), `barrage` (a fan of orbs, `src/projectiles.js`) and
+`spin` (a whirl that hits everything near it). `monster.js`'s
+`stepBossSpecials` runs each boss's cooldown timers and wind-ups and returns
+events (`slam`, `spinTick`, `barrage`, `summon`, `blink`) that
+`main.js`'s `applyBossEvents` turns into damage, shockwave rings
+(`src/shockwave.js`), orbs and minions. A special fizzles if you hide.
 
 The wave controller (`src/logic/waves.js`) gained `bossIntro` and `bossFight`
 phases: after the last regular wave's intermission it emits `bossIntro`, and

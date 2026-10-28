@@ -21,12 +21,10 @@ import {
   CAMERA_LERP,
   CAMERA_LOOKAHEAD,
   BOSS_DEFEAT_HEAL_MULTIPLIER,
-  BOSS_MAX_MINIONS,
   BOSS_SPAWN_DISTANCE,
   BOSS_SPAWN_EFFECT_DURATION,
   BOSS_SPAWN_EFFECT_SCALE,
   BOSS_SPAWN_MARGIN,
-  BOSS_SUMMON_COUNT,
   CAMERA_OFFSET,
   CUTSCENE_CAMERA_LERP,
   FALL_DESPAWN_DEPTH,
@@ -88,6 +86,7 @@ import {
 } from './hud.js'
 import { Input } from './input.js'
 import { bossById, bossHpScale } from './logic/bosses.js'
+import { fanVelocities } from './logic/projectiles.js'
 import { clampToPlatform, isOnPlatform, spawnPointNearPlayer } from './logic/arena.js'
 import { createCutscene, stepCutscene, visibleChars } from './logic/cutscene.js'
 import { stepFall } from './logic/falling.js'
@@ -107,6 +106,8 @@ import {
 import { createMonsterAIState, separateMonsters, updateMonster } from './monster.js'
 import { burst, createParticleSystem, resetParticles, updateParticles } from './particles.js'
 import { Player } from './player.js'
+import { createProjectilePool, fireProjectile, resetProjectiles, updateProjectiles } from './projectiles.js'
+import { createShockwavePool, resetShockwaves, spawnShockwave, updateShockwaves } from './shockwave.js'
 import { createPopupPool, resetPopups, showPopup, updatePopups } from './popups.js'
 import { createSpawnEffect, updateSpawnEffect } from './spawner.js'
 import { clearSwingTrail, createSwingTrail } from './trail.js'
@@ -171,6 +172,10 @@ const swingTrail = createSwingTrail(SWORD_BLADE_COLOR)
 scene.add(swingTrail.mesh)
 const popupPool = createPopupPool()
 scene.add(popupPool.group)
+const projectilePool = createProjectilePool()
+scene.add(projectilePool.group)
+const shockwavePool = createShockwavePool()
+scene.add(shockwavePool.group)
 
 // The camera doesn't rotate yet, so it stays behind the player along a
 // fixed world-space offset and eases toward its target each frame.
@@ -420,11 +425,11 @@ function startBossCutscene(game) {
 }
 
 // Calls a summoner boss's minions in around it (skipped while it already
-// has BOSS_MAX_MINIONS alive), each through the usual portal spawn-in.
-function summonMinions(game, bossMesh) {
+// has `maxMinions` alive), each through the usual portal spawn-in.
+function summonMinions(game, bossMesh, count, maxMinions) {
   const living = game.monsters.filter((m) => !m.userData.isBoss && !m.userData.dying).length
-  if (living >= BOSS_MAX_MINIONS) return
-  for (let i = 0; i < BOSS_SUMMON_COUNT; i++) {
+  if (living >= maxMinions) return
+  for (let i = 0; i < count; i++) {
     const angle = Math.random() * Math.PI * 2
     const distance = bossMesh.userData.radius + 2 + Math.random() * 2
     const at = clampToPlatform(
@@ -444,6 +449,42 @@ function popMinions(game) {
     mesh.userData.deathPopElapsed = 0
     jellyHit(mesh, JELLY_DEATH_INFLATE_STRENGTH)
   }
+}
+
+const pendingSummons = []
+
+// Turns the specials a boss fired this tick (see monster.js's
+// updateMonster) into their effects: shockwave rings and damage for a slam
+// or spin tick, orbs for a barrage, minions for a summon, a puff at both
+// ends of a blink. Returns whether the player took damage, so the caller
+// can shake the screen.
+function applyBossEvents(game, bossMesh, events, now) {
+  const { player } = game
+  let hurtPlayer = false
+  const playerDistance = (x, z) => Math.hypot(player.position.x - x, player.position.z - z)
+  for (const event of events) {
+    if (event.type === 'slam') {
+      spawnShockwave(shockwavePool, event.x, event.z, event.radius, 0xff3355)
+      burst(particleSystem, { x: event.x, y: 0.3, z: event.z }, 0xff9a5a, 36, 4.5)
+      if (playerDistance(event.x, event.z) <= event.radius && player.damagePlayer(event.damage, now)) hurtPlayer = true
+      triggerShake(game.shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
+    } else if (event.type === 'spinTick') {
+      spawnShockwave(shockwavePool, event.x, event.z, event.radius, 0xffb454)
+      if (playerDistance(event.x, event.z) <= event.radius && player.damagePlayer(event.damage, now)) hurtPlayer = true
+    } else if (event.type === 'barrage') {
+      for (const { vx, vz } of fanVelocities(event.aim, event.count, event.spread, event.speed)) {
+        fireProjectile(projectilePool, { x: event.x, z: event.z, vx, vz, damage: event.damage })
+      }
+    } else if (event.type === 'summon') {
+      // Deferred: we're mid-way through filtering game.monsters, which is
+      // reassigned afterward and would drop anything spawned right now.
+      pendingSummons.push({ bossMesh, count: event.count, maxMinions: event.maxMinions })
+    } else if (event.type === 'blink') {
+      burst(particleSystem, { x: event.from.x, y: 1, z: event.from.z }, 0xe9a3ff, 24, 3)
+      burst(particleSystem, { x: event.to.x, y: 1, z: event.to.z }, 0xe9a3ff, 24, 3)
+    }
+  }
+  return hurtPlayer
 }
 
 // Advances each in-progress spawn-in effect (portal fade, monster
@@ -569,6 +610,9 @@ function animate() {
       game = createGame()
       resetParticles(particleSystem)
       resetPopups(popupPool)
+      resetProjectiles(projectilePool)
+      resetShockwaves(shockwavePool)
+      pendingSummons.length = 0
       clearSwingTrail(swingTrail)
     }
     composer.render()
@@ -692,7 +736,6 @@ function animate() {
   // Falling monsters (walked, chased, or knocked off the edge) skip the
   // jelly tick, tumbling down out of view before the same scored removal
   // happens.
-  const summoners = []
   let bossGone = false
   monsters = monsters.filter((mesh) => {
     if (mesh.userData.spawning) {
@@ -732,8 +775,8 @@ function animate() {
       return true
     }
 
-    const { hitPlayer, summon } = updateMonster(mesh, player, obstacles, deltaSeconds, elapsedSeconds)
-    if (summon) summoners.push(mesh)
+    const { hitPlayer: monsterHitPlayer, events: specialEvents } = updateMonster(mesh, player, obstacles, deltaSeconds, elapsedSeconds)
+    const hitPlayer = monsterHitPlayer || (specialEvents.length > 0 && applyBossEvents(game, mesh, specialEvents, elapsedSeconds))
     updateJelly(mesh, deltaSeconds, elapsedSeconds, { speed: mesh.userData.speed, moveDir: mesh.userData.moveDir })
     updateFace3D(mesh, deltaSeconds, elapsedSeconds)
     if (hitPlayer) {
@@ -752,7 +795,7 @@ function animate() {
     return true
   })
   game.monsters = monsters
-  summoners.forEach((bossMesh) => summonMinions(game, bossMesh))
+  pendingSummons.splice(0).forEach(({ bossMesh, count, maxMinions }) => summonMinions(game, bossMesh, count, maxMinions))
   if (bossGone) popMinions(game)
 
   updateSpawnEffects(game, deltaSeconds)
@@ -761,6 +804,11 @@ function animate() {
   updateArena(game.arena, elapsedSeconds, player.position)
   updateParticles(particleSystem, deltaSeconds)
   updatePopups(popupPool, deltaSeconds)
+  updateShockwaves(shockwavePool, deltaSeconds)
+  if (updateProjectiles(projectilePool, deltaSeconds, player, elapsedSeconds, ARENA_RADIUS)) {
+    triggerShake(shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
+    triggerDamageFlash(hud)
+  }
 
   const inBossFight = game.waveState.phase === 'bossFight'
   const enemiesLeft = inBossFight
