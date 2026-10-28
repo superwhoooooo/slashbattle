@@ -150,4 +150,71 @@ describe('nextMonsterState', () => {
     }
     expect(nextMonsterState(monster, perception, 1, cfg).state).toBe('wander')
   })
+
+  describe('losing the player to a pod', () => {
+    const podPos = { x: 0, z: 0 }
+    const hiddenPerception = {
+      canSeePlayer: true,
+      distanceToPlayer: 2,
+      playerPos: podPos,
+      playerHidden: true,
+    }
+    const hideCfg = { ...cfg, arenaRadius: 40, hideSearchMinDistance: 6, hideSearchMaxDistance: 10 }
+
+    for (const state of ['chase', 'attack']) {
+      it(`searches away from the pod, not at it, when a ${state}ing monster loses a hidden player`, () => {
+        for (let seed = 0; seed < 50; seed++) {
+          const monster = { state, position: { x: 3, z: 0 }, stateEnteredAt: 0, lastKnownPos: podPos }
+          const next = nextMonsterState(monster, hiddenPerception, 1, { ...hideCfg, rng: createSeededRng(seed) })
+          expect(next.state).toBe('search')
+          const away = Math.hypot(next.lastKnownPos.x - podPos.x, next.lastKnownPos.z - podPos.z)
+          expect(away).toBeGreaterThanOrEqual(6 - 1e-9)
+          expect(away).toBeLessThanOrEqual(10 + 1e-9)
+        }
+      })
+    }
+
+    it('keeps the decoy search point on the platform', () => {
+      const edgePod = { x: 38, z: 0 }
+      for (let seed = 0; seed < 50; seed++) {
+        const monster = { state: 'chase', position: { x: 36, z: 0 }, stateEnteredAt: 0, lastKnownPos: edgePod }
+        const next = nextMonsterState(
+          monster,
+          { ...hiddenPerception, playerPos: edgePod },
+          1,
+          { ...hideCfg, rng: createSeededRng(seed) },
+        )
+        expect(Math.hypot(next.lastKnownPos.x, next.lastKnownPos.z)).toBeLessThanOrEqual(39 + 1e-9)
+      }
+    })
+
+    it('still searches the last known spot when the player just ran out of sight', () => {
+      const lastSeen = { x: 5, z: 5 }
+      const monster = { state: 'chase', position: { x: 3, z: 0 }, stateEnteredAt: 0, lastKnownPos: lastSeen }
+      const next = nextMonsterState(
+        monster,
+        { canSeePlayer: false, distanceToPlayer: 30, playerPos: { x: 30, z: 30 }, playerHidden: false },
+        1,
+        hideCfg,
+      )
+      expect(next.state).toBe('search')
+      expect(next.lastKnownPos).toEqual(lastSeen)
+    })
+  })
+
+  it('stops approaching a search spot it cannot reach and starts looking around', () => {
+    const monster = {
+      state: 'search',
+      position: { x: 0, z: 0 },
+      stateEnteredAt: 0,
+      lastKnownPos: { x: 8, z: 0 },
+      searchPhase: 'approach',
+      lookStartedAt: null,
+    }
+    const hidden = { canSeePlayer: false, distanceToPlayer: 99, playerPos: { x: 0, z: 0 }, playerHidden: true }
+    expect(nextMonsterState(monster, hidden, 5, cfg).searchPhase).toBe('approach')
+    const next = nextMonsterState(monster, hidden, 6.5, { ...cfg, searchApproachTimeout: 6 })
+    expect(next.searchPhase).toBe('look')
+    expect(next.lookStartedAt).toBe(6.5)
+  })
 })

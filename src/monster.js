@@ -8,6 +8,9 @@ import {
   MONSTER_PLATFORM_MARGIN,
   MONSTER_TYPES,
   PLAYER_RADIUS,
+  HIDE_SEARCH_MAX_DISTANCE,
+  HIDE_SEARCH_MIN_DISTANCE,
+  SEARCH_APPROACH_TIMEOUT,
   SEARCH_DURATION,
   SEARCH_SPIN_SPEED,
   MONSTER_FACING_DAMPING,
@@ -149,6 +152,9 @@ export function updateMonster(monster, player, obstacles, dt, now) {
       searchDuration: SEARCH_DURATION,
       wanderTimeout: WANDER_TIMEOUT,
       arrivalDistance: MONSTER_ARRIVAL_DISTANCE,
+      searchApproachTimeout: SEARCH_APPROACH_TIMEOUT,
+      hideSearchMinDistance: HIDE_SEARCH_MIN_DISTANCE,
+      hideSearchMaxDistance: HIDE_SEARCH_MAX_DISTANCE,
     },
   )
 

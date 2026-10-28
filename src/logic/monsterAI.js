@@ -1,7 +1,7 @@
 // Pure, Three-free monster AI state machine. Kept free of Three.js imports
 // so Vitest can exercise it without WebGL; the Three-side driver lives in
 // src/monster.js.
-import { randomPointNear } from './arena.js'
+import { clampToPlatform, randomPointNear } from './arena.js'
 
 export const MONSTER_STATES = {
   WANDER: 'wander',
@@ -14,6 +14,9 @@ const DEFAULT_ARRIVAL_DISTANCE = 0.3
 const DEFAULT_WANDER_MARGIN = 1.5
 const DEFAULT_WANDER_TIMEOUT = 4
 const DEFAULT_WANDER_BIAS_RADIUS = 15
+const DEFAULT_HIDE_SEARCH_MIN_DISTANCE = 6
+const DEFAULT_HIDE_SEARCH_MAX_DISTANCE = 10
+const DEFAULT_SEARCH_APPROACH_TIMEOUT = 6
 
 function distanceBetween(a, b) {
   return Math.hypot(a.x - b.x, a.z - b.z)
@@ -35,6 +38,33 @@ function pickWanderTarget(position, cfg) {
   return randomPointNear(rng, position, wanderBiasRadius, arenaRadius, wanderMargin)
 }
 
+// Where a monster that just lost the player to a pod goes to search. The
+// player's last known position IS the pod (they snap to its center), so
+// searching there would walk the monster straight up to the pod and have
+// it stare at it -- the monster "knowing" where the player is. Instead it
+// goes to a point hideSearchMinDistance..hideSearchMaxDistance away from
+// the pod, as if it only saw the player vanish somewhere around there.
+function pickHiddenSearchPoint(playerPos, cfg) {
+  const {
+    rng = Math.random,
+    arenaRadius,
+    wanderMargin = DEFAULT_WANDER_MARGIN,
+    hideSearchMinDistance = DEFAULT_HIDE_SEARCH_MIN_DISTANCE,
+    hideSearchMaxDistance = DEFAULT_HIDE_SEARCH_MAX_DISTANCE,
+  } = cfg
+  const angle = rng() * Math.PI * 2
+  const distance = hideSearchMinDistance + rng() * (hideSearchMaxDistance - hideSearchMinDistance)
+  const point = { x: playerPos.x + Math.sin(angle) * distance, z: playerPos.z + Math.cos(angle) * distance }
+  return clampToPlatform(point, Math.max(arenaRadius - wanderMargin, 0))
+}
+
+// Where a monster that just lost sight of the player starts searching.
+function lostPlayerSearchPoint(monster, perception, cfg) {
+  return perception.playerHidden
+    ? pickHiddenSearchPoint(perception.playerPos, cfg)
+    : monster.lastKnownPos
+}
+
 // Advances one monster's AI state machine by one tick.
 //
 // `monster` carries its own position plus the current AI fields: state,
@@ -51,6 +81,7 @@ function pickWanderTarget(position, cfg) {
 export function nextMonsterState(monster, perception, now, cfg) {
   const arrivalDistance = cfg.arrivalDistance ?? DEFAULT_ARRIVAL_DISTANCE
   const wanderTimeout = cfg.wanderTimeout ?? DEFAULT_WANDER_TIMEOUT
+  const searchApproachTimeout = cfg.searchApproachTimeout ?? DEFAULT_SEARCH_APPROACH_TIMEOUT
   const playerVisible = perception.canSeePlayer && !perception.playerHidden
 
   switch (monster.state) {
@@ -59,7 +90,7 @@ export function nextMonsterState(monster, perception, now, cfg) {
         return {
           state: MONSTER_STATES.SEARCH,
           stateEnteredAt: now,
-          lastKnownPos: monster.lastKnownPos,
+          lastKnownPos: lostPlayerSearchPoint(monster, perception, cfg),
           searchPhase: 'approach',
           lookStartedAt: null,
         }
@@ -83,7 +114,7 @@ export function nextMonsterState(monster, perception, now, cfg) {
         return {
           state: MONSTER_STATES.SEARCH,
           stateEnteredAt: now,
-          lastKnownPos: monster.lastKnownPos,
+          lastKnownPos: lostPlayerSearchPoint(monster, perception, cfg),
           searchPhase: 'approach',
           lookStartedAt: null,
         }
@@ -115,10 +146,13 @@ export function nextMonsterState(monster, perception, now, cfg) {
       let searchPhase = monster.searchPhase ?? 'approach'
       let lookStartedAt = monster.lookStartedAt ?? null
 
+      // Gives up walking to the spot after a while too, so a monster that
+      // can't quite reach it (blocked by a pod) doesn't push against it forever.
       if (
         searchPhase === 'approach' &&
         lastKnownPos &&
-        distanceBetween(monster.position, lastKnownPos) <= arrivalDistance
+        (distanceBetween(monster.position, lastKnownPos) <= arrivalDistance ||
+          now - monster.stateEnteredAt >= searchApproachTimeout)
       ) {
         searchPhase = 'look'
         lookStartedAt = now

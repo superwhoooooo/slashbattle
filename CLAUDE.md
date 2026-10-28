@@ -15,8 +15,9 @@ platform's much bigger than that now, and an edge spawn would take too
 long to close in), clamped onto the platform. Losing all
 your hp loses the game. Monsters wander until they spot you, chase, and
 attack once in range; hiding in a pod breaks their line of sight, so a
-chasing or attacking monster gives up and searches your last known spot
-before going back to wandering. Popping out of hiding deals bonus
+chasing or attacking monster gives up and searches near where it lost you
+(a point `HIDE_SEARCH_MIN_DISTANCE`-`HIDE_SEARCH_MAX_DISTANCE` away from the pod,
+never the pod itself, which would give the hiding spot away) before going back to wandering. Popping out of hiding deals bonus
 "ambush" damage on your next hit for a short window. There are no walls
 at the platform's edge: anyone whose center leaves it falls. A monster
 that falls dies (counts as a kill); a player who falls loses HP and

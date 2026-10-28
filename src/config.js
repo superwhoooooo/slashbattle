@@ -288,6 +288,9 @@ export const MONSTER_ATTACK_WINDUP_DURATION = 0.3 // seconds of telegraph lean/g
 export const MONSTER_ATTACK_WINDUP_INFLATE_RATE = 2.5 // jelly inflate fed into the hit spring per second during the telegraph
 
 export const SEARCH_DURATION = 3 // seconds spent looking around before giving up and wandering again
+export const SEARCH_APPROACH_TIMEOUT = 6 // seconds a searching monster spends walking to its spot before just looking around where it is
+export const HIDE_SEARCH_MIN_DISTANCE = 6 // world units from a pod (min) a monster that lost the player to it goes to search -- not the pod itself, or it'd give the hiding spot away
+export const HIDE_SEARCH_MAX_DISTANCE = 10 // ...and the max
 export const SEARCH_SPIN_SPEED = 1.5 // radians per second, while looking around
 
 // How snappily a monster's visual rotation (dampAngle) catches up to
