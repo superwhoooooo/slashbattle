@@ -11,7 +11,7 @@ import { createMonsterMesh } from './characters.js'
 import { updateFace3D } from './face3d.js'
 import { loadHighScore, saveHighScore } from './highScore.js'
 import { createMusic } from './music.js'
-import { updateJelly } from './jelly.js'
+import { jellyHit, updateJelly } from './jelly.js'
 import {
   ARENA_RADIUS,
   BLOOM_RADIUS,
@@ -20,7 +20,15 @@ import {
   CAMERA_FAR,
   CAMERA_LERP,
   CAMERA_LOOKAHEAD,
+  BOSS_DEFEAT_HEAL_MULTIPLIER,
+  BOSS_MAX_MINIONS,
+  BOSS_SPAWN_DISTANCE,
+  BOSS_SPAWN_EFFECT_DURATION,
+  BOSS_SPAWN_EFFECT_SCALE,
+  BOSS_SPAWN_MARGIN,
+  BOSS_SUMMON_COUNT,
   CAMERA_OFFSET,
+  CUTSCENE_CAMERA_LERP,
   FALL_DESPAWN_DEPTH,
   FALL_GRAVITY,
   FALL_PUFF_COLOR,
@@ -29,6 +37,7 @@ import {
   FALL_STREAK_COUNT,
   FALL_STREAK_SPEED,
   HIDDEN_CAMERA_OFFSET,
+  JELLY_DEATH_INFLATE_STRENGTH,
   MAX_DELTA_SECONDS,
   MAX_PIXEL_RATIO,
   MONSTER_FALL_TUMBLE_SPEED,
@@ -71,18 +80,30 @@ import {
   createHud,
   hideStartCard,
   showAmbushBanner,
+  showCutscene,
   showGameOverlay,
   showWaveClearedBanner,
   triggerDamageFlash,
   updateHud,
 } from './hud.js'
 import { Input } from './input.js'
-import { isOnPlatform, spawnPointNearPlayer } from './logic/arena.js'
+import { bossById, bossHpScale } from './logic/bosses.js'
+import { clampToPlatform, isOnPlatform, spawnPointNearPlayer } from './logic/arena.js'
+import { createCutscene, stepCutscene, visibleChars } from './logic/cutscene.js'
 import { stepFall } from './logic/falling.js'
 import { evaluateGameState } from './logic/gameState.js'
 import { hideTimeRemaining } from './logic/hiding.js'
 import { createPodSpawnerState, pickPodSpawnPoint, stepPodSpawner } from './logic/podSpawner.js'
-import { createWaveState, scoreForKill, stepWaves, waveClearBonus, waveSize } from './logic/waves.js'
+import {
+  beginBossFight,
+  createWaveState,
+  currentBoss,
+  pickMonsterType,
+  scoreForKill,
+  stepWaves,
+  waveClearBonus,
+  waveSize,
+} from './logic/waves.js'
 import { createMonsterAIState, separateMonsters, updateMonster } from './monster.js'
 import { burst, createParticleSystem, resetParticles, updateParticles } from './particles.js'
 import { Player } from './player.js'
@@ -251,6 +272,7 @@ function createGame() {
     monsters: [],
     spawnEffects: [], // { effect, monster } pairs still materializing in
     waveState: createWaveState(),
+    cutscene: null, // { boss, mesh, dir, state } while a boss intro is playing; freezes gameplay
     score: 0,
     hidingState: createHidingState(),
     attackState: createAttackState(),
@@ -337,9 +359,9 @@ function despawnPod(game, pod) {
 // (marked userData.spawning so AI/combat/separation skip it), with a
 // matching spawn-in effect tracked in game.spawnEffects until it
 // finishes.
-function spawnMonster(game, type) {
+function spawnMonster(game, type, { at = null, effectOptions, hpScale = 1, facePlayer = false } = {}) {
   const stats = MONSTER_TYPES[type]
-  const spawn = spawnPointNearPlayer(
+  const spawn = at ?? spawnPointNearPlayer(
     Math.random,
     game.player.position,
     SPAWN_NEAR_PLAYER_MIN_DIST,
@@ -351,19 +373,137 @@ function spawnMonster(game, type) {
   const mesh = createMonsterMesh(type)
   mesh.position.x = spawn.x
   mesh.position.z = spawn.z
-  mesh.rotation.y = Math.random() * Math.PI * 2
-  mesh.userData.hp = stats.hp
+  mesh.rotation.y = facePlayer
+    ? Math.atan2(game.player.position.x - spawn.x, game.player.position.z - spawn.z)
+    : Math.random() * Math.PI * 2
+  mesh.userData.hp = Math.round(stats.hp * hpScale)
+  mesh.userData.maxHp = mesh.userData.hp
+  mesh.userData.isBoss = stats.boss === true
+  mesh.userData.reachBonus = stats.reachBonus ?? 0
+  mesh.userData.knockbackScale = stats.knockbackScale ?? 1
   mesh.userData.radius = stats.radius
   mesh.userData.falling = false
   mesh.userData.fallState = { velocityY: 0, fallenY: 0 }
   mesh.userData.spawning = true
-  Object.assign(mesh.userData, createMonsterAIState())
+  Object.assign(mesh.userData, createMonsterAIState(stats))
   scene.add(mesh)
   game.monsters.push(mesh)
 
-  const effect = createSpawnEffect(spawn)
+  const effect = createSpawnEffect(spawn, effectOptions)
   scene.add(effect.group)
   game.spawnEffects.push({ effect, monster: mesh })
+  return mesh
+}
+
+// Starts the current boss's intro: drops the boss in (portal and all)
+// straight ahead of the player -- on the other side if the platform's edge
+// is in the way -- facing them, and hands control to the cutscene, which
+// freezes gameplay until it finishes (see runCutscene).
+function startBossCutscene(game) {
+  const boss = currentBoss(game.waveState)
+  const { player } = game
+  const limit = ARENA_RADIUS - BOSS_SPAWN_MARGIN
+  let at = clampToPlatform({ x: player.position.x, z: player.position.z - BOSS_SPAWN_DISTANCE }, limit)
+  if (Math.hypot(at.x - player.position.x, at.z - player.position.z) < BOSS_SPAWN_DISTANCE * 0.8) {
+    at = clampToPlatform({ x: player.position.x, z: player.position.z + BOSS_SPAWN_DISTANCE }, limit)
+  }
+  const mesh = spawnMonster(game, boss.id, {
+    at,
+    effectOptions: { scale: BOSS_SPAWN_EFFECT_SCALE, duration: BOSS_SPAWN_EFFECT_DURATION },
+    hpScale: bossHpScale(game.waveState.bossesDefeated),
+    facePlayer: true,
+  })
+  const dx = player.position.x - at.x
+  const dz = player.position.z - at.z
+  const length = Math.hypot(dx, dz) || 1
+  game.cutscene = { boss, mesh, dir: { x: dx / length, z: dz / length }, state: createCutscene() }
+}
+
+// Calls a summoner boss's minions in around it (skipped while it already
+// has BOSS_MAX_MINIONS alive), each through the usual portal spawn-in.
+function summonMinions(game, bossMesh) {
+  const living = game.monsters.filter((m) => !m.userData.isBoss && !m.userData.dying).length
+  if (living >= BOSS_MAX_MINIONS) return
+  for (let i = 0; i < BOSS_SUMMON_COUNT; i++) {
+    const angle = Math.random() * Math.PI * 2
+    const distance = bossMesh.userData.radius + 2 + Math.random() * 2
+    const at = clampToPlatform(
+      { x: bossMesh.position.x + Math.sin(angle) * distance, z: bossMesh.position.z + Math.cos(angle) * distance },
+      ARENA_RADIUS - SPAWN_NEAR_PLAYER_MARGIN,
+    )
+    spawnMonster(game, pickMonsterType(Math.max(2, game.waveState.waveNumber)), { at })
+  }
+}
+
+// Once the boss is gone, whatever it called in goes with it, so beating
+// the boss ends the fight instead of leaving a mop-up.
+function popMinions(game) {
+  for (const mesh of game.monsters) {
+    if (mesh.userData.isBoss || mesh.userData.dying) continue
+    mesh.userData.dying = true
+    mesh.userData.deathPopElapsed = 0
+    jellyHit(mesh, JELLY_DEATH_INFLATE_STRENGTH)
+  }
+}
+
+// Advances each in-progress spawn-in effect (portal fade, monster
+// scale/color materialize); once one finishes, the monster can start
+// running AI/combat and the effect's meshes are disposed.
+function updateSpawnEffects(game, deltaSeconds) {
+  game.spawnEffects = game.spawnEffects.filter(({ effect, monster }) => {
+    const finished = updateSpawnEffect(effect, monster, deltaSeconds, particleSystem)
+    if (finished) {
+      monster.userData.spawning = false
+      disposeObject3D(effect.group)
+    }
+    return !finished
+  })
+}
+
+// One frame of a boss intro: gameplay is frozen (no AI, combat, waves or
+// hide timer), but everything keeps animating -- the boss materializing,
+// the jellies' idle wobble, the arena, particles -- while the camera
+// swings out to frame the boss and the cutscene state machine runs its
+// dialogue. Hands off to the boss fight when the cutscene is done.
+function runCutscene(game, advancePressed, deltaSeconds, elapsedSeconds) {
+  const { cutscene, player } = game
+  const { boss, mesh, dir } = cutscene
+  cutscene.state = stepCutscene(cutscene.state, deltaSeconds, advancePressed, boss.lines)
+
+  // The hide-limit timer is wall-clock based: push its start forward so a
+  // player hiding in a pod when the boss arrives isn't ejected by the cutscene.
+  if (player.hidden) game.hidingState.enteredAt += deltaSeconds
+
+  updateJelly(player.mesh, deltaSeconds, elapsedSeconds, { speed: 0, moveDir: player.moveDir })
+  updateFace3D(player.mesh, deltaSeconds, elapsedSeconds)
+  game.monsters.forEach((m) => {
+    updateJelly(m, deltaSeconds, elapsedSeconds, { speed: 0, moveDir: m.userData.moveDir })
+    updateFace3D(m, deltaSeconds, elapsedSeconds)
+  })
+  updateSpawnEffects(game, deltaSeconds)
+  updateArena(game.arena, elapsedSeconds, player.position)
+  updateParticles(particleSystem, deltaSeconds)
+  updatePopups(popupPool, deltaSeconds)
+
+  const size = MONSTER_TYPES[boss.id].size
+  const back = 5 + size * 1.6
+  cameraTarget.set(
+    mesh.position.x + dir.x * back - dir.z * 4,
+    2.5 + size * 0.9,
+    mesh.position.z + dir.z * back + dir.x * 4,
+  )
+  camera.position.lerp(cameraTarget, 1 - Math.exp(-CUTSCENE_CAMERA_LERP * deltaSeconds))
+  camera.lookAt(mesh.position.x, size * 0.55, mesh.position.z)
+
+  const { phase, lineIndex, lineElapsed } = cutscene.state
+  if (phase === 'done') {
+    game.waveState = beginBossFight(game.waveState)
+    game.cutscene = null
+    showCutscene(hud, null)
+    return
+  }
+  const line = boss.lines[lineIndex]
+  showCutscene(hud, { boss, phase, text: phase === 'talk' ? line.slice(0, visibleChars(line, lineElapsed)) : '' })
 }
 
 // Removes and disposes everything createGame()/spawnMonster() added to
@@ -436,6 +576,14 @@ function animate() {
     return
   }
 
+  if (game.cutscene) {
+    const advance = input.wasPressed('Space') || input.wasPressed('Enter') || input.wasMousePressed(0)
+    runCutscene(game, advance, deltaSeconds, elapsedSeconds)
+    composer.render()
+    input.endFrame()
+    return
+  }
+
   const { obstacles, player, pods, hidingState, attackState, shake } = game
   let monsters = game.monsters
 
@@ -444,6 +592,7 @@ function animate() {
   // stay survivable), and a banner. Monsters still materializing in
   // count as alive, so the clearing phase waits on them too.
   const clearedWaveNumber = game.waveState.waveNumber
+  const bossBeforeStep = currentBoss(game.waveState)
   const { state: nextWaveState, spawns, events } = stepWaves(
     game.waveState,
     deltaSeconds,
@@ -458,6 +607,13 @@ function animate() {
     showWaveClearedBanner(hud, bonus)
     player.hp = Math.min(PLAYER_MAX_HP, player.hp + WAVE_CLEAR_HEAL)
   }
+  if (events.includes('bossDefeated')) {
+    const bonus = waveClearBonus(clearedWaveNumber) * 2
+    game.score += bonus
+    showWaveClearedBanner(hud, bonus, `${bossBeforeStep.name} DEFEATED`)
+    player.hp = Math.min(PLAYER_MAX_HP, player.hp + WAVE_CLEAR_HEAL * BOSS_DEFEAT_HEAL_MULTIPLIER)
+  }
+  if (events.includes('bossIntro')) startBossCutscene(game)
 
   // Steps the pod spawn timer and spawns one if it's due -- see
   // trySpawnPod (a no-op if nothing fit).
@@ -536,6 +692,8 @@ function animate() {
   // Falling monsters (walked, chased, or knocked off the edge) skip the
   // jelly tick, tumbling down out of view before the same scored removal
   // happens.
+  const summoners = []
+  let bossGone = false
   monsters = monsters.filter((mesh) => {
     if (mesh.userData.spawning) {
       updateJelly(mesh, deltaSeconds, elapsedSeconds, { speed: 0, moveDir: mesh.userData.moveDir })
@@ -552,6 +710,7 @@ function animate() {
         game.score += points
         showPopup(popupPool, mesh.position, `+${points}`, POPUP_KILL_COLOR)
         scene.remove(mesh)
+        if (mesh.userData.isBoss) bossGone = true
         return false
       }
       return true
@@ -567,12 +726,14 @@ function animate() {
         game.score += points
         showPopup(popupPool, { x: mesh.position.x, y: 0, z: mesh.position.z }, 'RING OUT!', POPUP_RING_OUT_COLOR)
         scene.remove(mesh)
+        if (mesh.userData.isBoss) bossGone = true
         return false
       }
       return true
     }
 
-    const { hitPlayer } = updateMonster(mesh, player, obstacles, deltaSeconds, elapsedSeconds)
+    const { hitPlayer, summon } = updateMonster(mesh, player, obstacles, deltaSeconds, elapsedSeconds)
+    if (summon) summoners.push(mesh)
     updateJelly(mesh, deltaSeconds, elapsedSeconds, { speed: mesh.userData.speed, moveDir: mesh.userData.moveDir })
     updateFace3D(mesh, deltaSeconds, elapsedSeconds)
     if (hitPlayer) {
@@ -591,25 +752,27 @@ function animate() {
     return true
   })
   game.monsters = monsters
+  summoners.forEach((bossMesh) => summonMinions(game, bossMesh))
+  if (bossGone) popMinions(game)
 
-  // Advances each in-progress spawn-in effect (portal fade, monster
-  // scale/color materialize); once one finishes, the monster can start
-  // running AI/combat and the effect's meshes are disposed.
-  game.spawnEffects = game.spawnEffects.filter(({ effect, monster }) => {
-    const finished = updateSpawnEffect(effect, monster, deltaSeconds, particleSystem)
-    if (finished) {
-      monster.userData.spawning = false
-      disposeObject3D(effect.group)
-    }
-    return !finished
-  })
+  updateSpawnEffects(game, deltaSeconds)
 
   separateMonsters(monsters, player, obstacles)
   updateArena(game.arena, elapsedSeconds, player.position)
   updateParticles(particleSystem, deltaSeconds)
   updatePopups(popupPool, deltaSeconds)
 
-  const enemiesLeft = waveSize(game.waveState.waveNumber) - game.waveState.spawnedCount + monsters.length
+  const inBossFight = game.waveState.phase === 'bossFight'
+  const enemiesLeft = inBossFight
+    ? game.monsters.length
+    : waveSize(game.waveState.waveNumber) - game.waveState.spawnedCount + game.monsters.length
+  const bossMesh = game.monsters.find((m) => m.userData.isBoss && !m.userData.dying)
+  const bossHud = bossMesh
+    ? {
+        name: bossById(bossMesh.userData.type).name,
+        ratio: Math.max(0, Math.min(1, bossMesh.userData.hp / bossMesh.userData.maxHp)),
+      }
+    : null
   updateHud(hud, {
     hp: player.hp,
     maxHp: PLAYER_MAX_HP,
@@ -621,6 +784,7 @@ function animate() {
     hideLimit: POD_HIDE_LIMIT,
     showHidePrompt: showPrompt,
     waveState: game.waveState,
+    boss: bossHud,
     deltaSeconds,
   })
 

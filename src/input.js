@@ -6,6 +6,7 @@ export class Input {
     this.keys = new Set()
     this.mouseButtons = new Set()
     this._justPressed = new Set()
+    this._justMousePressed = new Set()
 
     this._onKeyDown = (event) => {
       // Guard against the browser's own key-repeat firing keydown
@@ -15,7 +16,10 @@ export class Input {
       this.keys.add(event.code)
     }
     this._onKeyUp = (event) => this.keys.delete(event.code)
-    this._onMouseDown = (event) => this.mouseButtons.add(event.button)
+    this._onMouseDown = (event) => {
+      this._justMousePressed.add(event.button)
+      this.mouseButtons.add(event.button)
+    }
     this._onMouseUp = (event) => this.mouseButtons.delete(event.button)
 
     window.addEventListener('keydown', this._onKeyDown)
@@ -41,8 +45,14 @@ export class Input {
     return this._justPressed.has(code)
   }
 
+  // Like wasPressed, for a mouse button index.
+  wasMousePressed(button) {
+    return this._justMousePressed.has(button)
+  }
+
   endFrame() {
     this._justPressed.clear()
+    this._justMousePressed.clear()
   }
 
   // Clears all currently-tracked key/mouse state. Used so the keypress or
@@ -52,6 +62,7 @@ export class Input {
     this.keys.clear()
     this.mouseButtons.clear()
     this._justPressed.clear()
+    this._justMousePressed.clear()
   }
 
   dispose() {

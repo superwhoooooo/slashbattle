@@ -1,5 +1,9 @@
 import {
   ARENA_RADIUS,
+  BOSS_CHARGE_DURATION,
+  BOSS_CHARGE_INTERVAL,
+  BOSS_CHARGE_SPEED_MULTIPLIER,
+  BOSS_SUMMON_INTERVAL,
   MONSTER_ARRIVAL_DISTANCE,
   MONSTER_ATTACK_COOLDOWN,
   MONSTER_ATTACK_RANGE,
@@ -22,6 +26,7 @@ import {
 import { clampToPlatform, resolveArenaMove } from './logic/arena.js'
 import { createCooldown } from './logic/combat.js'
 import { jellyHit } from './jelly.js'
+import { stepSpecialTimer } from './logic/bosses.js'
 import { nextMonsterState } from './logic/monsterAI.js'
 import { dampAngle } from './logic/smoothing.js'
 
@@ -30,7 +35,7 @@ const INDICATOR_DURATION = 0.6
 // The AI/combat fields a monster needs on top of the type/hp/radius
 // already set at spawn time (src/main.js) and the hit-reaction fields
 // combat.js owns (hitFlashElapsed, etc.).
-export function createMonsterAIState() {
+export function createMonsterAIState(stats = {}) {
   return {
     state: 'wander',
     stateEnteredAt: 0,
@@ -39,7 +44,9 @@ export function createMonsterAIState() {
     lastKnownPos: null,
     searchPhase: 'approach',
     lookStartedAt: null,
-    attackCooldown: createCooldown(MONSTER_ATTACK_COOLDOWN),
+    attackCooldown: createCooldown(stats.attackCooldown ?? MONSTER_ATTACK_COOLDOWN),
+    specialTimer: stats.special === 'charge' ? BOSS_CHARGE_INTERVAL : BOSS_SUMMON_INTERVAL, // a boss's special-move countdown
+    chargeRemaining: 0, // seconds left in a charger boss's dash
     windUpElapsed: null,
     indicatorElapsed: null,
     speed: 0, // world units/second, for the jelly movement bulge
@@ -110,11 +117,13 @@ function updateIndicator(monster, dt) {
 // the open platform, so line of sight is always clear: a monster sees the
 // player whenever they're within SIGHT_RANGE and not hidden. Does nothing
 // for a dying monster (hit-reaction/death-pop owns it instead).
-// Returns { hitPlayer }: true the one frame this monster's attack actually
-// damaged the player, so the caller can trigger a screen shake.
+// Returns { hitPlayer, summon }: hitPlayer is true the one frame this
+// monster's attack actually damaged the player, so the caller can trigger
+// a screen shake; summon is true the one frame a summoner boss calls in
+// minions (the caller spawns them).
 export function updateMonster(monster, player, obstacles, dt, now) {
   const ai = monster.userData
-  if (ai.dying) return { hitPlayer: false }
+  if (ai.dying) return { hitPlayer: false, summon: false }
 
   const stats = MONSTER_TYPES[ai.type]
   const monsterPos = { x: monster.position.x, z: monster.position.z }
@@ -148,7 +157,7 @@ export function updateMonster(monster, player, obstacles, dt, now) {
       arenaRadius: ARENA_RADIUS,
       wanderMargin: MONSTER_PLATFORM_MARGIN,
       wanderBiasRadius: WANDER_BIAS_RADIUS,
-      attackRange: MONSTER_ATTACK_RANGE,
+      attackRange: stats.attackRange ?? MONSTER_ATTACK_RANGE,
       searchDuration: SEARCH_DURATION,
       wanderTimeout: WANDER_TIMEOUT,
       arrivalDistance: MONSTER_ARRIVAL_DISTANCE,
@@ -168,17 +177,40 @@ export function updateMonster(monster, player, obstacles, dt, now) {
   updateIndicator(monster, dt)
 
   let hitPlayer = false
+  let summon = false
+
+  // A boss's special: a charger dashes at a multiplied speed for a moment
+  // every few seconds while it has the player in its sights; a summoner
+  // calls for backup on a timer.
+  let speed = stats.speed
+  if (stats.special === 'charge') {
+    if (ai.chargeRemaining > 0) {
+      ai.chargeRemaining -= dt
+      speed = stats.speed * BOSS_CHARGE_SPEED_MULTIPLIER
+    } else if (ai.state === 'chase') {
+      const tick = stepSpecialTimer(ai.specialTimer, dt, BOSS_CHARGE_INTERVAL)
+      ai.specialTimer = tick.timer
+      if (tick.fire) {
+        ai.chargeRemaining = BOSS_CHARGE_DURATION
+        showIndicator(monster, 'chase')
+      }
+    }
+  } else if (stats.special === 'summon' && (ai.state === 'chase' || ai.state === 'attack')) {
+    const tick = stepSpecialTimer(ai.specialTimer, dt, BOSS_SUMMON_INTERVAL)
+    ai.specialTimer = tick.timer
+    summon = tick.fire
+  }
 
   if (ai.state === 'wander' && ai.wanderTarget) {
-    steerToward(monster, ai.wanderTarget, stats.speed, dt, obstacles)
-    ai.speed = stats.speed
+    steerToward(monster, ai.wanderTarget, speed, dt, obstacles)
+    ai.speed = speed
   } else if (ai.state === 'chase') {
-    steerToward(monster, player.position, stats.speed, dt, obstacles)
-    ai.speed = stats.speed
+    steerToward(monster, player.position, speed, dt, obstacles)
+    ai.speed = speed
   } else if (ai.state === 'search') {
     if (ai.searchPhase === 'approach' && ai.lastKnownPos) {
-      steerToward(monster, ai.lastKnownPos, stats.speed, dt, obstacles)
-      ai.speed = stats.speed
+      steerToward(monster, ai.lastKnownPos, speed, dt, obstacles)
+      ai.speed = speed
     } else {
       monster.rotation.y += dt * SEARCH_SPIN_SPEED
       ai.speed = 0
@@ -209,7 +241,7 @@ export function updateMonster(monster, player, obstacles, dt, now) {
 
   ai.moveDir = { x: Math.sin(monster.rotation.y), z: Math.cos(monster.rotation.y) }
 
-  return { hitPlayer }
+  return { hitPlayer, summon }
 }
 
 // Pushes apart any monsters (and the player) whose collision circles

@@ -30,6 +30,16 @@ export function createHud() {
     ambushElapsed: null, // null means the banner isn't showing
     waveBanner: document.getElementById('wave-banner'),
     waveClearedElapsed: null, // null means the "WAVE CLEARED" banner isn't showing
+    bossBar: document.getElementById('boss-bar'),
+    bossBarName: document.getElementById('boss-bar-name'),
+    bossBarFill: document.getElementById('boss-bar-fill'),
+    cutscene: document.getElementById('cutscene'),
+    cutsceneDialogue: document.getElementById('cutscene-dialogue'),
+    cutsceneSpeaker: document.getElementById('cutscene-speaker'),
+    cutsceneText: document.getElementById('cutscene-text'),
+    cutsceneTitle: document.getElementById('cutscene-title'),
+    cutsceneTitleName: document.getElementById('cutscene-title-name'),
+    cutsceneTitleSub: document.getElementById('cutscene-title-sub'),
     damageFlash: document.getElementById('damage-flash'),
     damageFlashElapsed: null, // null means the flash isn't showing
     startCard: document.getElementById('start-card'),
@@ -66,6 +76,23 @@ export function showAmbushBanner(hud) {
   hud.ambushBanner.style.display = 'block'
 }
 
+// Shows or hides the boss intro cutscene overlay (letterbox bars, the
+// dialogue box, the name card). `view` is null to hide it, or
+// { boss, phase, text } -- the boss, the cutscene phase, and the
+// currently typed-out line to show while talking.
+export function showCutscene(hud, view) {
+  setIfChanged(hud, 'cutsceneOn', view !== null, (on) => (hud.cutscene.style.display = on ? 'block' : 'none'))
+  if (!view) return
+  const talking = view.phase === 'talk'
+  const title = view.phase === 'title'
+  setIfChanged(hud, 'cutsceneTalking', talking, (v) => (hud.cutsceneDialogue.style.display = v ? 'block' : 'none'))
+  setIfChanged(hud, 'cutsceneTitleShown', title, (v) => (hud.cutsceneTitle.style.display = v ? 'block' : 'none'))
+  setIfChanged(hud, 'cutsceneSpeaker', view.boss.name, (v) => (hud.cutsceneSpeaker.textContent = v))
+  setIfChanged(hud, 'cutsceneTitleName', view.boss.name, (v) => (hud.cutsceneTitleName.textContent = v))
+  setIfChanged(hud, 'cutsceneTitleSub', view.boss.title, (v) => (hud.cutsceneTitleSub.textContent = v))
+  setIfChanged(hud, 'cutsceneText', view.text, (v) => (hud.cutsceneText.textContent = v))
+}
+
 // Hides the start/controls card, shown at load until the first key or
 // click.
 export function hideStartCard(hud) {
@@ -74,9 +101,9 @@ export function hideStartCard(hud) {
 
 // Shows the "WAVE CLEARED +bonus" banner; updateHud switches back to the
 // intermission countdown banner after WAVE_CLEARED_BANNER_DURATION.
-export function showWaveClearedBanner(hud, bonus) {
+export function showWaveClearedBanner(hud, bonus, label = 'WAVE CLEARED') {
   hud.waveClearedElapsed = 0
-  hud.waveBanner.textContent = `WAVE CLEARED +${bonus}`
+  hud.waveBanner.textContent = `${label} +${bonus}`
   hud.waveBanner.style.display = 'block'
 }
 
@@ -113,6 +140,7 @@ export function updateHud(
     hideLimit,
     showHidePrompt,
     waveState,
+    boss,
     deltaSeconds,
   },
 ) {
@@ -125,7 +153,15 @@ export function updateHud(
     hud.healthLabel.textContent = v
   })
   setIfChanged(hud, 'score', score, (v) => (hud.scoreCounter.textContent = `Score: ${v}`))
-  setIfChanged(hud, 'wave', wave, (v) => (hud.waveCounter.textContent = `Wave: ${v}`))
+  const inBossFight = waveState.phase === 'bossFight'
+  setIfChanged(hud, 'wave', inBossFight ? 'BOSS' : wave, (v) => {
+    hud.waveCounter.textContent = v === 'BOSS' ? 'BOSS FIGHT' : `Wave: ${v}`
+  })
+  setIfChanged(hud, 'bossShown', boss != null, (v) => (hud.bossBar.style.display = v ? 'block' : 'none'))
+  if (boss) {
+    setIfChanged(hud, 'bossName', boss.name, (v) => (hud.bossBarName.textContent = v))
+    setIfChanged(hud, 'bossRatio', boss.ratio, (v) => (hud.bossBarFill.style.width = `${v * 100}%`))
+  }
   setIfChanged(hud, 'enemiesLeft', enemiesLeft, (v) => (hud.enemiesLeft.textContent = `Enemies left: ${v}`))
   setIfChanged(hud, 'hidden', hidden, (v) => (hud.hiddenIndicator.style.display = v ? 'block' : 'none'))
 
@@ -165,7 +201,8 @@ export function updateHud(
   if (hud.waveClearedElapsed === null) {
     if (waveState.phase === 'intermission') {
       const remaining = Math.max(0, WAVE_INTERMISSION - waveState.phaseElapsed)
-      const text = `WAVE ${waveState.waveNumber} - ${Math.ceil(remaining)}`
+      const label = waveState.wavesUntilBoss <= 0 ? 'BOSS INCOMING' : `WAVE ${waveState.waveNumber}`
+      const text = `${label} - ${Math.ceil(remaining)}`
       setIfChanged(hud, 'waveBannerText', text, (v) => (hud.waveBanner.textContent = v))
       setIfChanged(hud, 'waveBannerDisplay', 'block', (v) => (hud.waveBanner.style.display = v))
     } else {

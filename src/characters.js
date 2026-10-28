@@ -235,6 +235,10 @@ export function createMonsterMesh(type, rng = Math.random) {
   const searchIndicator = createIndicatorSprite('?')
   chaseIndicator.position.set(0, stats.size + 0.3, 0)
   searchIndicator.position.set(0, stats.size + 0.3, 0)
+  // Bigger bodies (the bosses) get proportionally bigger "!"/"?" so they still read.
+  const indicatorScale = Math.max(1, stats.size / 1.5)
+  chaseIndicator.scale.multiplyScalar(indicatorScale)
+  searchIndicator.scale.multiplyScalar(indicatorScale)
   group.add(chaseIndicator)
   group.add(searchIndicator)
 

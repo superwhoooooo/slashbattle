@@ -3,6 +3,7 @@
 // controller's phase state machine, and the score awarded for a kill or
 // a cleared wave. Kept free of Three.js imports so Vitest can exercise
 // it without WebGL; the Three-side driver lives in main.js.
+import { bossForFight, bossById, shuffleBossOrder, wavesBeforeBoss } from './bosses.js'
 
 export const WAVE_BASE_SIZE = 3
 export const WAVE_GROWTH = 2
@@ -58,8 +59,35 @@ export function pickMonsterType(n, rng = Math.random) {
 
 // Starting state: wave 1's intermission, ready for the first stepWaves
 // call once the start card is dismissed.
-export function createWaveState() {
-  return { waveNumber: 1, phase: 'intermission', phaseElapsed: 0, spawnedCount: 0 }
+// `wavesUntilBoss` counts the regular waves left before the next boss
+// (one before the first, then two, three, ...); `bossOrder` is this run's
+// shuffled order of the seven bosses.
+export function createWaveState(rng = Math.random) {
+  return {
+    waveNumber: 1,
+    phase: 'intermission',
+    phaseElapsed: 0,
+    spawnedCount: 0,
+    bossesDefeated: 0,
+    wavesUntilBoss: wavesBeforeBoss(0),
+    bossOrder: shuffleBossOrder(rng),
+  }
+}
+
+// True while the break before a boss fight is counting down.
+export function isBossNext(state) {
+  return state.wavesUntilBoss <= 0
+}
+
+// The boss this run meets next (or is fighting right now).
+export function currentBoss(state) {
+  return bossForFight(state.bossOrder, state.bossesDefeated)
+}
+
+// Called once the boss-intro cutscene ends: the boss is out and the
+// fight is on. The caller spawns it (it was already placed for the cutscene).
+export function beginBossFight(state) {
+  return { ...state, phase: 'bossFight', phaseElapsed: 0, spawnedCount: 1 }
 }
 
 // Advances the wave controller by one tick.
@@ -68,7 +96,11 @@ export function createWaveState() {
 // (one spawn immediately, then one more every waveSpawnInterval(n) until
 // waveSize(n) have been emitted) -> `clearing` (waits for aliveCount to
 // reach 0) -> emits 'waveCleared' and starts the next wave's
-// intermission. `aliveCount` should include monsters still materializing
+// intermission. Once enough waves are cleared (see wavesUntilBoss) the
+// intermission ends in `bossIntro` instead (emits 'bossIntro' and waits
+// for the cutscene's beginBossFight), then `bossFight` (waits for
+// aliveCount to reach 0, emits 'bossDefeated', and the next boss needs
+// one more regular wave than the last). `aliveCount` should include monsters still materializing
 // in (a spawn-in effect still counts as alive).
 //
 // Returns { state, spawns, events }: `state` is the next tick's wave
@@ -82,7 +114,11 @@ export function stepWaves(state, dt, aliveCount, rng = Math.random) {
   const events = []
 
   if (next.phase === 'intermission') {
-    if (next.phaseElapsed >= WAVE_INTERMISSION) {
+    if (next.phaseElapsed >= WAVE_INTERMISSION && isBossNext(next)) {
+      next.phase = 'bossIntro'
+      next.phaseElapsed = 0
+      events.push('bossIntro')
+    } else if (next.phaseElapsed >= WAVE_INTERMISSION) {
       next.phase = 'spawning'
       next.phaseElapsed = 0
       next.spawnedCount = 1
@@ -105,6 +141,17 @@ export function stepWaves(state, dt, aliveCount, rng = Math.random) {
     if (aliveCount <= 0) {
       events.push('waveCleared')
       next.waveNumber += 1
+      next.wavesUntilBoss -= 1
+      next.phase = 'intermission'
+      next.phaseElapsed = 0
+      next.spawnedCount = 0
+    }
+  } else if (next.phase === 'bossFight') {
+    if (aliveCount <= 0) {
+      events.push('bossDefeated')
+      next.waveNumber += 1
+      next.bossesDefeated += 1
+      next.wavesUntilBoss = wavesBeforeBoss(next.bossesDefeated)
       next.phase = 'intermission'
       next.phaseElapsed = 0
       next.spawnedCount = 0
@@ -119,7 +166,7 @@ const SCORE_BY_TYPE = { blobbo: 100, zippy: 75, grumpus: 150 }
 // Points awarded for killing one monster of `type` (including falling
 // off the platform's edge), 0 for an unrecognized type.
 export function scoreForKill(type) {
-  return SCORE_BY_TYPE[type] ?? 0
+  return SCORE_BY_TYPE[type] ?? bossById(type)?.score ?? 0
 }
 
 export const WAVE_CLEAR_BONUS_PER_WAVE = 250

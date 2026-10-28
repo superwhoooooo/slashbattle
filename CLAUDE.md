@@ -24,7 +24,8 @@ that falls dies (counts as a kill); a player who falls loses HP and
 respawns at the center with a moment of invulnerability. Attacks knock
 monsters back, which can push them off the edge. Between waves you heal
 a little, so endless runs stay survivable. R restarts the game (back to
-wave 1, score 0) at any time after losing.
+wave 1, score 0) at any time after losing. Every few waves a boss arrives
+(see Bosses below).
 
 ## Scoring
 Every kill (including a fall off the edge) scores points by monster
@@ -62,6 +63,8 @@ slashbattle/
     characters.js      # build player/monster jelly bodies (shape + 3D face + indicators)
     jelly.js           # the jelly body: shared-geometry wireframe edges, per-vertex deformation
     spawner.js         # the spawn-in effect: portal ring + beam, monster materialize animation
+    logic/bosses.js    # the seven bosses (stats, specials, dialogue), boss order/scaling
+    logic/cutscene.js  # the boss-intro cutscene timeline (enter -> talk -> title -> done)
     music.js           # procedural Web Audio background track (lookahead scheduler, synth voices, mute)
     highScore.js       # load/save the best score/wave in localStorage (try/catch, zero fallback)
     particles.js       # pooled spark (Points) and tumbling-shard (InstancedMesh) bursts
@@ -243,3 +246,26 @@ and either an arpeggio (bars 1-4) or the lead hook (bars 5-8) landing on each
 lookahead scheduler. It starts when the start card is dismissed (browsers need a
 user gesture), M toggles mute (saved in `localStorage`), and a low-pass ducks it
 on the game-over screen.
+
+## Bosses
+After one regular wave a boss fight, then two waves and a boss, then three,
+and so on (`wavesBeforeBoss`). `src/logic/bosses.js` defines seven bosses --
+King Gloop, Zipzilla, Sir Grumpsalot, Doctor Wobble, The Cube Father, Madam
+Mayhem, Omega Jello -- each a big jelly in one of the existing shapes with its
+own stats, a special (`none`, `charge` dashes, or `summon` calls minions) and
+goofy dialogue. Their stats are folded into `MONSTER_TYPES` (keyed by id) so
+spawning, combat and rendering treat them like any monster; boss-only stat
+fields are `attackRange`/`reachBonus` (so big bodies can still hit and be hit),
+`knockbackScale`, `attackCooldown` and `special`. A run shuffles the seven
+(`shuffleBossOrder`), so all appear before any repeats; later visits have more
+hp (`bossHpScale`).
+
+The wave controller (`src/logic/waves.js`) gained `bossIntro` and `bossFight`
+phases: after the last regular wave's intermission it emits `bossIntro`, and
+`main.js`'s `startBossCutscene` drops the boss in straight ahead of the player
+through a widened portal while `game.cutscene` freezes gameplay (the hide timer
+is held too). `runCutscene` pans the camera to the boss and steps
+`logic/cutscene.js` -- the boss materializes, says its lines typewriter-style
+(Space / Enter / click skips ahead), and its name slams on screen -- then calls
+`beginBossFight`. A boss health bar shows during the fight; beating it (or
+knocking it off the edge) pops its minions, scores bonus points, and heals extra.

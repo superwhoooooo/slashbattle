@@ -182,6 +182,115 @@
         to { transform: translate(-50%, -50%) scale(1); opacity: 1; }
       }
 
+      /* Boss health bar, centered under the wave banner during a boss fight. */
+      #boss-bar {
+        display: none;
+        position: fixed;
+        top: 14px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: min(460px, 60vw);
+        text-align: center;
+        font-weight: 900;
+        letter-spacing: 0.1em;
+        color: #ffe9f0;
+        text-shadow: 0 0 6px rgba(255, 51, 85, 0.7);
+        user-select: none;
+        pointer-events: none;
+      }
+      #boss-bar-track {
+        margin-top: 4px;
+        height: 16px;
+        border: 2px solid var(--neon-red);
+        border-radius: 6px;
+        background: #26121a;
+        box-shadow: 0 0 8px rgba(255, 51, 85, 0.45);
+        overflow: hidden;
+      }
+      #boss-bar-fill {
+        height: 100%;
+        width: 100%;
+        background: linear-gradient(90deg, #ff3355, #ff9a5a);
+        transition: width 0.12s linear;
+      }
+
+      /* Boss intro cutscene: letterbox bars, a dialogue box, and a name card. */
+      #cutscene {
+        display: none;
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        user-select: none;
+        z-index: 8;
+      }
+      #cutscene .bar {
+        position: absolute;
+        left: 0;
+        right: 0;
+        height: 11vh;
+        background: #000;
+      }
+      #cutscene .bar.top { top: 0; }
+      #cutscene .bar.bottom { bottom: 0; }
+      #cutscene-dialogue {
+        display: none;
+        position: absolute;
+        left: 50%;
+        bottom: 14vh;
+        transform: translateX(-50%);
+        width: min(680px, 88vw);
+        padding: 16px 22px;
+        border-color: rgba(255, 51, 85, 0.7);
+        box-shadow: 0 0 14px rgba(255, 51, 85, 0.3);
+        color: #f4fbff;
+      }
+      #cutscene-speaker {
+        font-weight: 900;
+        font-size: 15px;
+        letter-spacing: 0.12em;
+        color: var(--neon-red);
+        text-shadow: 0 0 6px rgba(255, 51, 85, 0.6);
+      }
+      #cutscene-text {
+        margin-top: 8px;
+        min-height: 3.2em;
+        font-size: 18px;
+        line-height: 1.6;
+      }
+      #cutscene-hint {
+        margin-top: 8px;
+        text-align: right;
+        font-size: 11px;
+        color: var(--neon-green);
+      }
+      #cutscene-title {
+        display: none;
+        position: absolute;
+        top: 38%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        text-align: center;
+        animation: boss-title-slam 0.45s cubic-bezier(0.2, 1.4, 0.4, 1) forwards;
+      }
+      #cutscene-title-name {
+        font-weight: 900;
+        font-size: clamp(34px, 7vw, 76px);
+        letter-spacing: 0.08em;
+        color: var(--neon-red);
+        text-shadow: 0 0 8px rgba(255, 51, 85, 0.8), 0 0 26px rgba(255, 51, 85, 0.45);
+      }
+      #cutscene-title-sub {
+        margin-top: 6px;
+        font-weight: 700;
+        font-size: clamp(13px, 2vw, 20px);
+        letter-spacing: 0.2em;
+        color: #ffd6df;
+      }
+      @keyframes boss-title-slam {
+        from { transform: translate(-50%, -50%) scale(2.4); opacity: 0; }
+        to { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+      }
+
       /* A gentle, always-on darkening of the screen's edges. */
       #vignette {
         position: fixed;
@@ -329,6 +438,23 @@
     </div>
     <div id="ambush-banner">AMBUSH!</div>
     <div id="wave-banner"></div>
+    <div id="boss-bar">
+      <div id="boss-bar-name"></div>
+      <div id="boss-bar-track"><div id="boss-bar-fill"></div></div>
+    </div>
+    <div id="cutscene">
+      <div class="bar top"></div>
+      <div class="bar bottom"></div>
+      <div id="cutscene-title">
+        <div id="cutscene-title-name"></div>
+        <div id="cutscene-title-sub"></div>
+      </div>
+      <div id="cutscene-dialogue" class="panel">
+        <div id="cutscene-speaker"></div>
+        <div id="cutscene-text"></div>
+        <div id="cutscene-hint">Space / click: next</div>
+      </div>
+    </div>
 
     <div id="start-card" class="overlay">
       <div class="card panel">

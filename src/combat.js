@@ -7,6 +7,7 @@ import {
   ATTACK_RANGE,
   ATTACK_SWING_DURATION,
   DEATH_POP_DURATION,
+  BOSS_DEATH_SHARD_MULTIPLIER,
   DEATH_SHARD_COUNT,
   DEATH_SHARD_SPEED,
   HIT_FLASH_DURATION,
@@ -129,7 +130,7 @@ function resolveAttackHits(player, monsters, obstacles, now, particleSystem) {
 
     const targetPos = { x: monster.position.x, z: monster.position.z }
     if (
-      !isInAttackArc(attackerPos, player.facing, targetPos, ATTACK_RANGE, ATTACK_ARC_RADIANS)
+      !isInAttackArc(attackerPos, player.facing, targetPos, ATTACK_RANGE + (monster.userData.reachBonus ?? 0), ATTACK_ARC_RADIANS)
     ) {
       continue
     }
@@ -140,7 +141,7 @@ function resolveAttackHits(player, monsters, obstacles, now, particleSystem) {
     hitAny = true
     if (ambush) ambushHit = true
 
-    const knockback = knockbackVector(attackerPos, targetPos, KNOCKBACK_STRENGTH)
+    const knockback = knockbackVector(attackerPos, targetPos, KNOCKBACK_STRENGTH * (monster.userData.knockbackScale ?? 1))
     const resolved = resolveArenaMove(targetPos, knockback, monster.userData.radius, obstacles)
     monster.position.x = resolved.x
     monster.position.z = resolved.z
@@ -157,7 +158,7 @@ function resolveAttackHits(player, monsters, obstacles, now, particleSystem) {
       monster.userData.dying = true
       monster.userData.deathPopElapsed = 0
       jellyHit(monster, JELLY_DEATH_INFLATE_STRENGTH)
-      shardBurst(particleSystem, hitPoint, stats.color, DEATH_SHARD_COUNT, DEATH_SHARD_SPEED)
+      shardBurst(particleSystem, hitPoint, stats.color, DEATH_SHARD_COUNT * (stats.boss ? BOSS_DEATH_SHARD_MULTIPLIER : 1), DEATH_SHARD_SPEED)
     }
   }
 

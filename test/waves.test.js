@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
+  beginBossFight,
   createWaveState,
+  currentBoss,
+  isBossNext,
   pickMonsterType,
   scoreForKill,
   stepWaves,
@@ -134,5 +137,71 @@ describe('waveClearBonus', () => {
   it('scales with the wave number', () => {
     expect(waveClearBonus(1)).toBe(250)
     expect(waveClearBonus(4)).toBe(1000)
+  })
+})
+
+describe('boss rounds', () => {
+  // Drives the controller until `eventName` fires (or gives up), clearing
+  // every wave instantly so only the phase flow is under test.
+  function runUntil(state, eventName) {
+    let s = state
+    const seen = []
+    for (let i = 0; i < 5000; i++) {
+      const alive = s.phase === 'clearing' || s.phase === 'bossFight' ? 0 : 1
+      const out = stepWaves(s, 0.5, alive, () => 0.5)
+      s = out.state
+      seen.push(...out.events)
+      if (out.events.includes(eventName)) return { state: s, events: seen }
+    }
+    throw new Error(`never saw ${eventName}`)
+  }
+
+  it('puts a boss after one regular wave, then two, then three', () => {
+    let state = createWaveState(() => 0.5)
+    const regularWavesBetweenBosses = []
+    for (let boss = 0; boss < 3; boss++) {
+      const before = state.waveNumber
+      const intro = runUntil(state, 'bossIntro')
+      const regular = intro.events.filter((e) => e === 'waveCleared').length
+      regularWavesBetweenBosses.push(regular)
+      expect(intro.state.phase).toBe('bossIntro')
+      expect(intro.state.waveNumber).toBe(before + regular)
+      state = beginBossFight(intro.state)
+      state = runUntil(state, 'bossDefeated').state
+      expect(state.phase).toBe('intermission')
+    }
+    expect(regularWavesBetweenBosses).toEqual([1, 2, 3])
+  })
+
+  it('waits in bossIntro until the cutscene starts the fight', () => {
+    const intro = runUntil(createWaveState(() => 0.5), 'bossIntro').state
+    let s = intro
+    for (let i = 0; i < 50; i++) {
+      const out = stepWaves(s, 1, 0, () => 0.5)
+      expect(out.events).toEqual([])
+      expect(out.spawns).toEqual([])
+      s = out.state
+    }
+    expect(s.phase).toBe('bossIntro')
+  })
+
+  it('keeps the boss fight going while anything is still alive', () => {
+    const fight = beginBossFight(runUntil(createWaveState(() => 0.5), 'bossIntro').state)
+    const out = stepWaves(fight, 1, 3, () => 0.5)
+    expect(out.state.phase).toBe('bossFight')
+    expect(out.events).toEqual([])
+  })
+
+  it('announces the boss in the countdown before it and advances the boss each time', () => {
+    const state = createWaveState(() => 0.5)
+    expect(isBossNext(state)).toBe(false)
+    const first = currentBoss(state)
+    const afterFirst = runUntil(beginBossFight(runUntil(state, 'bossIntro').state), 'bossDefeated').state
+    expect(afterFirst.bossesDefeated).toBe(1)
+    expect(currentBoss(afterFirst).id).not.toBe(first.id)
+  })
+
+  it('scores a boss kill by its own value', () => {
+    expect(scoreForKill('boss_gloop')).toBeGreaterThan(scoreForKill('grumpus'))
   })
 })

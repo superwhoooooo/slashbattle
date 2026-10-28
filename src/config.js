@@ -1,5 +1,6 @@
 // Tunable constants shared across the game. Grouped by the system that
 // mostly cares about them; values are in world units unless noted.
+import { BOSS_MONSTER_TYPES } from './logic/bosses.js'
 
 export const PLAYER_RADIUS = 0.35
 export const PLAYER_BODY_RADIUS = 0.6 // icosahedron radius for the player's jelly body (visual only; PLAYER_RADIUS stays the collision radius)
@@ -33,7 +34,26 @@ export const MONSTER_TYPES = {
   blobbo: { shape: 'dodecahedron', size: 1.4, color: 0x4caf50, edgeColor: 0x9dffb0, speed: 1.2, hp: 60, damage: 8, radius: 0.6 },
   zippy: { shape: 'octahedron', size: 0.6, color: 0x9c27b0, edgeColor: 0xe9a3ff, speed: 5.5, hp: 20, damage: 5, radius: 0.25 },
   grumpus: { shape: 'box', size: 1.1, color: 0xff5722, edgeColor: 0xffc49d, speed: 2.0, hp: 100, damage: 15, radius: 0.45 },
+  // The seven bosses (src/logic/bosses.js) share the same stat shape, plus
+  // boss-only fields (attackRange, reachBonus, knockbackScale, special...).
+  ...BOSS_MONSTER_TYPES,
 }
+
+// Boss fights: where the boss materializes for its intro cutscene
+// (straight ahead of the player, in the camera's view), and its specials.
+export const BOSS_SPAWN_DISTANCE = 15
+export const BOSS_SPAWN_MARGIN = 7 // world units in from the platform's edge
+export const BOSS_SPAWN_EFFECT_SCALE = 2.6 // portal ring/beam widened for a boss
+export const BOSS_SPAWN_EFFECT_DURATION = 1.8 // seconds, matches CUTSCENE_ENTER_DURATION
+export const BOSS_SUMMON_INTERVAL = 8 // seconds between a summoner boss's minion calls
+export const BOSS_SUMMON_COUNT = 2
+export const BOSS_MAX_MINIONS = 5 // a summoner stops calling in more past this many living minions
+export const BOSS_CHARGE_INTERVAL = 6 // seconds between a charger boss's dashes
+export const BOSS_CHARGE_DURATION = 1.2
+export const BOSS_CHARGE_SPEED_MULTIPLIER = 2.6
+export const BOSS_DEFEAT_HEAL_MULTIPLIER = 2 // beating a boss heals WAVE_CLEAR_HEAL times this
+export const BOSS_DEATH_SHARD_MULTIPLIER = 3
+export const CUTSCENE_CAMERA_LERP = 3.5
 
 // 3D face features (src/face3d.js): googly eyeballs with a jiggling
 // pupil, a 3D mouth shape, an optional unibrow/tongue/cheeks/freckles --

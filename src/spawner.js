@@ -54,16 +54,17 @@ function createBeam() {
 // starting fully transparent. Returns { group, ring, beam, elapsed: 0 };
 // the caller adds `group` to the scene and drives it every frame with
 // updateSpawnEffect, then disposes `group` once that returns true.
-export function createSpawnEffect(spawnPoint) {
+export function createSpawnEffect(spawnPoint, { scale = 1, duration = SPAWN_EFFECT_DURATION } = {}) {
   const group = new THREE.Group()
   group.position.set(spawnPoint.x, 0, spawnPoint.z)
+  group.scale.set(scale, 1, scale) // widens the ring/beam (a boss's portal) without stretching them upward
 
   const ring = createPortalRing()
   const beam = createBeam()
   group.add(ring)
   group.add(beam)
 
-  return { group, ring, beam, elapsed: 0 }
+  return { group, ring, beam, elapsed: 0, duration }
 }
 
 // The portal's opacity envelope over the spawn: a quick fade in, a
@@ -100,7 +101,7 @@ export function updateSpawnEffect(effect, monster, dt, particleSystem) {
   }
 
   effect.elapsed += dt
-  const t = Math.min(effect.elapsed / SPAWN_EFFECT_DURATION, 1)
+  const t = Math.min(effect.elapsed / effect.duration, 1)
 
   const opacity = portalOpacity(t)
   effect.ring.material.opacity = opacity * 0.8
@@ -114,5 +115,5 @@ export function updateSpawnEffect(effect, monster, dt, particleSystem) {
   }
   material.color.lerpColors(BLACK, material.userData.spawnBaseColor, t)
 
-  return effect.elapsed >= SPAWN_EFFECT_DURATION
+  return effect.elapsed >= effect.duration
 }
