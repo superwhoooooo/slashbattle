@@ -114,7 +114,7 @@ export const FACE_SCALE_BY_TYPE = { blobbo: 1, zippy: 1.6, grumpus: 1 }
 export const ARENA_RADIUS = 48
 export const ARENA_THICKNESS = 1.2
 export const ARENA_HULL_COLOR = 0xe7e9ec // light grey/white, slightly metallic sides/underside
-export const ARENA_DECK_PLANK_COLOR = '#ece4d4' // warm white composite plank base
+export const ARENA_DECK_PLANK_COLOR = '#f0e2c6' // warm white composite plank base
 export const ARENA_DECK_SEAM_COLOR = '#b9ad94' // seams between planks
 // World-unit size of one repeating plank tile, so plank width/length stay
 // a sensible real-world size rather than stretching with ARENA_RADIUS.
@@ -135,6 +135,10 @@ export const RESORT_LAYOUT_SEED = 20240
 
 // Pool water and rim.
 export const POOL_WATER_COLOR = 0x2bc8e6
+// Rough enough that the sun's specular highlight spreads into a soft
+// sheen; a near-mirror concentrates it into a hot spot that blooms into
+// a white glare.
+export const POOL_WATER_ROUGHNESS = 0.25
 export const POOL_RIM_COLOR = 0xffffff
 
 // Umbrella pole/canopy (canopy color comes from resortLayout.js's own
@@ -189,7 +193,7 @@ export const GAS_GIANT_RING_TILT = Math.PI / 2.6 // radians, off the orbital pla
 // characters cast them).
 export const HEMI_LIGHT_SKY_COLOR = 0xcfe8ff
 export const HEMI_LIGHT_GROUND_COLOR = 0xe8d6b8
-export const HEMI_LIGHT_INTENSITY = 0.35
+export const HEMI_LIGHT_INTENSITY = 0.5
 export const KEY_LIGHT_COLOR = 0xfff0d6
 export const KEY_LIGHT_INTENSITY = 1.6
 export const SHADOW_MAP_SIZE = 2048
@@ -207,7 +211,7 @@ export const KEY_LIGHT_SHADOW_EXTENT = 25
 export const BLOOM_STRENGTH = 0.15
 export const BLOOM_RADIUS = 0.4
 export const BLOOM_THRESHOLD = 0.95
-export const TONE_MAPPING_EXPOSURE = 0.75
+export const TONE_MAPPING_EXPOSURE = 0.95
 // How strongly the baked sky environment map (scene.environment) lights
 // and reflects off physical materials, on top of the sun and hemisphere
 // lights -- kept low so the pale deck doesn't wash out to white.

@@ -36,6 +36,7 @@ import {
   LOUNGER_WIDTH,
   POOL_RIM_COLOR,
   POOL_WATER_COLOR,
+  POOL_WATER_ROUGHNESS,
   RESORT_LAYOUT_SEED,
   SHADOW_MAP_SIZE,
   SIGN_PANEL_COLOR,
@@ -253,7 +254,7 @@ function createPlatform() {
 // logic tell when the player or a falling monster lands in one.
 function createPools(pools, topY) {
   const group = new THREE.Group()
-  const waterMaterial = new THREE.MeshStandardMaterial({ color: POOL_WATER_COLOR, roughness: 0.05, metalness: 0.1 })
+  const waterMaterial = new THREE.MeshStandardMaterial({ color: POOL_WATER_COLOR, roughness: POOL_WATER_ROUGHNESS, metalness: 0.1 })
   const rimMaterial = new THREE.MeshStandardMaterial({ color: POOL_RIM_COLOR, roughness: 0.5 })
 
   for (const pool of pools) {
