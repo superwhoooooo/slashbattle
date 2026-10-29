@@ -55,6 +55,16 @@ record.
 - 1-5 — pick a weapon from the hotbar
 - Q / Z / X / C / V — use your abilities, in the order you found them
 
+A standard gamepad works too (`src/logic/gamepad.js` maps a snapshot to
+actions; `src/input.js` polls it each frame via `pollGamepad()` and merges
+it into the same queries the keyboard/mouse answer): left stick or d-pad
+move, A or RT attack, B hide, X open a chest, LB/RB previous/next weapon,
+Y ability 1 and LT + Y/A/B/X abilities 2-5 (while LT is held, A/B/X only
+fire abilities), Start restart, Back mute; A or Start dismisses the start
+card and skips cutscene lines. `input.rumble()` gives light rumble on a
+landed hit, medium on a kill and strong on player damage or a boss slam,
+where the browser supports `vibrationActuator`.
+
 ## Commands
 - `npm install` — install dependencies
 - `npm run dev` — start the Vite dev server
@@ -70,7 +80,7 @@ slashbattle/
   src/
     main.js            # bootstrap: renderer, scene, camera, post-processing, game loop
     config.js          # tunable constants (speeds, damage, ranges, HP, arena/visual tuning)
-    input.js           # keyboard/mouse state
+    input.js           # keyboard/mouse/gamepad state, rumble
     arena.js           # the resort sundeck + props, daylight sky + gas giant, environment map, lighting
     face3d.js          # 3D goofy face features (googly eyes, mouths, brow/tongue/cheeks), attached to a jelly body
     characters.js      # build player/monster jelly bodies (shape + 3D face + indicators)
@@ -96,6 +106,7 @@ slashbattle/
     audio.js           # the shared AudioContext, master gain (mute) and compressor
     music.js           # procedural Web Audio background track (lookahead scheduler, synth voices)
     sfx.js             # synthesized, spatialized sound effects
+    logic/gamepad.js   # gamepad deadzone, button edges, button -> action mapping
     logic/sfx.js       # sound-effect rate limiting and trick -> voice mapping
     highScore.js       # load/save the best score/wave in localStorage (try/catch, zero fallback)
     particles.js       # pooled spark (Points) and tumbling-shard (InstancedMesh) bursts

@@ -188,7 +188,8 @@ export class Player {
     if (t >= 1) this._hitFlashElapsed = null
   }
 
-  // Moves the player relative to the camera's yaw using WASD/arrow input,
+  // Moves the player relative to the camera's yaw using WASD/arrow input
+  // (and a gamepad's left stick/d-pad, see Input.moveVector()),
   // resolves the move against the platform's obstacles (with sliding),
   // and turns the mesh to face the direction it just moved in. Does
   // nothing while hidden or while falling off the platform. Does NOT stop
@@ -204,12 +205,10 @@ export class Player {
     this._updateHitFlash(deltaSeconds)
     if (this.hidden || this.falling) return
 
-    const forwardInput =
-      (input.isDown('KeyW') || input.isDown('ArrowUp') ? 1 : 0) -
-      (input.isDown('KeyS') || input.isDown('ArrowDown') ? 1 : 0)
-    const strafeInput =
-      (input.isDown('KeyD') || input.isDown('ArrowRight') ? 1 : 0) -
-      (input.isDown('KeyA') || input.isDown('ArrowLeft') ? 1 : 0)
+    // WASD/arrow keys combined with the gamepad's left stick/d-pad (see
+    // Input.moveVector()); not yet normalized, so a key and the stick
+    // pushed the same way still add up to full speed and nothing more.
+    const { x: strafeInput, z: forwardInput } = input.moveVector()
 
     let dirX = 0
     let dirZ = 0

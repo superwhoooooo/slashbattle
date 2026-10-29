@@ -600,6 +600,41 @@
         box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
       }
 
+      /* A compact, wrapping legend for gamepad bindings, below the
+         keyboard controls -- small enough to add a row or two rather
+         than meaningfully growing the card. */
+      .gamepad-legend {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        align-items: center;
+        gap: 6px 10px;
+        max-width: 360px;
+        font-size: 11px;
+        font-weight: 400;
+        color: var(--muted);
+      }
+      .gamepad-legend span {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        white-space: nowrap;
+      }
+      /* A smaller keycap in the teal accent, so a gamepad binding reads
+         as its own group rather than blending into the keyboard caps. */
+      kbd.pad {
+        min-width: 22px;
+        height: 20px;
+        padding: 0 5px;
+        font-size: 10px;
+        color: var(--teal);
+        background: rgba(25, 181, 165, 0.1);
+        border: 1px solid rgba(25, 181, 165, 0.35);
+        border-bottom: 2px solid rgba(25, 181, 165, 0.5);
+        border-radius: 5px;
+        box-shadow: none;
+      }
+
       #lose-screen h1 {
         color: var(--danger);
       }
@@ -720,6 +755,17 @@
           <div class="control-row"><kbd>F</kbd><span>open a chest (costs 💎)</span></div>
           <div class="control-row"><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd><kbd>5</kbd><span>pick a weapon</span></div>
           <div class="control-row"><kbd>Q</kbd><kbd>Z</kbd><kbd>X</kbd><kbd>C</kbd><kbd>V</kbd><span>use abilities</span></div>
+        </div>
+        <div class="gamepad-legend">
+          <span>🎮</span>
+          <span><kbd class="pad">A</kbd> attack / confirm</span>
+          <span><kbd class="pad">B</kbd> hide</span>
+          <span><kbd class="pad">X</kbd> chest</span>
+          <span><kbd class="pad">Y</kbd> ability</span>
+          <span><kbd class="pad">LB/RB</kbd> weapon</span>
+          <span><kbd class="pad">LT</kbd>+face ability 2-5</span>
+          <span><kbd class="pad">Start</kbd> restart</span>
+          <span><kbd class="pad">Back</kbd> mute</span>
         </div>
         <p class="hint">Press any key or click to begin</p>
       </div>

@@ -57,10 +57,10 @@ export function createAttackState() {
 }
 
 // Drives the player's melee attack each frame: reads the attack button
-// (left mouse or Space), animates the sword swing, and at the swing's hit
-// moment checks every living monster for a hit, applying damage,
-// knockback, a hit flash, and a jelly splat, starting a death pop on a
-// lethal hit. Disabled entirely while hidden. Returns { ambushHit, hitAny }:
+// (left mouse, Space, or a gamepad's A/RT), animates the sword swing, and
+// at the swing's hit moment checks every living monster for a hit, applying
+// damage, knockback, a hit flash, and a jelly splat, starting a death pop
+// on a lethal hit. Disabled entirely while hidden. Returns { ambushHit, hitAny }:
 // ambushHit is true the one frame an ambush-boosted hit landed, so the
 // caller can flash the "AMBUSH!" banner; hitAny is true the one frame any
 // hit landed, so the caller can trigger a (smaller) screen shake.
@@ -72,7 +72,7 @@ export function updatePlayerAttack(
   if (player.hidden) return { ambushHit: false, hitAny: false }
 
   const sword = player.mesh.userData.sword
-  const attackPressed = input.isMouseDown(0) || input.isDown('Space')
+  const attackPressed = input.isAttackDown()
 
   if (
     attackState.swingElapsed === null &&

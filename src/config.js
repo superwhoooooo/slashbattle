@@ -489,6 +489,19 @@ export const HITSTOP_KILL = 0.08 // seconds, a kill (any player-caused source)
 export const HITSTOP_BOSS = 0.12 // seconds, a boss taking a hit, or dying
 export const HITSTOP_PLAYER_HURT = 0.07 // seconds, the player taking damage
 
+// Gamepad input (src/logic/gamepad.js, src/input.js): the left stick's
+// radial deadzone, and rumble (src/input.js's rumble(), a thin wrapper
+// around the Gamepad API's vibrationActuator -- a no-op where
+// unsupported) -- light on a landed sword hit, medium on a kill, strong
+// on the player taking damage or a boss's slam.
+export const GAMEPAD_DEADZONE = 0.15 // fraction of the stick's travel treated as dead center
+export const RUMBLE_LIGHT_STRENGTH = 0.25
+export const RUMBLE_LIGHT_DURATION = 60 // milliseconds
+export const RUMBLE_MEDIUM_STRENGTH = 0.5
+export const RUMBLE_MEDIUM_DURATION = 110
+export const RUMBLE_STRONG_STRENGTH = 0.9
+export const RUMBLE_STRONG_DURATION = 180
+
 // Pooled spark/spray particles (src/particles.js): a fixed-size Points
 // pool, ring-buffered so a burst never allocates. Gravity/drag apply to
 // every live particle every frame; each one also fades and shrinks

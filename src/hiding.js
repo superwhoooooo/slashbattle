@@ -445,9 +445,9 @@ export function createHidingState() {
   return { currentPod: null, enteredAt: null }
 }
 
-// Reads edge-triggered E to enter/exit hiding, and the POD_HIDE_LIMIT
-// timer while hidden. Entering snaps the player into the nearest
-// enterable pod (and starts its wiggle schedule) and records when.
+// Reads edge-triggered E (or a gamepad's B) to enter/exit hiding, and the
+// POD_HIDE_LIMIT timer while hidden. Entering snaps the player into the
+// nearest enterable pod (and starts its wiggle schedule) and records when.
 // Leaving -- early with E (no penalty), or forced out once the hide
 // limit elapses (the eject penalty) -- pops the player out to a point
 // just outside that pod, preferring the side closest to the player's
@@ -463,7 +463,7 @@ export function createHidingState() {
 // shake/flash feedback a monster's hit does.
 export function updateHiding(hidingState, player, pods, input, now, hideLimit = Infinity) {
   if (player.hidden) {
-    const exitedEarly = input.wasPressed('KeyE')
+    const exitedEarly = input.wasHidePressed()
     const ejected = !exitedEarly && shouldEject(hidingState.enteredAt, now, hideLimit)
 
     if (exitedEarly || ejected) {
@@ -500,7 +500,7 @@ export function updateHiding(hidingState, player, pods, input, now, hideLimit = 
     nearest != null &&
     canEnterBox({ hp: player.hp, hidden: player.hidden, position: player.position }, nearest, HIDE_RANGE)
 
-  if (canEnter && input.wasPressed('KeyE')) {
+  if (canEnter && input.wasHidePressed()) {
     nearest.ref.userData.occupied = true
     nearest.ref.userData.nextWiggleAt =
       now + POD_WIGGLE_MIN_INTERVAL + Math.random() * (POD_WIGGLE_MAX_INTERVAL - POD_WIGGLE_MIN_INTERVAL)

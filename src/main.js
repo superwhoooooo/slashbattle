@@ -83,6 +83,12 @@ import {
   POPUP_KILL_COLOR,
   POPUP_RING_OUT_COLOR,
   RAGE_DAMAGE_MULTIPLIER,
+  RUMBLE_LIGHT_DURATION,
+  RUMBLE_LIGHT_STRENGTH,
+  RUMBLE_MEDIUM_DURATION,
+  RUMBLE_MEDIUM_STRENGTH,
+  RUMBLE_STRONG_DURATION,
+  RUMBLE_STRONG_STRENGTH,
   SHAKE_DAMAGE_DURATION,
   SHAKE_DAMAGE_MAGNITUDE,
   SHAKE_HIT_DURATION,
@@ -707,6 +713,7 @@ function applyBossEvents(game, bossMesh, events, now) {
       sfx.play('bossSlam', { x: event.x, z: event.z })
       if (playerDistance(event.x, event.z) <= event.radius && player.damagePlayer(event.damage, now)) hurtPlayer = true
       triggerShake(game.shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
+      input.rumble(RUMBLE_STRONG_STRENGTH, RUMBLE_STRONG_DURATION)
       game.hitstop.remaining = triggerHitstop(game.hitstop, HITSTOP_PLAYER_HURT).remaining
     } else if (event.type === 'spinTick') {
       spawnShockwave(shockwavePool, event.x, event.z, event.radius, 0xffb454)
@@ -755,6 +762,7 @@ function scoreKill(game, mesh, cause, position, now) {
   const pointsLine = game.chainState.multiplier > 1 ? `+${points} ×${game.chainState.multiplier}` : `+${points}`
   showPopup(popupPool, position, trick.name, pointsLine, popupColorForTrick(trick.id))
   sfx.play(killVoiceForTrick(trick.id), position)
+  input.rumble(RUMBLE_MEDIUM_STRENGTH, RUMBLE_MEDIUM_DURATION)
 }
 
 // Advances each in-progress spawn-in effect (portal fade, monster
@@ -851,6 +859,9 @@ const sfx = createSfx(audio)
 
 let started = false
 function dismissStartCard() {
+  // Guards against the keydown/mousedown listeners below and a gamepad
+  // press both landing on the same frame and dismissing it twice.
+  if (started) return
   started = true
   music.start()
   hideStartCard(hud)
@@ -866,6 +877,14 @@ let game = createGame()
 const clock = new THREE.Clock()
 
 function animate() {
+  // Polled once a frame, before anything below queries it: turns the
+  // real Gamepad object (if any) into this frame's actions (src/input.js's
+  // pollGamepad/src/logic/gamepad.js's gamepadActions).
+  input.pollGamepad()
+  // The keydown/mousedown listeners above only fire for the keyboard/
+  // mouse; a gamepad press has to be checked here instead, from the poll.
+  if (!started && input.wasAdvancePressed()) dismissStartCard()
+
   // Clamped so a dropped/backgrounded-tab frame doesn't feed a huge dt
   // into movement/physics and teleport everything forward.
   const deltaSeconds = Math.min(clock.getDelta(), MAX_DELTA_SECONDS)
@@ -873,7 +892,7 @@ function animate() {
 
   const gameState = evaluateGameState({ playerHp: game.player.hp })
 
-  if (input.wasPressed('KeyM')) music.toggleMuted()
+  if (input.wasPressed('KeyM') || input.wasMutePressed()) music.toggleMuted()
   music.setMuffled(gameState !== 'playing')
 
   // Recorded once, the frame the player dies: compares this run against
@@ -892,7 +911,7 @@ function animate() {
   showGameOverlay(hud, gameState === 'playing' ? null : gameState, game.gameOverStats)
 
   if (!started || gameState !== 'playing') {
-    if (started && gameState !== 'playing' && input.wasPressed('KeyR')) {
+    if (started && gameState !== 'playing' && (input.wasPressed('KeyR') || input.wasRestartPressed())) {
       disposeGame(game)
       game = createGame()
       resetParticles(particleSystem)
@@ -910,7 +929,7 @@ function animate() {
   }
 
   if (game.cutscene) {
-    const advance = input.wasPressed('Space') || input.wasPressed('Enter') || input.wasMousePressed(0)
+    const advance = input.wasPressed('Space') || input.wasPressed('Enter') || input.wasMousePressed(0) || input.wasAdvancePressed()
     runCutscene(game, advance, deltaSeconds, elapsedSeconds)
     composer.render()
     input.endFrame()
@@ -992,6 +1011,7 @@ function animate() {
     triggerShake(shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
     triggerDamageFlash(hud)
     sfx.play('playerHurt', { x: player.position.x, z: player.position.z })
+    input.rumble(RUMBLE_STRONG_STRENGTH, RUMBLE_STRONG_DURATION)
     game.hitstop.remaining = triggerHitstop(game.hitstop, HITSTOP_PLAYER_HURT).remaining
   }
   updateJelly(player.mesh, gameplayDelta, elapsedSeconds, { speed: player.speed, moveDir: player.moveDir })
@@ -1022,6 +1042,7 @@ function animate() {
     triggerShake(shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
     triggerDamageFlash(hud)
     sfx.play('playerHurt', { x: player.position.x, z: player.position.z })
+    input.rumble(RUMBLE_STRONG_STRENGTH, RUMBLE_STRONG_DURATION)
     game.hitstop.remaining = triggerHitstop(game.hitstop, HITSTOP_PLAYER_HURT).remaining
   }
 
@@ -1037,13 +1058,18 @@ function animate() {
     return !finished
   })
 
-  // The weapon hotbar (1-5) and ability keys (Q Z X C V).
+  // The weapon hotbar (1-5) and ability keys (Q Z X C V); LB/RB cycle the
+  // hotbar backward/forward for a gamepad, which has no equivalent of
+  // jumping straight to a slot.
   HOTBAR_KEYS.forEach((key, slot) => {
     if (input.wasPressed(key)) selectWeapon(game, slot)
   })
+  const weaponCount = game.inventory.weapons.length
+  if (input.wasPrevWeaponPressed()) selectWeapon(game, (game.inventory.selected - 1 + weaponCount) % weaponCount)
+  if (input.wasNextWeaponPressed()) selectWeapon(game, (game.inventory.selected + 1) % weaponCount)
   if (!player.hidden) {
     ABILITY_KEYS.forEach((key, slot) => {
-      if (input.wasPressed(key)) activateAbility(game, slot, elapsedSeconds)
+      if (input.wasPressed(key) || input.wasAbilityPressed(slot)) activateAbility(game, slot, elapsedSeconds)
     })
   }
 
@@ -1071,6 +1097,7 @@ function animate() {
   if (hitAny) {
     triggerShake(shake, SHAKE_HIT_MAGNITUDE, SHAKE_HIT_DURATION)
     sfx.play('hit', { x: player.position.x, z: player.position.z })
+    input.rumble(RUMBLE_LIGHT_STRENGTH, RUMBLE_LIGHT_DURATION)
   }
 
   // Monsters still materializing in just tick their jelly (for the
@@ -1131,6 +1158,7 @@ function animate() {
       triggerShake(shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
       triggerDamageFlash(hud)
       sfx.play('playerHurt', { x: player.position.x, z: player.position.z })
+      input.rumble(RUMBLE_STRONG_STRENGTH, RUMBLE_STRONG_DURATION)
       game.hitstop.remaining = triggerHitstop(game.hitstop, HITSTOP_PLAYER_HURT).remaining
     }
     updateMonsterHitReaction(mesh, gameplayDelta)
@@ -1166,6 +1194,7 @@ function animate() {
     triggerShake(shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
     triggerDamageFlash(hud)
     sfx.play('playerHurt', { x: player.position.x, z: player.position.z })
+    input.rumble(RUMBLE_STRONG_STRENGTH, RUMBLE_STRONG_DURATION)
     game.hitstop.remaining = triggerHitstop(game.hitstop, HITSTOP_PLAYER_HURT).remaining
   }
 
@@ -1193,7 +1222,7 @@ function animate() {
       }
     }
   }
-  if (nearestChest && input.wasPressed('KeyF') && game.inventory.crystals >= nearestChest.userData.cost) {
+  if (nearestChest && input.wasChestPressed() && game.inventory.crystals >= nearestChest.userData.cost) {
     openChestNow(game, nearestChest, elapsedSeconds)
   }
   game.chests = game.chests.filter((chest) => {
