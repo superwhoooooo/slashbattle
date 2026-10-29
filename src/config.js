@@ -19,11 +19,11 @@ export const CAMERA_OFFSET = { x: 0, y: 11, z: 8 } // behind, above, and looking
 export const CAMERA_LERP = 6 // higher = camera catches up to the player faster
 export const CAMERA_LOOKAHEAD = 1.2 // world units, peak offset in the player's movement direction at full speed
 
-// Deep purple/blue, far enough out that it doesn't hide the platform
-// (ARENA_RADIUS 48) but still gives the starfield some depth and keeps
-// the space mood -- the far edge of the 48-radius platform still fades
-// into it a little, rather than staying crisp all the way out.
-export const FOG_COLOR = 0x140a2e
+// A pale daylight haze, matching the sky gradient's horizon band, far
+// enough out that it doesn't hide the platform (ARENA_RADIUS 48) but
+// still softens its far edge into the sky rather than keeping it crisp
+// all the way out.
+export const FOG_COLOR = 0xbfe3ff
 export const FOG_NEAR = 70
 export const FOG_FAR = 260
 
@@ -129,21 +129,42 @@ export const PYLON_PULSE_SPEED_A = 1.3 // radians per second
 export const PYLON_PULSE_SPEED_B = 2.1 // radians per second
 export const PYLON_PULSE_AMOUNT = 0.3 // fraction of PYLON_LIGHT_INTENSITY
 
-// Space backdrop: a starfield on a large sphere plus a gradient nebula
-// sky further out still.
-export const STARFIELD_COUNT = 4000
-export const STARFIELD_RADIUS = 400
+// Daylight backdrop: a vertical gradient sky dome (deep sky blue at the
+// zenith, fading through a pale haze near the horizon, down to a warm
+// sand tone below) plus a distant gas giant hanging near the horizon.
 export const SKY_RADIUS = 450
-export const STARFIELD_COLOR = 0xcfcfcf // dimmed from pure white
-export const STARFIELD_OPACITY = 0.7
+export const SKY_TOP_COLOR = '#2F7FF2'
+export const SKY_HORIZON_COLOR = '#DDF0FF'
+export const SKY_GROUND_COLOR = '#F6E6CF'
 
-// Lighting: a soft hemisphere fill plus a shadow-casting directional key
-// light (the platform receives shadows; characters cast them).
-export const HEMI_LIGHT_SKY_COLOR = 0x8899ff
-export const HEMI_LIGHT_GROUND_COLOR = 0x1a0a2a
-export const HEMI_LIGHT_INTENSITY = 0.45
-export const KEY_LIGHT_COLOR = 0xbcd2ff
-export const KEY_LIGHT_INTENSITY = 1.1
+// The gas giant: a big peachy sphere with a translucent ring, placed far
+// out along -Z (the general direction CAMERA_OFFSET/the fixed-world-space
+// follow camera looks) and low enough that the sightline clears the
+// platform's edge instead of being blocked by its opaque top surface:
+// the camera pitches ~51 degrees down, so its top-of-frame ray only
+// clears the edge once the player is on the far (-Z) side, and from
+// there the planet sits ~25 degrees below horizontal, near the top of
+// frame. It reads as sitting near the horizon from a chunk of the
+// platform, not the whole time, since the camera never rotates to face
+// it head-on.
+export const GAS_GIANT_POSITION = { x: 0, y: -140, z: -360 }
+export const GAS_GIANT_RADIUS = 60
+export const GAS_GIANT_COLOR = 0xf2b27a
+export const GAS_GIANT_EMISSIVE_INTENSITY = 0.15 // keeps it from reading as a dark silhouette against the sky
+export const GAS_GIANT_RING_COLOR = 0xffe9cf
+export const GAS_GIANT_RING_INNER_RADIUS = 78
+export const GAS_GIANT_RING_OUTER_RADIUS = 118
+export const GAS_GIANT_RING_OPACITY = 0.45
+export const GAS_GIANT_RING_TILT = Math.PI / 2.6 // radians, off the orbital plane so it reads as a ring rather than a flat disc edge-on
+
+// Lighting: a cool-sky-fill hemisphere light plus a shadow-casting warm
+// sun as the directional key light (the platform receives shadows;
+// characters cast them).
+export const HEMI_LIGHT_SKY_COLOR = 0xcfe8ff
+export const HEMI_LIGHT_GROUND_COLOR = 0xe8d6b8
+export const HEMI_LIGHT_INTENSITY = 0.9
+export const KEY_LIGHT_COLOR = 0xfff0d6
+export const KEY_LIGHT_INTENSITY = 2.2
 export const SHADOW_MAP_SIZE = 2048
 // The key light (and its target) follow the player every frame at this
 // fixed world-space offset, rather than staying fixed over the
@@ -153,13 +174,20 @@ export const KEY_LIGHT_OFFSET = { x: 12, y: 22, z: 10 }
 export const KEY_LIGHT_SHADOW_EXTENT = 25
 
 // Post-processing bloom (EffectComposer + UnrealBloomPass in main.js)
-// and the renderer's own tone mapping exposure -- both turned down a
-// lot from their original values so the neon surfaces glow without
-// washing out the whole scene.
-export const BLOOM_STRENGTH = 0.3
+// and the renderer's own tone mapping exposure. In daylight, bloom is
+// tuned near-off (a high threshold plus a low strength) so only
+// genuinely bright highlights -- not the whole sunlit scene -- glow.
+export const BLOOM_STRENGTH = 0.15
 export const BLOOM_RADIUS = 0.4
-export const BLOOM_THRESHOLD = 0.75
-export const TONE_MAPPING_EXPOSURE = 0.8
+export const BLOOM_THRESHOLD = 0.95
+export const TONE_MAPPING_EXPOSURE = 1.0
+
+// GTAOPass (EffectComposer, main.js): ambient occlusion for the contact
+// shadows and creases a directional sun makes obvious. GTAO_ENABLED is a quick on/off toggle independent of the other
+// tuning.
+export const GTAO_ENABLED = true
+export const GTAO_RADIUS = 1.2 // world units, how far each pixel samples for occluders
+export const GTAO_INTENSITY = 1.0 // blend strength of the occlusion term
 
 export const CAMERA_FAR = 1500
 

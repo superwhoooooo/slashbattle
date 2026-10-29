@@ -3,10 +3,11 @@ import '@fontsource/orbitron/700.css'
 import '@fontsource/orbitron/900.css'
 import * as THREE from 'three'
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
-import { createArena, updateArena } from './arena.js'
+import { createArena, createEnvironmentMap, updateArena } from './arena.js'
 import { createMonsterMesh } from './characters.js'
 import { updateFace3D } from './face3d.js'
 import { loadHighScore, saveHighScore } from './highScore.js'
@@ -46,6 +47,9 @@ import {
   FALL_PUFF_SPEED,
   FALL_STREAK_COUNT,
   FALL_STREAK_SPEED,
+  GTAO_ENABLED,
+  GTAO_INTENSITY,
+  GTAO_RADIUS,
   HEAL_PULSE_AMOUNT,
   HIDDEN_CAMERA_OFFSET,
   JELLY_DEATH_INFLATE_STRENGTH,
@@ -160,12 +164,20 @@ renderer.setSize(window.innerWidth, window.innerHeight)
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, MAX_PIXEL_RATIO))
 renderer.shadowMap.enabled = true
 renderer.shadowMap.type = THREE.PCFSoftShadowMap
-renderer.toneMapping = THREE.ACESFilmicToneMapping
+// NeutralToneMapping keeps the sunlit scene's pastel colors true,
+// without a filmic curve crushing its highlights and shadows.
+renderer.toneMapping = THREE.NeutralToneMapping
 renderer.toneMappingExposure = TONE_MAPPING_EXPOSURE
 renderer.outputColorSpace = THREE.SRGBColorSpace
 container.appendChild(renderer.domElement)
 
 const scene = new THREE.Scene()
+// Gives physically lit materials (metalness/roughness, clearcoat)
+// something plausible to reflect instead of flat black: a PMREM bake of
+// the sky gradient plus a bright sun panel (see arena.js's
+// createEnvironmentMap). The sky colors are static, so this is built
+// once rather than per game/restart like the arena itself.
+scene.environment = createEnvironmentMap(renderer)
 
 const camera = new THREE.PerspectiveCamera(
   70,
@@ -189,6 +201,16 @@ const composer = new EffectComposer(renderer, renderTarget)
 // resolution and upscaled -- blurry and pixelated. Match the renderer's.
 composer.setPixelRatio(renderer.getPixelRatio())
 composer.addPass(new RenderPass(scene, camera))
+// Ground-truth ambient occlusion for the contact shadows in creases and
+// corners that the directional sun makes obvious. Sits right after the
+// render pass, before bloom, so bloom's glow is computed from the
+// already-occluded image.
+const gtaoPass = new GTAOPass(scene, camera, window.innerWidth, window.innerHeight, undefined, {
+  radius: GTAO_RADIUS,
+})
+gtaoPass.blendIntensity = GTAO_INTENSITY
+gtaoPass.enabled = GTAO_ENABLED
+composer.addPass(gtaoPass)
 const bloomPass = new UnrealBloomPass(
   new THREE.Vector2(window.innerWidth, window.innerHeight),
   BLOOM_STRENGTH,
@@ -230,6 +252,7 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight)
   composer.setPixelRatio(renderer.getPixelRatio())
   composer.setSize(window.innerWidth, window.innerHeight)
+  gtaoPass.setSize(window.innerWidth, window.innerHeight)
 })
 
 // Camera screen shake: a short decaying offset added on top of the

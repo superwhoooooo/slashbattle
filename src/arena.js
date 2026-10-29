@@ -17,6 +17,15 @@ import {
   FOG_COLOR,
   FOG_FAR,
   FOG_NEAR,
+  GAS_GIANT_COLOR,
+  GAS_GIANT_EMISSIVE_INTENSITY,
+  GAS_GIANT_POSITION,
+  GAS_GIANT_RADIUS,
+  GAS_GIANT_RING_COLOR,
+  GAS_GIANT_RING_INNER_RADIUS,
+  GAS_GIANT_RING_OPACITY,
+  GAS_GIANT_RING_OUTER_RADIUS,
+  GAS_GIANT_RING_TILT,
   HEMI_LIGHT_GROUND_COLOR,
   HEMI_LIGHT_INTENSITY,
   HEMI_LIGHT_SKY_COLOR,
@@ -33,11 +42,10 @@ import {
   PYLON_PULSE_SPEED_A,
   PYLON_PULSE_SPEED_B,
   SHADOW_MAP_SIZE,
+  SKY_GROUND_COLOR,
+  SKY_HORIZON_COLOR,
   SKY_RADIUS,
-  STARFIELD_COLOR,
-  STARFIELD_COUNT,
-  STARFIELD_OPACITY,
-  STARFIELD_RADIUS,
+  SKY_TOP_COLOR,
 } from './config.js'
 import { platformLayout } from './logic/arena.js'
 
@@ -87,17 +95,18 @@ function createGridTexture() {
   return texture
 }
 
-// A vertical gradient (deep indigo -> purple -> near-black) for the
-// nebula sky dome, read top (y=+radius) to bottom (y=-radius).
+// A vertical gradient (deep sky blue at the zenith -> a pale haze near
+// the horizon -> warm sand further down) for the daylight sky dome,
+// read top (y=+radius) to bottom (y=-radius).
 function createSkyTexture() {
   const canvas = document.createElement('canvas')
   canvas.width = 2
   canvas.height = 256
   const ctx = canvas.getContext('2d')
   const gradient = ctx.createLinearGradient(0, 0, 0, 256)
-  gradient.addColorStop(0, '#0d0720')
-  gradient.addColorStop(0.45, '#1c0e3c')
-  gradient.addColorStop(1, '#030104')
+  gradient.addColorStop(0, SKY_TOP_COLOR)
+  gradient.addColorStop(0.7, SKY_HORIZON_COLOR)
+  gradient.addColorStop(1, SKY_GROUND_COLOR)
   ctx.fillStyle = gradient
   ctx.fillRect(0, 0, 2, 256)
 
@@ -106,8 +115,8 @@ function createSkyTexture() {
   return texture
 }
 
-// A big inverted sphere wrapped in the nebula gradient, far outside the
-// starfield so nothing clips through it.
+// A big inverted sphere wrapped in the daylight gradient, far outside
+// everything else so nothing clips through it.
 function createSkyDome() {
   const geometry = new THREE.SphereGeometry(SKY_RADIUS, 32, 16)
   const material = new THREE.MeshBasicMaterial({
@@ -118,27 +127,40 @@ function createSkyDome() {
   return new THREE.Mesh(geometry, material)
 }
 
-// A few thousand points scattered over a shell around the arena.
-function createStarfield() {
-  const positions = new Float32Array(STARFIELD_COUNT * 3)
-  for (let i = 0; i < STARFIELD_COUNT; i++) {
-    const theta = Math.random() * Math.PI * 2
-    const phi = Math.acos(2 * Math.random() - 1)
-    const radius = STARFIELD_RADIUS * (0.85 + Math.random() * 0.15)
-    positions[i * 3] = radius * Math.sin(phi) * Math.cos(theta)
-    positions[i * 3 + 1] = radius * Math.cos(phi)
-    positions[i * 3 + 2] = radius * Math.sin(phi) * Math.sin(theta)
-  }
-  const geometry = new THREE.BufferGeometry()
-  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
-  const material = new THREE.PointsMaterial({
-    color: STARFIELD_COLOR,
-    size: 1.2,
+// A big peachy gas giant with a translucent ring, standing in on the
+// horizon -- see config.js's GAS_GIANT_* comment for where it's placed
+// and why. A touch of emissive keeps its unlit side from reading as a
+// flat black silhouette against the sky.
+function createGasGiant() {
+  const group = new THREE.Group()
+  group.position.set(GAS_GIANT_POSITION.x, GAS_GIANT_POSITION.y, GAS_GIANT_POSITION.z)
+
+  const planetMaterial = new THREE.MeshStandardMaterial({
+    color: GAS_GIANT_COLOR,
+    roughness: 0.9,
+    metalness: 0,
+    emissive: new THREE.Color(GAS_GIANT_COLOR),
+    emissiveIntensity: GAS_GIANT_EMISSIVE_INTENSITY,
     fog: false,
-    transparent: true,
-    opacity: STARFIELD_OPACITY,
   })
-  return new THREE.Points(geometry, material)
+  const planet = new THREE.Mesh(new THREE.SphereGeometry(GAS_GIANT_RADIUS, 48, 32), planetMaterial)
+  group.add(planet)
+
+  const ringMaterial = new THREE.MeshBasicMaterial({
+    color: GAS_GIANT_RING_COLOR,
+    transparent: true,
+    opacity: GAS_GIANT_RING_OPACITY,
+    side: THREE.DoubleSide,
+    fog: false,
+  })
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(GAS_GIANT_RING_INNER_RADIUS, GAS_GIANT_RING_OUTER_RADIUS, 64),
+    ringMaterial,
+  )
+  ring.rotation.x = GAS_GIANT_RING_TILT
+  group.add(ring)
+
+  return group
 }
 
 // Builds the platform itself: a thick disc (dark metallic sides/underside,
@@ -269,9 +291,9 @@ function createPylons() {
   return { group, pylons }
 }
 
-// Builds the arena: a Three.js group (platform + pylons + starfield + sky
-// + lighting) ready to add to the scene, fog, and the animated bits
-// (pylons, thrusters, the grid's pulsing material) that updateArena
+// Builds the arena: a Three.js group (platform + pylons + sky + gas
+// giant + lighting) ready to add to the scene, fog, and the animated
+// bits (pylons, thrusters, the grid's pulsing material) that updateArena
 // drives every frame.
 export function createArena() {
   const group = new THREE.Group()
@@ -304,12 +326,45 @@ export function createArena() {
   const { group: pylonGroup, pylons } = createPylons()
   group.add(pylonGroup)
 
-  group.add(createStarfield())
   group.add(createSkyDome())
+  group.add(createGasGiant())
 
   const fog = new THREE.Fog(FOG_COLOR, FOG_NEAR, FOG_FAR)
 
   return { group, fog, backgroundColor: FOG_COLOR, topMaterial, pylons, thrusters, keyLight }
+}
+
+// Builds scene.environment: a PMREM-baked reflection map from a small
+// offscreen scene holding the sky gradient dome plus a bright warm "sun"
+// panel, so physically lit materials (metalness/roughness) have
+// something plausible to reflect instead of flat black. arena.js has no
+// renderer of its own to build this with, so main.js calls it once at
+// startup and hands over the renderer; the PMREMGenerator is disposed
+// right after baking, per three's own fromScene usage.
+export function createEnvironmentMap(renderer) {
+  const envScene = new THREE.Scene()
+  const dome = createSkyDome()
+  envScene.add(dome)
+
+  const sunMaterial = new THREE.MeshBasicMaterial({ color: 0xfff6e0 })
+  const sun = new THREE.Mesh(new THREE.PlaneGeometry(140, 140), sunMaterial)
+  sun.position.set(KEY_LIGHT_OFFSET.x * 8, KEY_LIGHT_OFFSET.y * 8, KEY_LIGHT_OFFSET.z * 8)
+  sun.lookAt(0, 0, 0)
+  envScene.add(sun)
+
+  const pmremGenerator = new THREE.PMREMGenerator(renderer)
+  // near/far wide enough to fit the sky dome (SKY_RADIUS) without
+  // clipping it out of the bake.
+  const renderTarget = pmremGenerator.fromScene(envScene, 0, 0.1, SKY_RADIUS + 50)
+  pmremGenerator.dispose()
+
+  dome.geometry.dispose()
+  dome.material.map.dispose()
+  dome.material.dispose()
+  sun.geometry.dispose()
+  sunMaterial.dispose()
+
+  return renderTarget.texture
 }
 
 // The shadow map's world-space texel size (the frustum spans 2x the

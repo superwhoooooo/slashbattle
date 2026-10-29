@@ -61,7 +61,7 @@ slashbattle/
     main.js            # bootstrap: renderer, scene, camera, post-processing, game loop
     config.js          # tunable constants (speeds, damage, ranges, HP, arena/visual tuning)
     input.js           # keyboard/mouse state
-    arena.js           # the floating platform, starfield/nebula sky, lighting, neon pylons
+    arena.js           # the floating platform, daylight sky + gas giant, environment map, lighting, neon pylons
     face3d.js          # 3D goofy face features (googly eyes, mouths, brow/tongue/cheeks), attached to a jelly body
     characters.js      # build player/monster jelly bodies (shape + 3D face + indicators)
     jelly.js           # the jelly body: shared-geometry wireframe edges, per-vertex deformation
@@ -114,11 +114,19 @@ the side. A wandering monster's target is biased to within
 `WANDER_BIAS_RADIUS` of its current position (`randomPointNear` in
 `src/logic/arena.js`), so it doesn't trek clean across the arena.
 
-Lighting stays deliberately dim: the hemisphere/key lights are the main
-source, bloom is tuned low and only picks up genuinely bright surfaces
-(`BLOOM_THRESHOLD`), and most small per-object lights (the platform's
-underside thrusters, most of the neon pylons) were cut in favor of
-dimmed emissive materials instead -- a handful of real lights reads
+The sky is daylight: a gradient dome (deep blue zenith, pale haze at
+the horizon, warm sand below) with a ringed gas giant placed out along
+-Z, where the follow camera can see past the platform's edge. A warm
+sun (the shadow-casting key light that follows the player) and a cool
+hemisphere fill light the scene; the fog matches the horizon haze.
+`createEnvironmentMap` (arena.js) PMREM-bakes the sky plus a sun panel
+into `scene.environment` once at startup, so physical materials have
+something to reflect. The renderer uses `NeutralToneMapping`, and the
+composer runs RenderPass -> GTAOPass (ambient occlusion, `GTAO_*`) ->
+UnrealBloomPass (near off: only genuinely bright surfaces above
+`BLOOM_THRESHOLD` glow) -> OutputPass. Small per-object lights (the
+platform's underside thrusters, most of the neon pylons) were cut in
+favor of dimmed emissive materials -- a handful of real lights reads
 better than a crowd of dim ones.
 
 ## Hiding pods
