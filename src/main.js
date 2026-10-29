@@ -46,6 +46,7 @@ import {
   FALL_PUFF_COUNT,
   FALL_PUFF_SPEED,
   FALL_STREAK_COUNT,
+  ENVIRONMENT_INTENSITY,
   FALL_STREAK_SPEED,
   GTAO_ENABLED,
   GTAO_INTENSITY,
@@ -178,6 +179,7 @@ const scene = new THREE.Scene()
 // createEnvironmentMap). The sky colors are static, so this is built
 // once rather than per game/restart like the arena itself.
 scene.environment = createEnvironmentMap(renderer)
+scene.environmentIntensity = ENVIRONMENT_INTENSITY
 
 const camera = new THREE.PerspectiveCamera(
   70,
@@ -186,8 +188,9 @@ const camera = new THREE.PerspectiveCamera(
   CAMERA_FAR,
 )
 
-// Bloom makes the neon emissive surfaces (the grid, the rim, the pylons)
-// glow without washing out the rest of the scene; OutputPass applies the
+// Bloom makes genuinely bright surfaces (the sword's glow, spawn/hit
+// effects, the gas giant) glow without washing out the rest of the
+// daylit scene; OutputPass applies the
 // renderer's tone mapping/color space after the bloom pass runs. The
 // composer renders into its own target, which bypasses the renderer's
 // own antialias setting -- an explicit multisampled (MSAA) render
@@ -322,11 +325,13 @@ function createGame() {
   scene.background = new THREE.Color(arena.backgroundColor)
   scene.fog = arena.fog
 
-  // Pods are dynamic circular obstacles (src/logic/podSpawner.js decides
-  // where/when); `obstacles` is mutated in place as they spawn/despawn
+  // The sundeck's umbrellas/loungers/signs are static circular obstacles,
+  // built once from arena.propObstacles; pods and chests are dynamic ones
+  // (src/logic/podSpawner.js decides where/when) added/removed on top of
+  // them. `obstacles` is mutated in place as pods/chests spawn/despawn
   // (via trySpawnPod/despawnPod) so the player and monsters, which hold
   // this same array, stay in sync without it ever being reassigned.
-  const obstacles = []
+  const obstacles = [...arena.propObstacles]
 
   const player = new Player({ spawn: { x: 0, z: 0 }, obstacles, particleSystem })
   scene.add(player.mesh)
@@ -334,6 +339,7 @@ function createGame() {
   const game = {
     arena,
     obstacles,
+    props: arena.propObstacles, // the static props alone, so pod/chest/monster spawn points can steer clear of them specifically
     player,
     pods: [],
     despawningPods: [], // pod meshes mid-dematerialize: still animating, no longer collidable or counted toward POD_MAX_ACTIVE
@@ -385,6 +391,8 @@ function trySpawnPod(game) {
     minPlayerDistance: POD_MIN_PLAYER_DISTANCE,
     monsterPositions: game.monsters.map((mesh) => ({ x: mesh.position.x, z: mesh.position.z })),
     monsterAvoidRadius: POD_MONSTER_AVOID_RADIUS,
+    obstacles: game.props,
+    obstacleMargin: POD_OBSTACLE_RADIUS,
     maxAttempts: POD_SPAWN_MAX_ATTEMPTS,
   })
   if (point === null) return
@@ -420,6 +428,8 @@ function trySpawnChest(game, { at = null, cost = null } = {}) {
       minPlayerDistance: POD_MIN_PLAYER_DISTANCE,
       monsterPositions: game.monsters.map((mesh) => ({ x: mesh.position.x, z: mesh.position.z })),
       monsterAvoidRadius: POD_MONSTER_AVOID_RADIUS,
+      obstacles: game.props,
+      obstacleMargin: CHEST_OBSTACLE_RADIUS,
       maxAttempts: POD_SPAWN_MAX_ATTEMPTS,
     })
   if (point === null) return
@@ -575,6 +585,8 @@ function spawnMonster(game, type, { at = null, effectOptions, hpScale = 1, faceP
     SPAWN_NEAR_PLAYER_MAX_DIST,
     ARENA_RADIUS,
     SPAWN_NEAR_PLAYER_MARGIN,
+    game.props,
+    stats.radius,
   )
 
   const mesh = createMonsterMesh(type)
@@ -724,7 +736,7 @@ function runCutscene(game, advancePressed, deltaSeconds, elapsedSeconds) {
     updateFace3D(m, deltaSeconds, elapsedSeconds)
   })
   updateSpawnEffects(game, deltaSeconds)
-  updateArena(game.arena, elapsedSeconds, player.position)
+  updateArena(game.arena, player.position)
   updateParticles(particleSystem, deltaSeconds)
   updatePopups(popupPool, deltaSeconds)
 
@@ -1043,7 +1055,7 @@ function animate() {
   updateSpawnEffects(game, deltaSeconds)
 
   separateMonsters(monsters, player, obstacles)
-  updateArena(game.arena, elapsedSeconds, player.position)
+  updateArena(game.arena, player.position)
   updateParticles(particleSystem, deltaSeconds)
   updatePopups(popupPool, deltaSeconds)
   updateShockwaves(shockwavePool, deltaSeconds)

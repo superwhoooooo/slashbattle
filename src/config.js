@@ -91,43 +91,56 @@ export const FACE_PUPIL_HIT_KICK = 0.3
 // camera. Keyed by MONSTER_TYPES key; the player isn't scaled.
 export const FACE_SCALE_BY_TYPE = { blobbo: 1, zippy: 1.6, grumpus: 1 }
 
-// Arena platform geometry and the neon grid pulsing across its top.
+// Arena platform geometry and its sundeck surface: a tileable composite-
+// plank CanvasTexture (a single canvas can't hold enough resolution for
+// crisp planks across the platform's full radius, so it repeats instead)
+// plus a teal border band and a white pinstripe, each a flat ring mesh
+// laid on top of the deck -- a repeating texture can't carry a band that
+// only appears near the edge, so those are separate geometry instead.
 export const ARENA_RADIUS = 48
 export const ARENA_THICKNESS = 1.2
-export const ARENA_TOP_COLOR = 0x14141c
-export const ARENA_UNDERSIDE_COLOR = 0x0a0a10
-export const ARENA_GRID_COLOR = '#19e7ff'
-export const ARENA_GRID_PULSE_SPEED = 1.5 // radians per second
-// How many world units apart the grid's concentric rings are drawn --
-// kept constant as ARENA_RADIUS changes (the grid texture redraws with
-// however many rings that takes) so the cells don't stretch.
-export const ARENA_GRID_RING_SPACING = 16 / 11
-export const ARENA_RIM_COLOR = 0x00e5ff
-export const ARENA_RIM_THICKNESS = 0.5
+export const ARENA_HULL_COLOR = 0xe7e9ec // light grey/white, slightly metallic sides/underside
+export const ARENA_DECK_PLANK_COLOR = '#ece4d4' // warm white composite plank base
+export const ARENA_DECK_SEAM_COLOR = '#b9ad94' // seams between planks
+// World-unit size of one repeating plank tile, so plank width/length stay
+// a sensible real-world size rather than stretching with ARENA_RADIUS.
+export const ARENA_DECK_PLANK_WIDTH = 0.4
+export const ARENA_DECK_PLANK_LENGTH = 1.6
+export const ARENA_DECK_BORDER_COLOR = '#19b5a5'
+export const ARENA_DECK_BORDER_WIDTH = 1 // world units, how wide the border band is
+export const ARENA_DECK_PINSTRIPE_COLOR = '#f5f5f0'
+export const ARENA_DECK_PINSTRIPE_WIDTH = 0.12
+// World units in from the platform's edge to the pinstripe's outer edge,
+// so it sits just inside the border band rather than touching it.
+export const ARENA_DECK_PINSTRIPE_INSET = 1.6
 
-// Glowing thrusters on the platform's tapered underside, so it reads as
-// floating rather than resting on something. No PointLight anymore --
-// just the dimmed glow mesh itself (removing lots of small lights under
-// the platform was most of the overall brightness cut).
-export const ARENA_THRUSTER_COUNT = 6
-export const ARENA_THRUSTER_COLOR = 0xff2db0
-export const ARENA_THRUSTER_EMISSIVE_INTENSITY = 0.8
-export const ARENA_THRUSTER_PULSE_SPEED = 2.2 // radians per second
-export const ARENA_THRUSTER_PULSE_AMOUNT = 0.3 // fraction of ARENA_THRUSTER_EMISSIVE_INTENSITY
+// The sundeck's props (pools, umbrellas, loungers, signs -- laid out by
+// src/logic/resortLayout.js, built into meshes by src/arena.js): a fixed
+// seed so the same layout appears every run.
+export const RESORT_LAYOUT_SEED = 20240
 
-// Neon light pylons standing around the platform's rim, replacing the
-// dungeon's torches. Each pairs a PointLight with a glowing cap, pulsing
-// gently (a sum of two sines at different speeds, offset by a random
-// per-pylon phase, same idea as the old torch flicker). Down to 3 (from
-// 6) and much dimmer, as part of the overall brightness cut.
-export const PYLON_COUNT = 3
-export const PYLON_COLORS = [0x00e5ff, 0xff2db0, 0x7cff5a]
-export const PYLON_LIGHT_INTENSITY = 1.5
-export const PYLON_LIGHT_DISTANCE = 8
-export const PYLON_CAP_EMISSIVE_INTENSITY = 0.8
-export const PYLON_PULSE_SPEED_A = 1.3 // radians per second
-export const PYLON_PULSE_SPEED_B = 2.1 // radians per second
-export const PYLON_PULSE_AMOUNT = 0.3 // fraction of PYLON_LIGHT_INTENSITY
+// Pool water and rim.
+export const POOL_WATER_COLOR = 0x2bc8e6
+export const POOL_RIM_COLOR = 0xffffff
+
+// Umbrella pole/canopy (canopy color comes from resortLayout.js's own
+// per-umbrella `color`).
+export const UMBRELLA_POLE_COLOR = 0xffffff
+export const UMBRELLA_POLE_HEIGHT = 2.2
+export const UMBRELLA_POLE_RADIUS = 0.04
+export const UMBRELLA_CANOPY_HEIGHT = 0.6
+
+// Lounger slats/back.
+export const LOUNGER_COLOR = 0xf5f5f0
+export const LOUNGER_LENGTH = 1.3
+export const LOUNGER_WIDTH = 0.6
+
+// Sign post/panel.
+export const SIGN_POST_COLOR = 0xffffff
+export const SIGN_POST_HEIGHT = 1.4
+export const SIGN_PANEL_COLOR = 0x19b5a5
+export const SIGN_PANEL_WIDTH = 0.9
+export const SIGN_PANEL_HEIGHT = 0.4
 
 // Daylight backdrop: a vertical gradient sky dome (deep sky blue at the
 // zenith, fading through a pale haze near the horizon, down to a warm
@@ -162,9 +175,9 @@ export const GAS_GIANT_RING_TILT = Math.PI / 2.6 // radians, off the orbital pla
 // characters cast them).
 export const HEMI_LIGHT_SKY_COLOR = 0xcfe8ff
 export const HEMI_LIGHT_GROUND_COLOR = 0xe8d6b8
-export const HEMI_LIGHT_INTENSITY = 0.9
+export const HEMI_LIGHT_INTENSITY = 0.35
 export const KEY_LIGHT_COLOR = 0xfff0d6
-export const KEY_LIGHT_INTENSITY = 2.2
+export const KEY_LIGHT_INTENSITY = 1.6
 export const SHADOW_MAP_SIZE = 2048
 // The key light (and its target) follow the player every frame at this
 // fixed world-space offset, rather than staying fixed over the
@@ -180,7 +193,11 @@ export const KEY_LIGHT_SHADOW_EXTENT = 25
 export const BLOOM_STRENGTH = 0.15
 export const BLOOM_RADIUS = 0.4
 export const BLOOM_THRESHOLD = 0.95
-export const TONE_MAPPING_EXPOSURE = 1.0
+export const TONE_MAPPING_EXPOSURE = 0.75
+// How strongly the baked sky environment map (scene.environment) lights
+// and reflects off physical materials, on top of the sun and hemisphere
+// lights -- kept low so the pale deck doesn't wash out to white.
+export const ENVIRONMENT_INTENSITY = 0.35
 
 // GTAOPass (EffectComposer, main.js): ambient occlusion for the contact
 // shadows and creases a directional sun makes obvious. GTAO_ENABLED is a quick on/off toggle independent of the other

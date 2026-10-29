@@ -61,7 +61,7 @@ slashbattle/
     main.js            # bootstrap: renderer, scene, camera, post-processing, game loop
     config.js          # tunable constants (speeds, damage, ranges, HP, arena/visual tuning)
     input.js           # keyboard/mouse state
-    arena.js           # the floating platform, daylight sky + gas giant, environment map, lighting, neon pylons
+    arena.js           # the resort sundeck + props, daylight sky + gas giant, environment map, lighting
     face3d.js          # 3D goofy face features (googly eyes, mouths, brow/tongue/cheeks), attached to a jelly body
     characters.js      # build player/monster jelly bodies (shape + 3D face + indicators)
     jelly.js           # the jelly body: shared-geometry wireframe edges, per-vertex deformation
@@ -71,6 +71,7 @@ slashbattle/
     pets.js            # pets that orbit the player and zap/heal
     projectiles.js     # pooled boss-barrage orbs
     shockwave.js       # expanding ground rings (boss slam, player Shockwave)
+    logic/resortLayout.js # seeded sundeck prop layout (pools, umbrellas, loungers, signs), isInPool
     logic/items.js     # weapon / ability / pet catalogs
     logic/inventory.js # crystals, hotbar, ability cooldowns, chest loot rolls
     logic/crystals.js  # crystal drops + movement rules
@@ -124,10 +125,21 @@ into `scene.environment` once at startup, so physical materials have
 something to reflect. The renderer uses `NeutralToneMapping`, and the
 composer runs RenderPass -> GTAOPass (ambient occlusion, `GTAO_*`) ->
 UnrealBloomPass (near off: only genuinely bright surfaces above
-`BLOOM_THRESHOLD` glow) -> OutputPass. Small per-object lights (the
-platform's underside thrusters, most of the neon pylons) were cut in
-favor of dimmed emissive materials -- a handful of real lights reads
-better than a crowd of dim ones.
+`BLOOM_THRESHOLD` glow) -> OutputPass. Light levels (`KEY_LIGHT_INTENSITY`,
+`HEMI_LIGHT_INTENSITY`, `ENVIRONMENT_INTENSITY`, `TONE_MAPPING_EXPOSURE`)
+are kept moderate so the pale deck doesn't wash out to white.
+
+The platform is a resort sundeck: a repeating warm-white plank texture
+on a light hull, with a teal border band and white pinstripe as flat
+rings at the edge. `src/logic/resortLayout.js`'s `resortLayout({ radius,
+seed })` is a pure, seeded (`RESORT_LAYOUT_SEED`, so every run is the
+same) layout of pools, umbrellas, loungers and signs, with a clear zone
+around the center and a margin in from the edge; `arena.js` builds them
+from primitives. Umbrellas, loungers and signs are static circular
+obstacles in `game.obstacles` (same `{ x, z, radius }` shape as pods), and
+`pickPodSpawnPoint`/`spawnPointNearPlayer` take them as `obstacles` so
+pods, chests and monsters don't spawn inside one. Pools are walkable;
+`isInPool` tells whether a point is in one.
 
 ## Hiding pods
 Each hiding spot (`src/hiding.js`) is a capsule hull on a small hovering
