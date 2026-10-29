@@ -53,6 +53,7 @@ import {
   GTAO_RADIUS,
   HEAL_PULSE_AMOUNT,
   HIDDEN_CAMERA_OFFSET,
+  HITSTOP_PLAYER_HURT,
   JELLY_DEATH_INFLATE_STRENGTH,
   MAX_DELTA_SECONDS,
   MAX_PIXEL_RATIO,
@@ -138,6 +139,7 @@ import {
 import { ABILITIES, ABILITY_KEYS, HOTBAR_KEYS, PETS, WEAPONS, petEffects } from './logic/items.js'
 import { stepFall } from './logic/falling.js'
 import { evaluateGameState } from './logic/gameState.js'
+import { createHitstopState, stepHitstop, triggerHitstop } from './logic/hitstop.js'
 import { hideTimeRemaining } from './logic/hiding.js'
 import { createPodSpawnerState, pickPodSpawnPoint, stepPodSpawner } from './logic/podSpawner.js'
 import {
@@ -361,6 +363,7 @@ function createGame() {
     hidingState: createHidingState(),
     attackState: createAttackState(),
     shake: createShakeState(),
+    hitstop: createHitstopState(), // a brief freeze of gameplay time on impact; see stepHitstop below
     gameOverRecorded: false,
     gameOverStats: null,
   }
@@ -497,6 +500,7 @@ function activateAbility(game, slot, now) {
         obstacles: game.obstacles,
         particleSystem,
         cause: 'shockwave',
+        hitstop: game.hitstop,
       })
     }
   } else if (used.abilityId === 'heal') {
@@ -698,6 +702,7 @@ function applyBossEvents(game, bossMesh, events, now) {
       burst(particleSystem, { x: event.x, y: 0.3, z: event.z }, 0xff9a5a, 36, 4.5)
       if (playerDistance(event.x, event.z) <= event.radius && player.damagePlayer(event.damage, now)) hurtPlayer = true
       triggerShake(game.shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
+      game.hitstop.remaining = triggerHitstop(game.hitstop, HITSTOP_PLAYER_HURT).remaining
     } else if (event.type === 'spinTick') {
       spawnShockwave(shockwavePool, event.x, event.z, event.radius, 0xffb454)
       if (playerDistance(event.x, event.z) <= event.radius && player.damagePlayer(event.damage, now)) hurtPlayer = true
@@ -903,6 +908,15 @@ function animate() {
     return
   }
 
+  // Hitstop freezes gameplay time, not real time: the camera shake/flash,
+  // HUD, and music all keep using deltaSeconds, but every system below
+  // that actually moves/animates the game world uses gameplayDelta, which
+  // is 0 for the frame(s) a freeze covers (or a fraction of deltaSeconds
+  // the frame it ends partway through, so no time is lost overall).
+  const { state: nextHitstop, scale: hitstopScale } = stepHitstop(game.hitstop, deltaSeconds)
+  game.hitstop = nextHitstop
+  const gameplayDelta = deltaSeconds * hitstopScale
+
   const { obstacles, player, pods, hidingState, attackState, shake } = game
   let monsters = game.monsters
 
@@ -914,7 +928,7 @@ function animate() {
   const bossBeforeStep = currentBoss(game.waveState)
   const { state: nextWaveState, spawns, events } = stepWaves(
     game.waveState,
-    deltaSeconds,
+    gameplayDelta,
     monsters.length,
     Math.random,
   )
@@ -959,16 +973,17 @@ function animate() {
   game.chestSpawnerState = nextChestSpawnerState
   if (chestSpawnNow) trySpawnChest(game)
 
-  player.update(input, cameraYaw, deltaSeconds)
+  player.update(input, cameraYaw, gameplayDelta)
   if (!player.falling && !player.hidden && !isOnPlatform(player.position, ARENA_RADIUS)) {
     player.startFalling()
   }
-  if (player.falling && player.updateFalling(deltaSeconds, elapsedSeconds)) {
+  if (player.falling && player.updateFalling(gameplayDelta, elapsedSeconds)) {
     triggerShake(shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
     triggerDamageFlash(hud)
+    game.hitstop.remaining = triggerHitstop(game.hitstop, HITSTOP_PLAYER_HURT).remaining
   }
-  updateJelly(player.mesh, deltaSeconds, elapsedSeconds, { speed: player.speed, moveDir: player.moveDir })
-  updateFace3D(player.mesh, deltaSeconds, elapsedSeconds)
+  updateJelly(player.mesh, gameplayDelta, elapsedSeconds, { speed: player.speed, moveDir: player.moveDir })
+  updateFace3D(player.mesh, gameplayDelta, elapsedSeconds)
 
   // vacatedPod is the pod the player just left (early with E, or forced
   // out by the hide-limit timer -- `ejected`) this frame, if any; pods
@@ -986,16 +1001,17 @@ function animate() {
   if (ejected) {
     triggerShake(shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
     triggerDamageFlash(hud)
+    game.hitstop.remaining = triggerHitstop(game.hitstop, HITSTOP_PLAYER_HURT).remaining
   }
 
   pods.forEach((pod) => {
     const remaining = pod.userData.occupied
       ? hideTimeRemaining(hidingState.enteredAt, elapsedSeconds, POD_HIDE_LIMIT)
       : null
-    updatePod(pod, deltaSeconds, elapsedSeconds, { isNearestEnterable: pod === nearestPod, hideTimeRemaining: remaining })
+    updatePod(pod, gameplayDelta, elapsedSeconds, { isNearestEnterable: pod === nearestPod, hideTimeRemaining: remaining })
   })
   game.despawningPods = game.despawningPods.filter((pod) => {
-    const finished = updatePod(pod, deltaSeconds, elapsedSeconds, {})
+    const finished = updatePod(pod, gameplayDelta, elapsedSeconds, {})
     if (finished) disposeObject3D(pod)
     return !finished
   })
@@ -1016,11 +1032,12 @@ function animate() {
     obstacles,
     input,
     elapsedSeconds,
-    deltaSeconds,
+    deltaSeconds: gameplayDelta,
     particleSystem,
     swingTrail,
     weaponId: selectedWeaponId(game.inventory),
     damageMultiplier: elapsedSeconds < player.rageUntil ? RAGE_DAMAGE_MULTIPLIER : 1,
+    hitstop: game.hitstop,
   })
   if (ambushHit) showAmbushBanner(hud)
   if (hitAny) triggerShake(shake, SHAKE_HIT_MAGNITUDE, SHAKE_HIT_DURATION)
@@ -1039,15 +1056,15 @@ function animate() {
   let bossDeathPoint = null
   monsters = monsters.filter((mesh) => {
     if (mesh.userData.spawning) {
-      updateJelly(mesh, deltaSeconds, elapsedSeconds, { speed: 0, moveDir: mesh.userData.moveDir })
-      updateFace3D(mesh, deltaSeconds, elapsedSeconds)
+      updateJelly(mesh, gameplayDelta, elapsedSeconds, { speed: 0, moveDir: mesh.userData.moveDir })
+      updateFace3D(mesh, gameplayDelta, elapsedSeconds)
       return true
     }
 
     if (mesh.userData.dying) {
-      updateJelly(mesh, deltaSeconds, elapsedSeconds, { speed: 0, moveDir: mesh.userData.moveDir })
-      updateFace3D(mesh, deltaSeconds, elapsedSeconds)
-      const finishedDying = updateMonsterHitReaction(mesh, deltaSeconds)
+      updateJelly(mesh, gameplayDelta, elapsedSeconds, { speed: 0, moveDir: mesh.userData.moveDir })
+      updateFace3D(mesh, gameplayDelta, elapsedSeconds)
+      const finishedDying = updateMonsterHitReaction(mesh, gameplayDelta)
       if (finishedDying) {
         scoreKill(game, mesh, mesh.userData.lastHitBy ?? 'sword', mesh.position, elapsedSeconds)
         dropCrystals(crystalSystem, mesh.position.x, mesh.position.z, crystalDrops(mesh.userData.type, mesh.userData.isBoss))
@@ -1062,10 +1079,10 @@ function animate() {
     }
 
     if (mesh.userData.falling) {
-      mesh.userData.fallState = stepFall(mesh.userData.fallState, deltaSeconds, FALL_GRAVITY)
+      mesh.userData.fallState = stepFall(mesh.userData.fallState, gameplayDelta, FALL_GRAVITY)
       mesh.position.y = -mesh.userData.fallState.fallenY
-      mesh.rotation.x += deltaSeconds * MONSTER_FALL_TUMBLE_SPEED
-      mesh.rotation.z += deltaSeconds * MONSTER_FALL_TUMBLE_SPEED * 0.6
+      mesh.rotation.x += gameplayDelta * MONSTER_FALL_TUMBLE_SPEED
+      mesh.rotation.z += gameplayDelta * MONSTER_FALL_TUMBLE_SPEED * 0.6
       if (mesh.userData.fallState.fallenY >= FALL_DESPAWN_DEPTH) {
         scoreKill(game, mesh, 'fall', { x: mesh.position.x, y: 0, z: mesh.position.z }, elapsedSeconds)
         scene.remove(mesh)
@@ -1075,15 +1092,16 @@ function animate() {
       return true
     }
 
-    const { hitPlayer: monsterHitPlayer, events: specialEvents } = updateMonster(mesh, player, obstacles, deltaSeconds, elapsedSeconds)
+    const { hitPlayer: monsterHitPlayer, events: specialEvents } = updateMonster(mesh, player, obstacles, gameplayDelta, elapsedSeconds)
     const hitPlayer = monsterHitPlayer || (specialEvents.length > 0 && applyBossEvents(game, mesh, specialEvents, elapsedSeconds))
-    updateJelly(mesh, deltaSeconds, elapsedSeconds, { speed: mesh.userData.speed, moveDir: mesh.userData.moveDir })
-    updateFace3D(mesh, deltaSeconds, elapsedSeconds)
+    updateJelly(mesh, gameplayDelta, elapsedSeconds, { speed: mesh.userData.speed, moveDir: mesh.userData.moveDir })
+    updateFace3D(mesh, gameplayDelta, elapsedSeconds)
     if (hitPlayer) {
       triggerShake(shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
       triggerDamageFlash(hud)
+      game.hitstop.remaining = triggerHitstop(game.hitstop, HITSTOP_PLAYER_HURT).remaining
     }
-    updateMonsterHitReaction(mesh, deltaSeconds)
+    updateMonsterHitReaction(mesh, gameplayDelta)
 
     if (!isOnPlatform({ x: mesh.position.x, z: mesh.position.z }, ARENA_RADIUS)) {
       mesh.userData.falling = true
@@ -1105,16 +1123,17 @@ function animate() {
     }
   }
 
-  updateSpawnEffects(game, deltaSeconds)
+  updateSpawnEffects(game, gameplayDelta)
 
   separateMonsters(monsters, player, obstacles)
   updateArena(game.arena, player.position)
-  updateParticles(particleSystem, deltaSeconds)
-  updatePopups(popupPool, deltaSeconds)
-  updateShockwaves(shockwavePool, deltaSeconds)
-  if (updateProjectiles(projectilePool, deltaSeconds, player, elapsedSeconds, ARENA_RADIUS)) {
+  updateParticles(particleSystem, gameplayDelta)
+  updatePopups(popupPool, gameplayDelta)
+  updateShockwaves(shockwavePool, gameplayDelta)
+  if (updateProjectiles(projectilePool, gameplayDelta, player, elapsedSeconds, ARENA_RADIUS)) {
     triggerShake(shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
     triggerDamageFlash(hud)
+    game.hitstop.remaining = triggerHitstop(game.hitstop, HITSTOP_PLAYER_HURT).remaining
   }
 
   // Pets follow and help, crystals scatter/home/get collected, and chests
@@ -1122,8 +1141,8 @@ function animate() {
   const petFx = petEffects(game.inventory.pets)
   player.damageTakenMultiplier = petFx.damageTakenMultiplier
   player.updateStatusEffects(elapsedSeconds)
-  updatePets(game.pets, { dt: deltaSeconds, elapsed: elapsedSeconds, player, monsters: game.monsters, obstacles, particleSystem })
-  const collected = updateCrystals(crystalSystem, deltaSeconds, elapsedSeconds, player.position.x, player.position.z, petFx.magnetRadius)
+  updatePets(game.pets, { dt: gameplayDelta, elapsed: elapsedSeconds, player, monsters: game.monsters, obstacles, particleSystem, hitstop: game.hitstop })
+  const collected = updateCrystals(crystalSystem, gameplayDelta, elapsedSeconds, player.position.x, player.position.z, petFx.magnetRadius)
   if (collected > 0) game.inventory = addCrystals(game.inventory, collected)
 
   let nearestChest = null
@@ -1142,7 +1161,7 @@ function animate() {
     openChestNow(game, nearestChest, elapsedSeconds)
   }
   game.chests = game.chests.filter((chest) => {
-    const finished = updateChest(chest, deltaSeconds, elapsedSeconds, {
+    const finished = updateChest(chest, gameplayDelta, elapsedSeconds, {
       affordable: game.inventory.crystals >= chest.userData.cost,
       highlighted: chest === nearestChest && !chest.userData.opened,
     })

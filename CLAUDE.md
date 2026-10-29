@@ -88,6 +88,7 @@ slashbattle/
     logic/projectiles.js # fan velocities, projectile stepping/hits
     logic/bosses.js    # the seven bosses (stats, specials, dialogue), boss order/scaling
     logic/cutscene.js  # the boss-intro cutscene timeline (enter -> talk -> title -> done), concierge intro line
+    logic/hitstop.js   # hitstop freeze state (triggerHitstop / stepHitstop)
     logic/tricks.js    # kill trick names (nameTrick) and the chain multiplier (stepChain)
     logic/announcements.js # the resort PA lines (wave start/cleared, boss incoming, low hp, ambush)
     logic/carpet.js    # the VIP red carpet's eased unroll fraction
@@ -290,6 +291,18 @@ RING OUT). Decorative animations respect `prefers-reduced-motion`. A
 fixed warm vignette gently darkens the screen's edges, and a brief
 red screen flash (`triggerDamageFlash`) accompanies every point the
 player takes damage, alongside the existing screen shake.
+
+Hits also freeze gameplay briefly (hitstop, `src/logic/hitstop.js`:
+`triggerHitstop` keeps the longer of the current and new freeze,
+`stepHitstop` returns the fraction of the frame's dt that gameplay gets).
+`damageMonster` triggers `HITSTOP_HIT` on a hit (not on a non-lethal pet
+zap), `HITSTOP_KILL` on a kill and `HITSTOP_BOSS` on any boss hit; the
+player taking damage triggers `HITSTOP_PLAYER_HURT`. `animate()` passes
+the scaled `gameplayDelta` to gameplay systems (player, monsters, waves,
+particles, popups, pods, chests, pets, crystals, projectiles, shockwaves)
+and the real delta to the camera, shake, HUD and music, so the screen
+still shakes during a freeze. Timers keyed on `elapsedSeconds`
+(cooldowns, i-frames, ambush/chain windows, hide limit) aren't frozen.
 
 ## Resort announcements
 `src/logic/announcements.js`'s `pickAnnouncement(kind, { wave, bossName, rng,

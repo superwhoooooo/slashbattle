@@ -479,6 +479,16 @@ export const SHAKE_HIT_DURATION = 0.15
 export const SHAKE_NOISE_FREQUENCY_A = 37 // radians/second
 export const SHAKE_NOISE_FREQUENCY_B = 71 // radians/second
 
+// Hitstop: a tiny freeze of gameplay time on impact (src/logic/hitstop.js),
+// longer the heavier the hit -- a sword landing, a kill, a boss taking a
+// hit or dying, and the player getting hurt. The camera shake/flash, HUD,
+// music and cutscene keep running in real time so the screen still reacts
+// while gameplay is paused.
+export const HITSTOP_HIT = 0.045 // seconds, a sword hit landing on a regular monster
+export const HITSTOP_KILL = 0.08 // seconds, a kill (any player-caused source)
+export const HITSTOP_BOSS = 0.12 // seconds, a boss taking a hit, or dying
+export const HITSTOP_PLAYER_HURT = 0.07 // seconds, the player taking damage
+
 // Pooled spark/spray particles (src/particles.js): a fixed-size Points
 // pool, ring-buffered so a burst never allocates. Gravity/drag apply to
 // every live particle every frame; each one also fades and shrinks
