@@ -65,6 +65,22 @@ describe('pickPodSpawnPoint', () => {
     }
   })
 
+  it('stays at least obstacle.radius + obstacleMargin from every obstacle (prop)', () => {
+    const obstacles = [{ x: 8, z: 0, radius: 1.1 }, { x: -20, z: 15, radius: 0.5 }]
+    for (let seed = 0; seed < 100; seed++) {
+      const point = pickPodSpawnPoint(createSeededRng(seed), {
+        arenaRadius: 48,
+        margin: 4,
+        obstacles,
+        obstacleMargin: 0.75,
+      })
+      if (point === null) continue // ran out of attempts, acceptable
+      for (const obstacle of obstacles) {
+        expect(distance(point, obstacle)).toBeGreaterThanOrEqual(obstacle.radius + 0.75 - 1e-9)
+      }
+    }
+  })
+
   it('returns null rather than a bad position when nothing fits', () => {
     // A tiny platform entirely covered by one existing pod's spacing
     // requirement -- no valid point exists.

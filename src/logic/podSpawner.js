@@ -11,11 +11,13 @@ function distanceBetween(a, b) {
 
 // Picks a random point on the platform (margin in from the edge) that's
 // at least minSpacing from every existing pod, minPlayerDistance from
-// the player (if given), and monsterAvoidRadius from every monster (if
-// given) -- retrying up to maxAttempts times. Returns null if nothing
-// fit in that many attempts, so the caller can just skip this spawn
-// attempt rather than forcing a bad position. rng is injectable
-// (default Math.random) for deterministic tests.
+// the player (if given), monsterAvoidRadius from every monster (if
+// given), and obstacleMargin from the edge of every obstacle (each
+// { x, z, radius } -- the sundeck's static props, so a pod/chest never
+// spawns inside or touching one) -- retrying up to maxAttempts times.
+// Returns null if nothing fit in that many attempts, so the caller can
+// just skip this spawn attempt rather than forcing a bad position. rng
+// is injectable (default Math.random) for deterministic tests.
 export function pickPodSpawnPoint(
   rng = Math.random,
   {
@@ -26,6 +28,8 @@ export function pickPodSpawnPoint(
     minPlayerDistance = 0,
     monsterPositions = [],
     monsterAvoidRadius = 0,
+    obstacles = [],
+    obstacleMargin = 0,
     minSpacing = 0,
     maxAttempts = 20,
   },
@@ -43,6 +47,11 @@ export function pickPodSpawnPoint(
       (monster) => distanceBetween(candidate, monster) >= monsterAvoidRadius,
     )
     if (!farFromMonsters) continue
+
+    const farFromObstacles = obstacles.every(
+      (obstacle) => distanceBetween(candidate, obstacle) >= obstacle.radius + obstacleMargin,
+    )
+    if (!farFromObstacles) continue
 
     return candidate
   }
