@@ -142,14 +142,14 @@ pods, chests and monsters don't spawn inside one. Pools are walkable;
 `isInPool` tells whether a point is in one.
 
 ## Hiding pods
-Each hiding spot (`src/hiding.js`) is a capsule hull on a small hovering
-base, with glowing seam rings, a translucent visor band, a soft floor
-glow, and a bobbing holographic "NOT A PLAYER" label -- restyled from the
-original wooden crates, with the same hide-in/pop-out behavior
-underneath (`src/logic/hiding.js`'s box-named functions are unchanged).
-The seam color reads the pod's state: idle, highlighted when it's the
-nearest one E would enter, or switched to the occupied color with a pair
-of googly eyes peeking out of the visor and the pod wiggling comically
+Each hiding spot (`src/hiding.js`) is a piece of lost luggage: a
+cream hard-shell suitcase (a RoundedBoxGeometry shell with ribs, corner
+bumpers, wheels and a telescoping handle) with a paper "NOT A GUEST"
+tag swaying from the handle, over the same hide-in/pop-out behavior
+(`src/logic/hiding.js`'s box-named functions). Two zip-seam bands around
+the shell read the pod's state: idle tan, teal when it's the nearest
+one E would enter, or the occupied coral with a pair of googly eyes
+peeking out of the zipper gap and the suitcase wiggling comically
 every second or two (harder and more often in the last
 `POD_HIDE_URGENT_THRESHOLD` seconds of hiding, turning the seam/
 countdown red).

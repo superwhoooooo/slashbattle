@@ -253,7 +253,7 @@ export const POD_POSITIONS = [
   { x: -32, z: 0 },
   { x: -16, z: 27.71 },
 ]
-export const POD_OBSTACLE_RADIUS = 0.75 // matches the hover base's visual footprint, plus a little clipping margin
+export const POD_OBSTACLE_RADIUS = 0.75 // matches the suitcase's visual footprint, plus a little clipping margin
 
 // Dynamic pod spawning (src/logic/podSpawner.js): at most POD_MAX_ACTIVE
 // pods on the field at once; while below that, the next one spawns
@@ -389,46 +389,53 @@ export const POD_HIDE_LIMIT = 10 // seconds
 export const POD_EJECT_PENALTY_FRACTION = 0.1 // fraction of PLAYER_MAX_HP
 export const POD_HIDE_URGENT_THRESHOLD = 3 // seconds left when the countdown/pod shake turns urgent
 
-// Cargo pod geometry: a capsule hull standing on a small hover base,
-// glowing seam rings, a translucent visor band, and a soft floor glow.
-export const POD_HULL_RADIUS = 0.45
-export const POD_HULL_LENGTH = 0.85 // straight cylindrical part of the capsule
-export const POD_HULL_COLOR = 0x2b2f38 // dark gunmetal
-export const POD_BASE_RADIUS = 0.6
-export const POD_BASE_HEIGHT = 0.12
-export const POD_HOVER_GAP = 0.08 // gap between the hover base and the floor glow ring
-export const POD_HOVER_BOB_SPEED = 1.2 // radians/second
-export const POD_HOVER_BOB_AMOUNT = 0.04 // world units
-export const POD_VISOR_COLOR = 0x9be7ff
-export const POD_VISOR_HEIGHT = 0.3
-export const POD_VISOR_ARC = (Math.PI * 2) / 3 // radians of the hull's front the visor band covers
-export const POD_FLOOR_GLOW_COLOR = 0x19e7ff
-export const POD_FLOOR_GLOW_RADIUS = 0.9
+// Hiding pod geometry: a hard-shell suitcase (a rounded box standing on
+// two small wheels) with corner bumpers, a couple of vertical ribs, and
+// a telescoping handle on top.
+export const POD_SHELL_WIDTH = 0.9
+export const POD_SHELL_DEPTH = 0.5
+export const POD_SHELL_HEIGHT = 1.0
+export const POD_SHELL_BEVEL = 0.1 // RoundedBoxGeometry corner radius
+export const POD_SHELL_COLOR = 0xf5ead8 // cream/ivory shell
+export const POD_TRIM_COLOR = 0xa9784c // tan leather-look trim (ribs, bumpers)
+export const POD_HANDLE_COLOR = 0xb9b4ab // brushed-metal telescoping handle
+export const POD_WHEEL_COLOR = 0x2b2f38 // dark rubber
+export const POD_WHEEL_RADIUS = 0.12
+export const POD_WHEEL_WIDTH = 0.06
+export const POD_BUMPER_RADIUS = 0.08
+export const POD_RIB_WIDTH = 0.08
+export const POD_RIB_THICKNESS = 0.03
+export const POD_HANDLE_RAISE = 0.35 // how far the handle rises above the shell top
+export const POD_HANDLE_SPAN = 0.4 // width of the handle's horizontal grip bar
 
 // How far outside the pod the player pops out to -- a bit further for
 // a hide-limit eject than a voluntary exit, so it reads as a knockback.
 export const POD_EXIT_MARGIN = 0.3
 export const POD_EJECT_EXIT_MARGIN = 0.8
 
-// Seam ring colors per state (idle, near enough to enter, occupied,
+// Zip-seam band colors per state (idle, near enough to enter, occupied,
 // urgent -- the last POD_HIDE_URGENT_THRESHOLD seconds of hiding) plus
 // a gentle pulse applied to whichever color is current.
-export const POD_SEAM_COLOR_IDLE = 0x1fb6ff
-export const POD_SEAM_COLOR_HIGHLIGHT = 0x7dffb0
-export const POD_SEAM_COLOR_OCCUPIED = 0xff2bd6
+export const POD_SEAM_COLOR_IDLE = 0xc8a878
+export const POD_SEAM_COLOR_HIGHLIGHT = 0x19b5a5
+export const POD_SEAM_COLOR_OCCUPIED = 0xff7a5c
 export const POD_SEAM_COLOR_URGENT = 0xff3355
 export const POD_SEAM_PULSE_SPEED = 2 // radians/second
 export const POD_SEAM_PULSE_AMOUNT = 0.3 // fraction of the seam color's brightness
 
-// The holographic label sprite floating above the pod, and the hide-
-// limit countdown sprite just above that (shown while occupied).
-export const POD_LABEL_TEXT = 'NOT A PLAYER'
-export const POD_LABEL_SIZE = 0.8
-export const POD_LABEL_BOB_SPEED = 1.5 // radians/second
-export const POD_LABEL_BOB_AMOUNT = 0.05 // world units
+// The paper luggage tag hanging from the handle (swaying like a
+// pendulum, not bobbing), and the hide-limit countdown sprite just
+// above it (shown while occupied).
+export const POD_TAG_TEXT = 'NOT A GUEST'
+export const POD_TAG_SIZE = 0.45
+export const POD_TAG_INK_COLOR = 0x7a5a33 // tag border, string, and text
+export const POD_TAG_SWAY_SPEED = 1.5 // radians/second
+export const POD_TAG_SWAY_AMOUNT = 0.25 // radians, peak pendulum angle
 export const POD_COUNTDOWN_SIZE = 0.5
-export const POD_COUNTDOWN_COLOR = '#9be7ff'
+export const POD_COUNTDOWN_COLOR = '#5c4328'
 export const POD_COUNTDOWN_URGENT_COLOR = '#ff3355'
+export const POD_COUNTDOWN_BOB_SPEED = 1.5 // radians/second
+export const POD_COUNTDOWN_BOB_AMOUNT = 0.05 // world units
 
 // While occupied, the pod wiggles comically (a small random rotation/
 // scale pulse) every POD_WIGGLE_MIN_INTERVAL-POD_WIGGLE_MAX_INTERVAL
@@ -443,11 +450,13 @@ export const POD_URGENT_WIGGLE_SCALE = 2 // multiplies the wiggle angle/scale pu
 export const POD_URGENT_WIGGLE_SPEEDUP = 4 // divides the wiggle interval
 
 // The pod's materialize (grow in) / dematerialize (shrink away)
-// animation, played when src/logic/podSpawner.js spawns/despawns one.
+// animation, played when src/logic/podSpawner.js spawns/despawns one,
+// plus the particle flash accompanying both.
 export const POD_MATERIALIZE_DURATION = 0.4 // seconds
 export const POD_DEMATERIALIZE_DURATION = 0.3 // seconds
 export const POD_SPAWN_BURST_COUNT = 14
 export const POD_SPAWN_BURST_SPEED = 2.2
+export const POD_SPAWN_FLASH_COLOR = 0x19b5a5
 
 // Camera screen shake: a short decaying smooth-noise offset (a sum of
 // two sines per axis, not a fresh random value every frame, so it

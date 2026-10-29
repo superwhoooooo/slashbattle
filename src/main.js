@@ -61,7 +61,6 @@ import {
   PLAYER_MAX_HP,
   PLAYER_RADIUS,
   PLAYER_SPEED,
-  POD_FLOOR_GLOW_COLOR,
   POD_HIDE_LIMIT,
   POD_INITIAL_COUNT_MAX,
   POD_INITIAL_COUNT_MIN,
@@ -74,6 +73,7 @@ import {
   POD_SPAWN_BURST_SPEED,
   POD_SPAWN_DELAY_MAX,
   POD_SPAWN_DELAY_MIN,
+  POD_SPAWN_FLASH_COLOR,
   POD_SPAWN_MARGIN,
   POD_SPAWN_MAX_ATTEMPTS,
   POPUP_KILL_COLOR,
@@ -406,7 +406,7 @@ function trySpawnPod(game) {
   burst(
     particleSystem,
     { x: point.x, y: 0.4, z: point.z },
-    POD_FLOOR_GLOW_COLOR,
+    POD_SPAWN_FLASH_COLOR,
     POD_SPAWN_BURST_COUNT,
     POD_SPAWN_BURST_SPEED,
   )
@@ -563,7 +563,7 @@ function despawnPod(game, pod) {
   burst(
     particleSystem,
     { x: pod.position.x, y: 0.4, z: pod.position.z },
-    POD_FLOOR_GLOW_COLOR,
+    POD_SPAWN_FLASH_COLOR,
     POD_SPAWN_BURST_COUNT,
     POD_SPAWN_BURST_SPEED,
   )
