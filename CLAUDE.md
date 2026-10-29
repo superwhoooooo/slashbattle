@@ -188,8 +188,11 @@ dismissed, spawns whatever it emits via `spawnMonster` (through
 ## Jelly bodies
 Every character (player = icosahedron, blobbo = dodecahedron, zippy =
 octahedron, grumpus = a multi-segment box) is one faceted, flat-shaded
-low-poly mesh with a glowing wireframe overlay that shares its geometry,
-so the edges deform right along with it. `createJellyBody` clones the
+low-poly mesh in a glossy candy-pastel `MeshPhysicalMaterial`
+(clearcoat + sheen, `JELLY_*` in config.js; the player is coral, blobbo
+mint, zippy hot pink, grumpus periwinkle, bosses deeper shades) with a
+subtle wireframe outline (a lighter tint of the body color) that shares
+its geometry, so the edges deform right along with it. `createJellyBody` clones the
 geometry's original vertex positions once; every frame `updateJelly`
 displaces each vertex as a pure function (`src/logic/jelly.js`'s
 `jellyOffset`) of that ORIGINAL position, the current time, and the

@@ -4,7 +4,11 @@ import { BOSS_MONSTER_TYPES } from './logic/bosses.js'
 
 export const PLAYER_RADIUS = 0.35
 export const PLAYER_BODY_RADIUS = 0.6 // icosahedron radius for the player's jelly body (visual only; PLAYER_RADIUS stays the collision radius)
-export const PLAYER_EDGE_COLOR = 0x5fd4ff
+// A warm coral that reads as "you" against every monster's pastel: its
+// hue sits between zippy's hot pink and grumpus's blue without
+// overlapping either, and it's a different hue family than blobbo's
+// green, so it stays identifiable on the pale sunlit deck.
+export const PLAYER_EDGE_COLOR = 0xffcabe
 export const PLAYER_SPEED = 4 // world units per second
 // Speed eases into/out of PLAYER_SPEED over this many seconds (a
 // rampToward, not an instant snap) instead of starting/stopping dead.
@@ -31,9 +35,9 @@ export const FOG_FAR = 260
 // edgeColor (the glowing wireframe overlay), speed (world units/second),
 // hp, damage per hit, and radius (collision/knockback/separation radius).
 export const MONSTER_TYPES = {
-  blobbo: { shape: 'dodecahedron', size: 1.4, color: 0x4caf50, edgeColor: 0x9dffb0, speed: 1.2, hp: 60, damage: 8, radius: 0.6 },
-  zippy: { shape: 'octahedron', size: 0.6, color: 0x9c27b0, edgeColor: 0xe9a3ff, speed: 5.5, hp: 20, damage: 5, radius: 0.25 },
-  grumpus: { shape: 'box', size: 1.1, color: 0xff5722, edgeColor: 0xffc49d, speed: 2.0, hp: 100, damage: 15, radius: 0.45 },
+  blobbo: { shape: 'dodecahedron', size: 1.4, color: 0x5fd48e, edgeColor: 0xbfeed2, speed: 1.2, hp: 60, damage: 8, radius: 0.6 },
+  zippy: { shape: 'octahedron', size: 0.6, color: 0xff5c8a, edgeColor: 0xffbed0, speed: 5.5, hp: 20, damage: 5, radius: 0.25 },
+  grumpus: { shape: 'box', size: 1.1, color: 0x5c8dff, edgeColor: 0xbed1ff, speed: 2.0, hp: 100, damage: 15, radius: 0.45 },
   // The seven bosses (src/logic/bosses.js) share the same stat shape, plus
   // boss-only fields (attackRange, reachBonus, knockbackScale, special...).
   ...BOSS_MONSTER_TYPES,
@@ -297,12 +301,20 @@ export const SPAWN_BEAM_RADIUS = 0.5
 export const SPAWN_BEAM_HEIGHT = 4
 export const SPAWN_INFLATE_STRENGTH = -1.2 // one-shot jelly impulse (negative inflates) as the monster appears
 
-// Jelly body material: flat-shaded faces, a saturated base color, some
-// metalness/roughness, and no emissive tint, so the characters read as
-// solid colored shapes rather than glowing.
+// Jelly body material: flat-shaded faces, a saturated pastel base color,
+// some metalness/roughness, and no emissive tint, so the characters read
+// as solid colored shapes rather than glowing. A clearcoat layer (a thin,
+// glossy varnish on top of the base shading, the same trick a candy shell
+// or wet plastic toy uses) plus a touch of sheen (a soft, fabric-like
+// highlight at grazing angles) give the jellies a glossy "candy" look
+// under the daylight sun and environment map, without an emissive glow.
 export const JELLY_METALNESS = 0.25
-export const JELLY_ROUGHNESS = 0.45
+export const JELLY_ROUGHNESS = 0.35
 export const JELLY_EMISSIVE_INTENSITY = 0
+export const JELLY_CLEARCOAT = 1
+export const JELLY_CLEARCOAT_ROUGHNESS = 0.12
+export const JELLY_SHEEN = 0.35
+export const JELLY_SHEEN_COLOR = 0xffffff
 
 // The wireframe overlay: shares the body's geometry (so it deforms with
 // it) at a slightly larger scale, so the edges read as an outline
@@ -497,8 +509,10 @@ export const DAMAGE_SPARK_SPEED = 3.5
 export const DAMAGE_SPARK_COLOR = 0xff3344
 
 // Energy sword: a glowing emissive blade (plus a slightly larger,
-// additive "glow" twin for a bloom-friendly blur) and a dark hilt.
-export const SWORD_BLADE_COLOR = 0x30e0ff
+// additive "glow" twin for a bloom-friendly blur) and a dark hilt. A
+// saturated teal reads as a glowing blade without blowing out against
+// the pale daylight deck the way a brighter cyan would.
+export const SWORD_BLADE_COLOR = 0x1fd8c9
 export const SWORD_GLOW_SCALE = 1.4
 export const SWORD_HILT_COLOR = 0x20222a
 

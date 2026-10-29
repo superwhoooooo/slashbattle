@@ -1,9 +1,13 @@
 import * as THREE from 'three'
 import {
   FACE_SCALE_BY_TYPE,
+  JELLY_CLEARCOAT,
+  JELLY_CLEARCOAT_ROUGHNESS,
   JELLY_EMISSIVE_INTENSITY,
   JELLY_METALNESS,
   JELLY_ROUGHNESS,
+  JELLY_SHEEN,
+  JELLY_SHEEN_COLOR,
   MONSTER_TYPES,
   PLAYER_BODY_RADIUS,
   PLAYER_EDGE_COLOR,
@@ -21,7 +25,7 @@ import {
   bodySurfaceDistance,
 } from './logic/faceLayout.js'
 
-const PLAYER_BODY_COLOR = 0x3388ff
+const PLAYER_BODY_COLOR = 0xff7a5c
 
 const BLADE_LENGTH = 0.8
 
@@ -42,7 +46,7 @@ function createSword() {
     new THREE.MeshStandardMaterial({
       color: SWORD_BLADE_COLOR,
       emissive: new THREE.Color(SWORD_BLADE_COLOR),
-      emissiveIntensity: 1,
+      emissiveIntensity: 0.85,
       metalness: 0.2,
       roughness: 0.2,
     }),
@@ -222,18 +226,23 @@ function createIndicatorSprite(glyph) {
   return sprite
 }
 
-// Flat-shaded, faceted jelly material: a saturated base color, a little
-// metalness/roughness, and a low emissive tint of the same color so
-// bloom gives the body a faint glow without washing out the face.
+// Flat-shaded, faceted jelly material: a saturated pastel base color, a
+// little metalness/roughness, a glossy clearcoat layer (like a candy
+// shell) with a soft sheen highlight at grazing angles, and no emissive
+// tint, so the body reads as a glossy colored shape rather than glowing.
 // Remembers its own baseline emissive color (material.userData.baseEmissive)
 // so the hit-flash animation (player.js, combat.js) can fade back to it
 // instead of to black.
 function createJellyMaterial(color) {
-  const material = new THREE.MeshStandardMaterial({
+  const material = new THREE.MeshPhysicalMaterial({
     color,
     flatShading: true,
     metalness: JELLY_METALNESS,
     roughness: JELLY_ROUGHNESS,
+    clearcoat: JELLY_CLEARCOAT,
+    clearcoatRoughness: JELLY_CLEARCOAT_ROUGHNESS,
+    sheen: JELLY_SHEEN,
+    sheenColor: new THREE.Color(JELLY_SHEEN_COLOR),
     emissive: new THREE.Color(color),
     emissiveIntensity: JELLY_EMISSIVE_INTENSITY,
   })
