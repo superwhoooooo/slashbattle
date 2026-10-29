@@ -95,6 +95,7 @@ function createLuggageTagTexture() {
   ctx.fillText(POD_TAG_TEXT, 70, 120, 120)
 
   const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace // canvas colors are sRGB, not linear
   texture.needsUpdate = true
   return texture
 }
@@ -151,6 +152,7 @@ function createPeekingEyesTexture() {
   }
 
   const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace // canvas colors are sRGB, not linear
   texture.needsUpdate = true
   return texture
 }
@@ -174,6 +176,7 @@ function createCountdownTexture(text, color) {
   ctx.fillStyle = color
   ctx.fillText(text, 48, 52)
   const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace // canvas colors are sRGB, not linear
   texture.needsUpdate = true
   return texture
 }

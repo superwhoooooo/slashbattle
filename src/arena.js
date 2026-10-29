@@ -99,6 +99,7 @@ function createDeckPlankTexture() {
   }
 
   const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace // canvas colors are sRGB, not linear
   texture.wrapS = THREE.RepeatWrapping
   texture.wrapT = THREE.RepeatWrapping
   // CylinderGeometry's cap UV is a flat x/z projection spanning the
@@ -131,6 +132,7 @@ function createSkyTexture() {
   ctx.fillRect(0, 0, 2, 256)
 
   const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace // canvas colors are sRGB, not linear
   texture.needsUpdate = true
   return texture
 }
@@ -371,6 +373,7 @@ function createSignTexture(text) {
   lines.forEach((line, i) => ctx.fillText(line, canvas.width / 2, startY + i * lineHeight))
 
   const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace // canvas colors are sRGB, not linear
   texture.needsUpdate = true
   return texture
 }

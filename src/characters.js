@@ -210,6 +210,7 @@ function createIndicatorTexture(glyph) {
   ctx.fillStyle = '#fff200'
   ctx.fillText(glyph, 32, 34)
   const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace // canvas colors are sRGB, not linear
   texture.needsUpdate = true
   return texture
 }

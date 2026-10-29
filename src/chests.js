@@ -40,6 +40,7 @@ function labelTexture(cost, affordable) {
   ctx.fillStyle = affordable ? AFFORDABLE_COLOR : UNAFFORDABLE_COLOR
   ctx.fillText(cost === 0 ? 'FREE' : `💎 ${cost}`, 128, 50)
   const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace // canvas colors are sRGB, not linear
   texture.needsUpdate = true
   labelTextures.set(key, texture)
   return texture
