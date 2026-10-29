@@ -219,11 +219,29 @@ const composer = new EffectComposer(renderer, renderTarget)
 // resolution and upscaled -- blurry and pixelated. Match the renderer's.
 composer.setPixelRatio(renderer.getPixelRatio())
 composer.addPass(new RenderPass(scene, camera))
+// GTAOPass hides points and lines from its normal-buffer render but not
+// sprites, so every sprite (pod countdowns, chest prices, indicator
+// glyphs, score popups) would write a flat quad into that buffer and
+// come out as a dark ambient-occlusion box. Hide sprites from it too;
+// _restoreVisibility re-shows everything in the cache afterwards.
+class SpriteSafeGTAOPass extends GTAOPass {
+  _overrideVisibility() {
+    super._overrideVisibility()
+    const cache = this._visibilityCache
+    this.scene.traverse((object) => {
+      if (object.isSprite && object.visible) {
+        object.visible = false
+        cache.push(object)
+      }
+    })
+  }
+}
+
 // Ground-truth ambient occlusion for the contact shadows in creases and
 // corners that the directional sun makes obvious. Sits right after the
 // render pass, before bloom, so bloom's glow is computed from the
 // already-occluded image.
-const gtaoPass = new GTAOPass(scene, camera, window.innerWidth, window.innerHeight, undefined, {
+const gtaoPass = new SpriteSafeGTAOPass(scene, camera, window.innerWidth, window.innerHeight, undefined, {
   radius: GTAO_RADIUS,
 })
 gtaoPass.blendIntensity = GTAO_INTENSITY
