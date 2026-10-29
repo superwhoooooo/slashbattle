@@ -12,6 +12,24 @@ export function createCutscene() {
   return { phase: 'enter', phaseElapsed: 0, lineIndex: 0, lineElapsed: 0 }
 }
 
+// The speaker label the cutscene dialogue box shows for the concierge's
+// introduction, ahead of the boss's own name.
+export const CONCIERGE_SPEAKER = 'Concierge'
+
+// Builds the full script for a boss's intro: the concierge's one-line
+// VIP announcement, prepended ahead of the boss's own dialogue (`lines`,
+// from logic/bosses.js). The caller feeds this to stepCutscene in place
+// of `lines` directly.
+export function introLines(bossName, lines) {
+  return [`Please welcome our VIP guest, ${bossName}.`, ...lines]
+}
+
+// The speaker for `lineIndex` of a script built by introLines: the
+// concierge for the prepended line 0, the boss itself after that.
+export function speakerFor(boss, lineIndex) {
+  return lineIndex === 0 ? CONCIERGE_SPEAKER : boss.name
+}
+
 // How many characters of `text` are visible `elapsed` seconds into a line.
 export function visibleChars(text, elapsed) {
   return Math.min(text.length, Math.floor(Math.max(elapsed, 0) * CUTSCENE_CHARS_PER_SECOND))

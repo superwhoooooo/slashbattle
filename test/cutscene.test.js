@@ -3,11 +3,14 @@ import {
   CUTSCENE_ENTER_DURATION,
   CUTSCENE_TITLE_DURATION,
   createCutscene,
+  introLines,
+  speakerFor,
   stepCutscene,
   visibleChars,
 } from '../src/logic/cutscene.js'
 
 const lines = ['Hello there!', 'Bye now.']
+const boss = { name: 'KING GLOOP' }
 
 function run(state, seconds, advance = false, dt = 0.05) {
   let s = state
@@ -62,5 +65,38 @@ describe('stepCutscene', () => {
     const s = createCutscene()
     stepCutscene(s, 1, false, lines)
     expect(s).toEqual(createCutscene())
+  })
+})
+
+describe('introLines', () => {
+  it("prepends a concierge line ahead of the boss's own lines", () => {
+    const script = introLines(boss.name, lines)
+    expect(script).toHaveLength(lines.length + 1)
+    expect(script[0]).toContain(boss.name)
+    expect(script.slice(1)).toEqual(lines)
+  })
+})
+
+describe('speakerFor', () => {
+  it('credits the concierge for line 0 and the boss for every line after', () => {
+    expect(speakerFor(boss, 0)).toBe('Concierge')
+    expect(speakerFor(boss, 1)).toBe(boss.name)
+    expect(speakerFor(boss, 2)).toBe(boss.name)
+  })
+})
+
+describe('stepCutscene with a concierge line prepended', () => {
+  const script = introLines(boss.name, lines)
+
+  it('skip-ahead still advances through the concierge line, then every boss line, before the title card', () => {
+    let s = { phase: 'talk', phaseElapsed: 0, lineIndex: 0, lineElapsed: 99 } // concierge line already typed out
+    s = stepCutscene(s, 0.05, true, script)
+    expect(s.lineIndex).toBe(1) // boss's first line
+    s = { ...s, lineElapsed: 99 }
+    s = stepCutscene(s, 0.05, true, script)
+    expect(s.lineIndex).toBe(2) // boss's second (last) line
+    s = { ...s, lineElapsed: 99 }
+    s = stepCutscene(s, 0.05, true, script)
+    expect(s.phase).toBe('title')
   })
 })
