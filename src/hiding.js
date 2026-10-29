@@ -165,7 +165,7 @@ function createCountdownTexture(text, color) {
   canvas.height = 96
   const ctx = canvas.getContext('2d')
   ctx.clearRect(0, 0, 96, 96)
-  ctx.font = 'bold 60px Orbitron, system-ui, sans-serif'
+  ctx.font = 'bold 60px Sora, system-ui, sans-serif'
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
   ctx.lineWidth = 6

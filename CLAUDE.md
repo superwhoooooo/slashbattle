@@ -264,11 +264,16 @@ particle system, the swing trail, and the popup pool are all per-session
 singletons -- created once alongside the HUD and composer, added to the
 scene once, and reset (not disposed/recreated) on restart.
 
-The HUD itself uses the self-hosted `@fontsource/orbitron` font (no
-external network fonts) on glassy, translucent, neon-bordered panels; the
-health bar is segmented and pulses red at/under `LOW_HP_PULSE_THRESHOLD`;
-the wave banner scales in; the start card lays out its controls with key
-caps. A fixed vignette gently darkens the screen's edges, and a brief
+The HUD itself uses the self-hosted `@fontsource/sora` font (no
+external network fonts, and the in-world canvas labels use it too) on
+frosted white resort cards (`.panel`, `backdrop-filter`, design tokens
+on `:root` in index.html); the "Guest Health" bar is segmented with a
+coral-to-butter fill and pulses red at/under `LOW_HP_PULSE_THRESHOLD`;
+the wave banner is a dark announcement pill whose leading word is
+butter, and scales in; the start card lays out its controls with light
+key caps. Score popups are tilted stickers (butter for kills, coral for
+RING OUT). Decorative animations respect `prefers-reduced-motion`. A
+fixed warm vignette gently darkens the screen's edges, and a brief
 red screen flash (`triggerDamageFlash`) accompanies every point the
 player takes damage, alongside the existing screen shake.
 

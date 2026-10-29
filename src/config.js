@@ -531,14 +531,15 @@ export const SWORD_HILT_COLOR = 0x20222a
 export const TRAIL_MAX_POINTS = 10
 export const TRAIL_WIDTH = 0.12
 
-// Floating damage-number popups (src/popups.js): a small pool of sprites
-// showing "+100"-style text (or "RING OUT!" for a fall), rising and
-// fading over their life.
+// Floating damage-number popups (src/popups.js): a small pool of tilted
+// sticker sprites showing "+100"-style text (or "RING OUT!" for a
+// fall), rising and fading over their life. The color is the sticker's
+// fill; createPopupTexture picks ink or white text to read against it.
 export const POPUP_POOL_SIZE = 12
 export const POPUP_LIFE = 0.9 // seconds
 export const POPUP_RISE_SPEED = 1.2 // world units over the popup's life
-export const POPUP_KILL_COLOR = '#ffe066'
-export const POPUP_RING_OUT_COLOR = '#7dd3ff'
+export const POPUP_KILL_COLOR = '#ffd15c'
+export const POPUP_RING_OUT_COLOR = '#ff6a4d'
 
 // A brief red flash over the whole screen (CSS) when the player takes
 // damage, and the health bar's low-hp pulse threshold.

@@ -18,7 +18,7 @@ const VANISH_TIME = 0.45
 
 const labelTextures = new Map()
 
-// "💎 12" (or FREE) in Orbitron on a dark pill, cached per text+state.
+// "💎 12" (or FREE) in Sora on a dark pill, cached per text+state.
 function labelTexture(cost, affordable) {
   const key = `${cost}|${affordable}`
   const cached = labelTextures.get(key)
@@ -34,7 +34,7 @@ function labelTexture(cost, affordable) {
   ctx.lineWidth = 4
   ctx.strokeStyle = affordable ? AFFORDABLE_COLOR : UNAFFORDABLE_COLOR
   ctx.stroke()
-  ctx.font = 'bold 46px Orbitron, system-ui, sans-serif'
+  ctx.font = 'bold 46px Sora, system-ui, sans-serif'
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
   ctx.fillStyle = affordable ? AFFORDABLE_COLOR : UNAFFORDABLE_COLOR

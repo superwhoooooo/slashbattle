@@ -62,6 +62,8 @@ export function createHud() {
     ambushBanner: document.getElementById('ambush-banner'),
     ambushElapsed: null, // null means the banner isn't showing
     waveBanner: document.getElementById('wave-banner'),
+    waveBannerLead: document.getElementById('wave-banner-lead'), // the banner's first word, in a butter accent
+    waveBannerRest: document.getElementById('wave-banner-rest'),
     waveClearedElapsed: null, // null means the "WAVE CLEARED" banner isn't showing
     bossBar: document.getElementById('boss-bar'),
     bossBarName: document.getElementById('boss-bar-name'),
@@ -190,11 +192,21 @@ export function hideStartCard(hud) {
   hud.startCard.style.display = 'none'
 }
 
+// Splits the banner text into its first word (shown in a butter accent,
+// as the leading word of the resort PA announcement) and the rest.
+function setWaveBannerText(hud, text) {
+  const spaceAt = text.indexOf(' ')
+  const lead = spaceAt === -1 ? text : text.slice(0, spaceAt)
+  const rest = spaceAt === -1 ? '' : text.slice(spaceAt)
+  hud.waveBannerLead.textContent = lead
+  hud.waveBannerRest.textContent = rest
+}
+
 // Shows the "WAVE CLEARED +bonus" banner; updateHud switches back to the
 // intermission countdown banner after WAVE_CLEARED_BANNER_DURATION.
 export function showWaveClearedBanner(hud, bonus, label = 'WAVE CLEARED') {
   hud.waveClearedElapsed = 0
-  hud.waveBanner.textContent = `${label} +${bonus}`
+  setWaveBannerText(hud, `${label} +${bonus}`)
   hud.waveBanner.style.display = 'block'
 }
 
@@ -294,7 +306,7 @@ export function updateHud(
       const remaining = Math.max(0, WAVE_INTERMISSION - waveState.phaseElapsed)
       const label = waveState.wavesUntilBoss <= 0 ? 'BOSS INCOMING' : `WAVE ${waveState.waveNumber}`
       const text = `${label} - ${Math.ceil(remaining)}`
-      setIfChanged(hud, 'waveBannerText', text, (v) => (hud.waveBanner.textContent = v))
+      setIfChanged(hud, 'waveBannerText', text, (v) => setWaveBannerText(hud, v))
       setIfChanged(hud, 'waveBannerDisplay', 'block', (v) => (hud.waveBanner.style.display = v))
     } else {
       setIfChanged(hud, 'waveBannerDisplay', 'none', (v) => (hud.waveBanner.style.display = v))
