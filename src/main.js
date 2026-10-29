@@ -8,10 +8,12 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { createArena, createEnvironmentMap, updateArena } from './arena.js'
+import { createAudio } from './audio.js'
 import { createMonsterMesh } from './characters.js'
 import { updateFace3D } from './face3d.js'
 import { loadHighScore, saveHighScore } from './highScore.js'
 import { createMusic } from './music.js'
+import { createSfx } from './sfx.js'
 import { jellyHit, updateJelly } from './jelly.js'
 import {
   ARENA_RADIUS,
@@ -124,6 +126,7 @@ import { clampToPlatform, isOnPlatform, resolveArenaMove, spawnPointNearPlayer }
 import { crystalDrops } from './logic/crystals.js'
 import { isInPool } from './logic/resortLayout.js'
 import { createChainState, hasChainExpired, nameTrick, stepChain, trickPoints } from './logic/tricks.js'
+import { killVoiceForTrick } from './logic/sfx.js'
 import { CUTSCENE_ENTER_DURATION, createCutscene, introLines, speakerFor, stepCutscene, visibleChars } from './logic/cutscene.js'
 import {
   addCrystals,
@@ -524,6 +527,7 @@ function openChestNow(game, chest, now) {
   if (!paid.ok) return
   game.inventory = cost > 0 ? { ...paid.inventory, chestsOpened: paid.inventory.chestsOpened + 1 } : paid.inventory
   openChest(chest)
+  sfx.play('chestOpen')
   const obstacleIndex = game.obstacles.indexOf(chest.userData.obstacle)
   if (obstacleIndex !== -1) game.obstacles.splice(obstacleIndex, 1)
 
@@ -700,6 +704,7 @@ function applyBossEvents(game, bossMesh, events, now) {
     if (event.type === 'slam') {
       spawnShockwave(shockwavePool, event.x, event.z, event.radius, 0xff3355)
       burst(particleSystem, { x: event.x, y: 0.3, z: event.z }, 0xff9a5a, 36, 4.5)
+      sfx.play('bossSlam', { x: event.x, z: event.z })
       if (playerDistance(event.x, event.z) <= event.radius && player.damagePlayer(event.damage, now)) hurtPlayer = true
       triggerShake(game.shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
       game.hitstop.remaining = triggerHitstop(game.hitstop, HITSTOP_PLAYER_HURT).remaining
@@ -749,6 +754,7 @@ function scoreKill(game, mesh, cause, position, now) {
   game.score += points
   const pointsLine = game.chainState.multiplier > 1 ? `+${points} ×${game.chainState.multiplier}` : `+${points}`
   showPopup(popupPool, position, trick.name, pointsLine, popupColorForTrick(trick.id))
+  sfx.play(killVoiceForTrick(trick.id), position)
 }
 
 // Advances each in-progress spawn-in effect (portal fade, monster
@@ -836,9 +842,12 @@ function disposeGame(target) {
   disposePets(target.pets, scene)
 }
 
-// Browsers only allow audio after a user gesture, so the track starts
-// when the start card is dismissed. M mutes/unmutes it (remembered).
-const music = createMusic()
+// Browsers only allow audio after a user gesture, so the track (and the
+// sound effects riding on the same AudioContext) start when the start
+// card is dismissed. M mutes/unmutes both together (remembered).
+const audio = createAudio()
+const music = createMusic(audio)
+const sfx = createSfx(audio)
 
 let started = false
 function dismissStartCard() {
@@ -938,12 +947,14 @@ function animate() {
     const bonus = waveClearBonus(clearedWaveNumber)
     game.score += bonus
     showWaveClearedBanner(hud, bonus)
+    sfx.play('waveCleared')
     player.hp = Math.min(PLAYER_MAX_HP, player.hp + WAVE_CLEAR_HEAL)
   }
   if (events.includes('bossDefeated')) {
     const bonus = waveClearBonus(clearedWaveNumber) * 2
     game.score += bonus
     showWaveClearedBanner(hud, bonus, { lead: bossBeforeStep.name, text: 'DEFEATED' })
+    sfx.play('waveCleared')
     player.hp = Math.min(PLAYER_MAX_HP, player.hp + WAVE_CLEAR_HEAL * BOSS_DEFEAT_HEAL_MULTIPLIER)
   }
   if (events.includes('waveCleared') || events.includes('bossDefeated')) attractAllCrystals(crystalSystem)
@@ -980,11 +991,16 @@ function animate() {
   if (player.falling && player.updateFalling(gameplayDelta, elapsedSeconds)) {
     triggerShake(shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
     triggerDamageFlash(hud)
+    sfx.play('playerHurt', { x: player.position.x, z: player.position.z })
     game.hitstop.remaining = triggerHitstop(game.hitstop, HITSTOP_PLAYER_HURT).remaining
   }
   updateJelly(player.mesh, gameplayDelta, elapsedSeconds, { speed: player.speed, moveDir: player.moveDir })
   updateFace3D(player.mesh, gameplayDelta, elapsedSeconds)
 
+  // wasHidden, compared against player.hidden after updateHiding runs,
+  // catches the one frame hiding actually started, so the zip-up sound
+  // plays exactly once per entry.
+  const wasHidden = player.hidden
   // vacatedPod is the pod the player just left (early with E, or forced
   // out by the hide-limit timer -- `ejected`) this frame, if any; pods
   // are single-use, so it always starts despawning. An eject also
@@ -997,10 +1013,15 @@ function animate() {
     elapsedSeconds,
     POD_HIDE_LIMIT,
   )
-  if (vacatedPod) despawnPod(game, vacatedPod)
+  if (!wasHidden && player.hidden) sfx.play('podIn', { x: player.position.x, z: player.position.z })
+  if (vacatedPod) {
+    sfx.play('podOut', { x: vacatedPod.position.x, z: vacatedPod.position.z })
+    despawnPod(game, vacatedPod)
+  }
   if (ejected) {
     triggerShake(shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
     triggerDamageFlash(hud)
+    sfx.play('playerHurt', { x: player.position.x, z: player.position.z })
     game.hitstop.remaining = triggerHitstop(game.hitstop, HITSTOP_PLAYER_HURT).remaining
   }
 
@@ -1026,6 +1047,10 @@ function animate() {
     })
   }
 
+  // No swing in flight yet this frame -- used below to tell a swing that
+  // just started (attackState.swingElapsed goes from null to 0) from one
+  // already in progress, so the whoosh only plays once per swing.
+  const hadSwing = attackState.swingElapsed !== null
   const { ambushHit, hitAny } = updatePlayerAttack(attackState, {
     player,
     monsters,
@@ -1039,8 +1064,14 @@ function animate() {
     damageMultiplier: elapsedSeconds < player.rageUntil ? RAGE_DAMAGE_MULTIPLIER : 1,
     hitstop: game.hitstop,
   })
+  if (!hadSwing && attackState.swingElapsed !== null) {
+    sfx.play('swing', { x: player.position.x, z: player.position.z })
+  }
   if (ambushHit) showAmbushBanner(hud)
-  if (hitAny) triggerShake(shake, SHAKE_HIT_MAGNITUDE, SHAKE_HIT_DURATION)
+  if (hitAny) {
+    triggerShake(shake, SHAKE_HIT_MAGNITUDE, SHAKE_HIT_DURATION)
+    sfx.play('hit', { x: player.position.x, z: player.position.z })
+  }
 
   // Monsters still materializing in just tick their jelly (for the
   // inflate wobble the spawn effect kicked off) -- updateSpawnEffect
@@ -1099,6 +1130,7 @@ function animate() {
     if (hitPlayer) {
       triggerShake(shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
       triggerDamageFlash(hud)
+      sfx.play('playerHurt', { x: player.position.x, z: player.position.z })
       game.hitstop.remaining = triggerHitstop(game.hitstop, HITSTOP_PLAYER_HURT).remaining
     }
     updateMonsterHitReaction(mesh, gameplayDelta)
@@ -1133,6 +1165,7 @@ function animate() {
   if (updateProjectiles(projectilePool, gameplayDelta, player, elapsedSeconds, ARENA_RADIUS)) {
     triggerShake(shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
     triggerDamageFlash(hud)
+    sfx.play('playerHurt', { x: player.position.x, z: player.position.z })
     game.hitstop.remaining = triggerHitstop(game.hitstop, HITSTOP_PLAYER_HURT).remaining
   }
 
@@ -1143,7 +1176,10 @@ function animate() {
   player.updateStatusEffects(elapsedSeconds)
   updatePets(game.pets, { dt: gameplayDelta, elapsed: elapsedSeconds, player, monsters: game.monsters, obstacles, particleSystem, hitstop: game.hitstop })
   const collected = updateCrystals(crystalSystem, gameplayDelta, elapsedSeconds, player.position.x, player.position.z, petFx.magnetRadius)
-  if (collected > 0) game.inventory = addCrystals(game.inventory, collected)
+  if (collected > 0) {
+    game.inventory = addCrystals(game.inventory, collected)
+    sfx.play('crystal')
+  }
 
   let nearestChest = null
   if (!player.hidden) {
@@ -1203,6 +1239,10 @@ function animate() {
     game.chainState.count >= 2 && !hasChainExpired(game.chainState, elapsedSeconds)
       ? { count: game.chainState.count, multiplier: game.chainState.multiplier }
       : null
+  // The PA chime plays the one frame updateHud picks a fresh
+  // announcement for the wave banner (hud.waveAnnouncement changes
+  // identity), not on every frame that banner stays on screen.
+  const previousAnnouncement = hud.waveAnnouncement
   updateHud(hud, {
     hp: player.hp,
     maxHp: PLAYER_MAX_HP,
@@ -1218,6 +1258,7 @@ function animate() {
     chain: liveChain,
     deltaSeconds,
   })
+  if (hud.waveAnnouncement !== previousAnnouncement) sfx.play('announcement')
 
   // A slight look-ahead in the player's current movement direction,
   // scaled by how close to full speed they're actually moving (so it
@@ -1240,6 +1281,10 @@ function animate() {
   camera.position.x += shakeOffset.x
   camera.position.y += shakeOffset.y
   camera.position.z += shakeOffset.z
+
+  // Keeps positional sound effects panning/attenuating from wherever the
+  // camera actually ended up this frame, shake included.
+  sfx.updateListener(camera)
 
   composer.render()
   input.endFrame()

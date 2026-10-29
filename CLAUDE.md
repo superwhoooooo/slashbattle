@@ -50,7 +50,7 @@ record.
 - Left click or Space — swing your sword
 - E — enter or exit a nearby pod to hide
 - R — restart after losing
-- M — mute / unmute the music (remembered in `localStorage`)
+- M — mute / unmute all sound, music and effects (remembered in `localStorage`)
 - F — open the nearest chest (costs crystals)
 - 1-5 — pick a weapon from the hotbar
 - Q / Z / X / C / V — use your abilities, in the order you found them
@@ -93,7 +93,10 @@ slashbattle/
     logic/announcements.js # the resort PA lines (wave start/cleared, boss incoming, low hp, ambush)
     logic/carpet.js    # the VIP red carpet's eased unroll fraction
     carpet.js          # the VIP red carpet mesh for a boss's arrival
-    music.js           # procedural Web Audio background track (lookahead scheduler, synth voices, mute)
+    audio.js           # the shared AudioContext, master gain (mute) and compressor
+    music.js           # procedural Web Audio background track (lookahead scheduler, synth voices)
+    sfx.js             # synthesized, spatialized sound effects
+    logic/sfx.js       # sound-effect rate limiting and trick -> voice mapping
     highScore.js       # load/save the best score/wave in localStorage (try/catch, zero fallback)
     particles.js       # pooled spark (Points) and tumbling-shard (InstancedMesh) bursts
     trail.js           # the sword's fading swing-trail ribbon (tip position history)
@@ -321,8 +324,18 @@ Dm-Bb-F-A) where `eventsForStep` returns the drums, bouncy bass, off-beat stabs,
 and either an arpeggio (bars 1-4) or the lead hook (bars 5-8) landing on each
 16th -- and `src/music.js` voices those with Web Audio oscillators/noise via a
 lookahead scheduler. It starts when the start card is dismissed (browsers need a
-user gesture), M toggles mute (saved in `localStorage`), and a low-pass ducks it
-on the game-over screen.
+user gesture) and a low-pass ducks it on the game-over screen.
+
+Music and sound effects share one AudioContext (`src/audio.js`'s
+`createAudio`, created lazily on that first gesture): everything routes through
+a master gain (the M mute, saved in `localStorage`) and a compressor.
+`src/sfx.js`'s `createSfx(audio)` synthesizes short effects live (swing, hit,
+kill, ringOut, cannonball, crystal, chestOpen, podIn/podOut, playerHurt,
+bossSlam, waveCleared, announcement); positional ones go through an HRTF
+`PannerNode`, and `updateListener(camera)` moves the listener with the camera
+each frame. `src/logic/sfx.js` rate-limits rapid voices (crystal, hit) and maps
+a kill's trick to its voice (`killVoiceForTrick`). Effects are not ducked on
+game over.
 
 ## Bosses
 After one regular wave a boss fight, then two waves and a boss, then three,
