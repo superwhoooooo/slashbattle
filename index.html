@@ -210,16 +210,28 @@
         background: var(--ink);
         box-shadow: 0 8px 24px rgba(26, 36, 51, 0.35);
         font-weight: 800;
-        font-size: 28px;
+        font-size: 20px;
         letter-spacing: 0.08em;
+        /* Clear of the stats card on the left (and its mirror on the
+           right) on wide screens; long lines wrap instead. */
+        max-width: max(60vw, calc(100vw - 620px));
+        width: max-content;
+        text-align: center;
         color: #fff;
         user-select: none;
         pointer-events: none;
         animation: wave-banner-in 0.35s ease-out forwards;
       }
-      /* The announcement bar's leading word gets a butter accent. */
+      /* The announcement bar's leading department tag gets a butter
+         accent; the line after it is set smaller and lighter so a full
+         sentence fits on one line. */
       #wave-banner-lead {
         color: var(--butter);
+      }
+      #wave-banner-rest {
+        font-size: 18px;
+        font-weight: 600;
+        letter-spacing: 0.01em;
       }
       @keyframes wave-banner-in {
         from { transform: translate(-50%, -50%) scale(0.5); opacity: 0; }

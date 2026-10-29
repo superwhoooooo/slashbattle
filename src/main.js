@@ -96,6 +96,7 @@ import {
   TONE_MAPPING_EXPOSURE,
   WAVE_CLEAR_HEAL,
 } from './config.js'
+import { createCarpet, updateCarpet } from './carpet.js'
 import { setPlayerWeapon } from './characters.js'
 import { createChest, openChest, updateChest } from './chests.js'
 import { createAttackState, damageMonster, updateMonsterHitReaction, updatePlayerAttack } from './combat.js'
@@ -119,7 +120,7 @@ import { bossById, bossHpScale } from './logic/bosses.js'
 import { fanVelocities } from './logic/projectiles.js'
 import { clampToPlatform, isOnPlatform, resolveArenaMove, spawnPointNearPlayer } from './logic/arena.js'
 import { crystalDrops } from './logic/crystals.js'
-import { createCutscene, stepCutscene, visibleChars } from './logic/cutscene.js'
+import { CUTSCENE_ENTER_DURATION, createCutscene, introLines, speakerFor, stepCutscene, visibleChars } from './logic/cutscene.js'
 import {
   addCrystals,
   chestCost,
@@ -616,8 +617,9 @@ function spawnMonster(game, type, { at = null, effectOptions, hpScale = 1, faceP
 
 // Starts the current boss's intro: drops the boss in (portal and all)
 // straight ahead of the player -- on the other side if the platform's edge
-// is in the way -- facing them, and hands control to the cutscene, which
-// freezes gameplay until it finishes (see runCutscene).
+// is in the way -- facing them, unrolls a red carpet from the player to its
+// spot, and hands control to the cutscene, which freezes gameplay until it
+// finishes (see runCutscene).
 function startBossCutscene(game) {
   const boss = currentBoss(game.waveState)
   const { player } = game
@@ -635,7 +637,16 @@ function startBossCutscene(game) {
   const dx = player.position.x - at.x
   const dz = player.position.z - at.z
   const length = Math.hypot(dx, dz) || 1
-  game.cutscene = { boss, mesh, dir: { x: dx / length, z: dz / length }, state: createCutscene() }
+  const carpet = createCarpet({ x: player.position.x, z: player.position.z }, at)
+  scene.add(carpet.group)
+  game.cutscene = {
+    boss,
+    mesh,
+    dir: { x: dx / length, z: dz / length },
+    state: createCutscene(),
+    lines: introLines(boss.name, boss.lines),
+    carpet,
+  }
 }
 
 // Calls a summoner boss's minions in around it (skipped while it already
@@ -722,8 +733,13 @@ function updateSpawnEffects(game, deltaSeconds) {
 // dialogue. Hands off to the boss fight when the cutscene is done.
 function runCutscene(game, advancePressed, deltaSeconds, elapsedSeconds) {
   const { cutscene, player } = game
-  const { boss, mesh, dir } = cutscene
-  cutscene.state = stepCutscene(cutscene.state, deltaSeconds, advancePressed, boss.lines)
+  const { boss, mesh, dir, lines, carpet } = cutscene
+  cutscene.state = stepCutscene(cutscene.state, deltaSeconds, advancePressed, lines)
+
+  // The carpet unrolls over the enter phase's own elapsed time; skipping
+  // ahead (or any later phase) snaps it straight to fully unrolled.
+  if (cutscene.state.phase === 'enter') updateCarpet(carpet, cutscene.state.phaseElapsed, CUTSCENE_ENTER_DURATION)
+  else carpet.group.scale.z = 1
 
   // The hide-limit timer is wall-clock based: push its start forward so a
   // player hiding in a pod when the boss arrives isn't ejected by the cutscene.
@@ -753,12 +769,18 @@ function runCutscene(game, advancePressed, deltaSeconds, elapsedSeconds) {
   const { phase, lineIndex, lineElapsed } = cutscene.state
   if (phase === 'done') {
     game.waveState = beginBossFight(game.waveState)
+    disposeObject3D(carpet.group)
     game.cutscene = null
     showCutscene(hud, null)
     return
   }
-  const line = boss.lines[lineIndex]
-  showCutscene(hud, { boss, phase, text: phase === 'talk' ? line.slice(0, visibleChars(line, lineElapsed)) : '' })
+  const line = lines[lineIndex]
+  showCutscene(hud, {
+    boss,
+    phase,
+    text: phase === 'talk' ? line.slice(0, visibleChars(line, lineElapsed)) : '',
+    speaker: speakerFor(boss, lineIndex),
+  })
 }
 
 // Removes and disposes everything createGame()/spawnMonster() added to
@@ -771,6 +793,7 @@ function disposeGame(target) {
   target.monsters.forEach((mesh) => disposeObject3D(mesh))
   target.spawnEffects.forEach(({ effect }) => disposeObject3D(effect.group))
   target.chests.forEach((chest) => disposeObject3D(chest))
+  if (target.cutscene) disposeObject3D(target.cutscene.carpet.group)
   disposePets(target.pets, scene)
 }
 
@@ -872,7 +895,7 @@ function animate() {
   if (events.includes('bossDefeated')) {
     const bonus = waveClearBonus(clearedWaveNumber) * 2
     game.score += bonus
-    showWaveClearedBanner(hud, bonus, `${bossBeforeStep.name} DEFEATED`)
+    showWaveClearedBanner(hud, bonus, { lead: bossBeforeStep.name, text: 'DEFEATED' })
     player.hp = Math.min(PLAYER_MAX_HP, player.hp + WAVE_CLEAR_HEAL * BOSS_DEFEAT_HEAL_MULTIPLIER)
   }
   if (events.includes('waveCleared') || events.includes('bossDefeated')) attractAllCrystals(crystalSystem)

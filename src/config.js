@@ -54,6 +54,16 @@ export const BOSS_DEFEAT_HEAL_MULTIPLIER = 2 // beating a boss heals WAVE_CLEAR_
 export const BOSS_DEATH_SHARD_MULTIPLIER = 3
 export const CUTSCENE_CAMERA_LERP = 3.5
 
+// The red carpet that unrolls from the player toward the boss during the
+// cutscene's enter phase: a thin flat runner with a gold trim strip down
+// each edge, lying just above the deck so it doesn't z-fight it.
+export const CARPET_COLOR = 0xb3122c
+export const CARPET_TRIM_COLOR = 0xffd15c // matches the HUD's butter accent
+export const CARPET_WIDTH = 2.2
+export const CARPET_TRIM_WIDTH = 0.18
+export const CARPET_THICKNESS = 0.03
+export const CARPET_Y = 0.015
+
 // 3D face features (src/face3d.js): googly eyeballs with a jiggling
 // pupil, a 3D mouth shape, an optional unibrow/tongue/cheeks/freckles --
 // all built from geometry rather than a flat texture, and attached so
@@ -545,6 +555,10 @@ export const POPUP_RING_OUT_COLOR = '#ff6a4d'
 // damage, and the health bar's low-hp pulse threshold.
 export const DAMAGE_FLASH_DURATION = 0.15 // seconds
 export const LOW_HP_PULSE_THRESHOLD = 0.25 // fraction of max hp
+
+// How long the one-shot "guests are reminded..." low-hp PA line stays up
+// in the wave banner before the intermission/wave-cleared text resumes.
+export const LOW_HP_BANNER_DURATION = 2.2 // seconds
 
 // Treasure chests (src/chests.js): up to CHEST_MAX_ACTIVE at once, a new
 // one every CHEST_SPAWN_DELAY_MIN-MAX seconds, spaced like pods. Walk

@@ -77,7 +77,10 @@ slashbattle/
     logic/crystals.js  # crystal drops + movement rules
     logic/projectiles.js # fan velocities, projectile stepping/hits
     logic/bosses.js    # the seven bosses (stats, specials, dialogue), boss order/scaling
-    logic/cutscene.js  # the boss-intro cutscene timeline (enter -> talk -> title -> done)
+    logic/cutscene.js  # the boss-intro cutscene timeline (enter -> talk -> title -> done), concierge intro line
+    logic/announcements.js # the resort PA lines (wave start/cleared, boss incoming, low hp, ambush)
+    logic/carpet.js    # the VIP red carpet's eased unroll fraction
+    carpet.js          # the VIP red carpet mesh for a boss's arrival
     music.js           # procedural Web Audio background track (lookahead scheduler, synth voices, mute)
     highScore.js       # load/save the best score/wave in localStorage (try/catch, zero fallback)
     particles.js       # pooled spark (Points) and tumbling-shard (InstancedMesh) bursts
@@ -277,6 +280,16 @@ fixed warm vignette gently darkens the screen's edges, and a brief
 red screen flash (`triggerDamageFlash`) accompanies every point the
 player takes damage, alongside the existing screen shake.
 
+## Resort announcements
+`src/logic/announcements.js`'s `pickAnnouncement(kind, { wave, bossName, rng,
+previous })` returns a deadpan PA line `{ lead, text }` (lead is a department
+tag like FRONT DESK, shown in butter in the wave banner) for `waveStart`,
+`waveCleared`, `bossIncoming`, `lowHp` and `ambush`, never repeating the
+previous line of its kind. `hud.js` shows them in the wave banner (the
+intermission line with a countdown, wave-cleared with its bonus, a one-shot
+low-hp line when hp first crosses `LOW_HP_PULSE_THRESHOLD`) with a simple
+priority: wave cleared / boss defeated > low hp > intermission.
+
 ## Music
 The background track is synthesized live (no audio files): `src/logic/music.js`
 holds the pure pattern -- an 8-bar, 134 BPM loop in D minor (Dm-Bb-F-C, then
@@ -317,7 +330,9 @@ phases: after the last regular wave's intermission it emits `bossIntro`, and
 `main.js`'s `startBossCutscene` drops the boss in straight ahead of the player
 through a widened portal while `game.cutscene` freezes gameplay (the hide timer
 is held too). `runCutscene` pans the camera to the boss and steps
-`logic/cutscene.js` -- the boss materializes, says its lines typewriter-style
+`logic/cutscene.js` -- a red carpet (`src/carpet.js`) unrolls from the player
+to the boss, the boss materializes, a concierge welcomes it (`introLines`,
+`speakerFor`), and it says its lines typewriter-style
 (Space / Enter / click skips ahead), and its name slams on screen -- then calls
 `beginBossFight`. A boss health bar shows during the fight; beating it (or
 knocking it off the edge) pops its minions, scores bonus points, and heals extra.
