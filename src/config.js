@@ -550,6 +550,14 @@ export const POPUP_LIFE = 0.9 // seconds
 export const POPUP_RISE_SPEED = 1.2 // world units over the popup's life
 export const POPUP_KILL_COLOR = '#ffd15c'
 export const POPUP_RING_OUT_COLOR = '#ff6a4d'
+export const POPUP_CANNONBALL_COLOR = '#19b5a5'
+
+// Kill chains (src/logic/tricks.js): a kill within CHAIN_WINDOW seconds
+// of the previous one extends the chain and raises its score multiplier
+// by CHAIN_STEP per extension, capped at CHAIN_MAX (1x, 1.5x, 2x, 2.5x, 3x).
+export const CHAIN_WINDOW = 2.5 // seconds
+export const CHAIN_STEP = 0.5
+export const CHAIN_MAX = 3
 
 // A brief red flash over the whole screen (CSS) when the player takes
 // damage, and the health bar's low-hp pulse threshold.

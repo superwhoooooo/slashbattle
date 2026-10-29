@@ -113,10 +113,15 @@ export function updatePlayerAttack(
 // A lethal hit starts the monster's death pop (plus a one-shot jelly
 // inflate burst and a big tumbling shard burst in the monster's color)
 // instead of removing it immediately, so updateMonsterHitReaction can
-// animate it out first. Returns whether the hit was lethal.
-export function damageMonster(monster, damage, { fromPos, knockback = 0, obstacles = [], particleSystem }) {
+// animate it out first. Returns whether the hit was lethal. `cause`
+// ('sword'/'pet'/'shockwave') and `ambush` are stashed on the monster as
+// lastHitBy/lastHitAmbush so main.js can name the kill's trick once it
+// actually dies.
+export function damageMonster(monster, damage, { fromPos, knockback = 0, obstacles = [], particleSystem, cause = 'sword', ambush = false }) {
   const { hp, lethal } = applyDamage({ hp: monster.userData.hp }, damage)
   monster.userData.hp = hp
+  monster.userData.lastHitBy = cause
+  monster.userData.lastHitAmbush = ambush
 
   if (knockback > 0 && fromPos) {
     const targetPos = { x: monster.position.x, z: monster.position.z }
@@ -164,7 +169,7 @@ function resolveAttackHits(player, monsters, obstacles, now, particleSystem, wea
     }
 
     const damage = computeDamage(weapon.damage * damageMultiplier, { ambush })
-    damageMonster(monster, damage, { fromPos: attackerPos, knockback: weapon.knockback, obstacles, particleSystem })
+    damageMonster(monster, damage, { fromPos: attackerPos, knockback: weapon.knockback, obstacles, particleSystem, cause: 'sword', ambush })
     hitAny = true
     if (ambush) ambushHit = true
   }

@@ -7,13 +7,19 @@ import { particleAlpha } from './logic/particles.js'
 // every time the same kill score comes up.
 const textureCache = new Map()
 
-const POPUP_FONT = "800 48px Sora, system-ui, sans-serif"
+// The two-line sticker (a trick name over its points) uses a smaller
+// weight for the name so a longer one (e.g. "Do Not Disturb") still
+// fits, and keeps the points line at the original single-line size.
+const POPUP_NAME_FONT = "800 26px Sora, system-ui, sans-serif"
+const POPUP_POINTS_FONT = "800 40px Sora, system-ui, sans-serif"
 // @fontsource/sora is imported in main.js but loads asynchronously; wait
 // for it so a popup drawn before it's ready doesn't bake the fallback
 // font permanently into its cached canvas texture (drawPopupSticker is
 // re-run once this resolves).
 const soraLoaded =
-  typeof document !== 'undefined' && document.fonts ? document.fonts.load(POPUP_FONT).catch(() => []) : Promise.resolve([])
+  typeof document !== 'undefined' && document.fonts
+    ? Promise.all([POPUP_NAME_FONT, POPUP_POINTS_FONT].map((font) => document.fonts.load(font))).catch(() => [])
+    : Promise.resolve([])
 
 // A darker shade of a '#rrggbb' fill, for the sticker's drop-edge
 // peeking out from beneath its main rounded-rect fill.
@@ -38,8 +44,11 @@ function isLightHex(hex) {
 // Draws the popup as a sticker: a rounded rect in `fill` with a darker
 // bottom edge showing beneath it, and bold Sora text in ink or white
 // depending on how light `fill` is. The sprite itself carries the tilt
-// (see showPopup), so the canvas is drawn upright.
-function drawPopupSticker(text, fill) {
+// (see showPopup), so the canvas is drawn upright. `line2` is optional:
+// without it, `line1` is centered on its own (the plain single-line
+// sticker); with it, `line1` (a trick's name, e.g. "Cannonball") sits
+// above `line2` (its points, e.g. "+250 ×3").
+function drawPopupSticker(line1, line2, fill) {
   const canvas = document.createElement('canvas')
   canvas.width = 320
   canvas.height = 110
@@ -56,25 +65,33 @@ function drawPopupSticker(text, fill) {
   ctx.roundRect(x, y, w, h, radius)
   ctx.fill()
 
-  ctx.font = POPUP_FONT
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
   ctx.fillStyle = isLightHex(fill) ? '#1a2433' : '#fff'
-  ctx.fillText(text, 160, y + h / 2 + 2)
+  if (line2) {
+    ctx.font = POPUP_NAME_FONT
+    ctx.fillText(line1, 160, y + h * 0.32)
+    ctx.font = POPUP_POINTS_FONT
+    ctx.fillText(line2, 160, y + h * 0.74)
+  } else {
+    ctx.font = POPUP_POINTS_FONT
+    ctx.fillText(line1, 160, y + h / 2 + 2)
+  }
   return canvas
 }
 
-function createPopupTexture(text, fill) {
-  const key = `${text}|${fill}`
+function createPopupTexture(line1, line2, fill) {
+  const key = `${line1}|${line2}|${fill}`
   const cached = textureCache.get(key)
   if (cached) return cached
 
-  const texture = new THREE.CanvasTexture(drawPopupSticker(text, fill))
+  const texture = new THREE.CanvasTexture(drawPopupSticker(line1, line2, fill))
+  texture.colorSpace = THREE.SRGBColorSpace // canvas colors are sRGB, not linear
   texture.needsUpdate = true
   textureCache.set(key, texture)
 
   soraLoaded.then(() => {
-    texture.image = drawPopupSticker(text, fill)
+    texture.image = drawPopupSticker(line1, line2, fill)
     texture.needsUpdate = true
   })
 
@@ -100,17 +117,20 @@ export function createPopupPool() {
   return { group, sprites, cursor: 0 }
 }
 
-// Shows a popup at `position` reading `text` on a sticker filled with
-// `color` (a '#rrggbb' string), rising and fading over POPUP_LIFE.
-// Reuses the next sprite in the pool round-robin, so a dense run of
-// kills just recycles whichever popup has been up longest. Each popup
-// gets its own slight tilt (-5 to -8 degrees) via the sprite's own
-// rotation, so the cached, upright canvas texture can be shared.
-export function showPopup(pool, position, text, color) {
+// Shows a popup at `position` reading `line1` over `line2` (e.g. a
+// trick's name, "Cannonball", over its points, "+250 ×3") on a
+// sticker filled with `color` (a '#rrggbb' string), rising and fading
+// over POPUP_LIFE. `line2` is optional -- omit it for a plain
+// single-line sticker, like the old "+100"/"RING OUT!" popups. Reuses
+// the next sprite in the pool round-robin, so a dense run of kills just
+// recycles whichever popup has been up longest. Each popup gets its own
+// slight tilt (-5 to -8 degrees) via the sprite's own rotation, so the
+// cached, upright canvas texture can be shared.
+export function showPopup(pool, position, line1, line2, color) {
   const sprite = pool.sprites[pool.cursor]
   pool.cursor = (pool.cursor + 1) % pool.sprites.length
 
-  sprite.material.map = createPopupTexture(text, color)
+  sprite.material.map = createPopupTexture(line1, line2, color)
   sprite.material.needsUpdate = true
   sprite.material.rotation = THREE.MathUtils.degToRad(-(5 + Math.random() * 3))
   sprite.scale.set(1.6, 0.55, 1)

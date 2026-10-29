@@ -86,6 +86,7 @@ export function updatePets(pets, { dt, elapsed, player, monsters, obstacles, par
         knockback: def.knockback ?? 0,
         obstacles,
         particleSystem,
+        cause: 'pet',
       })
     } else if (def.kind === 'heal') {
       pet.timer -= dt

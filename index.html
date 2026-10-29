@@ -115,6 +115,28 @@
         text-transform: uppercase;
         color: var(--ink);
       }
+      /* A small coral chip beside the score, shown only while a kill
+         chain (src/logic/tricks.js) is live; pop-in re-plays each time
+         the chain extends. */
+      #chain-indicator {
+        display: none;
+        margin-top: 6px;
+        padding: 4px 10px;
+        border-radius: 10px;
+        background: rgba(255, 106, 77, 0.12);
+        font-size: 13px;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        color: var(--coral);
+      }
+      #chain-indicator.pop {
+        animation: chain-pop 0.25s ease-out;
+      }
+      @keyframes chain-pop {
+        0% { transform: scale(1); }
+        40% { transform: scale(1.18); }
+        100% { transform: scale(1); }
+      }
       #wave-counter {
         margin-top: 10px;
         font-size: 20px;
@@ -618,6 +640,9 @@
         #cutscene-title {
           animation: none;
         }
+        #chain-indicator.pop {
+          animation: none;
+        }
         @keyframes loot-toast {
           0% { opacity: 0; }
           10% { opacity: 1; }
@@ -639,6 +664,7 @@
       </div>
       <span id="health-label">100 / 100</span>
       <div id="score-counter">Score: 0</div>
+      <div id="chain-indicator">CHAIN ×1</div>
       <div id="crystal-counter">💎 0</div>
       <div id="wave-counter">Wave: 1</div>
       <div id="enemies-left">Enemies left: 0</div>

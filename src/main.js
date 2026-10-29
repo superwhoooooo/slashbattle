@@ -76,6 +76,7 @@ import {
   POD_SPAWN_FLASH_COLOR,
   POD_SPAWN_MARGIN,
   POD_SPAWN_MAX_ATTEMPTS,
+  POPUP_CANNONBALL_COLOR,
   POPUP_KILL_COLOR,
   POPUP_RING_OUT_COLOR,
   RAGE_DAMAGE_MULTIPLIER,
@@ -120,6 +121,8 @@ import { bossById, bossHpScale } from './logic/bosses.js'
 import { fanVelocities } from './logic/projectiles.js'
 import { clampToPlatform, isOnPlatform, resolveArenaMove, spawnPointNearPlayer } from './logic/arena.js'
 import { crystalDrops } from './logic/crystals.js'
+import { isInPool } from './logic/resortLayout.js'
+import { createChainState, hasChainExpired, nameTrick, stepChain, trickPoints } from './logic/tricks.js'
 import { CUTSCENE_ENTER_DURATION, createCutscene, introLines, speakerFor, stepCutscene, visibleChars } from './logic/cutscene.js'
 import {
   addCrystals,
@@ -354,6 +357,7 @@ function createGame() {
     chestSpawnerState: createPodSpawnerState(),
     cutscene: null, // { boss, mesh, dir, state } while a boss intro is playing; freezes gameplay
     score: 0,
+    chainState: createChainState(), // the current kill-chain count/multiplier (src/logic/tricks.js)
     hidingState: createHidingState(),
     attackState: createAttackState(),
     shake: createShakeState(),
@@ -492,6 +496,7 @@ function activateAbility(game, slot, now) {
         knockback: SHOCKWAVE_KNOCKBACK,
         obstacles: game.obstacles,
         particleSystem,
+        cause: 'shockwave',
       })
     }
   } else if (used.abilityId === 'heal') {
@@ -710,6 +715,35 @@ function applyBossEvents(game, bossMesh, events, now) {
     }
   }
   return hurtPlayer
+}
+
+// The sticker fill for a named trick: coral for a fall (Checkout/VIP
+// Checkout, the ring-out color), teal for a pool kill
+// (Cannonball), butter for everything else.
+function popupColorForTrick(trickId) {
+  if (trickId === 'checkout' || trickId === 'vipCheckout') return POPUP_RING_OUT_COLOR
+  if (trickId === 'cannonball') return POPUP_CANNONBALL_COLOR
+  return POPUP_KILL_COLOR
+}
+
+// Scores one monster's death: names its trick (from `cause` --
+// 'sword'/'pet'/'shockwave'/'fall' -- plus whatever damageMonster last
+// recorded on it and whether it's standing in a pool or is a boss),
+// steps the kill chain, and adds the chain-multiplied points to the
+// score. Pops a sticker at `position` showing the trick's name over its
+// points (with the chain shown alongside once it's past 1x).
+function scoreKill(game, mesh, cause, position, now) {
+  const trick = nameTrick({
+    cause,
+    inPool: isInPool(game.arena.pools, mesh.position.x, mesh.position.z),
+    ambush: mesh.userData.lastHitAmbush,
+    boss: mesh.userData.isBoss,
+  })
+  game.chainState = stepChain(game.chainState, now, trick.id)
+  const points = trickPoints(scoreForKill(mesh.userData.type), game.chainState.multiplier)
+  game.score += points
+  const pointsLine = game.chainState.multiplier > 1 ? `+${points} ×${game.chainState.multiplier}` : `+${points}`
+  showPopup(popupPool, position, trick.name, pointsLine, popupColorForTrick(trick.id))
 }
 
 // Advances each in-progress spawn-in effect (portal fade, monster
@@ -1015,9 +1049,7 @@ function animate() {
       updateFace3D(mesh, deltaSeconds, elapsedSeconds)
       const finishedDying = updateMonsterHitReaction(mesh, deltaSeconds)
       if (finishedDying) {
-        const points = scoreForKill(mesh.userData.type)
-        game.score += points
-        showPopup(popupPool, mesh.position, `+${points}`, POPUP_KILL_COLOR)
+        scoreKill(game, mesh, mesh.userData.lastHitBy ?? 'sword', mesh.position, elapsedSeconds)
         dropCrystals(crystalSystem, mesh.position.x, mesh.position.z, crystalDrops(mesh.userData.type, mesh.userData.isBoss))
         scene.remove(mesh)
         if (mesh.userData.isBoss) {
@@ -1035,9 +1067,7 @@ function animate() {
       mesh.rotation.x += deltaSeconds * MONSTER_FALL_TUMBLE_SPEED
       mesh.rotation.z += deltaSeconds * MONSTER_FALL_TUMBLE_SPEED * 0.6
       if (mesh.userData.fallState.fallenY >= FALL_DESPAWN_DEPTH) {
-        const points = scoreForKill(mesh.userData.type)
-        game.score += points
-        showPopup(popupPool, { x: mesh.position.x, y: 0, z: mesh.position.z }, 'RING OUT!', POPUP_RING_OUT_COLOR)
+        scoreKill(game, mesh, 'fall', { x: mesh.position.x, y: 0, z: mesh.position.z }, elapsedSeconds)
         scene.remove(mesh)
         if (mesh.userData.isBoss) bossGone = true
         return false
@@ -1147,6 +1177,13 @@ function animate() {
         ratio: Math.max(0, Math.min(1, bossMesh.userData.hp / bossMesh.userData.maxHp)),
       }
     : null
+  // The chain indicator only shows once a chain is actually worth
+  // bragging about (2+ kills) and still live; a lone kill or a cold
+  // chain just hides it.
+  const liveChain =
+    game.chainState.count >= 2 && !hasChainExpired(game.chainState, elapsedSeconds)
+      ? { count: game.chainState.count, multiplier: game.chainState.multiplier }
+      : null
   updateHud(hud, {
     hp: player.hp,
     maxHp: PLAYER_MAX_HP,
@@ -1159,6 +1196,7 @@ function animate() {
     showHidePrompt: showPrompt,
     waveState: game.waveState,
     boss: bossHud,
+    chain: liveChain,
     deltaSeconds,
   })
 

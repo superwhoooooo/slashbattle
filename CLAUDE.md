@@ -30,6 +30,16 @@ wave 1, score 0) at any time after losing. Every few waves a boss arrives
 ## Scoring
 Every kill (including a fall off the edge) scores points by monster
 type; clearing a wave scores a bonus that grows with the wave number.
+Every kill is also a named trick (`src/logic/tricks.js`'s `nameTrick`,
+highest precedence first): VIP Checkout (a boss falls), Do Not Disturb
+(any other boss kill), Checkout (a fall), Cannonball (killed in a pool),
+Room Service (an ambush kill), Turndown Service (a pet zap), Wake-Up Call
+(Shockwave), or plain Slash. `damageMonster` records the last hit's
+`cause`/`ambush` on the monster so `main.js`'s `scoreKill` can name it.
+Kills within `CHAIN_WINDOW` of each other build a chain (`stepChain`)
+whose multiplier (up to `CHAIN_MAX`) scales that kill's points (never the
+wave bonus); the score sticker shows the trick name over the points, and
+a "CHAIN xN" chip shows in the HUD while a chain of 2+ is live.
 The best score and the best wave reached ever are saved in the browser
 (`localStorage`) and shown on the game-over screen alongside the run
 that just ended, with a "NEW BEST!" callout when you beat your own
@@ -78,6 +88,7 @@ slashbattle/
     logic/projectiles.js # fan velocities, projectile stepping/hits
     logic/bosses.js    # the seven bosses (stats, specials, dialogue), boss order/scaling
     logic/cutscene.js  # the boss-intro cutscene timeline (enter -> talk -> title -> done), concierge intro line
+    logic/tricks.js    # kill trick names (nameTrick) and the chain multiplier (stepChain)
     logic/announcements.js # the resort PA lines (wave start/cleared, boss incoming, low hp, ambush)
     logic/carpet.js    # the VIP red carpet's eased unroll fraction
     carpet.js          # the VIP red carpet mesh for a boss's arrival

@@ -1,9 +1,9 @@
-// Plain DOM/CSS heads-up display: a player health bar, score, wave
-// number, enemies-left counter, hidden indicator, hide prompt, ambush
-// banner, the wave banner (intermission countdown / wave cleared / a
-// resort PA announcement), a screen-wide damage flash, the start card,
-// and the game-over screen. No Three.js; just reads and writes the
-// overlay markup in index.html.
+// Plain DOM/CSS heads-up display: a player health bar, score, a kill
+// chain indicator, wave number, enemies-left counter, hidden indicator,
+// hide prompt, ambush banner, the wave banner (intermission countdown /
+// wave cleared / a resort PA announcement), a screen-wide damage flash,
+// the start card, and the game-over screen. No Three.js; just reads and
+// writes the overlay markup in index.html.
 import {
   AMBUSH_BANNER_DURATION,
   DAMAGE_FLASH_DURATION,
@@ -55,6 +55,8 @@ export function createHud() {
     healthFill: document.getElementById('health-fill'),
     healthLabel: document.getElementById('health-label'),
     scoreCounter: document.getElementById('score-counter'),
+    chainIndicator: document.getElementById('chain-indicator'),
+    chainCount: null, // last chain length shown, so a repeat update at the same count doesn't replay the pop
     waveCounter: document.getElementById('wave-counter'),
     enemiesLeft: document.getElementById('enemies-left'),
     hiddenIndicator: document.getElementById('hidden-indicator'),
@@ -271,6 +273,7 @@ export function updateHud(
     showHidePrompt,
     waveState,
     boss,
+    chain,
     deltaSeconds,
   },
 ) {
@@ -283,6 +286,23 @@ export function updateHud(
     hud.healthLabel.textContent = v
   })
   setIfChanged(hud, 'score', score, (v) => (hud.scoreCounter.textContent = `Score: ${v}`))
+
+  // The chain indicator (CHAIN ×N) only while `chain` is live
+  // (2+ kills, not yet cold); its text tracks the multiplier, and a
+  // quick pop re-plays every time the chain actually extends (its
+  // count going up), even once the multiplier itself has capped out.
+  setIfChanged(hud, 'chainShown', chain != null, (v) => (hud.chainIndicator.style.display = v ? 'block' : 'none'))
+  if (chain) {
+    setIfChanged(hud, 'chainMultiplier', chain.multiplier, (v) => (hud.chainIndicator.textContent = `CHAIN ×${v}`))
+    if (hud.chainCount !== chain.count) {
+      hud.chainCount = chain.count
+      hud.chainIndicator.classList.remove('pop')
+      void hud.chainIndicator.offsetWidth // restart the CSS animation, like the loot toast
+      hud.chainIndicator.classList.add('pop')
+    }
+  } else {
+    hud.chainCount = null
+  }
   const inBossFight = waveState.phase === 'bossFight'
   setIfChanged(hud, 'wave', inBossFight ? 'BOSS' : wave, (v) => {
     hud.waveCounter.textContent = v === 'BOSS' ? 'BOSS FIGHT' : `Wave: ${v}`
