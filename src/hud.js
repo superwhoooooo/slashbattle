@@ -15,11 +15,13 @@ import {
 import { ABILITIES, ABILITY_KEYS, ABILITY_SLOTS, HOTBAR_SLOTS, PETS, WEAPONS } from './logic/items.js'
 import { abilityCooldownFraction } from './logic/inventory.js'
 import { pickAnnouncement } from './logic/announcements.js'
+import { enemiesLeftText } from './logic/hudText.js'
 import { WAVE_INTERMISSION, currentBoss } from './logic/waves.js'
 
 // A bottom-bar slot: a glassy square with an optional key label, an icon,
-// and a cooldown overlay.
-function createSlot(keyLabel, extraClass = '') {
+// and a cooldown overlay. `withLabel` adds a small text label under the
+// icon (the hotbar's weapon name; ability/pet slots skip it).
+function createSlot(keyLabel, extraClass = '', withLabel = false) {
   const element = document.createElement('div')
   element.className = `slot panel empty ${extraClass}`.trim()
   const key = document.createElement('span')
@@ -29,13 +31,20 @@ function createSlot(keyLabel, extraClass = '') {
   const cooldown = document.createElement('div')
   cooldown.className = 'cooldown'
   element.append(icon, cooldown, key)
-  return { element, icon, cooldown }
+  const slot = { element, icon, cooldown }
+  if (withLabel) {
+    const label = document.createElement('span')
+    label.className = 'slot-label'
+    element.append(label)
+    slot.label = label
+  }
+  return slot
 }
 
 // Grabs the HUD elements already present in index.html (and builds the
 // hotbar / ability slots inside their containers).
 export function createHud() {
-  const hotbarSlots = Array.from({ length: HOTBAR_SLOTS }, (_, i) => createSlot(String(i + 1)))
+  const hotbarSlots = Array.from({ length: HOTBAR_SLOTS }, (_, i) => createSlot(String(i + 1), '', true))
   document.getElementById('hotbar').append(...hotbarSlots.map((s) => s.element))
   const abilitySlots = Array.from({ length: ABILITY_SLOTS }, (_, i) =>
     createSlot(ABILITY_KEYS[i].replace('Key', ''), 'small'),
@@ -86,6 +95,9 @@ export function createHud() {
     cutsceneTitleSub: document.getElementById('cutscene-title-sub'),
     damageFlash: document.getElementById('damage-flash'),
     damageFlashElapsed: null, // null means the flash isn't showing
+    trickSticker: document.getElementById('trick-sticker'),
+    trickStickerName: document.getElementById('trick-sticker-name'),
+    trickStickerPoints: document.getElementById('trick-sticker-points'),
     startCard: document.getElementById('start-card'),
     loseScreen: document.getElementById('lose-screen'),
     loseWave: document.getElementById('lose-wave'),
@@ -166,6 +178,7 @@ export function updateInventoryHud(hud, inventory, now) {
     const id = inventory.weapons[i]
     setIfChanged(hud, `weapon${i}`, id ?? '', (v) => {
       slot.icon.textContent = v ? WEAPONS[v].icon : ''
+      slot.label.textContent = v ? WEAPONS[v].short : ''
       slot.element.classList.toggle('empty', !v)
     })
     setIfChanged(hud, `selected${i}`, i === inventory.selected, (v) => slot.element.classList.toggle('selected', v))
@@ -218,6 +231,21 @@ export function showLootToast(hud, { title, name, blurb }) {
 // click.
 export function hideStartCard(hud) {
   hud.startCard.style.display = 'none'
+}
+
+// Pops the big screen-space trick sticker for a kill: `name` (e.g.
+// "Cannonball") over "+points" (and "×multiplier" alongside once a
+// chain is live), tinted `tone` ('coral' | 'teal' | 'butter', matching
+// the kill's in-world sticker) via a CSS class swap. A new kill replaces
+// whatever's showing and restarts the pop-in/fade animation, the same
+// remove-reflow-add trick the loot toast and chain indicator use.
+export function showTrickSticker(hud, { name, points, multiplier, tone }) {
+  hud.trickStickerName.textContent = name
+  hud.trickStickerPoints.textContent = multiplier > 1 ? `+${points} ×${multiplier}` : `+${points}`
+  hud.trickSticker.classList.remove('show', 'coral', 'teal', 'butter')
+  hud.trickSticker.classList.add(tone)
+  void hud.trickSticker.offsetWidth // restart the CSS animation
+  hud.trickSticker.classList.add('show')
 }
 
 // Shows the wave-cleared banner: a PA line (logic/announcements.js's
@@ -312,7 +340,7 @@ export function updateHud(
     setIfChanged(hud, 'bossName', boss.name, (v) => (hud.bossBarName.textContent = v))
     setIfChanged(hud, 'bossRatio', boss.ratio, (v) => (hud.bossBarFill.style.width = `${v * 100}%`))
   }
-  setIfChanged(hud, 'enemiesLeft', enemiesLeft, (v) => (hud.enemiesLeft.textContent = `Enemies left: ${v}`))
+  setIfChanged(hud, 'enemiesLeft', enemiesLeft, (v) => (hud.enemiesLeft.textContent = enemiesLeftText(v)))
   setIfChanged(hud, 'hidden', hidden, (v) => (hud.hiddenIndicator.style.display = v ? 'block' : 'none'))
 
   // The hide-limit countdown ring + seconds, next to the HIDDEN

@@ -99,6 +99,7 @@ slashbattle/
     logic/bosses.js    # the seven bosses (stats, specials, dialogue), boss order/scaling
     logic/cutscene.js  # the boss-intro cutscene timeline (enter -> talk -> title -> done), concierge intro line
     logic/hitstop.js   # hitstop freeze state (triggerHitstop / stepHitstop)
+    logic/hudText.js   # HUD phrasing (enemiesLeftText)
     logic/tricks.js    # kill trick names (nameTrick) and the chain multiplier (stepChain)
     logic/announcements.js # the resort PA lines (wave start/cleared, boss incoming, low hp, ambush)
     logic/carpet.js    # the VIP red carpet's eased unroll fraction
@@ -296,12 +297,17 @@ scene once, and reset (not disposed/recreated) on restart.
 The HUD itself uses the self-hosted `@fontsource/sora` font (no
 external network fonts, and the in-world canvas labels use it too) on
 frosted white resort cards (`.panel`, `backdrop-filter`, design tokens
-on `:root` in index.html); the "Guest Health" bar is segmented with a
+on `:root` in index.html), laid out like the sketch: health and the
+hide countdown top-left, wave / "N guests still checked in"
+(`src/logic/hudText.js`'s `enemiesLeftText`) / score / chain top-right,
+crystals bottom-right, and hotbar slots labeled with each weapon's
+`short` name; the "Guest Health" bar is segmented with a
 coral-to-butter fill and pulses red at/under `LOW_HP_PULSE_THRESHOLD`;
 the wave banner is a dark announcement pill whose leading word is
 butter, and scales in; the start card lays out its controls with light
-key caps. Score popups are tilted stickers (butter for kills, coral for
-RING OUT). Decorative animations respect `prefers-reduced-motion`. A
+key caps. Score popups are tilted stickers in the world (butter for kills, coral
+for RING OUT), and `showTrickSticker` also pops the newest trick as a big
+tilted screen-space sticker that fades after about 1.2s. Decorative animations respect `prefers-reduced-motion`. A
 fixed warm vignette gently darkens the screen's edges, and a brief
 red screen flash (`triggerDamageFlash`) accompanies every point the
 player takes damage, alongside the existing screen shake.

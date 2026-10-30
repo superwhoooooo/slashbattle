@@ -5,13 +5,14 @@
 
 // `range`/`arc` shape the swing's hit zone (center-to-center, like the
 // original sword); `swing` is the swing animation's length in seconds.
+// `short` is the hotbar slot's label, too tight for the full name.
 // The sword is the starting weapon and always sits in hotbar slot 1.
 export const WEAPONS = {
-  sword: { id: 'sword', name: 'Energy Sword', icon: '🗡️', damage: 20, range: 1.4, arc: Math.PI / 2, cooldown: 0.4, swing: 0.25, knockback: 1.2, blurb: 'Balanced' },
-  dagger: { id: 'dagger', name: 'Twin Dagger', icon: '🔪', damage: 11, range: 1.1, arc: Math.PI / 2, cooldown: 0.17, swing: 0.12, knockback: 0.5, blurb: 'Lightning fast' },
-  spear: { id: 'spear', name: 'Neon Spear', icon: '🔱', damage: 26, range: 2.5, arc: Math.PI / 4.5, cooldown: 0.55, swing: 0.22, knockback: 1.0, blurb: 'Long reach, narrow' },
-  hammer: { id: 'hammer', name: 'Mega Hammer', icon: '🔨', damage: 52, range: 1.8, arc: Math.PI * 0.85, cooldown: 1.0, swing: 0.35, knockback: 3.4, blurb: 'Slow, huge knockback' },
-  scythe: { id: 'scythe', name: 'Moon Scythe', icon: '🌙', damage: 27, range: 2.0, arc: Math.PI * 1.5, cooldown: 0.65, swing: 0.3, knockback: 1.6, blurb: 'Hits almost all around' },
+  sword: { id: 'sword', name: 'Energy Sword', short: 'Sword', icon: '🗡️', damage: 20, range: 1.4, arc: Math.PI / 2, cooldown: 0.4, swing: 0.25, knockback: 1.2, blurb: 'Balanced' },
+  dagger: { id: 'dagger', name: 'Twin Dagger', short: 'Dagger', icon: '🔪', damage: 11, range: 1.1, arc: Math.PI / 2, cooldown: 0.17, swing: 0.12, knockback: 0.5, blurb: 'Lightning fast' },
+  spear: { id: 'spear', name: 'Neon Spear', short: 'Spear', icon: '🔱', damage: 26, range: 2.5, arc: Math.PI / 4.5, cooldown: 0.55, swing: 0.22, knockback: 1.0, blurb: 'Long reach, narrow' },
+  hammer: { id: 'hammer', name: 'Mega Hammer', short: 'Hammer', icon: '🔨', damage: 52, range: 1.8, arc: Math.PI * 0.85, cooldown: 1.0, swing: 0.35, knockback: 3.4, blurb: 'Slow, huge knockback' },
+  scythe: { id: 'scythe', name: 'Moon Scythe', short: 'Scythe', icon: '🌙', damage: 27, range: 2.0, arc: Math.PI * 1.5, cooldown: 0.65, swing: 0.3, knockback: 1.6, blurb: 'Hits almost all around' },
 }
 
 // Abilities are bound, in the order you find them, to ABILITY_KEYS.

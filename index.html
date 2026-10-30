@@ -51,6 +51,18 @@
         color: var(--ink);
         user-select: none;
       }
+      /* The stats card's mirror on the right: wave + enemies-left up
+         top, score and the chain chip underneath. */
+      #hud-right {
+        position: fixed;
+        top: 16px;
+        right: 16px;
+        padding: 14px 18px;
+        font-weight: 600;
+        color: var(--ink);
+        text-align: right;
+        user-select: none;
+      }
       /* Small uppercase label above the health bar, e.g. "Guest Health". */
       .hud-label {
         display: block;
@@ -138,21 +150,22 @@
         40% { transform: scale(1.18); }
         100% { transform: scale(1); }
       }
+      /* The right card's headline: the wave number (or "BOSS FIGHT"). */
       #wave-counter {
-        margin-top: 10px;
-        font-size: 20px;
+        font-size: 28px;
         font-weight: 800;
         letter-spacing: 0.02em;
         text-transform: uppercase;
         color: var(--ink);
       }
+      /* Enemies-left, phrased as a sentence ("N guests still checked
+         in"), so it reads as resort voice rather than shouting a label. */
       #enemies-left {
         margin-top: 2px;
         font-size: 12px;
         font-weight: 600;
         color: var(--muted);
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
+        letter-spacing: 0.01em;
       }
       /* A small teal chip, read as a card-like badge inside the HUD panel. */
       #hidden-indicator {
@@ -261,12 +274,67 @@
         to { transform: translate(-50%, -50%) scale(1); opacity: 1; }
       }
 
-      /* Crystal count in the main HUD panel. */
-      #crystal-counter {
-        margin-top: 6px;
-        font-size: 14px;
+      /* The headline trick sticker: a big tilted sticker for the newest
+         kill, right of center below the banners (the in-world sprite
+         above the monster becomes its trail). Its tone class picks the
+         fill, matching the in-world sticker's own coloring. */
+      #trick-sticker {
+        display: none;
+        position: fixed;
+        top: 30%;
+        left: 60%;
+        padding: 14px 26px;
+        border-radius: 16px;
+        text-align: center;
+        box-shadow: 0 8px 24px rgba(26, 36, 51, 0.25);
+        user-select: none;
+        pointer-events: none;
+        z-index: 6;
+      }
+      #trick-sticker.show {
+        display: block;
+        animation: trick-sticker-pop 1.2s ease-out forwards;
+      }
+      #trick-sticker.coral { background: var(--coral); color: #fff; }
+      #trick-sticker.teal { background: var(--teal); color: #fff; }
+      #trick-sticker.butter { background: var(--butter); color: var(--ink); }
+      #trick-sticker-name {
+        font-weight: 800;
+        font-size: 32px;
+        letter-spacing: 0.03em;
+      }
+      #trick-sticker-points {
+        margin-top: 4px;
         font-weight: 700;
+        font-size: 17px;
+      }
+      @keyframes trick-sticker-pop {
+        0% { opacity: 0; transform: translate(-50%, -50%) rotate(-6deg) scale(0.4); }
+        15% { opacity: 1; transform: translate(-50%, -50%) rotate(-6deg) scale(1.12); }
+        25% { transform: translate(-50%, -50%) rotate(-6deg) scale(1); }
+        75% { opacity: 1; }
+        100% { opacity: 0; }
+      }
+
+      /* Bottom-right crystal count: a big number over a small uppercase
+         "Crystals" label. */
+      #crystal-card {
+        position: fixed;
+        right: 16px;
+        bottom: 16px;
+        padding: 10px 18px;
+        text-align: center;
+        user-select: none;
+        z-index: 4;
+      }
+      #crystal-counter {
+        font-size: 28px;
+        font-weight: 800;
         color: var(--teal);
+      }
+      #crystal-card .hud-label {
+        margin-bottom: 0;
+        margin-top: 2px;
       }
 
       /* Bottom bar: pets on the left, ability slots above the weapon hotbar. */
@@ -322,6 +390,20 @@
         font-size: 10px;
         font-weight: 800;
         color: var(--muted);
+      }
+      /* The hotbar's weapon name, under the icon; empty slots leave it
+         blank. */
+      .slot .slot-label {
+        position: absolute;
+        left: 2px;
+        right: 2px;
+        bottom: 3px;
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
+        color: var(--muted);
+        text-align: center;
       }
       .slot.small { width: 44px; height: 44px; font-size: 21px; }
       .slot .cooldown {
@@ -645,6 +727,21 @@
         font-weight: 800;
       }
 
+      /* Narrow screens: shrink the right stats card and cap how wide the
+         boss bar can grow, so the two can't collide during a boss fight. */
+      @media (max-width: 960px) {
+        #hud-right {
+          max-width: 150px;
+          padding: 10px 12px;
+        }
+        #wave-counter {
+          font-size: 22px;
+        }
+        #boss-bar {
+          width: min(380px, 50vw);
+        }
+      }
+
       /* Phone-width readability: shrink the HUD and overlay card a touch. */
       @media (max-width: 480px) {
         #hud {
@@ -685,6 +782,12 @@
           80% { opacity: 1; }
           100% { opacity: 0; }
         }
+        @keyframes trick-sticker-pop {
+          0% { opacity: 0; transform: translate(-50%, -50%) rotate(-6deg); }
+          10% { opacity: 1; transform: translate(-50%, -50%) rotate(-6deg); }
+          75% { opacity: 1; }
+          100% { opacity: 0; }
+        }
       }
     </style>
   </head>
@@ -699,11 +802,6 @@
         <div id="health-fill"></div>
       </div>
       <span id="health-label">100 / 100</span>
-      <div id="score-counter">Score: 0</div>
-      <div id="chain-indicator">CHAIN ×1</div>
-      <div id="crystal-counter">💎 0</div>
-      <div id="wave-counter">Wave: 1</div>
-      <div id="enemies-left">Enemies left: 0</div>
       <div id="hidden-indicator">
         HIDDEN
         <div id="hide-countdown">
@@ -713,8 +811,22 @@
       </div>
       <div id="hide-prompt">Press E to hide in pod</div>
     </div>
+    <div id="hud-right" class="panel">
+      <div id="wave-counter">Wave: 1</div>
+      <div id="enemies-left">All guests checked out</div>
+      <div id="score-counter">Score: 0</div>
+      <div id="chain-indicator">CHAIN ×1</div>
+    </div>
+    <div id="crystal-card" class="panel">
+      <div id="crystal-counter">💎 0</div>
+      <span class="hud-label">Crystals</span>
+    </div>
     <div id="ambush-banner">AMBUSH!</div>
     <div id="wave-banner"><span id="wave-banner-lead"></span><span id="wave-banner-rest"></span></div>
+    <div id="trick-sticker">
+      <div id="trick-sticker-name"></div>
+      <div id="trick-sticker-points"></div>
+    </div>
     <div id="chest-prompt" class="panel"></div>
     <div id="loot-toast" class="panel">
       <div id="loot-toast-title"></div>

@@ -120,6 +120,7 @@ import {
   showCutscene,
   showGameOverlay,
   showLootToast,
+  showTrickSticker,
   showWaveClearedBanner,
   triggerDamageFlash,
   updateHud,
@@ -761,12 +762,22 @@ function popupColorForTrick(trickId) {
   return POPUP_KILL_COLOR
 }
 
+// The HUD trick sticker's tone -- the same coral/teal/butter grouping
+// as popupColorForTrick, but as a CSS class name for showTrickSticker
+// rather than a sprite fill color.
+function trickToneForId(trickId) {
+  if (trickId === 'checkout' || trickId === 'vipCheckout') return 'coral'
+  if (trickId === 'cannonball') return 'teal'
+  return 'butter'
+}
+
 // Scores one monster's death: names its trick (from `cause` --
 // 'sword'/'pet'/'shockwave'/'fall' -- plus whatever damageMonster last
 // recorded on it and whether it's standing in a pool or is a boss),
 // steps the kill chain, and adds the chain-multiplied points to the
 // score. Pops a sticker at `position` showing the trick's name over its
-// points (with the chain shown alongside once it's past 1x).
+// points (with the chain shown alongside once it's past 1x), and the
+// same trick/points on the big screen-space HUD sticker.
 function scoreKill(game, mesh, cause, position, now) {
   const trick = nameTrick({
     cause,
@@ -779,6 +790,7 @@ function scoreKill(game, mesh, cause, position, now) {
   game.score += points
   const pointsLine = game.chainState.multiplier > 1 ? `+${points} ×${game.chainState.multiplier}` : `+${points}`
   showPopup(popupPool, position, trick.name, pointsLine, popupColorForTrick(trick.id))
+  showTrickSticker(hud, { name: trick.name, points, multiplier: game.chainState.multiplier, tone: trickToneForId(trick.id) })
   sfx.play(killVoiceForTrick(trick.id), position)
   input.rumble(RUMBLE_MEDIUM_STRENGTH, RUMBLE_MEDIUM_DURATION)
 }
