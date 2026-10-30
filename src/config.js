@@ -603,7 +603,7 @@ export const CHEST_SPAWN_MARGIN = 5 // world units in from the platform's edge
 export const CHEST_MIN_SPACING = 14 // world units between chests/pods
 export const CHEST_OBSTACLE_RADIUS = 0.85
 export const CHEST_INTERACT_RANGE = 2.6
-export const CHEST_FLASH_COLOR = 0xffc93d
+export const CHEST_FLASH_COLOR = 0xffd15c // butter, matching the cooler's resort stripe
 export const CHEST_ALL_OWNED_SCORE = 500 // consolation prize once a chest has nothing left to give
 export const CHEST_ALL_OWNED_HEAL = 40
 

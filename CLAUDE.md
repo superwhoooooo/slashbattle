@@ -392,9 +392,11 @@ monster that just falls off the edge drops nothing). They scatter, rest, and
 home in once you're within a magnet radius (`src/crystals.js` /
 `logic/crystals.js`); clearing a wave or boss pulls every leftover to you.
 
-Chests (`src/chests.js`) stand on the platform with a price floating over them
-(`chestCost` climbs with how many you've opened; green when affordable, red
-when not). At most `CHEST_MAX_ACTIVE` exist at once, placed like pods (reusing
+Chests (`src/chests.js`) are resort beach coolers (cream body, teal hinged
+lid, coral latch, butter stripe, a soft teal ground ring) with a price pill
+floating over them (`chestCost` climbs with how many you've opened): a white
+pill with a teal border and "OPEN" when affordable, a muted pill with a coral
+price and "NEED MORE" when not, and a butter "FREE" pill for a boss's chest. At most `CHEST_MAX_ACTIVE` exist at once, placed like pods (reusing
 `pickPodSpawnPoint`/`stepPodSpawner`), and a boss leaves a FREE one where it
 fell. Press F within `CHEST_INTERACT_RANGE` to pay and open one; it rolls
 (`rollChestLoot`) a weapon, ability or pet you don't own yet, or -- once you own
