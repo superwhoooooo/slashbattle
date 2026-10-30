@@ -29,7 +29,11 @@ export const ABILITIES = {
 // every hit).
 export const PETS = {
   sparky: { id: 'sparky', name: 'Sparky', icon: '⚡', color: 0xffe14a, shape: 'octahedron', kind: 'zap', damage: 8, interval: 1.1, range: 7, blurb: 'Zaps nearby enemies' },
-  blasty: { id: 'blasty', name: 'Blasty', icon: '💣', color: 0xff7a3a, shape: 'dodecahedron', kind: 'zap', damage: 26, interval: 2.8, range: 11, knockback: 1.6, blurb: 'Slow, heavy blasts' },
+  // A vivid lime/chartreuse -- far enough from sparky's warm yellow, the
+  // player's coral, and every monster's hue (blobbo's mint green,
+  // zippy's hot pink, grumpus's periwinkle) to stay readable on its own
+  // against the pale deck.
+  blasty: { id: 'blasty', name: 'Blasty', icon: '💣', color: 0xb4e61d, shape: 'dodecahedron', kind: 'zap', damage: 26, interval: 2.8, range: 11, knockback: 1.6, blurb: 'Slow, heavy blasts' },
   healbit: { id: 'healbit', name: 'Healbit', icon: '💗', color: 0xff6fa5, shape: 'sphere', kind: 'heal', amount: 2, interval: 2.5, blurb: 'Heals you over time' },
   magneto: { id: 'magneto', name: 'Magneto', icon: '🧲', color: 0x7a8cff, shape: 'cylinder', kind: 'magnet', radius: 10, blurb: 'Vacuums up crystals' },
   shieldy: { id: 'shieldy', name: 'Shieldy', icon: '🔰', color: 0x4de0c0, shape: 'tetrahedron', kind: 'guard', reduction: 0.25, blurb: 'Takes 25% off every hit' },

@@ -23,8 +23,10 @@ function createRng(seed) {
 
 // No prop's center may come closer than this to the origin minus its own
 // radius -- the player spawns/respawns at the center, so this keeps that
-// spot (and the walk-up to it) clear.
-const CENTER_CLEARANCE = 8
+// spot (and the walk-up to it) clear. Exported so src/arena.js's center
+// teal ring can size itself off the same radius, rather than a separately
+// tuned copy that could drift out of sync.
+export const CENTER_CLEARANCE = 8
 // No prop may reach closer than this to the platform's actual edge.
 const EDGE_MARGIN = 3
 // Extra breathing room enforced between any two props, beyond just their

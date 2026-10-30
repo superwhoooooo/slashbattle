@@ -158,7 +158,8 @@ are kept moderate so the pale deck doesn't wash out to white.
 
 The platform is a resort sundeck: a repeating warm-white plank texture
 on a light hull, with a teal border band and white pinstripe as flat
-rings at the edge. `src/logic/resortLayout.js`'s `resortLayout({ radius,
+rings at the edge, and a matching teal inlay ring around the prop-free
+center (its outer radius is resortLayout's exported `CENTER_CLEARANCE`). `src/logic/resortLayout.js`'s `resortLayout({ radius,
 seed })` is a pure, seeded (`RESORT_LAYOUT_SEED`, so every run is the
 same) layout of pools, umbrellas, loungers and signs, with a clear zone
 around the center and a margin in from the edge; `arena.js` builds them
@@ -217,9 +218,10 @@ Every character (player = icosahedron, blobbo = dodecahedron, zippy =
 octahedron, grumpus = a multi-segment box) is one faceted, flat-shaded
 low-poly mesh in a glossy candy-pastel `MeshPhysicalMaterial`
 (clearcoat + sheen, `JELLY_*` in config.js; the player is coral, blobbo
-mint, zippy hot pink, grumpus periwinkle, bosses deeper shades) with a
-subtle wireframe outline (a lighter tint of the body color) that shares
-its geometry, so the edges deform right along with it. `createJellyBody` clones the
+mint, zippy hot pink, grumpus periwinkle, bosses deeper shades). A
+wireframe outline overlay (a lighter tint of the body color) shares its
+geometry, so the edges deform right along with it; it's hidden while
+`JELLY_EDGE_OPACITY` is 0, so the jellies read as smooth candy. `createJellyBody` clones the
 geometry's original vertex positions once; every frame `updateJelly`
 displaces each vertex as a pure function (`src/logic/jelly.js`'s
 `jellyOffset`) of that ORIGINAL position, the current time, and the

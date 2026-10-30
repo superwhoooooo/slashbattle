@@ -115,7 +115,11 @@ export const ARENA_RADIUS = 48
 export const ARENA_THICKNESS = 1.2
 export const ARENA_HULL_COLOR = 0xe7e9ec // light grey/white, slightly metallic sides/underside
 export const ARENA_DECK_PLANK_COLOR = '#f0e2c6' // warm white composite plank base
-export const ARENA_DECK_SEAM_COLOR = '#b9ad94' // seams between planks
+// A slightly darker tint of ARENA_DECK_PLANK_COLOR (same hue, just dimmer)
+// rather than an unrelated grey, and close in lightness to it, so the
+// seams read as a soft hint of plank structure instead of busy, high-
+// contrast lines from the overhead gameplay camera.
+export const ARENA_DECK_SEAM_COLOR = '#d8cbb2'
 // World-unit size of one repeating plank tile, so plank width/length stay
 // a sensible real-world size rather than stretching with ARENA_RADIUS.
 export const ARENA_DECK_PLANK_WIDTH = 0.4
@@ -127,6 +131,15 @@ export const ARENA_DECK_PINSTRIPE_WIDTH = 0.12
 // World units in from the platform's edge to the pinstripe's outer edge,
 // so it sits just inside the border band rather than touching it.
 export const ARENA_DECK_PINSTRIPE_INSET = 1.6
+// A second teal ring (plus its own pinstripe trim along its inner edge,
+// reusing ARENA_DECK_BORDER_COLOR/ARENA_DECK_PINSTRIPE_COLOR), sized to sit
+// just inside logic/resortLayout.js's CENTER_CLEARANCE radius -- the
+// player's spawn/respawn spot, which that layout always keeps prop-free --
+// so the teal accent reads near where play actually happens instead of
+// only out at the platform's edge, which the overhead gameplay camera
+// rarely shows.
+export const ARENA_CENTER_RING_WIDTH = 0.6 // world units, how wide the teal band is
+export const ARENA_CENTER_RING_PINSTRIPE_WIDTH = 0.12
 
 // The sundeck's props (pools, umbrellas, loungers, signs -- laid out by
 // src/logic/resortLayout.js, built into meshes by src/arena.js): a fixed
@@ -316,9 +329,12 @@ export const JELLY_SHEEN_COLOR = 0xffffff
 // it) at a slightly larger scale, so the edges read as an outline
 // instead of fighting the solid faces for depth. Translucent rather
 // than a fully solid bright line, so it reads as a subtle edge rather
-// than a glow.
+// than a glow. Opacity 0 for the candy-pastel look -- jelly.js's
+// createJellyBody hides the overlay mesh outright (visible = false) when
+// this is 0, rather than just drawing it fully transparent, so it costs
+// nothing; raise it above 0 to bring the outline back.
 export const JELLY_EDGE_SCALE = 1.01
-export const JELLY_EDGE_OPACITY = 0.35
+export const JELLY_EDGE_OPACITY = 0
 
 // Idle wobble: a slow traveling ripple over the body's surface.
 export const JELLY_IDLE_AMPLITUDE = 0.035 // world units

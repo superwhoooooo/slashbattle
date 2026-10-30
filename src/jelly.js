@@ -48,6 +48,9 @@ export function createJellyBody(geometry, material, edgeColor, restY = 0) {
   )
   edges.position.y = restY
   edges.scale.setScalar(JELLY_EDGE_SCALE)
+  // JELLY_EDGE_OPACITY 0 means the outline is fully transparent, so skip
+  // drawing it rather than paying for an invisible wireframe pass.
+  edges.visible = JELLY_EDGE_OPACITY > 0
   group.add(edges)
 
   const position = geometry.attributes.position

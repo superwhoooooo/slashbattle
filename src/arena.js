@@ -1,5 +1,7 @@
 import * as THREE from 'three'
 import {
+  ARENA_CENTER_RING_PINSTRIPE_WIDTH,
+  ARENA_CENTER_RING_WIDTH,
   ARENA_DECK_BORDER_COLOR,
   ARENA_DECK_BORDER_WIDTH,
   ARENA_DECK_PINSTRIPE_COLOR,
@@ -54,7 +56,7 @@ import {
   UMBRELLA_POLE_RADIUS,
 } from './config.js'
 import { platformLayout } from './logic/arena.js'
-import { resortLayout } from './logic/resortLayout.js'
+import { CENTER_CLEARANCE, resortLayout } from './logic/resortLayout.js'
 
 // A tileable composite-deck plank texture: a few planks side by side
 // (each a touch lighter/darker than the next) with thin seams between
@@ -75,7 +77,10 @@ function createDeckPlankTexture() {
 
   const base = new THREE.Color(ARENA_DECK_PLANK_COLOR)
   for (let i = 0; i < planksAcross; i++) {
-    const shade = base.clone().multiplyScalar(0.94 + ((i * 37) % 11) / 100)
+    // A narrow +-2.5% lightness range (rather than a wide one) keeps the
+    // planks reading as one soft, near-white composite surface instead of
+    // a blotchy checkerboard, while still hinting that it's made of boards.
+    const shade = base.clone().multiplyScalar(0.975 + ((i * 37) % 11) / 220)
     ctx.fillStyle = `#${shade.getHexString()}`
     ctx.fillRect(i * plankPixels, 0, plankPixels, tileSize)
 
@@ -83,7 +88,7 @@ function createDeckPlankTexture() {
     // the repeating tile doesn't read as one continuous strip per plank.
     const jointY = (((i * 53) % 7) / 7) * tileSize
     ctx.strokeStyle = ARENA_DECK_SEAM_COLOR
-    ctx.lineWidth = 2
+    ctx.lineWidth = 1
     ctx.beginPath()
     ctx.moveTo(i * plankPixels, jointY)
     ctx.lineTo((i + 1) * plankPixels, jointY)
@@ -91,7 +96,7 @@ function createDeckPlankTexture() {
   }
 
   ctx.strokeStyle = ARENA_DECK_SEAM_COLOR
-  ctx.lineWidth = 3
+  ctx.lineWidth = 1.5
   for (let i = 1; i < planksAcross; i++) {
     ctx.beginPath()
     ctx.moveTo(i * plankPixels, 0)
@@ -189,7 +194,8 @@ function createGasGiant() {
 // Builds the platform itself: a thick disc (a light, slightly metallic
 // hull on the sides/underside; the composite-plank deck texture on top),
 // a teal border band and a white pinstripe painted as flat rings just
-// inside the top edge, and a tapered underside so it reads as a solid
+// inside the top edge, a matching teal ring and pinstripe around the
+// central clear zone, and a tapered underside so it reads as a solid
 // floating sundeck.
 function createPlatform() {
   const group = new THREE.Group()
@@ -240,6 +246,34 @@ function createPlatform() {
   pinstripe.position.y = bandY
   pinstripe.receiveShadow = true
   group.add(pinstripe)
+
+  // A second teal ring (plus its own pinstripe trim) around the central
+  // clear zone resortLayout.js keeps free of pools/umbrellas/loungers/
+  // signs -- sized off that same CENTER_CLEARANCE radius so it always sits
+  // at or just inside it, never overlapping a prop, and brings the teal
+  // accent into view from the overhead gameplay camera instead of leaving
+  // it only out at the platform's edge.
+  const centerRingOuter = CENTER_CLEARANCE
+  const centerRingGeometry = new THREE.RingGeometry(centerRingOuter - ARENA_CENTER_RING_WIDTH, centerRingOuter, 64)
+  const centerRingMaterial = new THREE.MeshStandardMaterial({ color: ARENA_DECK_BORDER_COLOR, roughness: 0.6 })
+  const centerRing = new THREE.Mesh(centerRingGeometry, centerRingMaterial)
+  centerRing.rotation.x = -Math.PI / 2
+  centerRing.position.y = bandY
+  centerRing.receiveShadow = true
+  group.add(centerRing)
+
+  const centerPinstripeOuter = centerRingOuter - ARENA_CENTER_RING_WIDTH
+  const centerPinstripeGeometry = new THREE.RingGeometry(
+    centerPinstripeOuter - ARENA_CENTER_RING_PINSTRIPE_WIDTH,
+    centerPinstripeOuter,
+    64,
+  )
+  const centerPinstripeMaterial = new THREE.MeshStandardMaterial({ color: ARENA_DECK_PINSTRIPE_COLOR, roughness: 0.6 })
+  const centerPinstripe = new THREE.Mesh(centerPinstripeGeometry, centerPinstripeMaterial)
+  centerPinstripe.rotation.x = -Math.PI / 2
+  centerPinstripe.position.y = bandY
+  centerPinstripe.receiveShadow = true
+  group.add(centerPinstripe)
 
   const taperGeometry = new THREE.CylinderGeometry(bottomRadius, bottomRadius * 0.15, ARENA_THICKNESS * 1.6, 48)
   const taper = new THREE.Mesh(taperGeometry, hullMaterial)
