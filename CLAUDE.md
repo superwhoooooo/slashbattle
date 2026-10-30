@@ -134,10 +134,8 @@ context.
 The dungeon has been replaced by a single circular platform (radius
 `ARENA_RADIUS`, 48) floating in space, with no walls at the edge -- line
 of sight is always clear, so monsters see the player whenever they're
-within `SIGHT_RANGE` and not hidden. Cargo pods are temporarily placed at
-a few fixed positions on the platform (`POD_POSITIONS` in config.js, 12
-of them in two rings) as circular obstacles; a later milestone spawns
-them dynamically. Monsters keep their own steering (wander, chase,
+within `SIGHT_RANGE` and not hidden. Hiding pods are circular obstacles
+spawned dynamically (see Hiding pods below). Monsters keep their own steering (wander, chase,
 search) away from the very edge (`MONSTER_PLATFORM_MARGIN`), so only
 knockback -- or the player's own choice to walk off -- sends anyone over
 the side. A wandering monster's target is biased to within

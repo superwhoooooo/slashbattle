@@ -179,7 +179,7 @@ renderer.setSize(window.innerWidth, window.innerHeight)
 // otherwise render (and composite) 9x the pixels for no visible gain.
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, MAX_PIXEL_RATIO))
 renderer.shadowMap.enabled = true
-renderer.shadowMap.type = THREE.PCFSoftShadowMap
+renderer.shadowMap.type = THREE.PCFShadowMap
 // NeutralToneMapping keeps the sunlit scene's pastel colors true,
 // without a filmic curve crushing its highlights and shadows.
 renderer.toneMapping = THREE.NeutralToneMapping
@@ -892,9 +892,14 @@ window.addEventListener('mousedown', dismissStartCard, { once: true })
 
 let game = createGame()
 
-const clock = new THREE.Clock()
+const timer = new THREE.Timer()
 
-function animate() {
+function animate(timestamp) {
+  // Updates the timer's internal delta/elapsed state from this frame's
+  // rAF timestamp, so the getDelta()/getElapsed() calls below return a
+  // stable value no matter how many times they're read this frame.
+  timer.update(timestamp)
+
   // Polled once a frame, before anything below queries it: turns the
   // real Gamepad object (if any) into this frame's actions (src/input.js's
   // pollGamepad/src/logic/gamepad.js's gamepadActions).
@@ -905,8 +910,8 @@ function animate() {
 
   // Clamped so a dropped/backgrounded-tab frame doesn't feed a huge dt
   // into movement/physics and teleport everything forward.
-  const deltaSeconds = Math.min(clock.getDelta(), MAX_DELTA_SECONDS)
-  const elapsedSeconds = clock.getElapsedTime()
+  const deltaSeconds = Math.min(timer.getDelta(), MAX_DELTA_SECONDS)
+  const elapsedSeconds = timer.getElapsed()
 
   const gameState = evaluateGameState({ playerHp: game.player.hp })
 

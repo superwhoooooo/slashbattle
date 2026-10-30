@@ -249,24 +249,6 @@ export const MONSTER_PLATFORM_MARGIN = 1.5
 // wandering monster doesn't trek clean across the much bigger arena.
 export const WANDER_BIAS_RADIUS = 15
 
-// Temporary fixed ring of 12 cargo pod positions on the platform, in two
-// rings (radius 14 and radius 32, offset 30 degrees from each other),
-// standing in as circular obstacles until a later milestone spawns them
-// dynamically.
-export const POD_POSITIONS = [
-  { x: 0, z: 14 },
-  { x: 12.12, z: 7 },
-  { x: 12.12, z: -7 },
-  { x: 0, z: -14 },
-  { x: -12.12, z: -7 },
-  { x: -12.12, z: 7 },
-  { x: 16, z: 27.71 },
-  { x: 32, z: 0 },
-  { x: 16, z: -27.71 },
-  { x: -16, z: -27.71 },
-  { x: -32, z: 0 },
-  { x: -16, z: 27.71 },
-]
 export const POD_OBSTACLE_RADIUS = 0.75 // matches the suitcase's visual footprint, plus a little clipping margin
 
 // Dynamic pod spawning (src/logic/podSpawner.js): at most POD_MAX_ACTIVE
