@@ -22,8 +22,9 @@ never the pod itself, which would give the hiding spot away) before going back t
 at the platform's edge: anyone whose center leaves it falls. A monster
 that falls dies (counts as a kill); a player who falls loses HP and
 respawns at the center with a moment of invulnerability. Attacks knock
-monsters back, which can push them off the edge. Between waves you heal
-a little, so endless runs stay survivable. R restarts the game (back to
+monsters back, which can push them off the edge. Completing a round (a wave
+or a boss fight) heals you 10% of your max HP (`ROUND_CLEAR_HEAL_FRACTION`), so
+endless runs stay survivable. R restarts the game (back to
 wave 1, score 0) at any time after losing. Every few waves a boss arrives
 (see Bosses below).
 
@@ -292,7 +293,7 @@ is held too). `runCutscene` pans the camera to the boss and steps
 `logic/cutscene.js` -- the boss materializes, says its lines typewriter-style
 (Space / Enter / click skips ahead), and its name slams on screen -- then calls
 `beginBossFight`. A boss health bar shows during the fight; beating it (or
-knocking it off the edge) pops its minions, scores bonus points, and heals extra.
+knocking it off the edge) pops its minions and scores bonus points.
 
 ## Crystals, chests, and loot
 Every kill that finishes its death pop drops crystals (`crystalDrops`: a couple
@@ -323,3 +324,14 @@ all 14 items -- a score and heal bonus.
 `combat.js`'s `damageMonster` is the one place a monster takes a hit (sword,
 pet zap, shockwave all use it). The inventory HUD (crystal count, hotbar,
 ability bar, pet icons, chest prompt, loot toast) is in `hud.js`.
+
+## Scenery and shading
+Beyond the platform, the void has depth cues (`src/arena.js`, tuned in
+`config.js`): a painted nebula on the sky dome (additive colored clouds over the
+gradient, wrapped so there's no seam), two star layers tinted white / blue / pink,
+`ROCK_COUNT` dark faceted rocks orbiting far out (one InstancedMesh), and
+`MOTE_COUNT` glowing motes drifting up around the player. The platform's grid has
+brighter major rings every fourth ring, faint minor spokes, a center emblem, and
+the rim has an additive halo. Every jelly body gets a fresnel rim glow injected
+into its material's emissive (`createJellyMaterial`'s `onBeforeCompile`,
+`JELLY_RIM_STRENGTH`/`JELLY_RIM_POWER`), and the key light has a small shadow bias.

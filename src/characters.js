@@ -3,6 +3,8 @@ import {
   FACE_SCALE_BY_TYPE,
   JELLY_EMISSIVE_INTENSITY,
   JELLY_METALNESS,
+  JELLY_RIM_POWER,
+  JELLY_RIM_STRENGTH,
   JELLY_ROUGHNESS,
   MONSTER_TYPES,
   PLAYER_BODY_RADIUS,
@@ -238,6 +240,16 @@ function createJellyMaterial(color) {
     emissiveIntensity: JELLY_EMISSIVE_INTENSITY,
   })
   material.userData.baseEmissive = material.emissive.clone()
+  // A fresnel rim glow: the more edge-on a surface is to the camera, the
+  // more of the body's own (lightened) color is added as emission.
+  material.onBeforeCompile = (shader) => {
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <emissivemap_fragment>',
+      `#include <emissivemap_fragment>
+      float jellyRim = pow(1.0 - clamp(dot(normal, normalize(vViewPosition)), 0.0, 1.0), ${JELLY_RIM_POWER.toFixed(2)});
+      totalEmissiveRadiance += mix(diffuseColor.rgb, vec3(1.0), 0.3) * jellyRim * ${JELLY_RIM_STRENGTH.toFixed(2)};`,
+    )
+  }
   return material
 }
 

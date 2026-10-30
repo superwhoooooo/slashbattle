@@ -46,7 +46,6 @@ export const BOSS_SPAWN_DISTANCE = 15
 export const BOSS_SPAWN_MARGIN = 7 // world units in from the platform's edge
 export const BOSS_SPAWN_EFFECT_SCALE = 2.6 // portal ring/beam widened for a boss
 export const BOSS_SPAWN_EFFECT_DURATION = 1.8 // seconds, matches CUTSCENE_ENTER_DURATION
-export const BOSS_DEFEAT_HEAL_MULTIPLIER = 2 // beating a boss heals WAVE_CLEAR_HEAL times this
 export const BOSS_DEATH_SHARD_MULTIPLIER = 3
 export const CUTSCENE_CAMERA_LERP = 3.5
 
@@ -136,6 +135,19 @@ export const STARFIELD_RADIUS = 400
 export const SKY_RADIUS = 450
 export const STARFIELD_COLOR = 0xcfcfcf // dimmed from pure white
 export const STARFIELD_OPACITY = 0.7
+
+// Extra scenery that sells the "floating in space" setting: a painted
+// nebula on the sky dome, drifting rocks orbiting far out, and glowing
+// motes that hover around the player.
+export const NEBULA_TEXTURE_WIDTH = 1024
+export const NEBULA_TEXTURE_HEIGHT = 512
+export const NEBULA_BLOB_COUNT = 34
+export const ROCK_COUNT = 46
+export const ROCK_MIN_ORBIT = 72
+export const ROCK_MAX_ORBIT = 160
+export const MOTE_COUNT = 240
+export const MOTE_AREA = 60 // world units the motes spread over, centered on the player
+export const MOTE_COLOR = 0x9fe9ff
 
 // Lighting: a soft hemisphere fill plus a shadow-casting directional key
 // light (the platform receives shadows; characters cast them).
@@ -234,8 +246,8 @@ export const SPAWN_NEAR_PLAYER_MIN_DIST = 14
 export const SPAWN_NEAR_PLAYER_MAX_DIST = 22
 export const SPAWN_NEAR_PLAYER_MARGIN = 3
 
-// Healed between waves (capped at max hp) so endless runs are survivable.
-export const WAVE_CLEAR_HEAL = 20
+// Healed on completing a round (capped at max hp) so endless runs are survivable.
+export const ROUND_CLEAR_HEAL_FRACTION = 0.1 // fraction of PLAYER_MAX_HP restored on completing any round (a wave or a boss fight)
 
 // How long the "WAVE CLEARED +bonus" banner stays up before the
 // intermission countdown banner takes over for the rest of the break.
@@ -283,6 +295,10 @@ export const JELLY_BULGE_DAMPING = 9
 export const JELLY_HIT_STIFFNESS = 140
 export const JELLY_HIT_DAMPING = 8
 export const JELLY_HIT_STRENGTH = 0.9 // impulse applied when hit lands (player or monster)
+// A fresnel rim glow on every jelly body (brighter toward the silhouette),
+// so characters pop off the dark background instead of reading flat.
+export const JELLY_RIM_STRENGTH = 0.55
+export const JELLY_RIM_POWER = 2.4
 export const JELLY_DEATH_INFLATE_STRENGTH = -1.4 // one-shot inflate impulse at the moment of death
 
 export const ATTACK_RANGE = 1.4

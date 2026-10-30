@@ -38,6 +38,15 @@ import {
   STARFIELD_COUNT,
   STARFIELD_OPACITY,
   STARFIELD_RADIUS,
+  MOTE_AREA,
+  MOTE_COLOR,
+  MOTE_COUNT,
+  NEBULA_BLOB_COUNT,
+  NEBULA_TEXTURE_HEIGHT,
+  NEBULA_TEXTURE_WIDTH,
+  ROCK_COUNT,
+  ROCK_MAX_ORBIT,
+  ROCK_MIN_ORBIT,
 } from './config.js'
 import { platformLayout } from './logic/arena.js'
 
@@ -57,26 +66,44 @@ function createGridTexture() {
   ctx.fillRect(0, 0, size, size)
 
   ctx.strokeStyle = ARENA_GRID_COLOR
-  ctx.lineWidth = 6
   // Ring count scales with ARENA_RADIUS (rather than a fixed count) so
   // each ring stays ARENA_GRID_RING_SPACING world units apart however
   // big the platform is -- the texture always maps onto the platform's
-  // full radius, so a fixed ring count would stretch the cells.
+  // full radius, so a fixed ring count would stretch the cells. Every
+  // fourth ring is a brighter, thicker "major" line, and the rest are
+  // dimmer, so the floor reads as a graduated grid instead of a flat mesh.
   const ringCount = Math.max(1, Math.round(ARENA_RADIUS / ARENA_GRID_RING_SPACING))
   for (let i = 1; i <= ringCount; i++) {
-    const r = (i / ringCount) * center
+    const major = i % 4 === 0 || i === ringCount
+    ctx.globalAlpha = major ? 1 : 0.5
+    ctx.lineWidth = major ? 10 : 4
     ctx.beginPath()
-    ctx.arc(center, center, r, 0, Math.PI * 2)
+    ctx.arc(center, center, (i / ringCount) * center, 0, Math.PI * 2)
     ctx.stroke()
   }
-  const spokes = 16
-  for (let i = 0; i < spokes; i++) {
-    const angle = (i / spokes) * Math.PI * 2
-    ctx.beginPath()
-    ctx.moveTo(center, center)
-    ctx.lineTo(center + Math.cos(angle) * center, center + Math.sin(angle) * center)
-    ctx.stroke()
+
+  // 16 major spokes, with fainter minor ones between them in the outer
+  // half (they'd bunch into a blur near the center).
+  for (const [spokes, alpha, width, from] of [[16, 0.7, 6, 0], [64, 0.22, 3, 0.45]]) {
+    ctx.globalAlpha = alpha
+    ctx.lineWidth = width
+    for (let i = 0; i < spokes; i++) {
+      if (spokes === 64 && i % 4 === 0) continue
+      const angle = (i / spokes) * Math.PI * 2
+      ctx.beginPath()
+      ctx.moveTo(center + Math.cos(angle) * center * from, center + Math.sin(angle) * center * from)
+      ctx.lineTo(center + Math.cos(angle) * center, center + Math.sin(angle) * center)
+      ctx.stroke()
+    }
   }
+
+  // A bold emblem ring at the very center, where the player spawns.
+  ctx.globalAlpha = 1
+  ctx.lineWidth = 14
+  ctx.beginPath()
+  ctx.arc(center, center, center * 0.05, 0, Math.PI * 2)
+  ctx.stroke()
+  ctx.globalAlpha = 1
 
   const texture = new THREE.CanvasTexture(canvas)
   // The texture spans the whole platform and is viewed at a grazing
@@ -87,21 +114,52 @@ function createGridTexture() {
   return texture
 }
 
-// A vertical gradient (deep indigo -> purple -> near-black) for the
-// nebula sky dome, read top (y=+radius) to bottom (y=-radius).
+// The nebula sky dome's texture: a deep indigo-to-black vertical
+// gradient with soft, additively blended clouds of magenta, cyan and
+// violet painted over it (equirectangular, so it wraps around the dome:
+// each cloud is also drawn one texture-width to either side so there's no
+// seam). Clouds stay in a band away from the poles, where the sphere's UVs
+// pinch them.
 function createSkyTexture() {
+  const width = NEBULA_TEXTURE_WIDTH
+  const height = NEBULA_TEXTURE_HEIGHT
   const canvas = document.createElement('canvas')
-  canvas.width = 2
-  canvas.height = 256
+  canvas.width = width
+  canvas.height = height
   const ctx = canvas.getContext('2d')
-  const gradient = ctx.createLinearGradient(0, 0, 0, 256)
+
+  const gradient = ctx.createLinearGradient(0, 0, 0, height)
   gradient.addColorStop(0, '#0d0720')
   gradient.addColorStop(0.45, '#1c0e3c')
   gradient.addColorStop(1, '#030104')
   ctx.fillStyle = gradient
-  ctx.fillRect(0, 0, 2, 256)
+  ctx.fillRect(0, 0, width, height)
+
+  const palette = [
+    [150, 60, 255],
+    [255, 43, 214],
+    [25, 231, 255],
+    [70, 90, 255],
+  ]
+  ctx.globalCompositeOperation = 'lighter'
+  for (let i = 0; i < NEBULA_BLOB_COUNT; i++) {
+    const [r, g, b] = palette[Math.floor(Math.random() * palette.length)]
+    const x = Math.random() * width
+    const y = height * (0.22 + Math.random() * 0.56)
+    const radius = 40 + Math.random() * 150
+    const alpha = 0.035 + Math.random() * 0.08
+    for (const dx of [-width, 0, width]) {
+      const cloud = ctx.createRadialGradient(x + dx, y, 0, x + dx, y, radius)
+      cloud.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${alpha})`)
+      cloud.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`)
+      ctx.fillStyle = cloud
+      ctx.fillRect(x + dx - radius, y - radius, radius * 2, radius * 2)
+    }
+  }
+  ctx.globalCompositeOperation = 'source-over'
 
   const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
   texture.needsUpdate = true
   return texture
 }
@@ -118,27 +176,142 @@ function createSkyDome() {
   return new THREE.Mesh(geometry, material)
 }
 
-// A few thousand points scattered over a shell around the arena.
-function createStarfield() {
-  const positions = new Float32Array(STARFIELD_COUNT * 3)
-  for (let i = 0; i < STARFIELD_COUNT; i++) {
+// A few thousand points scattered over a shell around the arena, tinted
+// white / cool blue / warm pink so the sky isn't a flat sheet of grey
+// dots, plus a sparse second layer of larger, brighter stars.
+function createStarLayer(count, size, opacity) {
+  const positions = new Float32Array(count * 3)
+  const colors = new Float32Array(count * 3)
+  const tints = [new THREE.Color(0xffffff), new THREE.Color(0xa8c8ff), new THREE.Color(0xffc2e8)]
+  for (let i = 0; i < count; i++) {
     const theta = Math.random() * Math.PI * 2
     const phi = Math.acos(2 * Math.random() - 1)
     const radius = STARFIELD_RADIUS * (0.85 + Math.random() * 0.15)
     positions[i * 3] = radius * Math.sin(phi) * Math.cos(theta)
     positions[i * 3 + 1] = radius * Math.cos(phi)
     positions[i * 3 + 2] = radius * Math.sin(phi) * Math.sin(theta)
+    const tint = tints[Math.floor(Math.random() * tints.length)]
+    const brightness = 0.55 + Math.random() * 0.45
+    colors[i * 3] = tint.r * brightness
+    colors[i * 3 + 1] = tint.g * brightness
+    colors[i * 3 + 2] = tint.b * brightness
   }
   const geometry = new THREE.BufferGeometry()
   geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+  geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3))
   const material = new THREE.PointsMaterial({
     color: STARFIELD_COLOR,
-    size: 1.2,
+    size,
     fog: false,
     transparent: true,
-    opacity: STARFIELD_OPACITY,
+    opacity,
+    vertexColors: true,
   })
   return new THREE.Points(geometry, material)
+}
+
+function createStarfield() {
+  const group = new THREE.Group()
+  group.add(createStarLayer(STARFIELD_COUNT, 1.2, STARFIELD_OPACITY))
+  group.add(createStarLayer(Math.round(STARFIELD_COUNT / 14), 2.6, 0.95))
+  return group
+}
+
+// Dark, faceted space rocks orbiting far out around the platform, slowly
+// circling and tumbling -- cheap parallax that gives the void some depth.
+// One InstancedMesh; updateRocks rewrites the (few) instance matrices.
+function createRocks() {
+  const geometry = new THREE.DodecahedronGeometry(1, 0)
+  const material = new THREE.MeshStandardMaterial({
+    color: 0x2b2342,
+    emissive: 0x1a0f33,
+    emissiveIntensity: 0.6,
+    flatShading: true,
+    roughness: 0.9,
+    metalness: 0.1,
+  })
+  const mesh = new THREE.InstancedMesh(geometry, material, ROCK_COUNT)
+  mesh.frustumCulled = false
+  const rocks = []
+  for (let i = 0; i < ROCK_COUNT; i++) {
+    rocks.push({
+      orbit: ROCK_MIN_ORBIT + Math.random() * (ROCK_MAX_ORBIT - ROCK_MIN_ORBIT),
+      angle: Math.random() * Math.PI * 2,
+      speed: (0.006 + Math.random() * 0.02) * (Math.random() < 0.5 ? -1 : 1),
+      y: -30 + Math.random() * 55,
+      scale: 1.5 + Math.random() * Math.random() * 9,
+      stretch: 0.6 + Math.random() * 0.8,
+      spin: { x: (Math.random() - 0.5) * 0.4, y: (Math.random() - 0.5) * 0.4 },
+      tilt: { x: Math.random() * 6, y: Math.random() * 6 },
+    })
+  }
+  return { mesh, rocks }
+}
+
+const scratchMatrix = new THREE.Matrix4()
+const scratchQuaternion = new THREE.Quaternion()
+const scratchEuler = new THREE.Euler()
+const scratchPosition = new THREE.Vector3()
+const scratchScale = new THREE.Vector3()
+
+function updateRocks(rockSystem, dt, elapsedSeconds) {
+  rockSystem.rocks.forEach((rock, i) => {
+    rock.angle += rock.speed * dt
+    scratchPosition.set(Math.sin(rock.angle) * rock.orbit, rock.y + Math.sin(elapsedSeconds * 0.3 + i) * 0.8, Math.cos(rock.angle) * rock.orbit)
+    scratchEuler.set(rock.tilt.x + elapsedSeconds * rock.spin.x, rock.tilt.y + elapsedSeconds * rock.spin.y, 0)
+    scratchQuaternion.setFromEuler(scratchEuler)
+    scratchScale.set(rock.scale, rock.scale * rock.stretch, rock.scale)
+    scratchMatrix.compose(scratchPosition, scratchQuaternion, scratchScale)
+    rockSystem.mesh.setMatrixAt(i, scratchMatrix)
+  })
+  rockSystem.mesh.instanceMatrix.needsUpdate = true
+}
+
+// Glowing motes hovering and drifting upward around the player, wrapping
+// within a box centered on them so there are always some nearby (they
+// catch the bloom and make the air feel alive).
+function createMotes() {
+  const local = new Float32Array(MOTE_COUNT * 3)
+  for (let i = 0; i < MOTE_COUNT; i++) {
+    local[i * 3] = (Math.random() - 0.5) * MOTE_AREA
+    local[i * 3 + 1] = Math.random() * 14
+    local[i * 3 + 2] = (Math.random() - 0.5) * MOTE_AREA
+  }
+  const geometry = new THREE.BufferGeometry()
+  geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(MOTE_COUNT * 3), 3))
+  const material = new THREE.PointsMaterial({
+    color: MOTE_COLOR,
+    size: 0.16,
+    transparent: true,
+    opacity: 0.55,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  })
+  const points = new THREE.Points(geometry, material)
+  points.frustumCulled = false
+  return { points, local }
+}
+
+function wrap(value, size) {
+  return ((((value + size / 2) % size) + size) % size) - size / 2
+}
+
+function updateMotes(moteSystem, dt, elapsedSeconds, centerX, centerZ) {
+  const { local, points } = moteSystem
+  const positions = points.geometry.attributes.position.array
+  for (let i = 0; i < MOTE_COUNT; i++) {
+    local[i * 3 + 1] += (0.25 + (i % 5) * 0.08) * dt
+    if (local[i * 3 + 1] > 14) local[i * 3 + 1] = 0
+    const sway = Math.sin(elapsedSeconds * 0.6 + i) * 0.4
+    // Wrapping relative to the player's position (not just the box)
+    // keeps motes around them as they move.
+    const x = wrap(local[i * 3] - centerX, MOTE_AREA) + centerX
+    const z = wrap(local[i * 3 + 2] - centerZ, MOTE_AREA) + centerZ
+    positions[i * 3] = x + sway
+    positions[i * 3 + 1] = local[i * 3 + 1]
+    positions[i * 3 + 2] = z + sway * 0.6
+  }
+  points.geometry.attributes.position.needsUpdate = true
 }
 
 // Builds the platform itself: a thick disc (dark metallic sides/underside,
@@ -196,6 +369,22 @@ function createPlatform() {
   rim.rotation.x = Math.PI / 2
   rim.position.y = discCenterY + ARENA_THICKNESS / 2
   group.add(rim)
+
+  // A wider, faint additive twin of the rim so it blooms into a soft halo
+  // (the same glow trick the jelly edges and sword use).
+  const halo = new THREE.Mesh(
+    new THREE.TorusGeometry(topRadius, ARENA_RIM_THICKNESS * 1.5, 8, 96),
+    new THREE.MeshBasicMaterial({
+      color: ARENA_RIM_COLOR,
+      transparent: true,
+      opacity: 0.16,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    }),
+  )
+  halo.rotation.x = Math.PI / 2
+  halo.position.y = rim.position.y
+  group.add(halo)
 
   const taperGeometry = new THREE.CylinderGeometry(bottomRadius, bottomRadius * 0.15, ARENA_THICKNESS * 1.6, 48)
   const taper = new THREE.Mesh(taperGeometry, bottomMaterial)
@@ -295,6 +484,10 @@ export function createArena() {
   keyLight.shadow.camera.bottom = -KEY_LIGHT_SHADOW_EXTENT
   keyLight.shadow.camera.near = 1
   keyLight.shadow.camera.far = 60
+  // A small bias (and a normal offset) keeps the flat-shaded faceted bodies
+  // from shadowing themselves in stripes ("shadow acne").
+  keyLight.shadow.bias = -0.0004
+  keyLight.shadow.normalBias = 0.03
   group.add(keyLight)
   group.add(keyLight.target) // needs to be in the graph for its moving position to take effect
 
@@ -307,9 +500,14 @@ export function createArena() {
   group.add(createStarfield())
   group.add(createSkyDome())
 
+  const rockSystem = createRocks()
+  group.add(rockSystem.mesh)
+  const moteSystem = createMotes()
+  group.add(moteSystem.points)
+
   const fog = new THREE.Fog(FOG_COLOR, FOG_NEAR, FOG_FAR)
 
-  return { group, fog, backgroundColor: FOG_COLOR, topMaterial, pylons, thrusters, keyLight }
+  return { group, fog, backgroundColor: FOG_COLOR, topMaterial, pylons, thrusters, keyLight, rockSystem, moteSystem, lastElapsed: 0 }
 }
 
 // The shadow map's world-space texel size (the frustum spans 2x the
@@ -333,6 +531,11 @@ function snapToTexel(value) {
 // its small fixed shadow frustum (KEY_LIGHT_SHADOW_EXTENT) stays over
 // wherever play actually is on a big arena.
 export function updateArena(arena, elapsedSeconds, playerPos) {
+  const dt = Math.min(Math.max(elapsedSeconds - arena.lastElapsed, 0), 0.1)
+  arena.lastElapsed = elapsedSeconds
+  updateRocks(arena.rockSystem, dt, elapsedSeconds)
+  updateMotes(arena.moteSystem, dt, elapsedSeconds, playerPos?.x ?? 0, playerPos?.z ?? 0)
+
   for (const pylon of arena.pylons) {
     const t = elapsedSeconds + pylon.phase
     const noise = Math.sin(t * PYLON_PULSE_SPEED_A) * 0.6 + Math.sin(t * PYLON_PULSE_SPEED_B) * 0.4

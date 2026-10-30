@@ -22,7 +22,6 @@ import {
   CAMERA_LOOKAHEAD,
   BLINK_DISTANCE,
   BLINK_IFRAMES,
-  BOSS_DEFEAT_HEAL_MULTIPLIER,
   BOSS_SPAWN_DISTANCE,
   BOSS_SPAWN_EFFECT_DURATION,
   BOSS_SPAWN_EFFECT_SCALE,
@@ -74,6 +73,7 @@ import {
   POPUP_KILL_COLOR,
   POPUP_RING_OUT_COLOR,
   RAGE_DAMAGE_MULTIPLIER,
+  ROUND_CLEAR_HEAL_FRACTION,
   SHAKE_DAMAGE_DURATION,
   SHAKE_DAMAGE_MAGNITUDE,
   SHAKE_HIT_DURATION,
@@ -89,7 +89,6 @@ import {
   SPAWN_NEAR_PLAYER_MIN_DIST,
   SWORD_BLADE_COLOR,
   TONE_MAPPING_EXPOSURE,
-  WAVE_CLEAR_HEAL,
 } from './config.js'
 import { setPlayerWeapon } from './characters.js'
 import { createChest, openChest, updateChest } from './chests.js'
@@ -159,7 +158,7 @@ renderer.setSize(window.innerWidth, window.innerHeight)
 // otherwise render (and composite) 9x the pixels for no visible gain.
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, MAX_PIXEL_RATIO))
 renderer.shadowMap.enabled = true
-renderer.shadowMap.type = THREE.PCFSoftShadowMap
+renderer.shadowMap.type = THREE.PCFShadowMap // (PCFSoftShadowMap was removed from three; this is what it fell back to)
 renderer.toneMapping = THREE.ACESFilmicToneMapping
 renderer.toneMappingExposure = TONE_MAPPING_EXPOSURE
 renderer.outputColorSpace = THREE.SRGBColorSpace
@@ -832,13 +831,13 @@ function animate() {
     const bonus = waveClearBonus(clearedWaveNumber)
     game.score += bonus
     showWaveClearedBanner(hud, bonus)
-    player.hp = Math.min(PLAYER_MAX_HP, player.hp + WAVE_CLEAR_HEAL)
+    player.hp = Math.min(PLAYER_MAX_HP, player.hp + PLAYER_MAX_HP * ROUND_CLEAR_HEAL_FRACTION)
   }
   if (events.includes('bossDefeated')) {
     const bonus = waveClearBonus(clearedWaveNumber) * 2
     game.score += bonus
     showWaveClearedBanner(hud, bonus, `${bossBeforeStep.name} DEFEATED`)
-    player.hp = Math.min(PLAYER_MAX_HP, player.hp + WAVE_CLEAR_HEAL * BOSS_DEFEAT_HEAL_MULTIPLIER)
+    player.hp = Math.min(PLAYER_MAX_HP, player.hp + PLAYER_MAX_HP * ROUND_CLEAR_HEAL_FRACTION)
   }
   if (events.includes('waveCleared') || events.includes('bossDefeated')) attractAllCrystals(crystalSystem)
   if (events.includes('bossIntro')) startBossCutscene(game)
