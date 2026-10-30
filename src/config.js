@@ -4,7 +4,11 @@ import { BOSS_MONSTER_TYPES } from './logic/bosses.js'
 
 export const PLAYER_RADIUS = 0.35
 export const PLAYER_BODY_RADIUS = 0.6 // icosahedron radius for the player's jelly body (visual only; PLAYER_RADIUS stays the collision radius)
-export const PLAYER_EDGE_COLOR = 0x5fd4ff
+// A warm coral that reads as "you" against every monster's pastel: its
+// hue sits between zippy's hot pink and grumpus's blue without
+// overlapping either, and it's a different hue family than blobbo's
+// green, so it stays identifiable on the pale sunlit deck.
+export const PLAYER_EDGE_COLOR = 0xffcabe
 export const PLAYER_SPEED = 4 // world units per second
 // Speed eases into/out of PLAYER_SPEED over this many seconds (a
 // rampToward, not an instant snap) instead of starting/stopping dead.
@@ -19,11 +23,11 @@ export const CAMERA_OFFSET = { x: 0, y: 11, z: 8 } // behind, above, and looking
 export const CAMERA_LERP = 6 // higher = camera catches up to the player faster
 export const CAMERA_LOOKAHEAD = 1.2 // world units, peak offset in the player's movement direction at full speed
 
-// Deep purple/blue, far enough out that it doesn't hide the platform
-// (ARENA_RADIUS 48) but still gives the starfield some depth and keeps
-// the space mood -- the far edge of the 48-radius platform still fades
-// into it a little, rather than staying crisp all the way out.
-export const FOG_COLOR = 0x140a2e
+// A pale daylight haze, matching the sky gradient's horizon band, far
+// enough out that it doesn't hide the platform (ARENA_RADIUS 48) but
+// still softens its far edge into the sky rather than keeping it crisp
+// all the way out.
+export const FOG_COLOR = 0xbfe3ff
 export const FOG_NEAR = 70
 export const FOG_FAR = 260
 
@@ -31,9 +35,9 @@ export const FOG_FAR = 260
 // edgeColor (the glowing wireframe overlay), speed (world units/second),
 // hp, damage per hit, and radius (collision/knockback/separation radius).
 export const MONSTER_TYPES = {
-  blobbo: { shape: 'dodecahedron', size: 1.4, color: 0x4caf50, edgeColor: 0x9dffb0, speed: 1.2, hp: 60, damage: 8, radius: 0.6 },
-  zippy: { shape: 'octahedron', size: 0.6, color: 0x9c27b0, edgeColor: 0xe9a3ff, speed: 5.5, hp: 20, damage: 5, radius: 0.25 },
-  grumpus: { shape: 'box', size: 1.1, color: 0xff5722, edgeColor: 0xffc49d, speed: 2.0, hp: 100, damage: 15, radius: 0.45 },
+  blobbo: { shape: 'dodecahedron', size: 1.4, color: 0x5fd48e, edgeColor: 0xbfeed2, speed: 1.2, hp: 60, damage: 8, radius: 0.6 },
+  zippy: { shape: 'octahedron', size: 0.6, color: 0xff5c8a, edgeColor: 0xffbed0, speed: 5.5, hp: 20, damage: 5, radius: 0.25 },
+  grumpus: { shape: 'box', size: 1.1, color: 0x5c8dff, edgeColor: 0xbed1ff, speed: 2.0, hp: 100, damage: 15, radius: 0.45 },
   // The seven bosses (src/logic/bosses.js) share the same stat shape, plus
   // boss-only fields (attackRange, reachBonus, knockbackScale, special...).
   ...BOSS_MONSTER_TYPES,
@@ -46,8 +50,19 @@ export const BOSS_SPAWN_DISTANCE = 15
 export const BOSS_SPAWN_MARGIN = 7 // world units in from the platform's edge
 export const BOSS_SPAWN_EFFECT_SCALE = 2.6 // portal ring/beam widened for a boss
 export const BOSS_SPAWN_EFFECT_DURATION = 1.8 // seconds, matches CUTSCENE_ENTER_DURATION
+export const BOSS_DEFEAT_HEAL_MULTIPLIER = 2 // beating a boss heals WAVE_CLEAR_HEAL times this
 export const BOSS_DEATH_SHARD_MULTIPLIER = 3
 export const CUTSCENE_CAMERA_LERP = 3.5
+
+// The red carpet that unrolls from the player toward the boss during the
+// cutscene's enter phase: a thin flat runner with a gold trim strip down
+// each edge, lying just above the deck so it doesn't z-fight it.
+export const CARPET_COLOR = 0xb3122c
+export const CARPET_TRIM_COLOR = 0xffd15c // matches the HUD's butter accent
+export const CARPET_WIDTH = 2.2
+export const CARPET_TRIM_WIDTH = 0.18
+export const CARPET_THICKNESS = 0.03
+export const CARPET_Y = 0.015
 
 // 3D face features (src/face3d.js): googly eyeballs with a jiggling
 // pupil, a 3D mouth shape, an optional unibrow/tongue/cheeks/freckles --
@@ -90,72 +105,110 @@ export const FACE_PUPIL_HIT_KICK = 0.3
 // camera. Keyed by MONSTER_TYPES key; the player isn't scaled.
 export const FACE_SCALE_BY_TYPE = { blobbo: 1, zippy: 1.6, grumpus: 1 }
 
-// Arena platform geometry and the neon grid pulsing across its top.
+// Arena platform geometry and its sundeck surface: a tileable composite-
+// plank CanvasTexture (a single canvas can't hold enough resolution for
+// crisp planks across the platform's full radius, so it repeats instead)
+// plus a teal border band and a white pinstripe, each a flat ring mesh
+// laid on top of the deck -- a repeating texture can't carry a band that
+// only appears near the edge, so those are separate geometry instead.
 export const ARENA_RADIUS = 48
 export const ARENA_THICKNESS = 1.2
-export const ARENA_TOP_COLOR = 0x14141c
-export const ARENA_UNDERSIDE_COLOR = 0x0a0a10
-export const ARENA_GRID_COLOR = '#19e7ff'
-export const ARENA_GRID_PULSE_SPEED = 1.5 // radians per second
-// How many world units apart the grid's concentric rings are drawn --
-// kept constant as ARENA_RADIUS changes (the grid texture redraws with
-// however many rings that takes) so the cells don't stretch.
-export const ARENA_GRID_RING_SPACING = 16 / 11
-export const ARENA_RIM_COLOR = 0x00e5ff
-export const ARENA_RIM_THICKNESS = 0.5
+export const ARENA_HULL_COLOR = 0xe7e9ec // light grey/white, slightly metallic sides/underside
+export const ARENA_DECK_PLANK_COLOR = '#f0e2c6' // warm white composite plank base
+// A slightly darker tint of ARENA_DECK_PLANK_COLOR (same hue, just dimmer)
+// rather than an unrelated grey, and close in lightness to it, so the
+// seams read as a soft hint of plank structure instead of busy, high-
+// contrast lines from the overhead gameplay camera.
+export const ARENA_DECK_SEAM_COLOR = '#d8cbb2'
+// World-unit size of one repeating plank tile, so plank width/length stay
+// a sensible real-world size rather than stretching with ARENA_RADIUS.
+export const ARENA_DECK_PLANK_WIDTH = 0.4
+export const ARENA_DECK_PLANK_LENGTH = 1.6
+export const ARENA_DECK_BORDER_COLOR = '#19b5a5'
+export const ARENA_DECK_BORDER_WIDTH = 1 // world units, how wide the border band is
+export const ARENA_DECK_PINSTRIPE_COLOR = '#f5f5f0'
+export const ARENA_DECK_PINSTRIPE_WIDTH = 0.12
+// World units in from the platform's edge to the pinstripe's outer edge,
+// so it sits just inside the border band rather than touching it.
+export const ARENA_DECK_PINSTRIPE_INSET = 1.6
+// A second teal ring (plus its own pinstripe trim along its inner edge,
+// reusing ARENA_DECK_BORDER_COLOR/ARENA_DECK_PINSTRIPE_COLOR), sized to sit
+// just inside logic/resortLayout.js's CENTER_CLEARANCE radius -- the
+// player's spawn/respawn spot, which that layout always keeps prop-free --
+// so the teal accent reads near where play actually happens instead of
+// only out at the platform's edge, which the overhead gameplay camera
+// rarely shows.
+export const ARENA_CENTER_RING_WIDTH = 0.6 // world units, how wide the teal band is
+export const ARENA_CENTER_RING_PINSTRIPE_WIDTH = 0.12
 
-// Glowing thrusters on the platform's tapered underside, so it reads as
-// floating rather than resting on something. No PointLight anymore --
-// just the dimmed glow mesh itself (removing lots of small lights under
-// the platform was most of the overall brightness cut).
-export const ARENA_THRUSTER_COUNT = 6
-export const ARENA_THRUSTER_COLOR = 0xff2db0
-export const ARENA_THRUSTER_EMISSIVE_INTENSITY = 0.8
-export const ARENA_THRUSTER_PULSE_SPEED = 2.2 // radians per second
-export const ARENA_THRUSTER_PULSE_AMOUNT = 0.3 // fraction of ARENA_THRUSTER_EMISSIVE_INTENSITY
+// The sundeck's props (pools, umbrellas, loungers, signs -- laid out by
+// src/logic/resortLayout.js, built into meshes by src/arena.js): a fixed
+// seed so the same layout appears every run.
+export const RESORT_LAYOUT_SEED = 20240
 
-// Neon light pylons standing around the platform's rim, replacing the
-// dungeon's torches. Each pairs a PointLight with a glowing cap, pulsing
-// gently (a sum of two sines at different speeds, offset by a random
-// per-pylon phase, same idea as the old torch flicker). Down to 3 (from
-// 6) and much dimmer, as part of the overall brightness cut.
-export const PYLON_COUNT = 3
-export const PYLON_COLORS = [0x00e5ff, 0xff2db0, 0x7cff5a]
-export const PYLON_LIGHT_INTENSITY = 1.5
-export const PYLON_LIGHT_DISTANCE = 8
-export const PYLON_CAP_EMISSIVE_INTENSITY = 0.8
-export const PYLON_PULSE_SPEED_A = 1.3 // radians per second
-export const PYLON_PULSE_SPEED_B = 2.1 // radians per second
-export const PYLON_PULSE_AMOUNT = 0.3 // fraction of PYLON_LIGHT_INTENSITY
+// Pool water and rim.
+export const POOL_WATER_COLOR = 0x2bc8e6
+// Rough enough that the sun's specular highlight spreads into a soft
+// sheen; a near-mirror concentrates it into a hot spot that blooms into
+// a white glare.
+export const POOL_WATER_ROUGHNESS = 0.25
+export const POOL_RIM_COLOR = 0xffffff
 
-// Space backdrop: a starfield on a large sphere plus a gradient nebula
-// sky further out still.
-export const STARFIELD_COUNT = 4000
-export const STARFIELD_RADIUS = 400
+// Umbrella pole/canopy (canopy color comes from resortLayout.js's own
+// per-umbrella `color`).
+export const UMBRELLA_POLE_COLOR = 0xffffff
+export const UMBRELLA_POLE_HEIGHT = 2.2
+export const UMBRELLA_POLE_RADIUS = 0.04
+export const UMBRELLA_CANOPY_HEIGHT = 0.6
+
+// Lounger slats/back.
+export const LOUNGER_COLOR = 0xf5f5f0
+export const LOUNGER_LENGTH = 1.3
+export const LOUNGER_WIDTH = 0.6
+
+// Sign post/panel.
+export const SIGN_POST_COLOR = 0xffffff
+export const SIGN_POST_HEIGHT = 1.4
+export const SIGN_PANEL_COLOR = 0x19b5a5
+export const SIGN_PANEL_WIDTH = 0.9
+export const SIGN_PANEL_HEIGHT = 0.4
+
+// Daylight backdrop: a vertical gradient sky dome (deep sky blue at the
+// zenith, fading through a pale haze near the horizon, down to a warm
+// sand tone below) plus a distant gas giant hanging near the horizon.
 export const SKY_RADIUS = 450
-export const STARFIELD_COLOR = 0xcfcfcf // dimmed from pure white
-export const STARFIELD_OPACITY = 0.7
+export const SKY_TOP_COLOR = '#2F7FF2'
+export const SKY_HORIZON_COLOR = '#DDF0FF'
+export const SKY_GROUND_COLOR = '#F6E6CF'
 
-// Extra scenery that sells the "floating in space" setting: a painted
-// nebula on the sky dome, drifting rocks orbiting far out, and glowing
-// motes that hover around the player.
-export const NEBULA_TEXTURE_WIDTH = 1024
-export const NEBULA_TEXTURE_HEIGHT = 512
-export const NEBULA_BLOB_COUNT = 34
-export const ROCK_COUNT = 46
-export const ROCK_MIN_ORBIT = 72
-export const ROCK_MAX_ORBIT = 160
-export const MOTE_COUNT = 240
-export const MOTE_AREA = 60 // world units the motes spread over, centered on the player
-export const MOTE_COLOR = 0x9fe9ff
+// The gas giant: a big peachy sphere with a translucent ring, placed far
+// out along -Z (the general direction CAMERA_OFFSET/the fixed-world-space
+// follow camera looks) and low enough that the sightline clears the
+// platform's edge instead of being blocked by its opaque top surface:
+// the camera pitches ~51 degrees down, so its top-of-frame ray only
+// clears the edge once the player is on the far (-Z) side, and from
+// there the planet sits ~25 degrees below horizontal, near the top of
+// frame. It reads as sitting near the horizon from a chunk of the
+// platform, not the whole time, since the camera never rotates to face
+// it head-on.
+export const GAS_GIANT_POSITION = { x: 0, y: -140, z: -360 }
+export const GAS_GIANT_RADIUS = 60
+export const GAS_GIANT_COLOR = 0xf2b27a
+export const GAS_GIANT_EMISSIVE_INTENSITY = 0.15 // keeps it from reading as a dark silhouette against the sky
+export const GAS_GIANT_RING_COLOR = 0xffe9cf
+export const GAS_GIANT_RING_INNER_RADIUS = 78
+export const GAS_GIANT_RING_OUTER_RADIUS = 118
+export const GAS_GIANT_RING_OPACITY = 0.45
+export const GAS_GIANT_RING_TILT = Math.PI / 2.6 // radians, off the orbital plane so it reads as a ring rather than a flat disc edge-on
 
-// Lighting: a soft hemisphere fill plus a shadow-casting directional key
-// light (the platform receives shadows; characters cast them).
-export const HEMI_LIGHT_SKY_COLOR = 0x8899ff
-export const HEMI_LIGHT_GROUND_COLOR = 0x1a0a2a
-export const HEMI_LIGHT_INTENSITY = 0.45
-export const KEY_LIGHT_COLOR = 0xbcd2ff
-export const KEY_LIGHT_INTENSITY = 1.1
+// Lighting: a cool-sky-fill hemisphere light plus a shadow-casting warm
+// sun as the directional key light (the platform receives shadows;
+// characters cast them).
+export const HEMI_LIGHT_SKY_COLOR = 0xcfe8ff
+export const HEMI_LIGHT_GROUND_COLOR = 0xe8d6b8
+export const HEMI_LIGHT_INTENSITY = 0.5
+export const KEY_LIGHT_COLOR = 0xfff0d6
+export const KEY_LIGHT_INTENSITY = 1.6
 export const SHADOW_MAP_SIZE = 2048
 // The key light (and its target) follow the player every frame at this
 // fixed world-space offset, rather than staying fixed over the
@@ -165,13 +218,24 @@ export const KEY_LIGHT_OFFSET = { x: 12, y: 22, z: 10 }
 export const KEY_LIGHT_SHADOW_EXTENT = 25
 
 // Post-processing bloom (EffectComposer + UnrealBloomPass in main.js)
-// and the renderer's own tone mapping exposure -- both turned down a
-// lot from their original values so the neon surfaces glow without
-// washing out the whole scene.
-export const BLOOM_STRENGTH = 0.3
+// and the renderer's own tone mapping exposure. In daylight, bloom is
+// tuned near-off (a high threshold plus a low strength) so only
+// genuinely bright highlights -- not the whole sunlit scene -- glow.
+export const BLOOM_STRENGTH = 0.15
 export const BLOOM_RADIUS = 0.4
-export const BLOOM_THRESHOLD = 0.75
-export const TONE_MAPPING_EXPOSURE = 0.8
+export const BLOOM_THRESHOLD = 0.95
+export const TONE_MAPPING_EXPOSURE = 0.95
+// How strongly the baked sky environment map (scene.environment) lights
+// and reflects off physical materials, on top of the sun and hemisphere
+// lights -- kept low so the pale deck doesn't wash out to white.
+export const ENVIRONMENT_INTENSITY = 0.35
+
+// GTAOPass (EffectComposer, main.js): ambient occlusion for the contact
+// shadows and creases a directional sun makes obvious. GTAO_ENABLED is a quick on/off toggle independent of the other
+// tuning.
+export const GTAO_ENABLED = true
+export const GTAO_RADIUS = 1.2 // world units, how far each pixel samples for occluders
+export const GTAO_INTENSITY = 1.0 // blend strength of the occlusion term
 
 export const CAMERA_FAR = 1500
 
@@ -198,25 +262,7 @@ export const MONSTER_PLATFORM_MARGIN = 1.5
 // wandering monster doesn't trek clean across the much bigger arena.
 export const WANDER_BIAS_RADIUS = 15
 
-// Temporary fixed ring of 12 cargo pod positions on the platform, in two
-// rings (radius 14 and radius 32, offset 30 degrees from each other),
-// standing in as circular obstacles until a later milestone spawns them
-// dynamically.
-export const POD_POSITIONS = [
-  { x: 0, z: 14 },
-  { x: 12.12, z: 7 },
-  { x: 12.12, z: -7 },
-  { x: 0, z: -14 },
-  { x: -12.12, z: -7 },
-  { x: -12.12, z: 7 },
-  { x: 16, z: 27.71 },
-  { x: 32, z: 0 },
-  { x: 16, z: -27.71 },
-  { x: -16, z: -27.71 },
-  { x: -32, z: 0 },
-  { x: -16, z: 27.71 },
-]
-export const POD_OBSTACLE_RADIUS = 0.75 // matches the hover base's visual footprint, plus a little clipping margin
+export const POD_OBSTACLE_RADIUS = 0.75 // matches the suitcase's visual footprint, plus a little clipping margin
 
 // Dynamic pod spawning (src/logic/podSpawner.js): at most POD_MAX_ACTIVE
 // pods on the field at once; while below that, the next one spawns
@@ -246,8 +292,8 @@ export const SPAWN_NEAR_PLAYER_MIN_DIST = 14
 export const SPAWN_NEAR_PLAYER_MAX_DIST = 22
 export const SPAWN_NEAR_PLAYER_MARGIN = 3
 
-// Healed on completing a round (capped at max hp) so endless runs are survivable.
-export const ROUND_CLEAR_HEAL_FRACTION = 0.1 // fraction of PLAYER_MAX_HP restored on completing any round (a wave or a boss fight)
+// Healed between waves (capped at max hp) so endless runs are survivable.
+export const WAVE_CLEAR_HEAL = 20
 
 // How long the "WAVE CLEARED +bonus" banner stays up before the
 // intermission countdown banner takes over for the rest of the break.
@@ -264,20 +310,31 @@ export const SPAWN_BEAM_RADIUS = 0.5
 export const SPAWN_BEAM_HEIGHT = 4
 export const SPAWN_INFLATE_STRENGTH = -1.2 // one-shot jelly impulse (negative inflates) as the monster appears
 
-// Jelly body material: flat-shaded faces, a saturated base color, some
-// metalness/roughness, and no emissive tint, so the characters read as
-// solid colored shapes rather than glowing.
+// Jelly body material: flat-shaded faces, a saturated pastel base color,
+// some metalness/roughness, and no emissive tint, so the characters read
+// as solid colored shapes rather than glowing. A clearcoat layer (a thin,
+// glossy varnish on top of the base shading, the same trick a candy shell
+// or wet plastic toy uses) plus a touch of sheen (a soft, fabric-like
+// highlight at grazing angles) give the jellies a glossy "candy" look
+// under the daylight sun and environment map, without an emissive glow.
 export const JELLY_METALNESS = 0.25
-export const JELLY_ROUGHNESS = 0.45
+export const JELLY_ROUGHNESS = 0.35
 export const JELLY_EMISSIVE_INTENSITY = 0
+export const JELLY_CLEARCOAT = 1
+export const JELLY_CLEARCOAT_ROUGHNESS = 0.12
+export const JELLY_SHEEN = 0.35
+export const JELLY_SHEEN_COLOR = 0xffffff
 
 // The wireframe overlay: shares the body's geometry (so it deforms with
 // it) at a slightly larger scale, so the edges read as an outline
 // instead of fighting the solid faces for depth. Translucent rather
 // than a fully solid bright line, so it reads as a subtle edge rather
-// than a glow.
+// than a glow. Opacity 0 for the candy-pastel look -- jelly.js's
+// createJellyBody hides the overlay mesh outright (visible = false) when
+// this is 0, rather than just drawing it fully transparent, so it costs
+// nothing; raise it above 0 to bring the outline back.
 export const JELLY_EDGE_SCALE = 1.01
-export const JELLY_EDGE_OPACITY = 0.35
+export const JELLY_EDGE_OPACITY = 0
 
 // Idle wobble: a slow traveling ripple over the body's surface.
 export const JELLY_IDLE_AMPLITUDE = 0.035 // world units
@@ -295,10 +352,6 @@ export const JELLY_BULGE_DAMPING = 9
 export const JELLY_HIT_STIFFNESS = 140
 export const JELLY_HIT_DAMPING = 8
 export const JELLY_HIT_STRENGTH = 0.9 // impulse applied when hit lands (player or monster)
-// A fresnel rim glow on every jelly body (brighter toward the silhouette),
-// so characters pop off the dark background instead of reading flat.
-export const JELLY_RIM_STRENGTH = 0.55
-export const JELLY_RIM_POWER = 2.4
 export const JELLY_DEATH_INFLATE_STRENGTH = -1.4 // one-shot inflate impulse at the moment of death
 
 export const ATTACK_RANGE = 1.4
@@ -348,46 +401,53 @@ export const POD_HIDE_LIMIT = 10 // seconds
 export const POD_EJECT_PENALTY_FRACTION = 0.1 // fraction of PLAYER_MAX_HP
 export const POD_HIDE_URGENT_THRESHOLD = 3 // seconds left when the countdown/pod shake turns urgent
 
-// Cargo pod geometry: a capsule hull standing on a small hover base,
-// glowing seam rings, a translucent visor band, and a soft floor glow.
-export const POD_HULL_RADIUS = 0.45
-export const POD_HULL_LENGTH = 0.85 // straight cylindrical part of the capsule
-export const POD_HULL_COLOR = 0x2b2f38 // dark gunmetal
-export const POD_BASE_RADIUS = 0.6
-export const POD_BASE_HEIGHT = 0.12
-export const POD_HOVER_GAP = 0.08 // gap between the hover base and the floor glow ring
-export const POD_HOVER_BOB_SPEED = 1.2 // radians/second
-export const POD_HOVER_BOB_AMOUNT = 0.04 // world units
-export const POD_VISOR_COLOR = 0x9be7ff
-export const POD_VISOR_HEIGHT = 0.3
-export const POD_VISOR_ARC = (Math.PI * 2) / 3 // radians of the hull's front the visor band covers
-export const POD_FLOOR_GLOW_COLOR = 0x19e7ff
-export const POD_FLOOR_GLOW_RADIUS = 0.9
+// Hiding pod geometry: a hard-shell suitcase (a rounded box standing on
+// two small wheels) with corner bumpers, a couple of vertical ribs, and
+// a telescoping handle on top.
+export const POD_SHELL_WIDTH = 0.9
+export const POD_SHELL_DEPTH = 0.5
+export const POD_SHELL_HEIGHT = 1.0
+export const POD_SHELL_BEVEL = 0.1 // RoundedBoxGeometry corner radius
+export const POD_SHELL_COLOR = 0xf5ead8 // cream/ivory shell
+export const POD_TRIM_COLOR = 0xa9784c // tan leather-look trim (ribs, bumpers)
+export const POD_HANDLE_COLOR = 0xb9b4ab // brushed-metal telescoping handle
+export const POD_WHEEL_COLOR = 0x2b2f38 // dark rubber
+export const POD_WHEEL_RADIUS = 0.12
+export const POD_WHEEL_WIDTH = 0.06
+export const POD_BUMPER_RADIUS = 0.08
+export const POD_RIB_WIDTH = 0.08
+export const POD_RIB_THICKNESS = 0.03
+export const POD_HANDLE_RAISE = 0.35 // how far the handle rises above the shell top
+export const POD_HANDLE_SPAN = 0.4 // width of the handle's horizontal grip bar
 
 // How far outside the pod the player pops out to -- a bit further for
 // a hide-limit eject than a voluntary exit, so it reads as a knockback.
 export const POD_EXIT_MARGIN = 0.3
 export const POD_EJECT_EXIT_MARGIN = 0.8
 
-// Seam ring colors per state (idle, near enough to enter, occupied,
+// Zip-seam band colors per state (idle, near enough to enter, occupied,
 // urgent -- the last POD_HIDE_URGENT_THRESHOLD seconds of hiding) plus
 // a gentle pulse applied to whichever color is current.
-export const POD_SEAM_COLOR_IDLE = 0x1fb6ff
-export const POD_SEAM_COLOR_HIGHLIGHT = 0x7dffb0
-export const POD_SEAM_COLOR_OCCUPIED = 0xff2bd6
+export const POD_SEAM_COLOR_IDLE = 0xc8a878
+export const POD_SEAM_COLOR_HIGHLIGHT = 0x19b5a5
+export const POD_SEAM_COLOR_OCCUPIED = 0xff7a5c
 export const POD_SEAM_COLOR_URGENT = 0xff3355
 export const POD_SEAM_PULSE_SPEED = 2 // radians/second
 export const POD_SEAM_PULSE_AMOUNT = 0.3 // fraction of the seam color's brightness
 
-// The holographic label sprite floating above the pod, and the hide-
-// limit countdown sprite just above that (shown while occupied).
-export const POD_LABEL_TEXT = 'NOT A PLAYER'
-export const POD_LABEL_SIZE = 0.8
-export const POD_LABEL_BOB_SPEED = 1.5 // radians/second
-export const POD_LABEL_BOB_AMOUNT = 0.05 // world units
+// The paper luggage tag hanging from the handle (swaying like a
+// pendulum, not bobbing), and the hide-limit countdown sprite just
+// above it (shown while occupied).
+export const POD_TAG_TEXT = 'NOT A GUEST'
+export const POD_TAG_SIZE = 0.45
+export const POD_TAG_INK_COLOR = 0x7a5a33 // tag border, string, and text
+export const POD_TAG_SWAY_SPEED = 1.5 // radians/second
+export const POD_TAG_SWAY_AMOUNT = 0.25 // radians, peak pendulum angle
 export const POD_COUNTDOWN_SIZE = 0.5
-export const POD_COUNTDOWN_COLOR = '#9be7ff'
+export const POD_COUNTDOWN_COLOR = '#5c4328'
 export const POD_COUNTDOWN_URGENT_COLOR = '#ff3355'
+export const POD_COUNTDOWN_BOB_SPEED = 1.5 // radians/second
+export const POD_COUNTDOWN_BOB_AMOUNT = 0.05 // world units
 
 // While occupied, the pod wiggles comically (a small random rotation/
 // scale pulse) every POD_WIGGLE_MIN_INTERVAL-POD_WIGGLE_MAX_INTERVAL
@@ -402,11 +462,13 @@ export const POD_URGENT_WIGGLE_SCALE = 2 // multiplies the wiggle angle/scale pu
 export const POD_URGENT_WIGGLE_SPEEDUP = 4 // divides the wiggle interval
 
 // The pod's materialize (grow in) / dematerialize (shrink away)
-// animation, played when src/logic/podSpawner.js spawns/despawns one.
+// animation, played when src/logic/podSpawner.js spawns/despawns one,
+// plus the particle flash accompanying both.
 export const POD_MATERIALIZE_DURATION = 0.4 // seconds
 export const POD_DEMATERIALIZE_DURATION = 0.3 // seconds
 export const POD_SPAWN_BURST_COUNT = 14
 export const POD_SPAWN_BURST_SPEED = 2.2
+export const POD_SPAWN_FLASH_COLOR = 0x19b5a5
 
 // Camera screen shake: a short decaying smooth-noise offset (a sum of
 // two sines per axis, not a fresh random value every frame, so it
@@ -418,6 +480,29 @@ export const SHAKE_HIT_MAGNITUDE = 0.08
 export const SHAKE_HIT_DURATION = 0.15
 export const SHAKE_NOISE_FREQUENCY_A = 37 // radians/second
 export const SHAKE_NOISE_FREQUENCY_B = 71 // radians/second
+
+// Hitstop: a tiny freeze of gameplay time on impact (src/logic/hitstop.js),
+// longer the heavier the hit -- a sword landing, a kill, a boss taking a
+// hit or dying, and the player getting hurt. The camera shake/flash, HUD,
+// music and cutscene keep running in real time so the screen still reacts
+// while gameplay is paused.
+export const HITSTOP_HIT = 0.045 // seconds, a sword hit landing on a regular monster
+export const HITSTOP_KILL = 0.08 // seconds, a kill (any player-caused source)
+export const HITSTOP_BOSS = 0.12 // seconds, a boss taking a hit, or dying
+export const HITSTOP_PLAYER_HURT = 0.07 // seconds, the player taking damage
+
+// Gamepad input (src/logic/gamepad.js, src/input.js): the left stick's
+// radial deadzone, and rumble (src/input.js's rumble(), a thin wrapper
+// around the Gamepad API's vibrationActuator -- a no-op where
+// unsupported) -- light on a landed sword hit, medium on a kill, strong
+// on the player taking damage or a boss's slam.
+export const GAMEPAD_DEADZONE = 0.15 // fraction of the stick's travel treated as dead center
+export const RUMBLE_LIGHT_STRENGTH = 0.25
+export const RUMBLE_LIGHT_DURATION = 60 // milliseconds
+export const RUMBLE_MEDIUM_STRENGTH = 0.5
+export const RUMBLE_MEDIUM_DURATION = 110
+export const RUMBLE_STRONG_STRENGTH = 0.9
+export const RUMBLE_STRONG_DURATION = 180
 
 // Pooled spark/spray particles (src/particles.js): a fixed-size Points
 // pool, ring-buffered so a burst never allocates. Gravity/drag apply to
@@ -468,8 +553,10 @@ export const DAMAGE_SPARK_SPEED = 3.5
 export const DAMAGE_SPARK_COLOR = 0xff3344
 
 // Energy sword: a glowing emissive blade (plus a slightly larger,
-// additive "glow" twin for a bloom-friendly blur) and a dark hilt.
-export const SWORD_BLADE_COLOR = 0x30e0ff
+// additive "glow" twin for a bloom-friendly blur) and a dark hilt. A
+// saturated teal reads as a glowing blade without blowing out against
+// the pale daylight deck the way a brighter cyan would.
+export const SWORD_BLADE_COLOR = 0x1fd8c9
 export const SWORD_GLOW_SCALE = 1.4
 export const SWORD_HILT_COLOR = 0x20222a
 
@@ -479,19 +566,32 @@ export const SWORD_HILT_COLOR = 0x20222a
 export const TRAIL_MAX_POINTS = 10
 export const TRAIL_WIDTH = 0.12
 
-// Floating damage-number popups (src/popups.js): a small pool of sprites
-// showing "+100"-style text (or "RING OUT!" for a fall), rising and
-// fading over their life.
+// Floating damage-number popups (src/popups.js): a small pool of tilted
+// sticker sprites showing "+100"-style text (or "RING OUT!" for a
+// fall), rising and fading over their life. The color is the sticker's
+// fill; createPopupTexture picks ink or white text to read against it.
 export const POPUP_POOL_SIZE = 12
 export const POPUP_LIFE = 0.9 // seconds
 export const POPUP_RISE_SPEED = 1.2 // world units over the popup's life
-export const POPUP_KILL_COLOR = '#ffe066'
-export const POPUP_RING_OUT_COLOR = '#7dd3ff'
+export const POPUP_KILL_COLOR = '#ffd15c'
+export const POPUP_RING_OUT_COLOR = '#ff6a4d'
+export const POPUP_CANNONBALL_COLOR = '#19b5a5'
+
+// Kill chains (src/logic/tricks.js): a kill within CHAIN_WINDOW seconds
+// of the previous one extends the chain and raises its score multiplier
+// by CHAIN_STEP per extension, capped at CHAIN_MAX (1x, 1.5x, 2x, 2.5x, 3x).
+export const CHAIN_WINDOW = 2.5 // seconds
+export const CHAIN_STEP = 0.5
+export const CHAIN_MAX = 3
 
 // A brief red flash over the whole screen (CSS) when the player takes
 // damage, and the health bar's low-hp pulse threshold.
 export const DAMAGE_FLASH_DURATION = 0.15 // seconds
 export const LOW_HP_PULSE_THRESHOLD = 0.25 // fraction of max hp
+
+// How long the one-shot "guests are reminded..." low-hp PA line stays up
+// in the wave banner before the intermission/wave-cleared text resumes.
+export const LOW_HP_BANNER_DURATION = 2.2 // seconds
 
 // Treasure chests (src/chests.js): up to CHEST_MAX_ACTIVE at once, a new
 // one every CHEST_SPAWN_DELAY_MIN-MAX seconds, spaced like pods. Walk
@@ -503,7 +603,7 @@ export const CHEST_SPAWN_MARGIN = 5 // world units in from the platform's edge
 export const CHEST_MIN_SPACING = 14 // world units between chests/pods
 export const CHEST_OBSTACLE_RADIUS = 0.85
 export const CHEST_INTERACT_RANGE = 2.6
-export const CHEST_FLASH_COLOR = 0xffc93d
+export const CHEST_FLASH_COLOR = 0xffd15c // butter, matching the cooler's resort stripe
 export const CHEST_ALL_OWNED_SCORE = 500 // consolation prize once a chest has nothing left to give
 export const CHEST_ALL_OWNED_HEAL = 40
 

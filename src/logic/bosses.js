@@ -38,7 +38,7 @@ const BOSS_DEFS = [
     title: 'Monarch of the Mildly Damp',
     specials: ['slam'],
     score: 1000,
-    stats: { shape: 'sphere', size: 4.2, color: 0x6fd13b, edgeColor: 0xe9ff9a, speed: 1.6, hp: 380, damage: 18, radius: 1.9 },
+    stats: { shape: 'sphere', size: 4.2, color: 0x2e8b57, edgeColor: 0xabd1bc, speed: 1.6, hp: 380, damage: 18, radius: 1.9 },
     lines: [
       'BEHOLD! I am KING GLOOP, ruler of all things squishy!',
       'I have eaten forty-seven sandwiches today. You look like sandwich number forty-eight.',
@@ -51,7 +51,7 @@ const BOSS_DEFS = [
     title: 'Speed Limit: Yes',
     specials: ['charge', 'blink'],
     score: 1100,
-    stats: { shape: 'tetrahedron', size: 3.4, color: 0xb02fe0, edgeColor: 0xf0b6ff, speed: 2.6, hp: 320, damage: 16, radius: 1.3 },
+    stats: { shape: 'tetrahedron', size: 3.4, color: 0x7b2fd1, edgeColor: 0xcaaced, speed: 2.6, hp: 320, damage: 16, radius: 1.3 },
     lines: [
       'ZOOM ZOOM ZOOM! Did you see me? No? I was already behind you!',
       'I drank nine energy drinks and a smoothie. The smoothie was a mistake.',
@@ -64,7 +64,7 @@ const BOSS_DEFS = [
     title: 'Knight of the Bad Mood',
     specials: ['spin'],
     score: 1200,
-    stats: { shape: 'box', size: 3.6, color: 0xf0561e, edgeColor: 0xffc9a3, speed: 1.9, hp: 460, damage: 22, radius: 1.5 },
+    stats: { shape: 'box', size: 3.6, color: 0xd2491e, edgeColor: 0xedb6a5, speed: 1.9, hp: 460, damage: 22, radius: 1.5 },
     lines: [
       'Hmph. Who dares step on my platform? I did not RSVP you.',
       'I have been grumpy for nine hundred years and I am just getting STARTED.',
@@ -77,7 +77,7 @@ const BOSS_DEFS = [
     title: 'Surgeon of Silly Business',
     specials: ['summon', 'barrage'],
     score: 1300,
-    stats: { shape: 'cylinder', size: 3.6, color: 0xff5fae, edgeColor: 0xffd0e8, speed: 1.7, hp: 340, damage: 14, radius: 1.6 },
+    stats: { shape: 'cylinder', size: 3.6, color: 0xc2217d, edgeColor: 0xe7a6cb, speed: 1.7, hp: 340, damage: 14, radius: 1.6 },
     lines: [
       'Good evening! I am Doctor Wobble, and I have diagnosed you with LOSING.',
       'The only cure is a heavy dose of my friends!',
@@ -90,7 +90,7 @@ const BOSS_DEFS = [
     title: 'He Made You an Offer',
     specials: ['barrage', 'slam'],
     score: 1400,
-    stats: { shape: 'cone', size: 4.4, color: 0x2f6bd9, edgeColor: 0x9cc4ff, speed: 1.5, hp: 560, damage: 24, radius: 2.0 },
+    stats: { shape: 'cone', size: 4.4, color: 0x1f4fa8, edgeColor: 0xa5b9dc, speed: 1.5, hp: 560, damage: 24, radius: 2.0 },
     lines: [
       "Ah, you've come to see me on the day of my... cone party.",
       "I'm gonna make you an offer you can't refract.",
@@ -103,7 +103,7 @@ const BOSS_DEFS = [
     title: 'Queen of Questionable Decisions',
     specials: ['blink', 'spin'],
     score: 1500,
-    stats: { shape: 'octahedron', size: 3.8, color: 0xe0233f, edgeColor: 0xffa3b0, speed: 2.4, hp: 420, damage: 20, radius: 1.45 },
+    stats: { shape: 'octahedron', size: 3.8, color: 0xd6243f, edgeColor: 0xefa7b2, speed: 2.4, hp: 420, damage: 20, radius: 1.45 },
     lines: [
       'Ooooh, a visitor! I LOVE visitors. They make such a satisfying noise.',
       'I did not read the instructions. I do not intend to.',
@@ -116,7 +116,7 @@ const BOSS_DEFS = [
     title: 'The Final Dessert',
     specials: ['summon', 'slam'],
     score: 1800,
-    stats: { shape: 'dodecahedron', size: 5, color: 0x19d7d0, edgeColor: 0xbafffa, speed: 1.4, hp: 640, damage: 20, radius: 2.3 },
+    stats: { shape: 'dodecahedron', size: 5, color: 0x14b8ae, edgeColor: 0xa1e3df, speed: 1.4, hp: 640, damage: 20, radius: 2.3 },
     lines: [
       'I am OMEGA JELLO. I am the wobble at the end of the universe.',
       "They said I'd never set. THEY WERE WRONG.",

@@ -1,16 +1,19 @@
-import '@fontsource/orbitron/400.css'
-import '@fontsource/orbitron/700.css'
-import '@fontsource/orbitron/900.css'
+import '@fontsource/sora/400.css'
+import '@fontsource/sora/600.css'
+import '@fontsource/sora/800.css'
 import * as THREE from 'three'
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
-import { createArena, updateArena } from './arena.js'
+import { createArena, createEnvironmentMap, updateArena } from './arena.js'
+import { createAudio } from './audio.js'
 import { createMonsterMesh } from './characters.js'
 import { updateFace3D } from './face3d.js'
 import { loadHighScore, saveHighScore } from './highScore.js'
 import { createMusic } from './music.js'
+import { createSfx } from './sfx.js'
 import { jellyHit, updateJelly } from './jelly.js'
 import {
   ARENA_RADIUS,
@@ -22,6 +25,7 @@ import {
   CAMERA_LOOKAHEAD,
   BLINK_DISTANCE,
   BLINK_IFRAMES,
+  BOSS_DEFEAT_HEAL_MULTIPLIER,
   BOSS_SPAWN_DISTANCE,
   BOSS_SPAWN_EFFECT_DURATION,
   BOSS_SPAWN_EFFECT_SCALE,
@@ -44,9 +48,14 @@ import {
   FALL_PUFF_COUNT,
   FALL_PUFF_SPEED,
   FALL_STREAK_COUNT,
+  ENVIRONMENT_INTENSITY,
   FALL_STREAK_SPEED,
+  GTAO_ENABLED,
+  GTAO_INTENSITY,
+  GTAO_RADIUS,
   HEAL_PULSE_AMOUNT,
   HIDDEN_CAMERA_OFFSET,
+  HITSTOP_PLAYER_HURT,
   JELLY_DEATH_INFLATE_STRENGTH,
   MAX_DELTA_SECONDS,
   MAX_PIXEL_RATIO,
@@ -55,7 +64,6 @@ import {
   PLAYER_MAX_HP,
   PLAYER_RADIUS,
   PLAYER_SPEED,
-  POD_FLOOR_GLOW_COLOR,
   POD_HIDE_LIMIT,
   POD_INITIAL_COUNT_MAX,
   POD_INITIAL_COUNT_MIN,
@@ -68,12 +76,19 @@ import {
   POD_SPAWN_BURST_SPEED,
   POD_SPAWN_DELAY_MAX,
   POD_SPAWN_DELAY_MIN,
+  POD_SPAWN_FLASH_COLOR,
   POD_SPAWN_MARGIN,
   POD_SPAWN_MAX_ATTEMPTS,
+  POPUP_CANNONBALL_COLOR,
   POPUP_KILL_COLOR,
   POPUP_RING_OUT_COLOR,
   RAGE_DAMAGE_MULTIPLIER,
-  ROUND_CLEAR_HEAL_FRACTION,
+  RUMBLE_LIGHT_DURATION,
+  RUMBLE_LIGHT_STRENGTH,
+  RUMBLE_MEDIUM_DURATION,
+  RUMBLE_MEDIUM_STRENGTH,
+  RUMBLE_STRONG_DURATION,
+  RUMBLE_STRONG_STRENGTH,
   SHAKE_DAMAGE_DURATION,
   SHAKE_DAMAGE_MAGNITUDE,
   SHAKE_HIT_DURATION,
@@ -89,7 +104,9 @@ import {
   SPAWN_NEAR_PLAYER_MIN_DIST,
   SWORD_BLADE_COLOR,
   TONE_MAPPING_EXPOSURE,
+  WAVE_CLEAR_HEAL,
 } from './config.js'
+import { createCarpet, updateCarpet } from './carpet.js'
 import { setPlayerWeapon } from './characters.js'
 import { createChest, openChest, updateChest } from './chests.js'
 import { createAttackState, damageMonster, updateMonsterHitReaction, updatePlayerAttack } from './combat.js'
@@ -103,6 +120,7 @@ import {
   showCutscene,
   showGameOverlay,
   showLootToast,
+  showTrickSticker,
   showWaveClearedBanner,
   triggerDamageFlash,
   updateHud,
@@ -113,7 +131,10 @@ import { bossById, bossHpScale } from './logic/bosses.js'
 import { fanVelocities } from './logic/projectiles.js'
 import { clampToPlatform, isOnPlatform, resolveArenaMove, spawnPointNearPlayer } from './logic/arena.js'
 import { crystalDrops } from './logic/crystals.js'
-import { createCutscene, stepCutscene, visibleChars } from './logic/cutscene.js'
+import { isInPool } from './logic/resortLayout.js'
+import { createChainState, hasChainExpired, nameTrick, stepChain, trickPoints } from './logic/tricks.js'
+import { killVoiceForTrick } from './logic/sfx.js'
+import { CUTSCENE_ENTER_DURATION, createCutscene, introLines, speakerFor, stepCutscene, visibleChars } from './logic/cutscene.js'
 import {
   addCrystals,
   chestCost,
@@ -128,6 +149,7 @@ import {
 import { ABILITIES, ABILITY_KEYS, HOTBAR_KEYS, PETS, WEAPONS, petEffects } from './logic/items.js'
 import { stepFall } from './logic/falling.js'
 import { evaluateGameState } from './logic/gameState.js'
+import { createHitstopState, stepHitstop, triggerHitstop } from './logic/hitstop.js'
 import { hideTimeRemaining } from './logic/hiding.js'
 import { createPodSpawnerState, pickPodSpawnPoint, stepPodSpawner } from './logic/podSpawner.js'
 import {
@@ -158,13 +180,22 @@ renderer.setSize(window.innerWidth, window.innerHeight)
 // otherwise render (and composite) 9x the pixels for no visible gain.
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, MAX_PIXEL_RATIO))
 renderer.shadowMap.enabled = true
-renderer.shadowMap.type = THREE.PCFShadowMap // (PCFSoftShadowMap was removed from three; this is what it fell back to)
-renderer.toneMapping = THREE.ACESFilmicToneMapping
+renderer.shadowMap.type = THREE.PCFShadowMap
+// NeutralToneMapping keeps the sunlit scene's pastel colors true,
+// without a filmic curve crushing its highlights and shadows.
+renderer.toneMapping = THREE.NeutralToneMapping
 renderer.toneMappingExposure = TONE_MAPPING_EXPOSURE
 renderer.outputColorSpace = THREE.SRGBColorSpace
 container.appendChild(renderer.domElement)
 
 const scene = new THREE.Scene()
+// Gives physically lit materials (metalness/roughness, clearcoat)
+// something plausible to reflect instead of flat black: a PMREM bake of
+// the sky gradient plus a bright sun panel (see arena.js's
+// createEnvironmentMap). The sky colors are static, so this is built
+// once rather than per game/restart like the arena itself.
+scene.environment = createEnvironmentMap(renderer)
+scene.environmentIntensity = ENVIRONMENT_INTENSITY
 
 const camera = new THREE.PerspectiveCamera(
   70,
@@ -173,8 +204,9 @@ const camera = new THREE.PerspectiveCamera(
   CAMERA_FAR,
 )
 
-// Bloom makes the neon emissive surfaces (the grid, the rim, the pylons)
-// glow without washing out the rest of the scene; OutputPass applies the
+// Bloom makes genuinely bright surfaces (the sword's glow, spawn/hit
+// effects, the gas giant) glow without washing out the rest of the
+// daylit scene; OutputPass applies the
 // renderer's tone mapping/color space after the bloom pass runs. The
 // composer renders into its own target, which bypasses the renderer's
 // own antialias setting -- an explicit multisampled (MSAA) render
@@ -188,6 +220,34 @@ const composer = new EffectComposer(renderer, renderTarget)
 // resolution and upscaled -- blurry and pixelated. Match the renderer's.
 composer.setPixelRatio(renderer.getPixelRatio())
 composer.addPass(new RenderPass(scene, camera))
+// GTAOPass hides points and lines from its normal-buffer render but not
+// sprites, so every sprite (pod countdowns, chest prices, indicator
+// glyphs, score popups) would write a flat quad into that buffer and
+// come out as a dark ambient-occlusion box. Hide sprites from it too;
+// _restoreVisibility re-shows everything in the cache afterwards.
+class SpriteSafeGTAOPass extends GTAOPass {
+  _overrideVisibility() {
+    super._overrideVisibility()
+    const cache = this._visibilityCache
+    this.scene.traverse((object) => {
+      if (object.isSprite && object.visible) {
+        object.visible = false
+        cache.push(object)
+      }
+    })
+  }
+}
+
+// Ground-truth ambient occlusion for the contact shadows in creases and
+// corners that the directional sun makes obvious. Sits right after the
+// render pass, before bloom, so bloom's glow is computed from the
+// already-occluded image.
+const gtaoPass = new SpriteSafeGTAOPass(scene, camera, window.innerWidth, window.innerHeight, undefined, {
+  radius: GTAO_RADIUS,
+})
+gtaoPass.blendIntensity = GTAO_INTENSITY
+gtaoPass.enabled = GTAO_ENABLED
+composer.addPass(gtaoPass)
 const bloomPass = new UnrealBloomPass(
   new THREE.Vector2(window.innerWidth, window.innerHeight),
   BLOOM_STRENGTH,
@@ -229,6 +289,7 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight)
   composer.setPixelRatio(renderer.getPixelRatio())
   composer.setSize(window.innerWidth, window.innerHeight)
+  gtaoPass.setSize(window.innerWidth, window.innerHeight)
 })
 
 // Camera screen shake: a short decaying offset added on top of the
@@ -298,11 +359,13 @@ function createGame() {
   scene.background = new THREE.Color(arena.backgroundColor)
   scene.fog = arena.fog
 
-  // Pods are dynamic circular obstacles (src/logic/podSpawner.js decides
-  // where/when); `obstacles` is mutated in place as they spawn/despawn
+  // The sundeck's umbrellas/loungers/signs are static circular obstacles,
+  // built once from arena.propObstacles; pods and chests are dynamic ones
+  // (src/logic/podSpawner.js decides where/when) added/removed on top of
+  // them. `obstacles` is mutated in place as pods/chests spawn/despawn
   // (via trySpawnPod/despawnPod) so the player and monsters, which hold
   // this same array, stay in sync without it ever being reassigned.
-  const obstacles = []
+  const obstacles = [...arena.propObstacles]
 
   const player = new Player({ spawn: { x: 0, z: 0 }, obstacles, particleSystem })
   scene.add(player.mesh)
@@ -310,6 +373,7 @@ function createGame() {
   const game = {
     arena,
     obstacles,
+    props: arena.propObstacles, // the static props alone, so pod/chest/monster spawn points can steer clear of them specifically
     player,
     pods: [],
     despawningPods: [], // pod meshes mid-dematerialize: still animating, no longer collidable or counted toward POD_MAX_ACTIVE
@@ -323,9 +387,11 @@ function createGame() {
     chestSpawnerState: createPodSpawnerState(),
     cutscene: null, // { boss, mesh, dir, state } while a boss intro is playing; freezes gameplay
     score: 0,
+    chainState: createChainState(), // the current kill-chain count/multiplier (src/logic/tricks.js)
     hidingState: createHidingState(),
     attackState: createAttackState(),
     shake: createShakeState(),
+    hitstop: createHitstopState(), // a brief freeze of gameplay time on impact; see stepHitstop below
     gameOverRecorded: false,
     gameOverStats: null,
   }
@@ -361,6 +427,8 @@ function trySpawnPod(game) {
     minPlayerDistance: POD_MIN_PLAYER_DISTANCE,
     monsterPositions: game.monsters.map((mesh) => ({ x: mesh.position.x, z: mesh.position.z })),
     monsterAvoidRadius: POD_MONSTER_AVOID_RADIUS,
+    obstacles: game.props,
+    obstacleMargin: POD_OBSTACLE_RADIUS,
     maxAttempts: POD_SPAWN_MAX_ATTEMPTS,
   })
   if (point === null) return
@@ -374,7 +442,7 @@ function trySpawnPod(game) {
   burst(
     particleSystem,
     { x: point.x, y: 0.4, z: point.z },
-    POD_FLOOR_GLOW_COLOR,
+    POD_SPAWN_FLASH_COLOR,
     POD_SPAWN_BURST_COUNT,
     POD_SPAWN_BURST_SPEED,
   )
@@ -396,6 +464,8 @@ function trySpawnChest(game, { at = null, cost = null } = {}) {
       minPlayerDistance: POD_MIN_PLAYER_DISTANCE,
       monsterPositions: game.monsters.map((mesh) => ({ x: mesh.position.x, z: mesh.position.z })),
       monsterAvoidRadius: POD_MONSTER_AVOID_RADIUS,
+      obstacles: game.props,
+      obstacleMargin: CHEST_OBSTACLE_RADIUS,
       maxAttempts: POD_SPAWN_MAX_ATTEMPTS,
     })
   if (point === null) return
@@ -457,6 +527,8 @@ function activateAbility(game, slot, now) {
         knockback: SHOCKWAVE_KNOCKBACK,
         obstacles: game.obstacles,
         particleSystem,
+        cause: 'shockwave',
+        hitstop: game.hitstop,
       })
     }
   } else if (used.abilityId === 'heal') {
@@ -480,6 +552,7 @@ function openChestNow(game, chest, now) {
   if (!paid.ok) return
   game.inventory = cost > 0 ? { ...paid.inventory, chestsOpened: paid.inventory.chestsOpened + 1 } : paid.inventory
   openChest(chest)
+  sfx.play('chestOpen')
   const obstacleIndex = game.obstacles.indexOf(chest.userData.obstacle)
   if (obstacleIndex !== -1) game.obstacles.splice(obstacleIndex, 1)
 
@@ -529,7 +602,7 @@ function despawnPod(game, pod) {
   burst(
     particleSystem,
     { x: pod.position.x, y: 0.4, z: pod.position.z },
-    POD_FLOOR_GLOW_COLOR,
+    POD_SPAWN_FLASH_COLOR,
     POD_SPAWN_BURST_COUNT,
     POD_SPAWN_BURST_SPEED,
   )
@@ -551,6 +624,8 @@ function spawnMonster(game, type, { at = null, effectOptions, hpScale = 1, faceP
     SPAWN_NEAR_PLAYER_MAX_DIST,
     ARENA_RADIUS,
     SPAWN_NEAR_PLAYER_MARGIN,
+    game.props,
+    stats.radius,
   )
 
   const mesh = createMonsterMesh(type)
@@ -580,8 +655,9 @@ function spawnMonster(game, type, { at = null, effectOptions, hpScale = 1, faceP
 
 // Starts the current boss's intro: drops the boss in (portal and all)
 // straight ahead of the player -- on the other side if the platform's edge
-// is in the way -- facing them, and hands control to the cutscene, which
-// freezes gameplay until it finishes (see runCutscene).
+// is in the way -- facing them, unrolls a red carpet from the player to its
+// spot, and hands control to the cutscene, which freezes gameplay until it
+// finishes (see runCutscene).
 function startBossCutscene(game) {
   const boss = currentBoss(game.waveState)
   const { player } = game
@@ -599,7 +675,16 @@ function startBossCutscene(game) {
   const dx = player.position.x - at.x
   const dz = player.position.z - at.z
   const length = Math.hypot(dx, dz) || 1
-  game.cutscene = { boss, mesh, dir: { x: dx / length, z: dz / length }, state: createCutscene() }
+  const carpet = createCarpet({ x: player.position.x, z: player.position.z }, at)
+  scene.add(carpet.group)
+  game.cutscene = {
+    boss,
+    mesh,
+    dir: { x: dx / length, z: dz / length },
+    state: createCutscene(),
+    lines: introLines(boss.name, boss.lines),
+    carpet,
+  }
 }
 
 // Calls a summoner boss's minions in around it (skipped while it already
@@ -644,8 +729,11 @@ function applyBossEvents(game, bossMesh, events, now) {
     if (event.type === 'slam') {
       spawnShockwave(shockwavePool, event.x, event.z, event.radius, 0xff3355)
       burst(particleSystem, { x: event.x, y: 0.3, z: event.z }, 0xff9a5a, 36, 4.5)
+      sfx.play('bossSlam', { x: event.x, z: event.z })
       if (playerDistance(event.x, event.z) <= event.radius && player.damagePlayer(event.damage, now)) hurtPlayer = true
       triggerShake(game.shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
+      input.rumble(RUMBLE_STRONG_STRENGTH, RUMBLE_STRONG_DURATION)
+      game.hitstop.remaining = triggerHitstop(game.hitstop, HITSTOP_PLAYER_HURT).remaining
     } else if (event.type === 'spinTick') {
       spawnShockwave(shockwavePool, event.x, event.z, event.radius, 0xffb454)
       if (playerDistance(event.x, event.z) <= event.radius && player.damagePlayer(event.damage, now)) hurtPlayer = true
@@ -663,6 +751,48 @@ function applyBossEvents(game, bossMesh, events, now) {
     }
   }
   return hurtPlayer
+}
+
+// The sticker fill for a named trick: coral for a fall (Checkout/VIP
+// Checkout, the ring-out color), teal for a pool kill
+// (Cannonball), butter for everything else.
+function popupColorForTrick(trickId) {
+  if (trickId === 'checkout' || trickId === 'vipCheckout') return POPUP_RING_OUT_COLOR
+  if (trickId === 'cannonball') return POPUP_CANNONBALL_COLOR
+  return POPUP_KILL_COLOR
+}
+
+// The HUD trick sticker's tone -- the same coral/teal/butter grouping
+// as popupColorForTrick, but as a CSS class name for showTrickSticker
+// rather than a sprite fill color.
+function trickToneForId(trickId) {
+  if (trickId === 'checkout' || trickId === 'vipCheckout') return 'coral'
+  if (trickId === 'cannonball') return 'teal'
+  return 'butter'
+}
+
+// Scores one monster's death: names its trick (from `cause` --
+// 'sword'/'pet'/'shockwave'/'fall' -- plus whatever damageMonster last
+// recorded on it and whether it's standing in a pool or is a boss),
+// steps the kill chain, and adds the chain-multiplied points to the
+// score. Pops a sticker at `position` showing the trick's name over its
+// points (with the chain shown alongside once it's past 1x), and the
+// same trick/points on the big screen-space HUD sticker.
+function scoreKill(game, mesh, cause, position, now) {
+  const trick = nameTrick({
+    cause,
+    inPool: isInPool(game.arena.pools, mesh.position.x, mesh.position.z),
+    ambush: mesh.userData.lastHitAmbush,
+    boss: mesh.userData.isBoss,
+  })
+  game.chainState = stepChain(game.chainState, now, trick.id)
+  const points = trickPoints(scoreForKill(mesh.userData.type), game.chainState.multiplier)
+  game.score += points
+  const pointsLine = game.chainState.multiplier > 1 ? `+${points} ×${game.chainState.multiplier}` : `+${points}`
+  showPopup(popupPool, position, trick.name, pointsLine, popupColorForTrick(trick.id))
+  showTrickSticker(hud, { name: trick.name, points, multiplier: game.chainState.multiplier, tone: trickToneForId(trick.id) })
+  sfx.play(killVoiceForTrick(trick.id), position)
+  input.rumble(RUMBLE_MEDIUM_STRENGTH, RUMBLE_MEDIUM_DURATION)
 }
 
 // Advances each in-progress spawn-in effect (portal fade, monster
@@ -686,8 +816,13 @@ function updateSpawnEffects(game, deltaSeconds) {
 // dialogue. Hands off to the boss fight when the cutscene is done.
 function runCutscene(game, advancePressed, deltaSeconds, elapsedSeconds) {
   const { cutscene, player } = game
-  const { boss, mesh, dir } = cutscene
-  cutscene.state = stepCutscene(cutscene.state, deltaSeconds, advancePressed, boss.lines)
+  const { boss, mesh, dir, lines, carpet } = cutscene
+  cutscene.state = stepCutscene(cutscene.state, deltaSeconds, advancePressed, lines)
+
+  // The carpet unrolls over the enter phase's own elapsed time; skipping
+  // ahead (or any later phase) snaps it straight to fully unrolled.
+  if (cutscene.state.phase === 'enter') updateCarpet(carpet, cutscene.state.phaseElapsed, CUTSCENE_ENTER_DURATION)
+  else carpet.group.scale.z = 1
 
   // The hide-limit timer is wall-clock based: push its start forward so a
   // player hiding in a pod when the boss arrives isn't ejected by the cutscene.
@@ -700,7 +835,7 @@ function runCutscene(game, advancePressed, deltaSeconds, elapsedSeconds) {
     updateFace3D(m, deltaSeconds, elapsedSeconds)
   })
   updateSpawnEffects(game, deltaSeconds)
-  updateArena(game.arena, elapsedSeconds, player.position)
+  updateArena(game.arena, player.position)
   updateParticles(particleSystem, deltaSeconds)
   updatePopups(popupPool, deltaSeconds)
 
@@ -717,12 +852,18 @@ function runCutscene(game, advancePressed, deltaSeconds, elapsedSeconds) {
   const { phase, lineIndex, lineElapsed } = cutscene.state
   if (phase === 'done') {
     game.waveState = beginBossFight(game.waveState)
+    disposeObject3D(carpet.group)
     game.cutscene = null
     showCutscene(hud, null)
     return
   }
-  const line = boss.lines[lineIndex]
-  showCutscene(hud, { boss, phase, text: phase === 'talk' ? line.slice(0, visibleChars(line, lineElapsed)) : '' })
+  const line = lines[lineIndex]
+  showCutscene(hud, {
+    boss,
+    phase,
+    text: phase === 'talk' ? line.slice(0, visibleChars(line, lineElapsed)) : '',
+    speaker: speakerFor(boss, lineIndex),
+  })
 }
 
 // Removes and disposes everything createGame()/spawnMonster() added to
@@ -735,15 +876,22 @@ function disposeGame(target) {
   target.monsters.forEach((mesh) => disposeObject3D(mesh))
   target.spawnEffects.forEach(({ effect }) => disposeObject3D(effect.group))
   target.chests.forEach((chest) => disposeObject3D(chest))
+  if (target.cutscene) disposeObject3D(target.cutscene.carpet.group)
   disposePets(target.pets, scene)
 }
 
-// Browsers only allow audio after a user gesture, so the track starts
-// when the start card is dismissed. M mutes/unmutes it (remembered).
-const music = createMusic()
+// Browsers only allow audio after a user gesture, so the track (and the
+// sound effects riding on the same AudioContext) start when the start
+// card is dismissed. M mutes/unmutes both together (remembered).
+const audio = createAudio()
+const music = createMusic(audio)
+const sfx = createSfx(audio)
 
 let started = false
 function dismissStartCard() {
+  // Guards against the keydown/mousedown listeners below and a gamepad
+  // press both landing on the same frame and dismissing it twice.
+  if (started) return
   started = true
   music.start()
   hideStartCard(hud)
@@ -756,17 +904,30 @@ window.addEventListener('mousedown', dismissStartCard, { once: true })
 
 let game = createGame()
 
-const clock = new THREE.Clock()
+const timer = new THREE.Timer()
 
-function animate() {
+function animate(timestamp) {
+  // Updates the timer's internal delta/elapsed state from this frame's
+  // rAF timestamp, so the getDelta()/getElapsed() calls below return a
+  // stable value no matter how many times they're read this frame.
+  timer.update(timestamp)
+
+  // Polled once a frame, before anything below queries it: turns the
+  // real Gamepad object (if any) into this frame's actions (src/input.js's
+  // pollGamepad/src/logic/gamepad.js's gamepadActions).
+  input.pollGamepad()
+  // The keydown/mousedown listeners above only fire for the keyboard/
+  // mouse; a gamepad press has to be checked here instead, from the poll.
+  if (!started && input.wasAdvancePressed()) dismissStartCard()
+
   // Clamped so a dropped/backgrounded-tab frame doesn't feed a huge dt
   // into movement/physics and teleport everything forward.
-  const deltaSeconds = Math.min(clock.getDelta(), MAX_DELTA_SECONDS)
-  const elapsedSeconds = clock.getElapsedTime()
+  const deltaSeconds = Math.min(timer.getDelta(), MAX_DELTA_SECONDS)
+  const elapsedSeconds = timer.getElapsed()
 
   const gameState = evaluateGameState({ playerHp: game.player.hp })
 
-  if (input.wasPressed('KeyM')) music.toggleMuted()
+  if (input.wasPressed('KeyM') || input.wasMutePressed()) music.toggleMuted()
   music.setMuffled(gameState !== 'playing')
 
   // Recorded once, the frame the player dies: compares this run against
@@ -785,7 +946,7 @@ function animate() {
   showGameOverlay(hud, gameState === 'playing' ? null : gameState, game.gameOverStats)
 
   if (!started || gameState !== 'playing') {
-    if (started && gameState !== 'playing' && input.wasPressed('KeyR')) {
+    if (started && gameState !== 'playing' && (input.wasPressed('KeyR') || input.wasRestartPressed())) {
       disposeGame(game)
       game = createGame()
       resetParticles(particleSystem)
@@ -803,12 +964,21 @@ function animate() {
   }
 
   if (game.cutscene) {
-    const advance = input.wasPressed('Space') || input.wasPressed('Enter') || input.wasMousePressed(0)
+    const advance = input.wasPressed('Space') || input.wasPressed('Enter') || input.wasMousePressed(0) || input.wasAdvancePressed()
     runCutscene(game, advance, deltaSeconds, elapsedSeconds)
     composer.render()
     input.endFrame()
     return
   }
+
+  // Hitstop freezes gameplay time, not real time: the camera shake/flash,
+  // HUD, and music all keep using deltaSeconds, but every system below
+  // that actually moves/animates the game world uses gameplayDelta, which
+  // is 0 for the frame(s) a freeze covers (or a fraction of deltaSeconds
+  // the frame it ends partway through, so no time is lost overall).
+  const { state: nextHitstop, scale: hitstopScale } = stepHitstop(game.hitstop, deltaSeconds)
+  game.hitstop = nextHitstop
+  const gameplayDelta = deltaSeconds * hitstopScale
 
   const { obstacles, player, pods, hidingState, attackState, shake } = game
   let monsters = game.monsters
@@ -821,7 +991,7 @@ function animate() {
   const bossBeforeStep = currentBoss(game.waveState)
   const { state: nextWaveState, spawns, events } = stepWaves(
     game.waveState,
-    deltaSeconds,
+    gameplayDelta,
     monsters.length,
     Math.random,
   )
@@ -831,13 +1001,15 @@ function animate() {
     const bonus = waveClearBonus(clearedWaveNumber)
     game.score += bonus
     showWaveClearedBanner(hud, bonus)
-    player.hp = Math.min(PLAYER_MAX_HP, player.hp + PLAYER_MAX_HP * ROUND_CLEAR_HEAL_FRACTION)
+    sfx.play('waveCleared')
+    player.hp = Math.min(PLAYER_MAX_HP, player.hp + WAVE_CLEAR_HEAL)
   }
   if (events.includes('bossDefeated')) {
     const bonus = waveClearBonus(clearedWaveNumber) * 2
     game.score += bonus
-    showWaveClearedBanner(hud, bonus, `${bossBeforeStep.name} DEFEATED`)
-    player.hp = Math.min(PLAYER_MAX_HP, player.hp + PLAYER_MAX_HP * ROUND_CLEAR_HEAL_FRACTION)
+    showWaveClearedBanner(hud, bonus, { lead: bossBeforeStep.name, text: 'DEFEATED' })
+    sfx.play('waveCleared')
+    player.hp = Math.min(PLAYER_MAX_HP, player.hp + WAVE_CLEAR_HEAL * BOSS_DEFEAT_HEAL_MULTIPLIER)
   }
   if (events.includes('waveCleared') || events.includes('bossDefeated')) attractAllCrystals(crystalSystem)
   if (events.includes('bossIntro')) startBossCutscene(game)
@@ -866,17 +1038,24 @@ function animate() {
   game.chestSpawnerState = nextChestSpawnerState
   if (chestSpawnNow) trySpawnChest(game)
 
-  player.update(input, cameraYaw, deltaSeconds)
+  player.update(input, cameraYaw, gameplayDelta)
   if (!player.falling && !player.hidden && !isOnPlatform(player.position, ARENA_RADIUS)) {
     player.startFalling()
   }
-  if (player.falling && player.updateFalling(deltaSeconds, elapsedSeconds)) {
+  if (player.falling && player.updateFalling(gameplayDelta, elapsedSeconds)) {
     triggerShake(shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
     triggerDamageFlash(hud)
+    sfx.play('playerHurt', { x: player.position.x, z: player.position.z })
+    input.rumble(RUMBLE_STRONG_STRENGTH, RUMBLE_STRONG_DURATION)
+    game.hitstop.remaining = triggerHitstop(game.hitstop, HITSTOP_PLAYER_HURT).remaining
   }
-  updateJelly(player.mesh, deltaSeconds, elapsedSeconds, { speed: player.speed, moveDir: player.moveDir })
-  updateFace3D(player.mesh, deltaSeconds, elapsedSeconds)
+  updateJelly(player.mesh, gameplayDelta, elapsedSeconds, { speed: player.speed, moveDir: player.moveDir })
+  updateFace3D(player.mesh, gameplayDelta, elapsedSeconds)
 
+  // wasHidden, compared against player.hidden after updateHiding runs,
+  // catches the one frame hiding actually started, so the zip-up sound
+  // plays exactly once per entry.
+  const wasHidden = player.hidden
   // vacatedPod is the pod the player just left (early with E, or forced
   // out by the hide-limit timer -- `ejected`) this frame, if any; pods
   // are single-use, so it always starts despawning. An eject also
@@ -889,48 +1068,72 @@ function animate() {
     elapsedSeconds,
     POD_HIDE_LIMIT,
   )
-  if (vacatedPod) despawnPod(game, vacatedPod)
+  if (!wasHidden && player.hidden) sfx.play('podIn', { x: player.position.x, z: player.position.z })
+  if (vacatedPod) {
+    sfx.play('podOut', { x: vacatedPod.position.x, z: vacatedPod.position.z })
+    despawnPod(game, vacatedPod)
+  }
   if (ejected) {
     triggerShake(shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
     triggerDamageFlash(hud)
+    sfx.play('playerHurt', { x: player.position.x, z: player.position.z })
+    input.rumble(RUMBLE_STRONG_STRENGTH, RUMBLE_STRONG_DURATION)
+    game.hitstop.remaining = triggerHitstop(game.hitstop, HITSTOP_PLAYER_HURT).remaining
   }
 
   pods.forEach((pod) => {
     const remaining = pod.userData.occupied
       ? hideTimeRemaining(hidingState.enteredAt, elapsedSeconds, POD_HIDE_LIMIT)
       : null
-    updatePod(pod, deltaSeconds, elapsedSeconds, { isNearestEnterable: pod === nearestPod, hideTimeRemaining: remaining })
+    updatePod(pod, gameplayDelta, elapsedSeconds, { isNearestEnterable: pod === nearestPod, hideTimeRemaining: remaining })
   })
   game.despawningPods = game.despawningPods.filter((pod) => {
-    const finished = updatePod(pod, deltaSeconds, elapsedSeconds, {})
+    const finished = updatePod(pod, gameplayDelta, elapsedSeconds, {})
     if (finished) disposeObject3D(pod)
     return !finished
   })
 
-  // The weapon hotbar (1-5) and ability keys (Q Z X C V).
+  // The weapon hotbar (1-5) and ability keys (Q Z X C V); LB/RB cycle the
+  // hotbar backward/forward for a gamepad, which has no equivalent of
+  // jumping straight to a slot.
   HOTBAR_KEYS.forEach((key, slot) => {
     if (input.wasPressed(key)) selectWeapon(game, slot)
   })
+  const weaponCount = game.inventory.weapons.length
+  if (input.wasPrevWeaponPressed()) selectWeapon(game, (game.inventory.selected - 1 + weaponCount) % weaponCount)
+  if (input.wasNextWeaponPressed()) selectWeapon(game, (game.inventory.selected + 1) % weaponCount)
   if (!player.hidden) {
     ABILITY_KEYS.forEach((key, slot) => {
-      if (input.wasPressed(key)) activateAbility(game, slot, elapsedSeconds)
+      if (input.wasPressed(key) || input.wasAbilityPressed(slot)) activateAbility(game, slot, elapsedSeconds)
     })
   }
 
+  // No swing in flight yet this frame -- used below to tell a swing that
+  // just started (attackState.swingElapsed goes from null to 0) from one
+  // already in progress, so the whoosh only plays once per swing.
+  const hadSwing = attackState.swingElapsed !== null
   const { ambushHit, hitAny } = updatePlayerAttack(attackState, {
     player,
     monsters,
     obstacles,
     input,
     elapsedSeconds,
-    deltaSeconds,
+    deltaSeconds: gameplayDelta,
     particleSystem,
     swingTrail,
     weaponId: selectedWeaponId(game.inventory),
     damageMultiplier: elapsedSeconds < player.rageUntil ? RAGE_DAMAGE_MULTIPLIER : 1,
+    hitstop: game.hitstop,
   })
+  if (!hadSwing && attackState.swingElapsed !== null) {
+    sfx.play('swing', { x: player.position.x, z: player.position.z })
+  }
   if (ambushHit) showAmbushBanner(hud)
-  if (hitAny) triggerShake(shake, SHAKE_HIT_MAGNITUDE, SHAKE_HIT_DURATION)
+  if (hitAny) {
+    triggerShake(shake, SHAKE_HIT_MAGNITUDE, SHAKE_HIT_DURATION)
+    sfx.play('hit', { x: player.position.x, z: player.position.z })
+    input.rumble(RUMBLE_LIGHT_STRENGTH, RUMBLE_LIGHT_DURATION)
+  }
 
   // Monsters still materializing in just tick their jelly (for the
   // inflate wobble the spawn effect kicked off) -- updateSpawnEffect
@@ -946,19 +1149,17 @@ function animate() {
   let bossDeathPoint = null
   monsters = monsters.filter((mesh) => {
     if (mesh.userData.spawning) {
-      updateJelly(mesh, deltaSeconds, elapsedSeconds, { speed: 0, moveDir: mesh.userData.moveDir })
-      updateFace3D(mesh, deltaSeconds, elapsedSeconds)
+      updateJelly(mesh, gameplayDelta, elapsedSeconds, { speed: 0, moveDir: mesh.userData.moveDir })
+      updateFace3D(mesh, gameplayDelta, elapsedSeconds)
       return true
     }
 
     if (mesh.userData.dying) {
-      updateJelly(mesh, deltaSeconds, elapsedSeconds, { speed: 0, moveDir: mesh.userData.moveDir })
-      updateFace3D(mesh, deltaSeconds, elapsedSeconds)
-      const finishedDying = updateMonsterHitReaction(mesh, deltaSeconds)
+      updateJelly(mesh, gameplayDelta, elapsedSeconds, { speed: 0, moveDir: mesh.userData.moveDir })
+      updateFace3D(mesh, gameplayDelta, elapsedSeconds)
+      const finishedDying = updateMonsterHitReaction(mesh, gameplayDelta)
       if (finishedDying) {
-        const points = scoreForKill(mesh.userData.type)
-        game.score += points
-        showPopup(popupPool, mesh.position, `+${points}`, POPUP_KILL_COLOR)
+        scoreKill(game, mesh, mesh.userData.lastHitBy ?? 'sword', mesh.position, elapsedSeconds)
         dropCrystals(crystalSystem, mesh.position.x, mesh.position.z, crystalDrops(mesh.userData.type, mesh.userData.isBoss))
         scene.remove(mesh)
         if (mesh.userData.isBoss) {
@@ -971,14 +1172,12 @@ function animate() {
     }
 
     if (mesh.userData.falling) {
-      mesh.userData.fallState = stepFall(mesh.userData.fallState, deltaSeconds, FALL_GRAVITY)
+      mesh.userData.fallState = stepFall(mesh.userData.fallState, gameplayDelta, FALL_GRAVITY)
       mesh.position.y = -mesh.userData.fallState.fallenY
-      mesh.rotation.x += deltaSeconds * MONSTER_FALL_TUMBLE_SPEED
-      mesh.rotation.z += deltaSeconds * MONSTER_FALL_TUMBLE_SPEED * 0.6
+      mesh.rotation.x += gameplayDelta * MONSTER_FALL_TUMBLE_SPEED
+      mesh.rotation.z += gameplayDelta * MONSTER_FALL_TUMBLE_SPEED * 0.6
       if (mesh.userData.fallState.fallenY >= FALL_DESPAWN_DEPTH) {
-        const points = scoreForKill(mesh.userData.type)
-        game.score += points
-        showPopup(popupPool, { x: mesh.position.x, y: 0, z: mesh.position.z }, 'RING OUT!', POPUP_RING_OUT_COLOR)
+        scoreKill(game, mesh, 'fall', { x: mesh.position.x, y: 0, z: mesh.position.z }, elapsedSeconds)
         scene.remove(mesh)
         if (mesh.userData.isBoss) bossGone = true
         return false
@@ -986,15 +1185,18 @@ function animate() {
       return true
     }
 
-    const { hitPlayer: monsterHitPlayer, events: specialEvents } = updateMonster(mesh, player, obstacles, deltaSeconds, elapsedSeconds)
+    const { hitPlayer: monsterHitPlayer, events: specialEvents } = updateMonster(mesh, player, obstacles, gameplayDelta, elapsedSeconds)
     const hitPlayer = monsterHitPlayer || (specialEvents.length > 0 && applyBossEvents(game, mesh, specialEvents, elapsedSeconds))
-    updateJelly(mesh, deltaSeconds, elapsedSeconds, { speed: mesh.userData.speed, moveDir: mesh.userData.moveDir })
-    updateFace3D(mesh, deltaSeconds, elapsedSeconds)
+    updateJelly(mesh, gameplayDelta, elapsedSeconds, { speed: mesh.userData.speed, moveDir: mesh.userData.moveDir })
+    updateFace3D(mesh, gameplayDelta, elapsedSeconds)
     if (hitPlayer) {
       triggerShake(shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
       triggerDamageFlash(hud)
+      sfx.play('playerHurt', { x: player.position.x, z: player.position.z })
+      input.rumble(RUMBLE_STRONG_STRENGTH, RUMBLE_STRONG_DURATION)
+      game.hitstop.remaining = triggerHitstop(game.hitstop, HITSTOP_PLAYER_HURT).remaining
     }
-    updateMonsterHitReaction(mesh, deltaSeconds)
+    updateMonsterHitReaction(mesh, gameplayDelta)
 
     if (!isOnPlatform({ x: mesh.position.x, z: mesh.position.z }, ARENA_RADIUS)) {
       mesh.userData.falling = true
@@ -1016,16 +1218,19 @@ function animate() {
     }
   }
 
-  updateSpawnEffects(game, deltaSeconds)
+  updateSpawnEffects(game, gameplayDelta)
 
   separateMonsters(monsters, player, obstacles)
-  updateArena(game.arena, elapsedSeconds, player.position)
-  updateParticles(particleSystem, deltaSeconds)
-  updatePopups(popupPool, deltaSeconds)
-  updateShockwaves(shockwavePool, deltaSeconds)
-  if (updateProjectiles(projectilePool, deltaSeconds, player, elapsedSeconds, ARENA_RADIUS)) {
+  updateArena(game.arena, player.position)
+  updateParticles(particleSystem, gameplayDelta)
+  updatePopups(popupPool, gameplayDelta)
+  updateShockwaves(shockwavePool, gameplayDelta)
+  if (updateProjectiles(projectilePool, gameplayDelta, player, elapsedSeconds, ARENA_RADIUS)) {
     triggerShake(shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
     triggerDamageFlash(hud)
+    sfx.play('playerHurt', { x: player.position.x, z: player.position.z })
+    input.rumble(RUMBLE_STRONG_STRENGTH, RUMBLE_STRONG_DURATION)
+    game.hitstop.remaining = triggerHitstop(game.hitstop, HITSTOP_PLAYER_HURT).remaining
   }
 
   // Pets follow and help, crystals scatter/home/get collected, and chests
@@ -1033,9 +1238,12 @@ function animate() {
   const petFx = petEffects(game.inventory.pets)
   player.damageTakenMultiplier = petFx.damageTakenMultiplier
   player.updateStatusEffects(elapsedSeconds)
-  updatePets(game.pets, { dt: deltaSeconds, elapsed: elapsedSeconds, player, monsters: game.monsters, obstacles, particleSystem })
-  const collected = updateCrystals(crystalSystem, deltaSeconds, elapsedSeconds, player.position.x, player.position.z, petFx.magnetRadius)
-  if (collected > 0) game.inventory = addCrystals(game.inventory, collected)
+  updatePets(game.pets, { dt: gameplayDelta, elapsed: elapsedSeconds, player, monsters: game.monsters, obstacles, particleSystem, hitstop: game.hitstop })
+  const collected = updateCrystals(crystalSystem, gameplayDelta, elapsedSeconds, player.position.x, player.position.z, petFx.magnetRadius)
+  if (collected > 0) {
+    game.inventory = addCrystals(game.inventory, collected)
+    sfx.play('crystal')
+  }
 
   let nearestChest = null
   if (!player.hidden) {
@@ -1049,11 +1257,11 @@ function animate() {
       }
     }
   }
-  if (nearestChest && input.wasPressed('KeyF') && game.inventory.crystals >= nearestChest.userData.cost) {
+  if (nearestChest && input.wasChestPressed() && game.inventory.crystals >= nearestChest.userData.cost) {
     openChestNow(game, nearestChest, elapsedSeconds)
   }
   game.chests = game.chests.filter((chest) => {
-    const finished = updateChest(chest, deltaSeconds, elapsedSeconds, {
+    const finished = updateChest(chest, gameplayDelta, elapsedSeconds, {
       affordable: game.inventory.crystals >= chest.userData.cost,
       highlighted: chest === nearestChest && !chest.userData.opened,
     })
@@ -1088,6 +1296,17 @@ function animate() {
         ratio: Math.max(0, Math.min(1, bossMesh.userData.hp / bossMesh.userData.maxHp)),
       }
     : null
+  // The chain indicator only shows once a chain is actually worth
+  // bragging about (2+ kills) and still live; a lone kill or a cold
+  // chain just hides it.
+  const liveChain =
+    game.chainState.count >= 2 && !hasChainExpired(game.chainState, elapsedSeconds)
+      ? { count: game.chainState.count, multiplier: game.chainState.multiplier }
+      : null
+  // The PA chime plays the one frame updateHud picks a fresh
+  // announcement for the wave banner (hud.waveAnnouncement changes
+  // identity), not on every frame that banner stays on screen.
+  const previousAnnouncement = hud.waveAnnouncement
   updateHud(hud, {
     hp: player.hp,
     maxHp: PLAYER_MAX_HP,
@@ -1100,8 +1319,10 @@ function animate() {
     showHidePrompt: showPrompt,
     waveState: game.waveState,
     boss: bossHud,
+    chain: liveChain,
     deltaSeconds,
   })
+  if (hud.waveAnnouncement !== previousAnnouncement) sfx.play('announcement')
 
   // A slight look-ahead in the player's current movement direction,
   // scaled by how close to full speed they're actually moving (so it
@@ -1124,6 +1345,10 @@ function animate() {
   camera.position.x += shakeOffset.x
   camera.position.y += shakeOffset.y
   camera.position.z += shakeOffset.z
+
+  // Keeps positional sound effects panning/attenuating from wherever the
+  // camera actually ended up this frame, shake included.
+  sfx.updateListener(camera)
 
   composer.render()
   input.endFrame()

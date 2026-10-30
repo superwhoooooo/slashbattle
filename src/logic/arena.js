@@ -98,9 +98,34 @@ export function randomPointNear(rng = Math.random, center, maxDist, arenaRadius,
 // reasonable time on a big arena, rather than always walking in from the
 // platform's actual edge. rng is injectable (default Math.random) for
 // deterministic tests.
-export function spawnPointNearPlayer(rng = Math.random, playerPos, minDist, maxDist, arenaRadius, margin = 0) {
-  const angle = rng() * Math.PI * 2
-  const distance = minDist + rng() * (maxDist - minDist)
-  const point = { x: playerPos.x + Math.sin(angle) * distance, z: playerPos.z + Math.cos(angle) * distance }
-  return clampToPlatform(point, Math.max(arenaRadius - margin, 0))
+//
+// `obstacles` (each { x, z, radius }, default none) are retried around --
+// a monster shouldn't materialize inside a sundeck prop -- with
+// `obstacleMargin` added to the obstacle's own radius (typically the
+// spawning monster's own collision radius). If every attempt in
+// `maxAttempts` still lands on one, the last candidate is used anyway: a
+// monster has to spawn somewhere, so this is a best effort rather than a
+// skippable attempt like pickPodSpawnPoint's.
+export function spawnPointNearPlayer(
+  rng = Math.random,
+  playerPos,
+  minDist,
+  maxDist,
+  arenaRadius,
+  margin = 0,
+  obstacles = [],
+  obstacleMargin = 0,
+  maxAttempts = 10,
+) {
+  let point = null
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const angle = rng() * Math.PI * 2
+    const distance = minDist + rng() * (maxDist - minDist)
+    point = clampToPlatform(
+      { x: playerPos.x + Math.sin(angle) * distance, z: playerPos.z + Math.cos(angle) * distance },
+      Math.max(arenaRadius - margin, 0),
+    )
+    if (!hitsObstacle(point.x, point.z, obstacleMargin, obstacles)) return point
+  }
+  return point
 }

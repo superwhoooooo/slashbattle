@@ -22,15 +22,24 @@ never the pod itself, which would give the hiding spot away) before going back t
 at the platform's edge: anyone whose center leaves it falls. A monster
 that falls dies (counts as a kill); a player who falls loses HP and
 respawns at the center with a moment of invulnerability. Attacks knock
-monsters back, which can push them off the edge. Completing a round (a wave
-or a boss fight) heals you 10% of your max HP (`ROUND_CLEAR_HEAL_FRACTION`), so
-endless runs stay survivable. R restarts the game (back to
+monsters back, which can push them off the edge. Between waves you heal
+a little, so endless runs stay survivable. R restarts the game (back to
 wave 1, score 0) at any time after losing. Every few waves a boss arrives
 (see Bosses below).
 
 ## Scoring
 Every kill (including a fall off the edge) scores points by monster
 type; clearing a wave scores a bonus that grows with the wave number.
+Every kill is also a named trick (`src/logic/tricks.js`'s `nameTrick`,
+highest precedence first): VIP Checkout (a boss falls), Do Not Disturb
+(any other boss kill), Checkout (a fall), Cannonball (killed in a pool),
+Room Service (an ambush kill), Turndown Service (a pet zap), Wake-Up Call
+(Shockwave), or plain Slash. `damageMonster` records the last hit's
+`cause`/`ambush` on the monster so `main.js`'s `scoreKill` can name it.
+Kills within `CHAIN_WINDOW` of each other build a chain (`stepChain`)
+whose multiplier (up to `CHAIN_MAX`) scales that kill's points (never the
+wave bonus); the score sticker shows the trick name over the points, and
+a "CHAIN xN" chip shows in the HUD while a chain of 2+ is live.
 The best score and the best wave reached ever are saved in the browser
 (`localStorage`) and shown on the game-over screen alongside the run
 that just ended, with a "NEW BEST!" callout when you beat your own
@@ -41,10 +50,20 @@ record.
 - Left click or Space — swing your sword
 - E — enter or exit a nearby pod to hide
 - R — restart after losing
-- M — mute / unmute the music (remembered in `localStorage`)
+- M — mute / unmute all sound, music and effects (remembered in `localStorage`)
 - F — open the nearest chest (costs crystals)
 - 1-5 — pick a weapon from the hotbar
 - Q / Z / X / C / V — use your abilities, in the order you found them
+
+A standard gamepad works too (`src/logic/gamepad.js` maps a snapshot to
+actions; `src/input.js` polls it each frame via `pollGamepad()` and merges
+it into the same queries the keyboard/mouse answer): left stick or d-pad
+move, A or RT attack, B hide, X open a chest, LB/RB previous/next weapon,
+Y ability 1 and LT + Y/A/B/X abilities 2-5 (while LT is held, A/B/X only
+fire abilities), Start restart, Back mute; A or Start dismisses the start
+card and skips cutscene lines. `input.rumble()` gives light rumble on a
+landed hit, medium on a kill and strong on player damage or a boss slam,
+where the browser supports `vibrationActuator`.
 
 ## Commands
 - `npm install` — install dependencies
@@ -61,8 +80,8 @@ slashbattle/
   src/
     main.js            # bootstrap: renderer, scene, camera, post-processing, game loop
     config.js          # tunable constants (speeds, damage, ranges, HP, arena/visual tuning)
-    input.js           # keyboard/mouse state
-    arena.js           # the floating platform, starfield/nebula sky, lighting, neon pylons
+    input.js           # keyboard/mouse/gamepad state, rumble
+    arena.js           # the resort sundeck + props, daylight sky + gas giant, environment map, lighting
     face3d.js          # 3D goofy face features (googly eyes, mouths, brow/tongue/cheeks), attached to a jelly body
     characters.js      # build player/monster jelly bodies (shape + 3D face + indicators)
     jelly.js           # the jelly body: shared-geometry wireframe edges, per-vertex deformation
@@ -72,13 +91,24 @@ slashbattle/
     pets.js            # pets that orbit the player and zap/heal
     projectiles.js     # pooled boss-barrage orbs
     shockwave.js       # expanding ground rings (boss slam, player Shockwave)
+    logic/resortLayout.js # seeded sundeck prop layout (pools, umbrellas, loungers, signs), isInPool
     logic/items.js     # weapon / ability / pet catalogs
     logic/inventory.js # crystals, hotbar, ability cooldowns, chest loot rolls
     logic/crystals.js  # crystal drops + movement rules
     logic/projectiles.js # fan velocities, projectile stepping/hits
     logic/bosses.js    # the seven bosses (stats, specials, dialogue), boss order/scaling
-    logic/cutscene.js  # the boss-intro cutscene timeline (enter -> talk -> title -> done)
-    music.js           # procedural Web Audio background track (lookahead scheduler, synth voices, mute)
+    logic/cutscene.js  # the boss-intro cutscene timeline (enter -> talk -> title -> done), concierge intro line
+    logic/hitstop.js   # hitstop freeze state (triggerHitstop / stepHitstop)
+    logic/hudText.js   # HUD phrasing (enemiesLeftText)
+    logic/tricks.js    # kill trick names (nameTrick) and the chain multiplier (stepChain)
+    logic/announcements.js # the resort PA lines (wave start/cleared, boss incoming, low hp, ambush)
+    logic/carpet.js    # the VIP red carpet's eased unroll fraction
+    carpet.js          # the VIP red carpet mesh for a boss's arrival
+    audio.js           # the shared AudioContext, master gain (mute) and compressor
+    music.js           # procedural Web Audio background track (lookahead scheduler, synth voices)
+    sfx.js             # synthesized, spatialized sound effects
+    logic/gamepad.js   # gamepad deadzone, button edges, button -> action mapping
+    logic/sfx.js       # sound-effect rate limiting and trick -> voice mapping
     highScore.js       # load/save the best score/wave in localStorage (try/catch, zero fallback)
     particles.js       # pooled spark (Points) and tumbling-shard (InstancedMesh) bursts
     trail.js           # the sword's fading swing-trail ribbon (tip position history)
@@ -105,32 +135,50 @@ context.
 The dungeon has been replaced by a single circular platform (radius
 `ARENA_RADIUS`, 48) floating in space, with no walls at the edge -- line
 of sight is always clear, so monsters see the player whenever they're
-within `SIGHT_RANGE` and not hidden. Cargo pods are temporarily placed at
-a few fixed positions on the platform (`POD_POSITIONS` in config.js, 12
-of them in two rings) as circular obstacles; a later milestone spawns
-them dynamically. Monsters keep their own steering (wander, chase,
+within `SIGHT_RANGE` and not hidden. Hiding pods are circular obstacles
+spawned dynamically (see Hiding pods below). Monsters keep their own steering (wander, chase,
 search) away from the very edge (`MONSTER_PLATFORM_MARGIN`), so only
 knockback -- or the player's own choice to walk off -- sends anyone over
 the side. A wandering monster's target is biased to within
 `WANDER_BIAS_RADIUS` of its current position (`randomPointNear` in
 `src/logic/arena.js`), so it doesn't trek clean across the arena.
 
-Lighting stays deliberately dim: the hemisphere/key lights are the main
-source, bloom is tuned low and only picks up genuinely bright surfaces
-(`BLOOM_THRESHOLD`), and most small per-object lights (the platform's
-underside thrusters, most of the neon pylons) were cut in favor of
-dimmed emissive materials instead -- a handful of real lights reads
-better than a crowd of dim ones.
+The sky is daylight: a gradient dome (deep blue zenith, pale haze at
+the horizon, warm sand below) with a ringed gas giant placed out along
+-Z, where the follow camera can see past the platform's edge. A warm
+sun (the shadow-casting key light that follows the player) and a cool
+hemisphere fill light the scene; the fog matches the horizon haze.
+`createEnvironmentMap` (arena.js) PMREM-bakes the sky plus a sun panel
+into `scene.environment` once at startup, so physical materials have
+something to reflect. The renderer uses `NeutralToneMapping`, and the
+composer runs RenderPass -> GTAOPass (ambient occlusion, `GTAO_*`) ->
+UnrealBloomPass (near off: only genuinely bright surfaces above
+`BLOOM_THRESHOLD` glow) -> OutputPass. Light levels (`KEY_LIGHT_INTENSITY`,
+`HEMI_LIGHT_INTENSITY`, `ENVIRONMENT_INTENSITY`, `TONE_MAPPING_EXPOSURE`)
+are kept moderate so the pale deck doesn't wash out to white.
+
+The platform is a resort sundeck: a repeating warm-white plank texture
+on a light hull, with a teal border band and white pinstripe as flat
+rings at the edge, and a matching teal inlay ring around the prop-free
+center (its outer radius is resortLayout's exported `CENTER_CLEARANCE`). `src/logic/resortLayout.js`'s `resortLayout({ radius,
+seed })` is a pure, seeded (`RESORT_LAYOUT_SEED`, so every run is the
+same) layout of pools, umbrellas, loungers and signs, with a clear zone
+around the center and a margin in from the edge; `arena.js` builds them
+from primitives. Umbrellas, loungers and signs are static circular
+obstacles in `game.obstacles` (same `{ x, z, radius }` shape as pods), and
+`pickPodSpawnPoint`/`spawnPointNearPlayer` take them as `obstacles` so
+pods, chests and monsters don't spawn inside one. Pools are walkable;
+`isInPool` tells whether a point is in one.
 
 ## Hiding pods
-Each hiding spot (`src/hiding.js`) is a capsule hull on a small hovering
-base, with glowing seam rings, a translucent visor band, a soft floor
-glow, and a bobbing holographic "NOT A PLAYER" label -- restyled from the
-original wooden crates, with the same hide-in/pop-out behavior
-underneath (`src/logic/hiding.js`'s box-named functions are unchanged).
-The seam color reads the pod's state: idle, highlighted when it's the
-nearest one E would enter, or switched to the occupied color with a pair
-of googly eyes peeking out of the visor and the pod wiggling comically
+Each hiding spot (`src/hiding.js`) is a piece of lost luggage: a
+cream hard-shell suitcase (a RoundedBoxGeometry shell with ribs, corner
+bumpers, wheels and a telescoping handle) with a paper "NOT A GUEST"
+tag swaying from the handle, over the same hide-in/pop-out behavior
+(`src/logic/hiding.js`'s box-named functions). Two zip-seam bands around
+the shell read the pod's state: idle tan, teal when it's the nearest
+one E would enter, or the occupied coral with a pair of googly eyes
+peeking out of the zipper gap and the suitcase wiggling comically
 every second or two (harder and more often in the last
 `POD_HIDE_URGENT_THRESHOLD` seconds of hiding, turning the seam/
 countdown red).
@@ -169,8 +217,12 @@ dismissed, spawns whatever it emits via `spawnMonster` (through
 ## Jelly bodies
 Every character (player = icosahedron, blobbo = dodecahedron, zippy =
 octahedron, grumpus = a multi-segment box) is one faceted, flat-shaded
-low-poly mesh with a glowing wireframe overlay that shares its geometry,
-so the edges deform right along with it. `createJellyBody` clones the
+low-poly mesh in a glossy candy-pastel `MeshPhysicalMaterial`
+(clearcoat + sheen, `JELLY_*` in config.js; the player is coral, blobbo
+mint, zippy hot pink, grumpus periwinkle, bosses deeper shades). A
+wireframe outline overlay (a lighter tint of the body color) shares its
+geometry, so the edges deform right along with it; it's hidden while
+`JELLY_EDGE_OPACITY` is 0, so the jellies read as smooth candy. `createJellyBody` clones the
 geometry's original vertex positions once; every frame `updateJelly`
 displaces each vertex as a pure function (`src/logic/jelly.js`'s
 `jellyOffset`) of that ORIGINAL position, the current time, and the
@@ -242,13 +294,45 @@ particle system, the swing trail, and the popup pool are all per-session
 singletons -- created once alongside the HUD and composer, added to the
 scene once, and reset (not disposed/recreated) on restart.
 
-The HUD itself uses the self-hosted `@fontsource/orbitron` font (no
-external network fonts) on glassy, translucent, neon-bordered panels; the
-health bar is segmented and pulses red at/under `LOW_HP_PULSE_THRESHOLD`;
-the wave banner scales in; the start card lays out its controls with key
-caps. A fixed vignette gently darkens the screen's edges, and a brief
+The HUD itself uses the self-hosted `@fontsource/sora` font (no
+external network fonts, and the in-world canvas labels use it too) on
+frosted white resort cards (`.panel`, `backdrop-filter`, design tokens
+on `:root` in index.html), laid out like the sketch: health and the
+hide countdown top-left, wave / "N guests still checked in"
+(`src/logic/hudText.js`'s `enemiesLeftText`) / score / chain top-right,
+crystals bottom-right, and hotbar slots labeled with each weapon's
+`short` name; the "Guest Health" bar is segmented with a
+coral-to-butter fill and pulses red at/under `LOW_HP_PULSE_THRESHOLD`;
+the wave banner is a dark announcement pill whose leading word is
+butter, and scales in; the start card lays out its controls with light
+key caps. Score popups are tilted stickers in the world (butter for kills, coral
+for RING OUT), and `showTrickSticker` also pops the newest trick as a big
+tilted screen-space sticker that fades after about 1.2s. Decorative animations respect `prefers-reduced-motion`. A
+fixed warm vignette gently darkens the screen's edges, and a brief
 red screen flash (`triggerDamageFlash`) accompanies every point the
 player takes damage, alongside the existing screen shake.
+
+Hits also freeze gameplay briefly (hitstop, `src/logic/hitstop.js`:
+`triggerHitstop` keeps the longer of the current and new freeze,
+`stepHitstop` returns the fraction of the frame's dt that gameplay gets).
+`damageMonster` triggers `HITSTOP_HIT` on a hit (not on a non-lethal pet
+zap), `HITSTOP_KILL` on a kill and `HITSTOP_BOSS` on any boss hit; the
+player taking damage triggers `HITSTOP_PLAYER_HURT`. `animate()` passes
+the scaled `gameplayDelta` to gameplay systems (player, monsters, waves,
+particles, popups, pods, chests, pets, crystals, projectiles, shockwaves)
+and the real delta to the camera, shake, HUD and music, so the screen
+still shakes during a freeze. Timers keyed on `elapsedSeconds`
+(cooldowns, i-frames, ambush/chain windows, hide limit) aren't frozen.
+
+## Resort announcements
+`src/logic/announcements.js`'s `pickAnnouncement(kind, { wave, bossName, rng,
+previous })` returns a deadpan PA line `{ lead, text }` (lead is a department
+tag like FRONT DESK, shown in butter in the wave banner) for `waveStart`,
+`waveCleared`, `bossIncoming`, `lowHp` and `ambush`, never repeating the
+previous line of its kind. `hud.js` shows them in the wave banner (the
+intermission line with a countdown, wave-cleared with its bonus, a one-shot
+low-hp line when hp first crosses `LOW_HP_PULSE_THRESHOLD`) with a simple
+priority: wave cleared / boss defeated > low hp > intermission.
 
 ## Music
 The background track is synthesized live (no audio files): `src/logic/music.js`
@@ -257,8 +341,18 @@ Dm-Bb-F-A) where `eventsForStep` returns the drums, bouncy bass, off-beat stabs,
 and either an arpeggio (bars 1-4) or the lead hook (bars 5-8) landing on each
 16th -- and `src/music.js` voices those with Web Audio oscillators/noise via a
 lookahead scheduler. It starts when the start card is dismissed (browsers need a
-user gesture), M toggles mute (saved in `localStorage`), and a low-pass ducks it
-on the game-over screen.
+user gesture) and a low-pass ducks it on the game-over screen.
+
+Music and sound effects share one AudioContext (`src/audio.js`'s
+`createAudio`, created lazily on that first gesture): everything routes through
+a master gain (the M mute, saved in `localStorage`) and a compressor.
+`src/sfx.js`'s `createSfx(audio)` synthesizes short effects live (swing, hit,
+kill, ringOut, cannonball, crystal, chestOpen, podIn/podOut, playerHurt,
+bossSlam, waveCleared, announcement); positional ones go through an HRTF
+`PannerNode`, and `updateListener(camera)` moves the listener with the camera
+each frame. `src/logic/sfx.js` rate-limits rapid voices (crystal, hit) and maps
+a kill's trick to its voice (`killVoiceForTrick`). Effects are not ducked on
+game over.
 
 ## Bosses
 After one regular wave a boss fight, then two waves and a boss, then three,
@@ -290,10 +384,12 @@ phases: after the last regular wave's intermission it emits `bossIntro`, and
 `main.js`'s `startBossCutscene` drops the boss in straight ahead of the player
 through a widened portal while `game.cutscene` freezes gameplay (the hide timer
 is held too). `runCutscene` pans the camera to the boss and steps
-`logic/cutscene.js` -- the boss materializes, says its lines typewriter-style
+`logic/cutscene.js` -- a red carpet (`src/carpet.js`) unrolls from the player
+to the boss, the boss materializes, a concierge welcomes it (`introLines`,
+`speakerFor`), and it says its lines typewriter-style
 (Space / Enter / click skips ahead), and its name slams on screen -- then calls
 `beginBossFight`. A boss health bar shows during the fight; beating it (or
-knocking it off the edge) pops its minions and scores bonus points.
+knocking it off the edge) pops its minions, scores bonus points, and heals extra.
 
 ## Crystals, chests, and loot
 Every kill that finishes its death pop drops crystals (`crystalDrops`: a couple
@@ -302,9 +398,11 @@ monster that just falls off the edge drops nothing). They scatter, rest, and
 home in once you're within a magnet radius (`src/crystals.js` /
 `logic/crystals.js`); clearing a wave or boss pulls every leftover to you.
 
-Chests (`src/chests.js`) stand on the platform with a price floating over them
-(`chestCost` climbs with how many you've opened; green when affordable, red
-when not). At most `CHEST_MAX_ACTIVE` exist at once, placed like pods (reusing
+Chests (`src/chests.js`) are resort beach coolers (cream body, teal hinged
+lid, coral latch, butter stripe, a soft teal ground ring) with a price pill
+floating over them (`chestCost` climbs with how many you've opened): a white
+pill with a teal border and "OPEN" when affordable, a muted pill with a coral
+price and "NEED MORE" when not, and a butter "FREE" pill for a boss's chest. At most `CHEST_MAX_ACTIVE` exist at once, placed like pods (reusing
 `pickPodSpawnPoint`/`stepPodSpawner`), and a boss leaves a FREE one where it
 fell. Press F within `CHEST_INTERACT_RANGE` to pay and open one; it rolls
 (`rollChestLoot`) a weapon, ability or pet you don't own yet, or -- once you own
@@ -324,14 +422,3 @@ all 14 items -- a score and heal bonus.
 `combat.js`'s `damageMonster` is the one place a monster takes a hit (sword,
 pet zap, shockwave all use it). The inventory HUD (crystal count, hotbar,
 ability bar, pet icons, chest prompt, loot toast) is in `hud.js`.
-
-## Scenery and shading
-Beyond the platform, the void has depth cues (`src/arena.js`, tuned in
-`config.js`): a painted nebula on the sky dome (additive colored clouds over the
-gradient, wrapped so there's no seam), two star layers tinted white / blue / pink,
-`ROCK_COUNT` dark faceted rocks orbiting far out (one InstancedMesh), and
-`MOTE_COUNT` glowing motes drifting up around the player. The platform's grid has
-brighter major rings every fourth ring, faint minor spokes, a center emblem, and
-the rim has an additive halo. Every jelly body gets a fresnel rim glow injected
-into its material's emissive (`createJellyMaterial`'s `onBeforeCompile`,
-`JELLY_RIM_STRENGTH`/`JELLY_RIM_POWER`), and the key light has a small shadow bias.

@@ -12,6 +12,9 @@ import {
   HIT_SPARK_WHITE_COLOR,
   HIT_SPARK_WHITE_COUNT,
   HIT_SPARK_WHITE_SPEED,
+  HITSTOP_BOSS,
+  HITSTOP_HIT,
+  HITSTOP_KILL,
   JELLY_DEATH_INFLATE_STRENGTH,
   JELLY_HIT_STRENGTH,
   MONSTER_TYPES,
@@ -25,6 +28,7 @@ import {
   knockbackVector,
 } from './logic/combat.js'
 import { isAmbushActive } from './logic/hiding.js'
+import { triggerHitstop } from './logic/hitstop.js'
 import { WEAPONS } from './logic/items.js'
 import { jellyHit } from './jelly.js'
 import { burst, shardBurst } from './particles.js'
@@ -53,22 +57,22 @@ export function createAttackState() {
 }
 
 // Drives the player's melee attack each frame: reads the attack button
-// (left mouse or Space), animates the sword swing, and at the swing's hit
-// moment checks every living monster for a hit, applying damage,
-// knockback, a hit flash, and a jelly splat, starting a death pop on a
-// lethal hit. Disabled entirely while hidden. Returns { ambushHit, hitAny }:
+// (left mouse, Space, or a gamepad's A/RT), animates the sword swing, and
+// at the swing's hit moment checks every living monster for a hit, applying
+// damage, knockback, a hit flash, and a jelly splat, starting a death pop
+// on a lethal hit. Disabled entirely while hidden. Returns { ambushHit, hitAny }:
 // ambushHit is true the one frame an ambush-boosted hit landed, so the
 // caller can flash the "AMBUSH!" banner; hitAny is true the one frame any
 // hit landed, so the caller can trigger a (smaller) screen shake.
 export function updatePlayerAttack(
   attackState,
-  { player, monsters, obstacles, input, elapsedSeconds, deltaSeconds, particleSystem, swingTrail, weaponId = 'sword', damageMultiplier = 1 },
+  { player, monsters, obstacles, input, elapsedSeconds, deltaSeconds, particleSystem, swingTrail, weaponId = 'sword', damageMultiplier = 1, hitstop = null },
 ) {
   const weapon = WEAPONS[weaponId]
   if (player.hidden) return { ambushHit: false, hitAny: false }
 
   const sword = player.mesh.userData.sword
-  const attackPressed = input.isMouseDown(0) || input.isDown('Space')
+  const attackPressed = input.isAttackDown()
 
   if (
     attackState.swingElapsed === null &&
@@ -93,7 +97,7 @@ export function updatePlayerAttack(
   let hitAny = false
   if (!attackState.hasHitThisSwing && progress >= SWING_HIT_FRACTION) {
     attackState.hasHitThisSwing = true
-    ;({ ambushHit, hitAny } = resolveAttackHits(player, monsters, obstacles, elapsedSeconds, particleSystem, weapon, damageMultiplier))
+    ;({ ambushHit, hitAny } = resolveAttackHits(player, monsters, obstacles, elapsedSeconds, particleSystem, weapon, damageMultiplier, hitstop))
   }
 
   if (progress >= 1) {
@@ -113,10 +117,24 @@ export function updatePlayerAttack(
 // A lethal hit starts the monster's death pop (plus a one-shot jelly
 // inflate burst and a big tumbling shard burst in the monster's color)
 // instead of removing it immediately, so updateMonsterHitReaction can
-// animate it out first. Returns whether the hit was lethal.
-export function damageMonster(monster, damage, { fromPos, knockback = 0, obstacles = [], particleSystem }) {
+// animate it out first. Returns whether the hit was lethal. `cause`
+// ('sword'/'pet'/'shockwave') and `ambush` are stashed on the monster as
+// lastHitBy/lastHitAmbush so main.js can name the kill's trick once it
+// actually dies. `hitstop`, if given, is nudged toward the freeze this
+// hit deserves: longest for a boss (taking the hit or dying), next for
+// any kill, shortest for a plain non-lethal hit -- except a pet's zap,
+// which only freezes on a kill, since it fires automatically and often.
+export function damageMonster(monster, damage, { fromPos, knockback = 0, obstacles = [], particleSystem, cause = 'sword', ambush = false, hitstop = null }) {
   const { hp, lethal } = applyDamage({ hp: monster.userData.hp }, damage)
   monster.userData.hp = hp
+  monster.userData.lastHitBy = cause
+  monster.userData.lastHitAmbush = ambush
+
+  if (hitstop && !(cause === 'pet' && !lethal)) {
+    const isBoss = monster.userData.isBoss === true
+    const duration = isBoss ? HITSTOP_BOSS : lethal ? HITSTOP_KILL : HITSTOP_HIT
+    hitstop.remaining = triggerHitstop(hitstop, duration).remaining
+  }
 
   if (knockback > 0 && fromPos) {
     const targetPos = { x: monster.position.x, z: monster.position.z }
@@ -149,7 +167,7 @@ export function damageMonster(monster, damage, { fromPos, knockback = 0, obstacl
 // within the ambush window after popping out of hiding) and knockback.
 // A monster still materializing in (spawning) can't be hit. Returns
 // { ambushHit, hitAny } for the whole swing.
-function resolveAttackHits(player, monsters, obstacles, now, particleSystem, weapon, damageMultiplier) {
+function resolveAttackHits(player, monsters, obstacles, now, particleSystem, weapon, damageMultiplier, hitstop) {
   const attackerPos = player.position
   const ambush = isAmbushActive(now, player.exitedAt, AMBUSH_WINDOW)
   let ambushHit = false
@@ -164,7 +182,7 @@ function resolveAttackHits(player, monsters, obstacles, now, particleSystem, wea
     }
 
     const damage = computeDamage(weapon.damage * damageMultiplier, { ambush })
-    damageMonster(monster, damage, { fromPos: attackerPos, knockback: weapon.knockback, obstacles, particleSystem })
+    damageMonster(monster, damage, { fromPos: attackerPos, knockback: weapon.knockback, obstacles, particleSystem, cause: 'sword', ambush, hitstop })
     hitAny = true
     if (ambush) ambushHit = true
   }

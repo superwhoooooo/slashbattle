@@ -35,6 +35,14 @@ describe('catalogs', () => {
       expect(w.swing).toBeLessThanOrEqual(w.cooldown + 0.1)
     }
   })
+
+  it('gives every weapon a short hotbar label', () => {
+    expect(WEAPONS.sword.short).toBe('Sword')
+    expect(WEAPONS.dagger.short).toBe('Dagger')
+    expect(WEAPONS.spear.short).toBe('Spear')
+    expect(WEAPONS.hammer.short).toBe('Hammer')
+    expect(WEAPONS.scythe.short).toBe('Scythe')
+  })
 })
 
 describe('crystals', () => {

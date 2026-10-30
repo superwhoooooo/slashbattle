@@ -43,7 +43,7 @@ function nearestTarget(monsters, x, z, range) {
 }
 
 // Moves every pet around the player and runs its behavior for one tick.
-export function updatePets(pets, { dt, elapsed, player, monsters, obstacles, particleSystem }) {
+export function updatePets(pets, { dt, elapsed, player, monsters, obstacles, particleSystem, hitstop }) {
   const count = pets.length
   pets.forEach((pet, index) => {
     const { def, mesh } = pet
@@ -86,6 +86,8 @@ export function updatePets(pets, { dt, elapsed, player, monsters, obstacles, par
         knockback: def.knockback ?? 0,
         obstacles,
         particleSystem,
+        cause: 'pet',
+        hitstop,
       })
     } else if (def.kind === 'heal') {
       pet.timer -= dt

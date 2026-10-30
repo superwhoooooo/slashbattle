@@ -4,13 +4,18 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SlashBattle</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='17' r='13' fill='%23FF6A4D'/><circle cx='11' cy='14' r='5' fill='%23fff'/><circle cx='21' cy='14' r='5' fill='%23fff'/><circle cx='12.5' cy='15' r='2.3' fill='%23222'/><circle cx='19.5' cy='13' r='2.3' fill='%23222'/></svg>" />
     <style>
       :root {
-        --neon-cyan: #19e7ff;
-        --neon-magenta: #ff2bd6;
-        --neon-green: #7dffb0;
-        --neon-red: #ff3355;
-        --panel-bg: rgba(10, 16, 28, 0.55);
+        --ink: #1a2433;
+        --muted: #5b6b80;
+        --card: rgba(255, 255, 255, 0.72);
+        --card-border: rgba(255, 255, 255, 0.9);
+        --coral: #ff6a4d;
+        --butter: #ffd15c;
+        --teal: #19b5a5;
+        --danger: #e5484d;
+        --track: #e3e8ef;
       }
 
       html, body {
@@ -19,19 +24,22 @@
         overflow: hidden;
       }
       body {
-        font-family: 'Orbitron', system-ui, sans-serif;
+        font-family: 'Sora', system-ui, sans-serif;
       }
       #app {
         width: 100vw;
         height: 100vh;
       }
 
+      /* Frosted white resort-card look, shared by every HUD panel, slot,
+         and overlay card. */
       .panel {
-        background: var(--panel-bg);
-        backdrop-filter: blur(6px);
-        border: 1px solid rgba(25, 231, 255, 0.5);
-        border-radius: 10px;
-        box-shadow: 0 0 10px rgba(25, 231, 255, 0.18), inset 0 0 12px rgba(25, 231, 255, 0.04);
+        background: var(--card);
+        backdrop-filter: blur(14px) saturate(1.4);
+        -webkit-backdrop-filter: blur(14px) saturate(1.4);
+        border: 1px solid var(--card-border);
+        border-radius: 16px;
+        box-shadow: 0 4px 16px rgba(26, 36, 51, 0.18);
       }
 
       #hud {
@@ -39,28 +47,48 @@
         top: 16px;
         left: 16px;
         padding: 14px 18px;
-        font-weight: 700;
-        color: #e7faff;
-        text-shadow: 0 0 4px rgba(25, 231, 255, 0.45);
+        font-weight: 600;
+        color: var(--ink);
         user-select: none;
+      }
+      /* The stats card's mirror on the right: wave + enemies-left up
+         top, score and the chain chip underneath. */
+      #hud-right {
+        position: fixed;
+        top: 16px;
+        right: 16px;
+        padding: 14px 18px;
+        font-weight: 600;
+        color: var(--ink);
+        text-align: right;
+        user-select: none;
+      }
+      /* Small uppercase label above the health bar, e.g. "Guest Health". */
+      .hud-label {
+        display: block;
+        margin-bottom: 4px;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
       }
       #health-bar {
         position: relative;
         width: 220px;
         height: 24px;
-        border: 2px solid var(--neon-cyan);
-        border-radius: 6px;
-        background: #1a1f2e;
-        box-shadow: 0 0 6px rgba(25, 231, 255, 0.35);
+        border: 2px solid rgba(26, 36, 51, 0.12);
+        border-radius: 8px;
+        background: var(--track);
         overflow: hidden;
       }
       #health-fill {
         height: 100%;
         width: 100%;
-        background: linear-gradient(90deg, #19e7ff, #7dffb0);
+        background: linear-gradient(90deg, var(--coral), var(--butter));
         transition: width 0.15s ease-out, background 0.3s ease-out;
       }
-      /* Segmented look: thin dark seams layered over the fill. */
+      /* Segmented look: thin seams layered over the fill. */
       #health-bar::after {
         content: '';
         position: absolute;
@@ -69,47 +97,86 @@
           90deg,
           transparent 0,
           transparent 17px,
-          rgba(10, 14, 22, 0.75) 17px,
-          rgba(10, 14, 22, 0.75) 20px
+          rgba(26, 36, 51, 0.3) 17px,
+          rgba(26, 36, 51, 0.3) 20px
         );
         pointer-events: none;
       }
       #health-bar.low #health-fill {
-        background: linear-gradient(90deg, #ff3355, #ff8a4c);
+        background: linear-gradient(90deg, var(--danger), #ff8a66);
       }
       #health-bar.low {
         animation: hp-pulse 0.7s ease-in-out infinite;
       }
       @keyframes hp-pulse {
-        0%, 100% { box-shadow: 0 0 5px rgba(255, 51, 85, 0.35); }
-        50% { box-shadow: 0 0 14px rgba(255, 51, 85, 0.7); }
+        0%, 100% { box-shadow: 0 0 5px rgba(229, 72, 77, 0.35); }
+        50% { box-shadow: 0 0 14px rgba(229, 72, 77, 0.7); }
       }
       #health-label {
         display: block;
         margin-top: 6px;
         font-size: 13px;
+        font-weight: 700;
         letter-spacing: 0.05em;
+        color: var(--ink);
       }
       #score-counter {
         margin-top: 12px;
-        font-size: 16px;
-        color: #ffe066;
-        text-shadow: 0 0 4px rgba(255, 224, 102, 0.45);
-      }
-      #wave-counter,
-      #enemies-left {
-        margin-top: 4px;
-        font-size: 13px;
-        font-weight: 400;
-        color: #cfeaff;
+        font-size: 15px;
+        font-weight: 700;
         letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--ink);
       }
+      /* A small coral chip beside the score, shown only while a kill
+         chain (src/logic/tricks.js) is live; pop-in re-plays each time
+         the chain extends. */
+      #chain-indicator {
+        display: none;
+        margin-top: 6px;
+        padding: 4px 10px;
+        border-radius: 10px;
+        background: rgba(255, 106, 77, 0.12);
+        font-size: 13px;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        color: var(--coral);
+      }
+      #chain-indicator.pop {
+        animation: chain-pop 0.25s ease-out;
+      }
+      @keyframes chain-pop {
+        0% { transform: scale(1); }
+        40% { transform: scale(1.18); }
+        100% { transform: scale(1); }
+      }
+      /* The right card's headline: the wave number (or "BOSS FIGHT"). */
+      #wave-counter {
+        font-size: 28px;
+        font-weight: 800;
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
+        color: var(--ink);
+      }
+      /* Enemies-left, phrased as a sentence ("N guests still checked
+         in"), so it reads as resort voice rather than shouting a label. */
+      #enemies-left {
+        margin-top: 2px;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--muted);
+        letter-spacing: 0.01em;
+      }
+      /* A small teal chip, read as a card-like badge inside the HUD panel. */
       #hidden-indicator {
         display: none;
         margin-top: 10px;
-        font-size: 16px;
-        color: var(--neon-green);
-        text-shadow: 0 0 5px rgba(125, 255, 176, 0.55);
+        padding: 6px 10px;
+        border-radius: 10px;
+        background: rgba(25, 181, 165, 0.12);
+        font-size: 14px;
+        font-weight: 700;
+        color: var(--teal);
       }
       #hide-countdown {
         margin-top: 6px;
@@ -122,42 +189,48 @@
         height: 26px;
         border-radius: 50%;
         background: conic-gradient(
-          var(--neon-green) calc(var(--hide-fraction, 1) * 360deg),
-          rgba(255, 255, 255, 0.15) 0
+          var(--teal) calc(var(--hide-fraction, 1) * 360deg),
+          rgba(26, 36, 51, 0.12) 0
         );
       }
       #hide-countdown.urgent #hide-countdown-ring {
         background: conic-gradient(
-          var(--neon-red) calc(var(--hide-fraction, 1) * 360deg),
-          rgba(255, 255, 255, 0.15) 0
+          var(--danger) calc(var(--hide-fraction, 1) * 360deg),
+          rgba(26, 36, 51, 0.12) 0
         );
       }
       #hide-countdown-seconds {
         font-size: 14px;
-        font-weight: 400;
-        color: #cfeaff;
+        font-weight: 600;
+        color: var(--teal);
       }
       #hide-countdown.urgent #hide-countdown-seconds {
-        color: var(--neon-red);
+        color: var(--danger);
       }
       #hide-prompt {
         display: none;
         margin-top: 10px;
         font-size: 12px;
         font-weight: 400;
-        color: #cfeaff;
+        color: var(--muted);
       }
 
+      /* Center banners (ambush, wave/intermission): a dark ink pill that
+         reads like a resort PA announcement bar. */
       #ambush-banner {
         display: none;
         position: fixed;
         top: 30%;
         left: 50%;
         transform: translate(-50%, -50%);
-        font-weight: 900;
-        font-size: 48px;
-        color: var(--neon-red);
-        text-shadow: 0 0 6px rgba(255, 51, 85, 0.7), 0 0 14px rgba(255, 51, 85, 0.4);
+        padding: 10px 28px;
+        border-radius: 999px;
+        background: var(--ink);
+        box-shadow: 0 8px 24px rgba(26, 36, 51, 0.35);
+        font-weight: 800;
+        font-size: 32px;
+        letter-spacing: 0.06em;
+        color: var(--danger);
         user-select: none;
         pointer-events: none;
       }
@@ -168,23 +241,100 @@
         top: 16%;
         left: 50%;
         transform: translate(-50%, -50%) scale(0.6);
-        font-weight: 900;
-        font-size: 40px;
+        padding: 10px 28px;
+        border-radius: 999px;
+        background: var(--ink);
+        box-shadow: 0 8px 24px rgba(26, 36, 51, 0.35);
+        font-weight: 800;
+        font-size: 20px;
         letter-spacing: 0.08em;
-        color: var(--neon-cyan);
-        text-shadow: 0 0 6px rgba(25, 231, 255, 0.7), 0 0 16px rgba(25, 231, 255, 0.4);
+        /* Clear of the stats card on the left (and its mirror on the
+           right) on wide screens; long lines wrap instead. */
+        max-width: max(60vw, calc(100vw - 620px));
+        width: max-content;
+        text-align: center;
+        color: #fff;
         user-select: none;
         pointer-events: none;
         animation: wave-banner-in 0.35s ease-out forwards;
+      }
+      /* The announcement bar's leading department tag gets a butter
+         accent; the line after it is set smaller and lighter so a full
+         sentence fits on one line. */
+      #wave-banner-lead {
+        color: var(--butter);
+      }
+      #wave-banner-rest {
+        font-size: 18px;
+        font-weight: 600;
+        letter-spacing: 0.01em;
       }
       @keyframes wave-banner-in {
         from { transform: translate(-50%, -50%) scale(0.5); opacity: 0; }
         to { transform: translate(-50%, -50%) scale(1); opacity: 1; }
       }
 
-      /* Crystal count in the main HUD panel. */
+      /* The headline trick sticker: a big tilted sticker for the newest
+         kill, right of center below the banners (the in-world sprite
+         above the monster becomes its trail). Its tone class picks the
+         fill, matching the in-world sticker's own coloring. */
+      #trick-sticker {
+        display: none;
+        position: fixed;
+        top: 30%;
+        left: 60%;
+        padding: 14px 26px;
+        border-radius: 16px;
+        text-align: center;
+        box-shadow: 0 8px 24px rgba(26, 36, 51, 0.25);
+        user-select: none;
+        pointer-events: none;
+        z-index: 6;
+      }
+      #trick-sticker.show {
+        display: block;
+        animation: trick-sticker-pop 1.2s ease-out forwards;
+      }
+      #trick-sticker.coral { background: var(--coral); color: #fff; }
+      #trick-sticker.teal { background: var(--teal); color: #fff; }
+      #trick-sticker.butter { background: var(--butter); color: var(--ink); }
+      #trick-sticker-name {
+        font-weight: 800;
+        font-size: 32px;
+        letter-spacing: 0.03em;
+      }
+      #trick-sticker-points {
+        margin-top: 4px;
+        font-weight: 700;
+        font-size: 17px;
+      }
+      @keyframes trick-sticker-pop {
+        0% { opacity: 0; transform: translate(-50%, -50%) rotate(-6deg) scale(0.4); }
+        15% { opacity: 1; transform: translate(-50%, -50%) rotate(-6deg) scale(1.12); }
+        25% { transform: translate(-50%, -50%) rotate(-6deg) scale(1); }
+        75% { opacity: 1; }
+        100% { opacity: 0; }
+      }
+
+      /* Bottom-right crystal count: a big number over a small uppercase
+         "Crystals" label. */
+      #crystal-card {
+        position: fixed;
+        right: 16px;
+        bottom: 16px;
+        padding: 10px 18px;
+        text-align: center;
+        user-select: none;
+        z-index: 4;
+      }
       #crystal-counter {
-        color: #8ff6ff;
+        font-size: 28px;
+        font-weight: 800;
+        color: var(--teal);
+      }
+      #crystal-card .hud-label {
+        margin-bottom: 0;
+        margin-top: 2px;
       }
 
       /* Bottom bar: pets on the left, ability slots above the weapon hotbar. */
@@ -230,16 +380,30 @@
       .slot.empty { opacity: 0.4; }
       .slot.selected {
         transform: translateY(-4px) scale(1.08);
-        border-color: #fff36e;
-        box-shadow: 0 0 14px rgba(255, 243, 110, 0.65);
+        border-color: var(--coral);
+        box-shadow: 0 0 0 2px rgba(255, 106, 77, 0.35), 0 4px 16px rgba(26, 36, 51, 0.18);
       }
       .slot .slot-key {
         position: absolute;
         top: 2px;
         left: 5px;
         font-size: 10px;
-        font-weight: 900;
-        color: #cfeaff;
+        font-weight: 800;
+        color: var(--muted);
+      }
+      /* The hotbar's weapon name, under the icon; empty slots leave it
+         blank. */
+      .slot .slot-label {
+        position: absolute;
+        left: 2px;
+        right: 2px;
+        bottom: 3px;
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
+        color: var(--muted);
+        text-align: center;
       }
       .slot.small { width: 44px; height: 44px; font-size: 21px; }
       .slot .cooldown {
@@ -248,9 +412,9 @@
         right: 0;
         bottom: 0;
         height: 0;
-        background: rgba(0, 0, 0, 0.62);
+        background: rgba(26, 36, 51, 0.55);
       }
-      .slot.ready { border-color: var(--neon-green); }
+      .slot.ready { border-color: var(--teal); }
       #ability-bar .slot.empty, #ability-bar:empty { display: none; }
       #pet-bar .slot { width: 40px; height: 40px; font-size: 19px; }
 
@@ -263,14 +427,12 @@
         padding: 8px 16px;
         font-weight: 700;
         font-size: 14px;
-        color: #fff6c9;
-        text-shadow: 0 0 6px rgba(255, 201, 61, 0.6);
-        border-color: rgba(255, 201, 61, 0.7);
+        color: var(--ink);
         pointer-events: none;
         user-select: none;
         z-index: 4;
       }
-      #chest-prompt.poor { color: #ff9db0; text-shadow: 0 0 6px rgba(255, 107, 134, 0.6); border-color: rgba(255, 107, 134, 0.7); }
+      #chest-prompt.poor { color: var(--danger); }
 
       /* "NEW WEAPON: ..." toast when a chest opens. */
       #loot-toast {
@@ -279,6 +441,7 @@
         left: 50%;
         top: 26%;
         transform: translateX(-50%);
+        padding: 18px 32px;
         text-align: center;
         pointer-events: none;
         user-select: none;
@@ -292,17 +455,16 @@
         font-weight: 700;
         font-size: 14px;
         letter-spacing: 0.25em;
-        color: #fff36e;
-        text-shadow: 0 0 8px rgba(255, 243, 110, 0.7);
+        text-transform: uppercase;
+        color: var(--teal);
       }
       #loot-toast-name {
         margin-top: 4px;
-        font-weight: 900;
+        font-weight: 800;
         font-size: 34px;
-        color: #fff;
-        text-shadow: 0 0 10px rgba(25, 231, 255, 0.8);
+        color: var(--ink);
       }
-      #loot-toast-blurb { margin-top: 4px; font-size: 13px; color: #cfeaff; }
+      #loot-toast-blurb { margin-top: 4px; font-size: 13px; color: var(--muted); }
       @keyframes loot-toast {
         0% { opacity: 0; transform: translateX(-50%) scale(0.5); }
         10% { opacity: 1; transform: translateX(-50%) scale(1.08); }
@@ -319,27 +481,25 @@
         left: 50%;
         transform: translateX(-50%);
         width: min(460px, 60vw);
+        padding: 10px 18px 14px;
         text-align: center;
-        font-weight: 900;
-        letter-spacing: 0.1em;
-        color: #ffe9f0;
-        text-shadow: 0 0 6px rgba(255, 51, 85, 0.7);
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        color: var(--ink);
         user-select: none;
         pointer-events: none;
       }
       #boss-bar-track {
-        margin-top: 4px;
-        height: 16px;
-        border: 2px solid var(--neon-red);
-        border-radius: 6px;
-        background: #26121a;
-        box-shadow: 0 0 8px rgba(255, 51, 85, 0.45);
+        margin-top: 6px;
+        height: 14px;
+        border-radius: 7px;
+        background: var(--track);
         overflow: hidden;
       }
       #boss-bar-fill {
         height: 100%;
         width: 100%;
-        background: linear-gradient(90deg, #ff3355, #ff9a5a);
+        background: linear-gradient(90deg, var(--coral), var(--danger));
         transition: width 0.12s linear;
       }
 
@@ -369,16 +529,14 @@
         transform: translateX(-50%);
         width: min(680px, 88vw);
         padding: 16px 22px;
-        border-color: rgba(255, 51, 85, 0.7);
-        box-shadow: 0 0 14px rgba(255, 51, 85, 0.3);
-        color: #f4fbff;
+        color: var(--ink);
       }
       #cutscene-speaker {
-        font-weight: 900;
+        font-weight: 800;
         font-size: 15px;
         letter-spacing: 0.12em;
-        color: var(--neon-red);
-        text-shadow: 0 0 6px rgba(255, 51, 85, 0.6);
+        text-transform: uppercase;
+        color: var(--coral);
       }
       #cutscene-text {
         margin-top: 8px;
@@ -390,8 +548,12 @@
         margin-top: 8px;
         text-align: right;
         font-size: 11px;
-        color: var(--neon-green);
+        color: var(--muted);
       }
+      /* The boss name card isn't on a frosted panel -- it slams down
+         directly over the gameplay scene, so it keeps a bold, colored
+         treatment with a light halo for legibility against the daylight
+         sky. */
       #cutscene-title {
         display: none;
         position: absolute;
@@ -402,30 +564,33 @@
         animation: boss-title-slam 0.45s cubic-bezier(0.2, 1.4, 0.4, 1) forwards;
       }
       #cutscene-title-name {
-        font-weight: 900;
+        font-weight: 800;
         font-size: clamp(34px, 7vw, 76px);
         letter-spacing: 0.08em;
-        color: var(--neon-red);
-        text-shadow: 0 0 8px rgba(255, 51, 85, 0.8), 0 0 26px rgba(255, 51, 85, 0.45);
+        color: var(--danger);
+        text-shadow: 0 2px 0 rgba(255, 255, 255, 0.85), 0 0 18px rgba(255, 255, 255, 0.6);
       }
       #cutscene-title-sub {
         margin-top: 6px;
         font-weight: 700;
         font-size: clamp(13px, 2vw, 20px);
         letter-spacing: 0.2em;
-        color: #ffd6df;
+        color: var(--ink);
+        text-shadow: 0 1px 0 rgba(255, 255, 255, 0.85);
       }
       @keyframes boss-title-slam {
         from { transform: translate(-50%, -50%) scale(2.4); opacity: 0; }
         to { transform: translate(-50%, -50%) scale(1); opacity: 1; }
       }
 
-      /* A gentle, always-on darkening of the screen's edges. */
+      /* A gentle, always-on warm darkening of the screen's edges, subtle
+         enough to suit the daylight scene rather than reading as a grey
+         haze over the pale deck. */
       #vignette {
         position: fixed;
         inset: 0;
         pointer-events: none;
-        background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 55%, rgba(0, 0, 0, 0.55) 100%);
+        background: radial-gradient(ellipse at center, rgba(40, 28, 16, 0) 62%, rgba(40, 28, 16, 0.28) 100%);
         z-index: 5;
       }
       /* A brief red flash across the whole screen on player damage. */
@@ -452,8 +617,8 @@
         align-items: center;
         justify-content: center;
         gap: 12px;
-        background: rgba(4, 6, 14, 0.82);
-        color: #e7faff;
+        background: rgba(26, 36, 51, 0.25);
+        color: var(--ink);
         text-align: center;
         user-select: none;
         z-index: 10;
@@ -467,22 +632,21 @@
       }
       .overlay h1 {
         font-size: 48px;
-        font-weight: 900;
+        font-weight: 800;
         margin: 0;
         letter-spacing: 0.06em;
-        color: var(--neon-cyan);
-        text-shadow: 0 0 6px rgba(25, 231, 255, 0.6), 0 0 16px rgba(25, 231, 255, 0.35);
+        color: var(--ink);
       }
       .overlay p {
         font-size: 15px;
         margin: 0;
         font-weight: 400;
-        color: #cfeaff;
+        color: var(--muted);
       }
       .overlay .hint {
         margin-top: 10px;
         font-weight: 700;
-        color: var(--neon-green);
+        color: var(--teal);
       }
 
       .controls {
@@ -497,7 +661,10 @@
         gap: 10px;
         font-size: 13px;
         font-weight: 400;
+        color: var(--ink);
       }
+      /* A light keycap: dark text, a subtle bottom border and a soft
+         top highlight to read as a raised key. */
       kbd {
         display: inline-flex;
         align-items: center;
@@ -505,25 +672,74 @@
         min-width: 28px;
         height: 28px;
         padding: 0 8px;
-        font-family: 'Orbitron', system-ui, sans-serif;
+        font-family: 'Sora', system-ui, sans-serif;
         font-size: 12px;
         font-weight: 700;
-        color: #e7faff;
-        background: linear-gradient(180deg, #202838, #121722);
-        border: 1px solid var(--neon-cyan);
+        color: var(--ink);
+        background: #fff;
+        border: 1px solid rgba(26, 36, 51, 0.15);
+        border-bottom: 2px solid rgba(26, 36, 51, 0.28);
+        border-radius: 6px;
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+      }
+
+      /* A compact, wrapping legend for gamepad bindings, below the
+         keyboard controls -- small enough to add a row or two rather
+         than meaningfully growing the card. */
+      .gamepad-legend {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        align-items: center;
+        gap: 6px 10px;
+        max-width: 360px;
+        font-size: 11px;
+        font-weight: 400;
+        color: var(--muted);
+      }
+      .gamepad-legend span {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        white-space: nowrap;
+      }
+      /* A smaller keycap in the teal accent, so a gamepad binding reads
+         as its own group rather than blending into the keyboard caps. */
+      kbd.pad {
+        min-width: 22px;
+        height: 20px;
+        padding: 0 5px;
+        font-size: 10px;
+        color: var(--teal);
+        background: rgba(25, 181, 165, 0.1);
+        border: 1px solid rgba(25, 181, 165, 0.35);
+        border-bottom: 2px solid rgba(25, 181, 165, 0.5);
         border-radius: 5px;
-        box-shadow: 0 0 4px rgba(25, 231, 255, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+        box-shadow: none;
       }
 
       #lose-screen h1 {
-        color: var(--neon-red);
-        text-shadow: 0 0 6px rgba(255, 51, 85, 0.6), 0 0 16px rgba(255, 51, 85, 0.35);
+        color: var(--danger);
       }
       #lose-new-best {
         display: none;
-        color: #ffe066;
-        font-weight: 900;
-        text-shadow: 0 0 6px rgba(255, 224, 102, 0.6);
+        color: var(--butter);
+        font-weight: 800;
+      }
+
+      /* Narrow screens: shrink the right stats card and cap how wide the
+         boss bar can grow, so the two can't collide during a boss fight. */
+      @media (max-width: 960px) {
+        #hud-right {
+          max-width: 150px;
+          padding: 10px 12px;
+        }
+        #wave-counter {
+          font-size: 22px;
+        }
+        #boss-bar {
+          width: min(380px, 50vw);
+        }
       }
 
       /* Phone-width readability: shrink the HUD and overlay card a touch. */
@@ -541,6 +757,38 @@
           padding: 24px 20px;
         }
       }
+
+      /* Respect a reduced-motion preference by dropping the decorative
+         bounce/pulse flourishes while keeping each element's final,
+         readable state (and the loot toast's timed fade, which still
+         drives when it disappears). */
+      @media (prefers-reduced-motion: reduce) {
+        #health-bar.low {
+          animation: none;
+        }
+        #wave-banner {
+          animation: none;
+          transform: translate(-50%, -50%) scale(1);
+        }
+        #cutscene-title {
+          animation: none;
+        }
+        #chain-indicator.pop {
+          animation: none;
+        }
+        @keyframes loot-toast {
+          0% { opacity: 0; }
+          10% { opacity: 1; }
+          80% { opacity: 1; }
+          100% { opacity: 0; }
+        }
+        @keyframes trick-sticker-pop {
+          0% { opacity: 0; transform: translate(-50%, -50%) rotate(-6deg); }
+          10% { opacity: 1; transform: translate(-50%, -50%) rotate(-6deg); }
+          75% { opacity: 1; }
+          100% { opacity: 0; }
+        }
+      }
     </style>
   </head>
   <body>
@@ -549,14 +797,11 @@
     <div id="damage-flash"></div>
 
     <div id="hud" class="panel">
+      <span class="hud-label">Guest Health</span>
       <div id="health-bar">
         <div id="health-fill"></div>
       </div>
       <span id="health-label">100 / 100</span>
-      <div id="score-counter">Score: 0</div>
-      <div id="crystal-counter">💎 0</div>
-      <div id="wave-counter">Wave: 1</div>
-      <div id="enemies-left">Enemies left: 0</div>
       <div id="hidden-indicator">
         HIDDEN
         <div id="hide-countdown">
@@ -566,10 +811,24 @@
       </div>
       <div id="hide-prompt">Press E to hide in pod</div>
     </div>
+    <div id="hud-right" class="panel">
+      <div id="wave-counter">Wave: 1</div>
+      <div id="enemies-left">All guests checked out</div>
+      <div id="score-counter">Score: 0</div>
+      <div id="chain-indicator">CHAIN ×1</div>
+    </div>
+    <div id="crystal-card" class="panel">
+      <div id="crystal-counter">💎 0</div>
+      <span class="hud-label">Crystals</span>
+    </div>
     <div id="ambush-banner">AMBUSH!</div>
-    <div id="wave-banner"></div>
+    <div id="wave-banner"><span id="wave-banner-lead"></span><span id="wave-banner-rest"></span></div>
+    <div id="trick-sticker">
+      <div id="trick-sticker-name"></div>
+      <div id="trick-sticker-points"></div>
+    </div>
     <div id="chest-prompt" class="panel"></div>
-    <div id="loot-toast">
+    <div id="loot-toast" class="panel">
       <div id="loot-toast-title"></div>
       <div id="loot-toast-name"></div>
       <div id="loot-toast-blurb"></div>
@@ -579,7 +838,7 @@
       <div id="ability-bar"></div>
       <div id="hotbar"></div>
     </div>
-    <div id="boss-bar">
+    <div id="boss-bar" class="panel">
       <div id="boss-bar-name"></div>
       <div id="boss-bar-track"><div id="boss-bar-fill"></div></div>
     </div>
@@ -605,10 +864,21 @@
           <div class="control-row"><kbd>Click</kbd><kbd>Space</kbd><span>swing sword</span></div>
           <div class="control-row"><kbd>E</kbd><span>hide in / exit a pod</span></div>
           <div class="control-row"><kbd>R</kbd><span>restart after losing</span></div>
-          <div class="control-row"><kbd>M</kbd><span>music on / off</span></div>
+          <div class="control-row"><kbd>M</kbd><span>sound on / off</span></div>
           <div class="control-row"><kbd>F</kbd><span>open a chest (costs 💎)</span></div>
           <div class="control-row"><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd><kbd>5</kbd><span>pick a weapon</span></div>
           <div class="control-row"><kbd>Q</kbd><kbd>Z</kbd><kbd>X</kbd><kbd>C</kbd><kbd>V</kbd><span>use abilities</span></div>
+        </div>
+        <div class="gamepad-legend">
+          <span>🎮</span>
+          <span><kbd class="pad">A</kbd> attack / confirm</span>
+          <span><kbd class="pad">B</kbd> hide</span>
+          <span><kbd class="pad">X</kbd> chest</span>
+          <span><kbd class="pad">Y</kbd> ability</span>
+          <span><kbd class="pad">LB/RB</kbd> weapon</span>
+          <span><kbd class="pad">LT</kbd>+face ability 2-5</span>
+          <span><kbd class="pad">Start</kbd> restart</span>
+          <span><kbd class="pad">Back</kbd> mute</span>
         </div>
         <p class="hint">Press any key or click to begin</p>
       </div>

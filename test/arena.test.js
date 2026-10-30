@@ -183,4 +183,18 @@ describe('spawnPointNearPlayer', () => {
       expect(Math.hypot(point.x, point.z)).toBeLessThanOrEqual(48 - 3 + 1e-9)
     }
   })
+
+  it('avoids landing inside a sundeck prop given as an obstacle', () => {
+    const playerPos = { x: 0, z: 0 }
+    // Every point 14-22 from the player at angle 0 passes near (0, 18) --
+    // an obstacle there, with a margin covering the whole ring, forces
+    // every attempt to retry; the obstacle avoidance should still steer
+    // well clear of it rather than ever landing on top of it.
+    const obstacles = [{ x: 0, z: 18, radius: 1 }]
+    for (let seed = 0; seed < 200; seed++) {
+      const point = spawnPointNearPlayer(createSeededRng(seed), playerPos, 14, 22, 48, 3, obstacles, 0.5)
+      const distanceFromObstacle = Math.hypot(point.x - obstacles[0].x, point.z - obstacles[0].z)
+      expect(distanceFromObstacle).toBeGreaterThanOrEqual(obstacles[0].radius + 0.5 - 1e-9)
+    }
+  })
 })

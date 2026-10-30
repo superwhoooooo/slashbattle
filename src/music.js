@@ -2,32 +2,22 @@
 // and noise voicing the pattern from src/logic/music.js. A lookahead
 // scheduler (a short setInterval queuing notes slightly ahead on the
 // audio clock) keeps the beat steady however the frame rate wobbles.
+// Shares its AudioContext and master mute with the sound effects
+// (src/sfx.js) through src/audio.js; only the game-over ducking filter
+// below belongs to music alone.
+import { createNoiseBuffer } from './audio.js'
 import { eventsForStep, midiToFreq, stepDuration } from './logic/music.js'
 
-const MUTE_KEY = 'slashbattle:music-muted'
-const MASTER_VOLUME = 0.32
+const MUSIC_VOLUME = 0.32
 const LOOKAHEAD_SECONDS = 0.15
 const TICK_MS = 25
 const MUFFLED_CUTOFF = 500
 const OPEN_CUTOFF = 18000
 
-function loadMuted() {
-  try {
-    return localStorage.getItem(MUTE_KEY) === '1'
-  } catch {
-    return false
-  }
-}
-
-function saveMuted(muted) {
-  try {
-    localStorage.setItem(MUTE_KEY, muted ? '1' : '0')
-  } catch {
-    // Storage may be unavailable; the preference just won't persist.
-  }
-}
-
-export function createMusic() {
+// `audio` is the shared src/audio.js instance: its context and master
+// gain (the one the M key mutes) are reused rather than creating a
+// second AudioContext.
+export function createMusic(audio) {
   let ctx = null
   let master = null
   let muffle = null
@@ -35,24 +25,19 @@ export function createMusic() {
   let timer = null
   let nextStepTime = 0
   let stepIndex = 0
-  let muted = loadMuted()
 
   function buildGraph() {
-    ctx = new (window.AudioContext || window.webkitAudioContext)()
-    const compressor = ctx.createDynamicsCompressor()
-    compressor.connect(ctx.destination)
+    ctx = audio.context
     // Closed down on game over so the track ducks into a "muffled" mood.
     muffle = ctx.createBiquadFilter()
     muffle.type = 'lowpass'
     muffle.frequency.value = OPEN_CUTOFF
-    muffle.connect(compressor)
+    muffle.connect(audio.master)
     master = ctx.createGain()
-    master.gain.value = muted ? 0 : MASTER_VOLUME
+    master.gain.value = MUSIC_VOLUME
     master.connect(muffle)
 
-    noiseBuffer = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate)
-    const data = noiseBuffer.getChannelData(0)
-    for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1
+    noiseBuffer = createNoiseBuffer(ctx)
   }
 
   // A gain node with a fast attack and exponential decay, wired to master.
@@ -157,23 +142,23 @@ export function createMusic() {
     // Must be called from a user gesture (browsers block audio until one).
     start() {
       if (timer) return
+      audio.start()
       if (!ctx) buildGraph()
       ctx.resume()
       nextStepTime = ctx.currentTime + 0.1
       timer = setInterval(scheduleAhead, TICK_MS)
       document.addEventListener('visibilitychange', onVisibilityChange)
     },
+    // Mutes/unmutes the shared master gain, so this also mutes the sound
+    // effects riding along on the same AudioContext.
     toggleMuted() {
-      muted = !muted
-      saveMuted(muted)
-      if (master) master.gain.setTargetAtTime(muted ? 0 : MASTER_VOLUME, ctx.currentTime, 0.05)
-      return muted
+      return audio.toggleMuted()
     },
     // Ducks the track under a low-pass while the game-over screen is up.
     setMuffled(muffled) {
       if (!muffle) return
       muffle.frequency.setTargetAtTime(muffled ? MUFFLED_CUTOFF : OPEN_CUTOFF, ctx.currentTime, 0.15)
     },
-    isMuted: () => muted,
+    isMuted: () => audio.isMuted(),
   }
 }
