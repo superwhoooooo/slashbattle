@@ -16,7 +16,8 @@ import { CHAIN_MAX, CHAIN_STEP, CHAIN_WINDOW } from '../config.js'
 //   4. ambush        -> "Room Service"
 //   5. pet zap       -> "Turndown Service"
 //   6. Shockwave     -> "Wake-Up Call"
-//   7. anything else (a plain sword hit) -> "Slash"
+//   7. staff orb     -> "Magic Hour"; firearm -> "Last Call"
+//   8. anything else (a plain sword hit) -> "Slash"
 export function nameTrick({ cause, inPool = false, ambush = false, boss = false } = {}) {
   const fell = cause === 'fall'
   if (boss) return fell ? { id: 'vipCheckout', name: 'VIP Checkout' } : { id: 'doNotDisturb', name: 'Do Not Disturb' }
@@ -25,6 +26,8 @@ export function nameTrick({ cause, inPool = false, ambush = false, boss = false 
   if (ambush) return { id: 'roomService', name: 'Room Service' }
   if (cause === 'pet') return { id: 'turndownService', name: 'Turndown Service' }
   if (cause === 'shockwave') return { id: 'wakeUpCall', name: 'Wake-Up Call' }
+  if (cause === 'magic') return { id: 'magicHour', name: 'Magic Hour' }
+  if (cause === 'gun') return { id: 'lastCall', name: 'Last Call' }
   return { id: 'slash', name: 'Slash' }
 }
 

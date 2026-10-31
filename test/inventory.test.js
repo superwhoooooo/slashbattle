@@ -23,20 +23,61 @@ function createSeededRng(seed) {
 }
 
 describe('catalogs', () => {
-  it('fit exactly in the hotbar, ability slots and pet cap', () => {
-    expect(Object.keys(WEAPONS)).toHaveLength(HOTBAR_SLOTS)
-    expect(Object.keys(ABILITIES)).toHaveLength(ABILITY_SLOTS)
-    expect(Object.keys(PETS)).toHaveLength(MAX_PETS)
+  it('are bigger than the slots, so a full loadout differs run to run', () => {
+    expect(Object.keys(WEAPONS).length).toBeGreaterThan(HOTBAR_SLOTS)
+    expect(Object.keys(ABILITIES).length).toBeGreaterThan(ABILITY_SLOTS)
+    expect(Object.keys(PETS).length).toBeGreaterThan(MAX_PETS)
+    expect(Object.keys(PETS)).toHaveLength(20)
+  })
+
+  it('makes the staff a ranged starter whose orbs are magic, and the sword a chest find', () => {
+    expect(WEAPONS.staff.gun).toBe(true)
+    expect(WEAPONS.staff.cause).toBe('magic')
+    expect(createInventory().weapons).toEqual(['staff'])
+    expect(availableLoot(createInventory())).toContainEqual({ kind: 'weapon', id: 'sword' })
+    expect(availableLoot(createInventory())).not.toContainEqual({ kind: 'weapon', id: 'staff' })
+  })
+
+  it('keys every entry by its own id', () => {
+    for (const catalog of [WEAPONS, ABILITIES, PETS]) {
+      for (const [key, item] of Object.entries(catalog)) expect(item.id).toBe(key)
+    }
+  })
+
+  it('gives every firearm bullet stats and every non-gun a melee arc', () => {
+    const guns = Object.values(WEAPONS).filter((w) => w.gun)
+    expect(guns.length).toBeGreaterThanOrEqual(5)
+    for (const gun of guns) {
+      expect(gun.pellets).toBeGreaterThan(0)
+      for (const key of ['speed', 'life', 'radius']) expect(gun.bullet[key]).toBeGreaterThan(0)
+    }
+  })
+
+  it('gives every pet a known kind with the numbers that kind needs', () => {
+    const needs = {
+      zap: ['damage', 'interval', 'range'],
+      pulse: ['damage', 'interval', 'radius'],
+      heal: ['amount', 'interval'],
+      magnet: ['radius'],
+      guard: ['reduction'],
+      buff: ['bonus'],
+    }
+    for (const pet of Object.values(PETS)) {
+      expect(Object.keys(needs)).toContain(pet.kind)
+      for (const key of needs[pet.kind]) expect(pet[key]).toBeTruthy()
+    }
   })
 
   it('gives every weapon positive stats', () => {
     for (const w of Object.values(WEAPONS)) {
-      for (const key of ['damage', 'range', 'arc', 'cooldown', 'swing']) expect(w[key]).toBeGreaterThan(0)
+      for (const key of ['damage', 'range', 'cooldown', 'swing']) expect(w[key]).toBeGreaterThan(0)
+      if (!w.gun) expect(w.arc).toBeGreaterThan(0) // a firearm has no melee arc
       expect(w.swing).toBeLessThanOrEqual(w.cooldown + 0.1)
     }
   })
 
   it('gives every weapon a short hotbar label', () => {
+    expect(WEAPONS.staff.short).toBe('Staff')
     expect(WEAPONS.sword.short).toBe('Sword')
     expect(WEAPONS.dagger.short).toBe('Dagger')
     expect(WEAPONS.spear.short).toBe('Spear')
@@ -65,21 +106,21 @@ describe('crystals', () => {
 })
 
 describe('hotbar', () => {
-  it('starts with the sword selected', () => {
-    expect(selectedWeaponId(createInventory())).toBe('sword')
+  it('starts with the wizard staff selected', () => {
+    expect(selectedWeaponId(createInventory())).toBe('staff')
   })
 
   it('selects filled slots and ignores empty ones', () => {
     let inv = grantItem(createInventory(), { kind: 'weapon', id: 'hammer' })
     expect(selectedWeaponId(inv)).toBe('hammer') // a new weapon is equipped right away
     inv = selectWeaponSlot(inv, 0)
-    expect(selectedWeaponId(inv)).toBe('sword')
+    expect(selectedWeaponId(inv)).toBe('staff')
     expect(selectWeaponSlot(inv, 3).selected).toBe(0)
   })
 
   it('does not grant a duplicate', () => {
-    const inv = grantItem(createInventory(), { kind: 'weapon', id: 'sword' })
-    expect(inv.weapons).toEqual(['sword'])
+    const inv = grantItem(createInventory(), { kind: 'weapon', id: 'staff' })
+    expect(inv.weapons).toEqual(['staff'])
   })
 })
 
@@ -96,10 +137,28 @@ describe('chest loot', () => {
       seen.add(key)
       inv = grantItem(inv, loot)
     }
-    // 4 other weapons + 5 abilities + 5 pets
-    expect(seen.size).toBe(14)
+    // 4 other hotbar slots + 5 ability slots + 5 pet slots, however big the catalogs are
+    expect(seen.size).toBe(HOTBAR_SLOTS - 1 + ABILITY_SLOTS + MAX_PETS)
+    expect(inv.weapons).toHaveLength(HOTBAR_SLOTS)
+    expect(inv.abilities).toHaveLength(ABILITY_SLOTS)
+    expect(inv.pets).toHaveLength(MAX_PETS)
     expect(rollChestLoot(inv, rng)).toBeNull()
     expect(availableLoot(inv)).toEqual([])
+  })
+
+  it('fills the same slots with different loadouts for different seeds', () => {
+    const loadouts = new Set()
+    for (let seed = 0; seed < 20; seed++) {
+      let inv = createInventory()
+      const rng = createSeededRng(seed)
+      for (let i = 0; i < 100; i++) {
+        const loot = rollChestLoot(inv, rng)
+        if (!loot) break
+        inv = grantItem(inv, loot)
+      }
+      loadouts.add(JSON.stringify([inv.weapons, inv.abilities, inv.pets]))
+    }
+    expect(loadouts.size).toBeGreaterThan(10)
   })
 
   it('rolls across all three categories', () => {
@@ -133,12 +192,33 @@ describe('abilities', () => {
 
 describe('petEffects', () => {
   it('has no effect with no pets', () => {
-    expect(petEffects([])).toEqual({ magnetRadius: BASE_MAGNET_RADIUS, damageTakenMultiplier: 1 })
+    expect(petEffects([])).toEqual({
+      magnetRadius: BASE_MAGNET_RADIUS,
+      damageTakenMultiplier: 1,
+      damageMultiplier: 1,
+      cooldownMultiplier: 1,
+      speedMultiplier: 1,
+      crystalMultiplier: 1,
+      knockbackMultiplier: 1,
+    })
   })
 
   it('widens the crystal pull with a magnet pet and trims damage with a guard pet', () => {
     const fx = petEffects(['magneto', 'shieldy', 'sparky'])
     expect(fx.magnetRadius).toBe(PETS.magneto.radius)
     expect(fx.damageTakenMultiplier).toBeCloseTo(0.75)
+  })
+
+  it('stacks buff pets multiplicatively and floors the swing speed-up', () => {
+    const fx = petEffects(['grumble', 'rascal', 'goldie', 'zoom', 'bumper'])
+    expect(fx.damageMultiplier).toBeCloseTo(1.2 * 1.1)
+    expect(fx.speedMultiplier).toBeCloseTo(1.15 * 1.08)
+    expect(fx.crystalMultiplier).toBeCloseTo(1.5 * 1.15)
+    expect(fx.knockbackMultiplier).toBeCloseTo(1.4)
+    expect(petEffects(['whirl']).cooldownMultiplier).toBeCloseTo(0.85)
+  })
+
+  it('keeps the damage floor with several guard pets', () => {
+    expect(petEffects(['shieldy', 'plated']).damageTakenMultiplier).toBeCloseTo(0.75 * 0.85)
   })
 })

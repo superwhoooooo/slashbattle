@@ -56,6 +56,8 @@ export function createHud() {
     petBar: document.getElementById('pet-bar'),
     crystalCounter: document.getElementById('crystal-counter'),
     chestPrompt: document.getElementById('chest-prompt'),
+    autoShoot: document.getElementById('auto-shoot'),
+    autoShootState: document.getElementById('auto-shoot-state'),
     lootToast: document.getElementById('loot-toast'),
     lootToastTitle: document.getElementById('loot-toast-title'),
     lootToastName: document.getElementById('loot-toast-name'),
@@ -214,6 +216,14 @@ export function setChestPrompt(hud, text, poor = false) {
     hud.chestPrompt.style.display = text ? 'block' : 'none'
     hud.chestPrompt.textContent = text ?? ''
     hud.chestPrompt.classList.toggle('poor', poor)
+  })
+}
+
+// Shows the auto-shoot (L) indicator as ON or OFF.
+export function setAutoShoot(hud, on) {
+  setIfChanged(hud, 'autoShoot', on, (v) => {
+    hud.autoShoot.classList.toggle('on', v)
+    hud.autoShootState.textContent = v ? 'ON' : 'OFF'
   })
 }
 

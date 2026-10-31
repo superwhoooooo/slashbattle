@@ -24,6 +24,27 @@ import {
   CAMERA_LERP,
   CAMERA_LOOKAHEAD,
   BLINK_DISTANCE,
+  DRAIN_COLOR,
+  DRAIN_DAMAGE,
+  DRAIN_HEAL_PER_HIT,
+  DRAIN_RADIUS,
+  FRENZY_COOLDOWN_MULTIPLIER,
+  GRAVITY_COLOR,
+  GRAVITY_DAMAGE,
+  GRAVITY_PULL_DISTANCE,
+  GRAVITY_RADIUS,
+  LUNGE_COLOR,
+  LUNGE_DAMAGE,
+  LUNGE_DISTANCE,
+  LUNGE_IFRAMES,
+  LUNGE_WIDTH,
+  SPRINT_SPEED_MULTIPLIER,
+  THUNDER_COLOR,
+  THUNDER_DAMAGE,
+  THUNDER_RANGE,
+  THUNDER_TARGETS,
+  VOLLEY_COUNT,
+  VOLLEY_DAMAGE,
   BLINK_IFRAMES,
   BOSS_DEFEAT_HEAL_MULTIPLIER,
   BOSS_SPAWN_DISTANCE,
@@ -59,6 +80,7 @@ import {
   JELLY_DEATH_INFLATE_STRENGTH,
   MAX_DELTA_SECONDS,
   MAX_PIXEL_RATIO,
+  MSAA_SAMPLES,
   MONSTER_FALL_TUMBLE_SPEED,
   MONSTER_TYPES,
   PLAYER_MAX_HP,
@@ -115,6 +137,7 @@ import { createHidingState, createPod, startPodDematerialize, updateHiding, upda
 import {
   createHud,
   hideStartCard,
+  setAutoShoot,
   setChestPrompt,
   showAmbushBanner,
   showCutscene,
@@ -166,6 +189,8 @@ import { createMonsterAIState, separateMonsters, updateMonster } from './monster
 import { burst, createParticleSystem, resetParticles, shardBurst, updateParticles } from './particles.js'
 import { createPet, disposePets, updatePets } from './pets.js'
 import { Player } from './player.js'
+import { createBulletPool, fireBullets, resetBullets, updateBullets } from './bullets.js'
+import { makeBullets } from './logic/bullets.js'
 import { createProjectilePool, fireProjectile, resetProjectiles, updateProjectiles } from './projectiles.js'
 import { createShockwavePool, resetShockwaves, spawnShockwave, updateShockwaves } from './shockwave.js'
 import { createPopupPool, resetPopups, showPopup, updatePopups } from './popups.js'
@@ -212,7 +237,7 @@ const camera = new THREE.PerspectiveCamera(
 // own antialias setting -- an explicit multisampled (MSAA) render
 // target keeps edges clean through the post-processing passes instead.
 const renderTarget = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, {
-  samples: 4,
+  samples: MSAA_SAMPLES,
 })
 const composer = new EffectComposer(renderer, renderTarget)
 // Handing the composer its own render target pins its pixel ratio to 1,
@@ -276,11 +301,33 @@ const projectilePool = createProjectilePool()
 scene.add(projectilePool.group)
 const shockwavePool = createShockwavePool()
 scene.add(shockwavePool.group)
+const bulletPool = createBulletPool()
+scene.add(bulletPool.group)
 
 // The camera doesn't rotate yet, so it stays behind the player along a
 // fixed world-space offset and eases toward its target each frame.
 const cameraYaw = 0
 const cameraTarget = new THREE.Vector3()
+
+// Where the mouse points on the ground (y = 0.7, the bullets' height), as a
+// yaw from the player (Player.facing's convention: atan2(dx, dz)); null until
+// the mouse has moved. Used to aim ranged weapons.
+const aimRaycaster = new THREE.Raycaster()
+const aimPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -0.7)
+const aimPoint = new THREE.Vector3()
+const aimNdc = new THREE.Vector2()
+function mouseAimAngle(player) {
+  if (!input.mouse.moved) return null
+  aimNdc.set((input.mouse.x / window.innerWidth) * 2 - 1, -(input.mouse.y / window.innerHeight) * 2 + 1)
+  aimRaycaster.setFromCamera(aimNdc, camera)
+  if (!aimRaycaster.ray.intersectPlane(aimPlane, aimPoint)) return null
+  const dx = aimPoint.x - player.position.x
+  const dz = aimPoint.z - player.position.z
+  if (Math.hypot(dx, dz) < 0.3) return null
+  return Math.atan2(dx, dz)
+}
+
+let autoShoot = false // L toggles; holds the trigger for ranged weapons
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight
@@ -490,6 +537,11 @@ function selectWeapon(game, slot) {
   clearSwingTrail(swingTrail)
 }
 
+// Rage's damage multiplier right now (the Bullet Ring ability scales with it).
+function elapsedDamageMultiplier(player, now) {
+  return now < player.rageUntil ? RAGE_DAMAGE_MULTIPLIER : 1
+}
+
 // Fires the ability in `slot` if it's ready, applying its effect.
 function activateAbility(game, slot, now) {
   const used = useAbility(game.inventory, slot, now)
@@ -540,12 +592,98 @@ function activateAbility(game, slot, now) {
   } else if (used.abilityId === 'rage') {
     player.rageUntil = now + ABILITIES.rage.duration
     burst(particleSystem, center, 0xff4a3a, 30, 3.5, 0.5)
+  } else if (used.abilityId === 'lunge') {
+    const start = { x: player.position.x, z: player.position.z }
+    const dash = { x: Math.sin(player.facing) * LUNGE_DISTANCE, z: Math.cos(player.facing) * LUNGE_DISTANCE }
+    const target = clampToPlatform(resolveArenaMove(start, dash, PLAYER_RADIUS, game.obstacles), ARENA_RADIUS - 1)
+    // Everything within LUNGE_WIDTH of the path from start to target gets slashed.
+    const segX = target.x - start.x
+    const segZ = target.z - start.z
+    const segLengthSq = Math.max(segX * segX + segZ * segZ, 1e-6)
+    for (const mesh of game.monsters) {
+      if (mesh.userData.dying || mesh.userData.spawning || mesh.userData.falling) continue
+      const t = Math.min(1, Math.max(0, ((mesh.position.x - start.x) * segX + (mesh.position.z - start.z) * segZ) / segLengthSq))
+      const distance = Math.hypot(mesh.position.x - (start.x + segX * t), mesh.position.z - (start.z + segZ * t))
+      if (distance > LUNGE_WIDTH + mesh.userData.radius) continue
+      damageMonster(mesh, LUNGE_DAMAGE, { fromPos: start, knockback: 1.5, obstacles: game.obstacles, particleSystem, cause: 'sword', hitstop: game.hitstop })
+    }
+    for (const t of [0, 0.25, 0.5, 0.75, 1]) {
+      burst(particleSystem, { x: start.x + segX * t, y: 0.8, z: start.z + segZ * t }, LUNGE_COLOR, 10, 2.5)
+    }
+    player.position = target
+    player.mesh.position.x = target.x
+    player.mesh.position.z = target.z
+    player.invulnerableUntil = Math.max(player.invulnerableUntil, now + LUNGE_IFRAMES)
+  } else if (used.abilityId === 'thunder') {
+    const struck = game.monsters
+      .filter((m) => !m.userData.dying && !m.userData.spawning && !m.userData.falling)
+      .map((m) => ({ m, distance: Math.hypot(m.position.x - player.position.x, m.position.z - player.position.z) }))
+      .filter(({ distance }) => distance <= THUNDER_RANGE)
+      .sort((a, b) => a.distance - b.distance)
+      .slice(0, THUNDER_TARGETS)
+    for (const { m } of struck) {
+      for (const y of [0.4, 1.4, 2.4, 3.4]) burst(particleSystem, { x: m.position.x, y, z: m.position.z }, THUNDER_COLOR, 6, 2)
+      damageMonster(m, THUNDER_DAMAGE, { fromPos: player.position, knockback: 0.5, obstacles: game.obstacles, particleSystem, cause: 'shockwave', hitstop: game.hitstop })
+    }
+    if (struck.length > 0) triggerShake(game.shake, SHAKE_HIT_MAGNITUDE, SHAKE_HIT_DURATION)
+    burst(particleSystem, center, THUNDER_COLOR, 16, 3)
+  } else if (used.abilityId === 'gravity') {
+    spawnShockwave(shockwavePool, player.position.x, player.position.z, GRAVITY_RADIUS, GRAVITY_COLOR)
+    burst(particleSystem, center, GRAVITY_COLOR, 30, 4)
+    for (const mesh of game.monsters) {
+      if (mesh.userData.dying || mesh.userData.spawning || mesh.userData.falling) continue
+      const dx = mesh.position.x - player.position.x
+      const dz = mesh.position.z - player.position.z
+      const distance = Math.hypot(dx, dz)
+      if (distance > GRAVITY_RADIUS) continue
+      // Bosses only get tugged part of the way.
+      const wanted = Math.max(GRAVITY_PULL_DISTANCE, 0) + (mesh.userData.reachBonus ?? 0)
+      const pulledTo = mesh.userData.isBoss ? distance - (distance - wanted) * 0.3 : Math.min(distance, wanted)
+      const scale = distance > 1e-4 ? pulledTo / distance : 1
+      mesh.position.x = player.position.x + dx * scale
+      mesh.position.z = player.position.z + dz * scale
+      damageMonster(mesh, GRAVITY_DAMAGE, { fromPos: player.position, knockback: 0, obstacles: game.obstacles, particleSystem, cause: 'shockwave', hitstop: game.hitstop })
+    }
+  } else if (used.abilityId === 'volley') {
+    const ring = {
+      pellets: VOLLEY_COUNT,
+      spread: (Math.PI * 2 * (VOLLEY_COUNT - 1)) / VOLLEY_COUNT,
+      damage: VOLLEY_DAMAGE,
+      knockback: 0.8,
+      bullet: { speed: 20, life: 0.8, radius: 0.22, pierce: 1, explode: 0, color: 0xff9a3a },
+    }
+    fireBullets(bulletPool, makeBullets(ring, { x: player.position.x, z: player.position.z, aimAngle: player.facing, damageMultiplier: elapsedDamageMultiplier(player, now) }))
+    burst(particleSystem, center, 0xff9a3a, 20, 3)
+  } else if (used.abilityId === 'drain') {
+    spawnShockwave(shockwavePool, player.position.x, player.position.z, DRAIN_RADIUS, DRAIN_COLOR)
+    let drained = 0
+    for (const mesh of game.monsters) {
+      if (mesh.userData.dying || mesh.userData.spawning || mesh.userData.falling) continue
+      const distance = Math.hypot(mesh.position.x - player.position.x, mesh.position.z - player.position.z)
+      if (distance > DRAIN_RADIUS + (mesh.userData.reachBonus ?? 0)) continue
+      damageMonster(mesh, DRAIN_DAMAGE, { fromPos: player.position, knockback: 0.4, obstacles: game.obstacles, particleSystem, cause: 'shockwave', hitstop: game.hitstop })
+      burst(particleSystem, { x: mesh.position.x, y: 0.8, z: mesh.position.z }, DRAIN_COLOR, 8, 2)
+      drained += 1
+    }
+    player.hp = Math.min(PLAYER_MAX_HP, player.hp + drained * DRAIN_HEAL_PER_HIT)
+    burst(particleSystem, center, DRAIN_COLOR, 20, 2.5, 1)
+  } else if (used.abilityId === 'frenzy') {
+    player.frenzyUntil = now + ABILITIES.frenzy.duration
+    burst(particleSystem, center, 0xfff27a, 30, 3.5, 0.5)
+  } else if (used.abilityId === 'sprint') {
+    player.sprintUntil = now + ABILITIES.sprint.duration
+    burst(particleSystem, center, 0x9be37a, 24, 3)
+  } else if (used.abilityId === 'refresh') {
+    // Every other ability comes back right away; Second Wind itself stays on cooldown.
+    const { refresh } = game.inventory.abilityReadyAt
+    game.inventory = { ...game.inventory, abilityReadyAt: { refresh } }
+    burst(particleSystem, center, 0x7dffb0, 30, 3, 1)
   }
 }
 
 // Pays for and opens a chest, then hands out what rolled: a hotbar weapon
 // (equipped right away), an ability (bound to the next free key), or a
-// pet. Once you own everything it pays out score and a heal instead.
+// pet. Once your loadout is full it pays out score and a heal instead.
 function openChestNow(game, chest, now) {
   const { cost } = chest.userData
   const paid = spendCrystals(game.inventory, cost)
@@ -564,7 +702,7 @@ function openChestNow(game, chest, now) {
   if (!loot) {
     game.score += CHEST_ALL_OWNED_SCORE
     game.player.hp = Math.min(PLAYER_MAX_HP, game.player.hp + CHEST_ALL_OWNED_HEAL)
-    showLootToast(hud, { title: 'YOU OWN EVERYTHING', name: `+${CHEST_ALL_OWNED_SCORE} SCORE`, blurb: 'Plus a big heal' })
+    showLootToast(hud, { title: 'LOADOUT FULL', name: `+${CHEST_ALL_OWNED_SCORE} SCORE`, blurb: 'Plus a big heal' })
     return
   }
 
@@ -692,14 +830,16 @@ function startBossCutscene(game) {
 function summonMinions(game, bossMesh, count, maxMinions) {
   const living = game.monsters.filter((m) => !m.userData.isBoss && !m.userData.dying).length
   if (living >= maxMinions) return
-  for (let i = 0; i < count; i++) {
+  const toSpawn = Math.min(count, maxMinions - living)
+  for (let i = 0; i < toSpawn; i++) {
     const angle = Math.random() * Math.PI * 2
     const distance = bossMesh.userData.radius + 2 + Math.random() * 2
     const at = clampToPlatform(
       { x: bossMesh.position.x + Math.sin(angle) * distance, z: bossMesh.position.z + Math.cos(angle) * distance },
       ARENA_RADIUS - SPAWN_NEAR_PLAYER_MARGIN,
     )
-    spawnMonster(game, pickMonsterType(Math.max(2, game.waveState.waveNumber)), { at })
+    const minion = spawnMonster(game, pickMonsterType(Math.max(2, game.waveState.waveNumber)), { at })
+    bossMesh.userData.minions = [...(bossMesh.userData.minions ?? []), minion]
   }
 }
 
@@ -929,6 +1069,7 @@ function animate(timestamp) {
 
   if (input.wasPressed('KeyM') || input.wasMutePressed()) music.toggleMuted()
   music.setMuffled(gameState !== 'playing')
+  music.setMode(game.waveState.phase === 'bossFight' && gameState === 'playing' ? 'boss' : 'normal')
 
   // Recorded once, the frame the player dies: compares this run against
   // the saved high score, persists the new best, and freezes the stats
@@ -952,6 +1093,7 @@ function animate(timestamp) {
       resetParticles(particleSystem)
       resetPopups(popupPool)
       resetProjectiles(projectilePool)
+      resetBullets(bulletPool)
       resetCrystals(crystalSystem)
       setChestPrompt(hud, null)
       resetShockwaves(shockwavePool)
@@ -1038,6 +1180,11 @@ function animate(timestamp) {
   game.chestSpawnerState = nextChestSpawnerState
   if (chestSpawnNow) trySpawnChest(game)
 
+  if (input.wasPressed('KeyL')) autoShoot = !autoShoot
+  setAutoShoot(hud, autoShoot)
+  player.aimAngle = WEAPONS[selectedWeaponId(game.inventory)].gun ? mouseAimAngle(player) : null
+  const petFx = petEffects(game.inventory.pets)
+  player.speedMultiplier = petFx.speedMultiplier * (elapsedSeconds < player.sprintUntil ? SPRINT_SPEED_MULTIPLIER : 1)
   player.update(input, cameraYaw, gameplayDelta)
   if (!player.falling && !player.hidden && !isOnPlatform(player.position, ARENA_RADIUS)) {
     player.startFalling()
@@ -1122,7 +1269,11 @@ function animate(timestamp) {
     particleSystem,
     swingTrail,
     weaponId: selectedWeaponId(game.inventory),
-    damageMultiplier: elapsedSeconds < player.rageUntil ? RAGE_DAMAGE_MULTIPLIER : 1,
+    damageMultiplier: elapsedDamageMultiplier(player, elapsedSeconds) * petFx.damageMultiplier,
+    cooldownMultiplier: petFx.cooldownMultiplier * (elapsedSeconds < player.frenzyUntil ? FRENZY_COOLDOWN_MULTIPLIER : 1),
+    knockbackMultiplier: petFx.knockbackMultiplier,
+    bulletPool,
+    autoAttack: autoShoot,
     hitstop: game.hitstop,
   })
   if (!hadSwing && attackState.swingElapsed !== null) {
@@ -1225,6 +1376,10 @@ function animate(timestamp) {
   updateParticles(particleSystem, gameplayDelta)
   updatePopups(popupPool, gameplayDelta)
   updateShockwaves(shockwavePool, gameplayDelta)
+  if (updateBullets(bulletPool, gameplayDelta, { monsters, obstacles, particleSystem, hitstop: game.hitstop, arenaRadius: ARENA_RADIUS })) {
+    sfx.play('hit', { x: player.position.x, z: player.position.z })
+    input.rumble(RUMBLE_LIGHT_STRENGTH, RUMBLE_LIGHT_DURATION)
+  }
   if (updateProjectiles(projectilePool, gameplayDelta, player, elapsedSeconds, ARENA_RADIUS)) {
     triggerShake(shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
     triggerDamageFlash(hud)
@@ -1235,13 +1390,12 @@ function animate(timestamp) {
 
   // Pets follow and help, crystals scatter/home/get collected, and chests
   // animate; F opens the nearest one in reach if you can afford it.
-  const petFx = petEffects(game.inventory.pets)
   player.damageTakenMultiplier = petFx.damageTakenMultiplier
   player.updateStatusEffects(elapsedSeconds)
   updatePets(game.pets, { dt: gameplayDelta, elapsed: elapsedSeconds, player, monsters: game.monsters, obstacles, particleSystem, hitstop: game.hitstop })
   const collected = updateCrystals(crystalSystem, gameplayDelta, elapsedSeconds, player.position.x, player.position.z, petFx.magnetRadius)
   if (collected > 0) {
-    game.inventory = addCrystals(game.inventory, collected)
+    game.inventory = addCrystals(game.inventory, Math.max(1, Math.round(collected * petFx.crystalMultiplier)))
     sfx.play('crystal')
   }
 

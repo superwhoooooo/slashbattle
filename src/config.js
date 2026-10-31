@@ -204,12 +204,38 @@ export const GAS_GIANT_RING_TILT = Math.PI / 2.6 // radians, off the orbital pla
 // Lighting: a cool-sky-fill hemisphere light plus a shadow-casting warm
 // sun as the directional key light (the platform receives shadows;
 // characters cast them).
+// Graphics quality preset: 'low' | 'medium' | 'high'. Change QUALITY to
+// trade looks for frame rate; the per-preset values below feed the
+// shadow map, ambient occlusion, pixel ratio and MSAA settings.
+export const QUALITY_PRESETS = {
+  low: { maxPixelRatio: 1, msaaSamples: 0, gtao: false, shadowMapSize: 1024 },
+  medium: { maxPixelRatio: 1.25, msaaSamples: 0, gtao: false, shadowMapSize: 1024 },
+  high: { maxPixelRatio: 2, msaaSamples: 4, gtao: true, shadowMapSize: 2048 },
+}
+const QUALITY_DEFAULT = 'medium'
+// A `?quality=low|medium|high` URL parameter overrides the default (handy
+// for A/B testing frame rate without editing this file).
+const QUALITY_OVERRIDE =
+  typeof location !== 'undefined' ? new URLSearchParams(location.search).get('quality') : null
+export const QUALITY = QUALITY_OVERRIDE in QUALITY_PRESETS ? QUALITY_OVERRIDE : QUALITY_DEFAULT
+// Individual fields can also be overridden from the URL for A/B testing:
+// ?pr=1.25&msaa=2&gtao=1&shadow=1024
+const urlParams = typeof location !== 'undefined' ? new URLSearchParams(location.search) : new URLSearchParams()
+const numParam = (key, fallback) => (urlParams.has(key) ? Number(urlParams.get(key)) : fallback)
+const base = QUALITY_PRESETS[QUALITY] ?? QUALITY_PRESETS.medium
+const QUALITY_SETTINGS = {
+  maxPixelRatio: numParam('pr', base.maxPixelRatio),
+  msaaSamples: numParam('msaa', base.msaaSamples),
+  gtao: urlParams.has('gtao') ? urlParams.get('gtao') === '1' : base.gtao,
+  shadowMapSize: numParam('shadow', base.shadowMapSize),
+}
+
 export const HEMI_LIGHT_SKY_COLOR = 0xcfe8ff
 export const HEMI_LIGHT_GROUND_COLOR = 0xe8d6b8
 export const HEMI_LIGHT_INTENSITY = 0.5
 export const KEY_LIGHT_COLOR = 0xfff0d6
 export const KEY_LIGHT_INTENSITY = 1.6
-export const SHADOW_MAP_SIZE = 2048
+export const SHADOW_MAP_SIZE = QUALITY_SETTINGS.shadowMapSize
 // The key light (and its target) follow the player every frame at this
 // fixed world-space offset, rather than staying fixed over the
 // platform's center, so a shadow frustum this small stays crisp however
@@ -233,7 +259,7 @@ export const ENVIRONMENT_INTENSITY = 0.35
 // GTAOPass (EffectComposer, main.js): ambient occlusion for the contact
 // shadows and creases a directional sun makes obvious. GTAO_ENABLED is a quick on/off toggle independent of the other
 // tuning.
-export const GTAO_ENABLED = true
+export const GTAO_ENABLED = QUALITY_SETTINGS.gtao
 export const GTAO_RADIUS = 1.2 // world units, how far each pixel samples for occluders
 export const GTAO_INTENSITY = 1.0 // blend strength of the occlusion term
 
@@ -243,7 +269,8 @@ export const CAMERA_FAR = 1500
 // display otherwise renders far more pixels than it's worth), and the
 // per-frame delta is clamped so a dropped or backgrounded-tab frame
 // doesn't feed a huge dt into movement/physics.
-export const MAX_PIXEL_RATIO = 2
+export const MAX_PIXEL_RATIO = QUALITY_SETTINGS.maxPixelRatio
+export const MSAA_SAMPLES = QUALITY_SETTINGS.msaaSamples
 export const MAX_DELTA_SECONDS = 1 / 20
 
 // Falling off the platform's edge.
@@ -608,6 +635,8 @@ export const CHEST_ALL_OWNED_SCORE = 500 // consolation prize once a chest has n
 export const CHEST_ALL_OWNED_HEAL = 40
 
 // Ability tuning (src/logic/items.js has names/cooldowns).
+// Auto-shoot (L) fires this much slower than holding the trigger yourself.
+export const AUTO_SHOOT_COOLDOWN_MULTIPLIER = 1.7
 export const BLINK_DISTANCE = 6
 export const BLINK_IFRAMES = 0.3 // seconds of invulnerability after a blink
 export const SHOCKWAVE_RADIUS = 5.5
@@ -616,3 +645,26 @@ export const SHOCKWAVE_KNOCKBACK = 4
 export const SHOCKWAVE_COLOR = 0x19e7ff
 export const HEAL_PULSE_AMOUNT = 30
 export const RAGE_DAMAGE_MULTIPLIER = 1.8
+
+// Newer abilities (see logic/items.js)
+export const LUNGE_DISTANCE = 7
+export const LUNGE_WIDTH = 1.4 // how far either side of the dash path still gets hit
+export const LUNGE_DAMAGE = 40
+export const LUNGE_IFRAMES = 0.4
+export const LUNGE_COLOR = 0xffa94d
+export const THUNDER_TARGETS = 4
+export const THUNDER_RANGE = 22
+export const THUNDER_DAMAGE = 45
+export const THUNDER_COLOR = 0xfff27a
+export const GRAVITY_RADIUS = 11
+export const GRAVITY_PULL_DISTANCE = 2 // how close to the player the well drags regular enemies
+export const GRAVITY_DAMAGE = 8
+export const GRAVITY_COLOR = 0xa070ff
+export const VOLLEY_COUNT = 16
+export const VOLLEY_DAMAGE = 18
+export const DRAIN_RADIUS = 6
+export const DRAIN_DAMAGE = 14
+export const DRAIN_HEAL_PER_HIT = 5
+export const DRAIN_COLOR = 0xd0104a
+export const FRENZY_COOLDOWN_MULTIPLIER = 0.5 // attack cooldown scale while Frenzy is up
+export const SPRINT_SPEED_MULTIPLIER = 1.6

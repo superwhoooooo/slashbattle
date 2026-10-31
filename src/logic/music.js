@@ -95,3 +95,73 @@ export function eventsForStep(stepIndex) {
 
   return events
 }
+
+// ---- Boss track -----------------------------------------------------------
+// A faster, darker 8-bar loop in E minor for boss fights: a galloping bass,
+// double-kick drums, a held pad, a stabbing riff over the first four bars
+// and a soaring hook over the last four (Em-Em-C-D, Em-Em-C-B).
+export const BOSS_BPM = 156
+
+const BOSS_CHORDS = [
+  { root: 40, tones: [52, 55, 59] }, // Em
+  { root: 40, tones: [52, 55, 59] }, // Em
+  { root: 36, tones: [48, 52, 55] }, // C
+  { root: 38, tones: [50, 54, 57] }, // D
+  { root: 40, tones: [52, 55, 59] }, // Em
+  { root: 40, tones: [52, 55, 59] }, // Em
+  { root: 36, tones: [48, 52, 55] }, // C
+  { root: 35, tones: [51, 54, 59] }, // B (major, so the loop pulls back to Em)
+]
+
+const BOSS_GALLOP_STEPS = [0, 2, 3, 4, 6, 7, 8, 10, 11, 12, 14, 15]
+const BOSS_RIFF_STEPS = [0, 3, 6, 8, 11, 14]
+
+// The hook, per bar of the second half: [step, midi note, length in steps].
+const BOSS_LEAD_BARS = [
+  [[0, 76, 3], [3, 79, 3], [6, 83, 2], [8, 81, 2], [10, 79, 2], [12, 76, 4]],
+  [[0, 76, 3], [3, 79, 3], [6, 83, 2], [8, 86, 4], [12, 83, 4]],
+  [[0, 79, 3], [3, 84, 3], [6, 88, 2], [8, 86, 2], [10, 84, 2], [12, 79, 4]],
+  [[0, 78, 2], [2, 83, 2], [4, 86, 2], [6, 87, 2], [8, 86, 4], [12, 83, 4]],
+]
+
+export function bossEventsForStep(stepIndex) {
+  const loopStep = ((stepIndex % LOOP_STEPS) + LOOP_STEPS) % LOOP_STEPS
+  const bar = Math.floor(loopStep / STEPS_PER_BAR)
+  const step = loopStep % STEPS_PER_BAR
+  const secondHalf = bar >= LOOP_BARS / 2
+  const chord = BOSS_CHORDS[bar]
+  const events = []
+
+  // Drums: double kick, backbeat snare, driving 16th hats.
+  if (step === 0 || step === 6 || step === 8 || step === 10) events.push({ kind: 'kick', steps: 1, velocity: step === 0 ? 1 : 0.8 })
+  if (step === 4 || step === 12) events.push({ kind: 'snare', steps: 1, velocity: 1 })
+  events.push({ kind: 'hat', steps: 1, velocity: step % 2 === 0 ? 0.5 : 0.28 })
+  if (step === 14) events.push({ kind: 'openHat', steps: 2, velocity: 0.55 })
+  // Tom run on the last beat of every fourth bar, a crash on every fourth downbeat.
+  if (bar % 4 === 3 && step >= 12) events.push({ kind: 'tom', note: 50 - (step - 12) * 3, steps: 1, velocity: 0.9 })
+  if (bar % 4 === 0 && step === 0) events.push({ kind: 'crash', steps: 8, velocity: 0.7 })
+
+  if (BOSS_GALLOP_STEPS.includes(step)) {
+    events.push({ kind: 'bass', note: chord.root + (step === 7 || step === 15 ? 12 : 0), steps: 1, velocity: 1 })
+  }
+
+  if (step === 0) {
+    for (const tone of chord.tones) events.push({ kind: 'pad', note: tone, steps: STEPS_PER_BAR, velocity: 1 })
+  }
+
+  if (secondHalf) {
+    for (const [leadStep, note, steps] of BOSS_LEAD_BARS[bar - LOOP_BARS / 2]) {
+      if (leadStep === step) events.push({ kind: 'lead', note, steps, velocity: 1 })
+    }
+  } else if (BOSS_RIFF_STEPS.includes(step)) {
+    events.push({ kind: 'riff', note: chord.root + 24 + (step === 8 || step === 14 ? 3 : 0), steps: 2, velocity: 1 })
+  }
+
+  return events
+}
+
+// The tracks the music player can switch between.
+export const MUSIC_TRACKS = {
+  normal: { bpm: MUSIC_BPM, events: eventsForStep },
+  boss: { bpm: BOSS_BPM, events: bossEventsForStep },
+}

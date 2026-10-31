@@ -38,6 +38,10 @@ export class Player {
     this.shieldUntil = -Infinity // the Bubble Shield ability: no damage at all until then
     this.rageUntil = -Infinity // the Rage ability: weapon damage multiplied until then
     this.damageTakenMultiplier = 1 // < 1 with a guard pet
+    this.aimAngle = null // yaw toward the mouse while a ranged weapon is out; overrides the movement facing
+    this.speedMultiplier = 1 // > 1 with a speed pet or Sprint
+    this.frenzyUntil = -Infinity // the Frenzy ability: attack cooldown scaled down until then
+    this.sprintUntil = -Infinity // the Sprint ability: speedMultiplier boosted until then
     this._hitFlashElapsed = null // null means not currently flashing
     this.hidden = false
     this.exitedAt = null // seconds elapsed at the last pop-out; drives the ambush window
@@ -232,8 +236,11 @@ export class Player {
       }
     }
 
-    const targetSpeed = hasInput ? PLAYER_SPEED : 0
-    this.speed = rampToward(this.speed, targetSpeed, PLAYER_SPEED / PLAYER_ACCEL_TIME, deltaSeconds)
+    if (this.aimAngle !== null) this.facing = this.aimAngle
+
+    const maxSpeed = PLAYER_SPEED * this.speedMultiplier
+    const targetSpeed = hasInput ? maxSpeed : 0
+    this.speed = rampToward(this.speed, targetSpeed, maxSpeed / PLAYER_ACCEL_TIME, deltaSeconds)
     this.mesh.rotation.y = dampAngle(this.mesh.rotation.y, this.facing, PLAYER_FACING_DAMPING, deltaSeconds)
 
     if (this.speed <= 1e-4) return

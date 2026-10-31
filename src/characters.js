@@ -18,6 +18,7 @@ import {
 import { createFace3D } from './face3d.js'
 import { createJellyBody } from './jelly.js'
 import { PLAYER_FACE, pickFaceOptions } from './logic/faceOptions.js'
+import { WEAPONS } from './logic/items.js'
 import {
   CONE_HEIGHT_FACTOR,
   CONE_RADIUS_FACTOR,
@@ -85,7 +86,11 @@ function createSword() {
   return group
 }
 
-const WEAPON_COLORS = { dagger: 0xffa94d, spear: 0x7cffb0, hammer: 0xff4fa3, scythe: 0xb48cff }
+const WEAPON_COLORS = {
+  dagger: 0xffa94d, spear: 0x7cffb0, hammer: 0xff4fa3, scythe: 0xb48cff,
+  katana: 0x4de0ff, axe: 0xff7a45, rapier: 0xf5f07a, flail: 0xff6fe0, chainsaw: 0xffd23f, boomstick: 0x8cff6f,
+  staff: 0xb48cff, pistol: 0xffe14a, shotgun: 0xff8ad8, smg: 0x66f0ff, railgun: 0x7cffb0, launcher: 0xff8a3a,
+}
 
 function glowMaterial(color, intensity = 1) {
   return new THREE.MeshStandardMaterial({
@@ -150,6 +155,57 @@ function createWeaponMesh(id) {
     group.add(darkPole(0.95, 0.04, 0.4))
     group.add(glowBox(0.5, 0.32, 0.34, color, 0.95))
     tipY = 1.12
+  } else if (id === 'staff') {
+    // A wizard staff: a dark shaft topped with a glowing orb in a small cradle.
+    group.add(darkPole(1.25, 0.03, 0.5))
+    group.add(glowBox(0.2, 0.04, 0.2, color, 1.08, { glow: false }))
+    const orbGeometry = new THREE.SphereGeometry(0.15, 16, 12)
+    const orb = new THREE.Mesh(orbGeometry, glowMaterial(color, 1.4))
+    const aura = new THREE.Mesh(
+      orbGeometry,
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.25, blending: THREE.AdditiveBlending, depthWrite: false }),
+    )
+    aura.scale.setScalar(1.7)
+    orb.position.y = 1.25
+    aura.position.y = 1.25
+    group.add(orb, aura)
+    tipY = 1.25
+  } else if (id === 'katana') {
+    group.add(glowBox(0.05, 0.95, 0.02, color, 0.55))
+    group.add(glowBox(0.2, 0.05, 0.06, color, 0.05, { glow: false }))
+    group.add(darkPole(0.2, 0.03, -0.1))
+    tipY = 1.02
+  } else if (id === 'axe') {
+    group.add(darkPole(1.0, 0.04, 0.4))
+    group.add(glowBox(0.45, 0.4, 0.05, color, 0.85, { x: 0.2 }))
+    tipY = 1.0
+  } else if (id === 'rapier') {
+    group.add(glowBox(0.025, 1.3, 0.02, color, 0.7))
+    group.add(glowBox(0.22, 0.04, 0.22, color, 0.08, { glow: false }))
+    group.add(darkPole(0.16, 0.025, -0.08))
+    tipY = 1.35
+  } else if (id === 'flail') {
+    group.add(darkPole(0.7, 0.035, 0.3))
+    group.add(glowBox(0.04, 0.5, 0.04, color, 0.85, { glow: false }))
+    group.add(glowBox(0.34, 0.34, 0.34, color, 1.2))
+    tipY = 1.3
+  } else if (id === 'chainsaw') {
+    group.add(darkPole(0.3, 0.07, 0.05))
+    group.add(glowBox(0.12, 0.8, 0.04, color, 0.6))
+    tipY = 1.0
+  } else if (id === 'boomstick') {
+    group.add(darkPole(0.7, 0.05, 0.3))
+    group.add(glowBox(0.22, 0.5, 0.22, color, 0.85))
+    tipY = 1.15
+  } else if (WEAPONS[id].gun) {
+    // Firearms: a dark grip and body with a glowing barrel pointing along +y
+    // (the player's forward once the sword's pose is applied).
+    const long = id === 'railgun' || id === 'shotgun'
+    group.add(darkPole(0.3, 0.05, 0))
+    group.add(glowBox(0.14, long ? 0.8 : 0.45, 0.14, color, long ? 0.5 : 0.35))
+    if (id === 'launcher') group.add(glowBox(0.3, 0.3, 0.3, color, 0.75))
+    if (id === 'smg') group.add(glowBox(0.08, 0.3, 0.08, color, 0.05, { glow: false, x: 0.12 }))
+    tipY = long ? 0.95 : id === 'launcher' ? 0.95 : 0.6
   } else {
     // scythe: a long pole with a crescent blade swept off its top
     group.add(darkPole(1.3, 0.03, 0.45))
@@ -345,7 +401,7 @@ export function createPlayerMesh() {
   group.add(face.group)
   group.userData.face3d = face
 
-  const sword = createSword()
+  const sword = createWeaponMesh('staff')
   sword.position.set(PLAYER_BODY_RADIUS + 0.1, PLAYER_BODY_RADIUS * 0.6, 0)
   group.add(sword)
 

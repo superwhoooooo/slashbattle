@@ -20,6 +20,7 @@ export class Input {
     this.mouseButtons = new Set()
     this._justPressed = new Set()
     this._justMousePressed = new Set()
+    this.mouse = { x: 0, y: 0, moved: false } // last cursor position in client pixels
 
     this._gamepadIndex = null // navigator.getGamepads() index of the pad we're following, or null if none
     this._activeGamepad = null // the real Gamepad object last polled, for rumble()
@@ -47,6 +48,11 @@ export class Input {
       this.mouseButtons.add(event.button)
     }
     this._onMouseUp = (event) => this.mouseButtons.delete(event.button)
+    this._onMouseMove = (event) => {
+      this.mouse.x = event.clientX
+      this.mouse.y = event.clientY
+      this.mouse.moved = true
+    }
     this._onGamepadConnected = (event) => {
       this._gamepadIndex = event.gamepad.index
     }
@@ -63,6 +69,7 @@ export class Input {
     window.addEventListener('keyup', this._onKeyUp)
     window.addEventListener('mousedown', this._onMouseDown)
     window.addEventListener('mouseup', this._onMouseUp)
+    window.addEventListener('mousemove', this._onMouseMove)
     window.addEventListener('gamepadconnected', this._onGamepadConnected)
     window.addEventListener('gamepaddisconnected', this._onGamepadDisconnected)
   }
@@ -224,6 +231,7 @@ export class Input {
     window.removeEventListener('keyup', this._onKeyUp)
     window.removeEventListener('mousedown', this._onMouseDown)
     window.removeEventListener('mouseup', this._onMouseUp)
+    window.removeEventListener('mousemove', this._onMouseMove)
     window.removeEventListener('gamepadconnected', this._onGamepadConnected)
     window.removeEventListener('gamepaddisconnected', this._onGamepadDisconnected)
   }

@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import {
   AMBUSH_WINDOW,
   ATTACK_COOLDOWN,
+  AUTO_SHOOT_COOLDOWN_MULTIPLIER,
   DEATH_POP_DURATION,
   BOSS_DEATH_SHARD_MULTIPLIER,
   DEATH_SHARD_COUNT,
@@ -30,6 +31,8 @@ import {
 import { isAmbushActive } from './logic/hiding.js'
 import { triggerHitstop } from './logic/hitstop.js'
 import { WEAPONS } from './logic/items.js'
+import { makeBullets } from './logic/bullets.js'
+import { fireBullets } from './bullets.js'
 import { jellyHit } from './jelly.js'
 import { burst, shardBurst } from './particles.js'
 import { clearSwingTrail, updateSwingTrail } from './trail.js'
@@ -66,13 +69,15 @@ export function createAttackState() {
 // hit landed, so the caller can trigger a (smaller) screen shake.
 export function updatePlayerAttack(
   attackState,
-  { player, monsters, obstacles, input, elapsedSeconds, deltaSeconds, particleSystem, swingTrail, weaponId = 'sword', damageMultiplier = 1, hitstop = null },
+  { player, monsters, obstacles, input, elapsedSeconds, deltaSeconds, particleSystem, swingTrail, weaponId = 'sword', damageMultiplier = 1, cooldownMultiplier = 1, knockbackMultiplier = 1, bulletPool = null, autoAttack = false, hitstop = null },
 ) {
   const weapon = WEAPONS[weaponId]
   if (player.hidden) return { ambushHit: false, hitAny: false }
 
   const sword = player.mesh.userData.sword
-  const attackPressed = input.isAttackDown()
+  // Auto-shoot (L) holds the trigger for ranged weapons only.
+  const autoOnly = autoAttack && weapon.gun === true && !input.isAttackDown()
+  const attackPressed = autoOnly || input.isAttackDown()
 
   if (
     attackState.swingElapsed === null &&
@@ -81,7 +86,7 @@ export function updatePlayerAttack(
   ) {
     attackState.swingElapsed = 0
     attackState.hasHitThisSwing = false
-    attackState.cooldown.trigger(elapsedSeconds, weapon.cooldown)
+    attackState.cooldown.trigger(elapsedSeconds, weapon.cooldown * cooldownMultiplier * (autoOnly ? AUTO_SHOOT_COOLDOWN_MULTIPLIER : 1))
   }
 
   if (attackState.swingElapsed === null) return { ambushHit: false, hitAny: false }
@@ -97,7 +102,25 @@ export function updatePlayerAttack(
   let hitAny = false
   if (!attackState.hasHitThisSwing && progress >= SWING_HIT_FRACTION) {
     attackState.hasHitThisSwing = true
-    ;({ ambushHit, hitAny } = resolveAttackHits(player, monsters, obstacles, elapsedSeconds, particleSystem, weapon, damageMultiplier, hitstop))
+    if (weapon.gun) {
+      // Firearms fire a fan of bullets from just in front of the player; the
+      // pool's own update (main.js) resolves what they hit.
+      const ambush = isAmbushActive(elapsedSeconds, player.exitedAt, AMBUSH_WINDOW)
+      const muzzle = 0.9
+      fireBullets(
+        bulletPool,
+        makeBullets(weapon, {
+          x: player.position.x + Math.sin(player.facing) * muzzle,
+          z: player.position.z + Math.cos(player.facing) * muzzle,
+          aimAngle: player.facing,
+          damageMultiplier: computeDamage(damageMultiplier, { ambush }),
+          knockbackMultiplier,
+          ambush,
+        }),
+      )
+    } else {
+      ;({ ambushHit, hitAny } = resolveAttackHits(player, monsters, obstacles, elapsedSeconds, particleSystem, weapon, damageMultiplier, knockbackMultiplier, hitstop))
+    }
   }
 
   if (progress >= 1) {
@@ -125,6 +148,14 @@ export function updatePlayerAttack(
 // any kill, shortest for a plain non-lethal hit -- except a pet's zap,
 // which only freezes on a kill, since it fires automatically and often.
 export function damageMonster(monster, damage, { fromPos, knockback = 0, obstacles = [], particleSystem, cause = 'sword', ambush = false, hitstop = null }) {
+  // A summoner boss is immune while any minion it called in is still alive.
+  const minions = monster.userData.minions
+  if (minions && minions.some((m) => !m.userData.dying && !m.userData.falling)) {
+    const stats = MONSTER_TYPES[monster.userData.type]
+    const point = { x: monster.position.x, y: monster.position.y + stats.size * 0.5, z: monster.position.z }
+    burst(particleSystem, point, HIT_SPARK_WHITE_COLOR, HIT_SPARK_WHITE_COUNT, HIT_SPARK_WHITE_SPEED)
+    return false
+  }
   const { hp, lethal } = applyDamage({ hp: monster.userData.hp }, damage)
   monster.userData.hp = hp
   monster.userData.lastHitBy = cause
@@ -167,7 +198,7 @@ export function damageMonster(monster, damage, { fromPos, knockback = 0, obstacl
 // within the ambush window after popping out of hiding) and knockback.
 // A monster still materializing in (spawning) can't be hit. Returns
 // { ambushHit, hitAny } for the whole swing.
-function resolveAttackHits(player, monsters, obstacles, now, particleSystem, weapon, damageMultiplier, hitstop) {
+function resolveAttackHits(player, monsters, obstacles, now, particleSystem, weapon, damageMultiplier, knockbackMultiplier, hitstop) {
   const attackerPos = player.position
   const ambush = isAmbushActive(now, player.exitedAt, AMBUSH_WINDOW)
   let ambushHit = false
@@ -182,7 +213,7 @@ function resolveAttackHits(player, monsters, obstacles, now, particleSystem, wea
     }
 
     const damage = computeDamage(weapon.damage * damageMultiplier, { ambush })
-    damageMonster(monster, damage, { fromPos: attackerPos, knockback: weapon.knockback, obstacles, particleSystem, cause: 'sword', ambush, hitstop })
+    damageMonster(monster, damage, { fromPos: attackerPos, knockback: weapon.knockback * knockbackMultiplier, obstacles, particleSystem, cause: 'sword', ambush, hitstop })
     hitAny = true
     if (ambush) ambushHit = true
   }

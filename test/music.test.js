@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
+  BOSS_BPM,
   LOOP_STEPS,
+  MUSIC_TRACKS,
+  bossEventsForStep,
   MUSIC_BPM,
   eventsForStep,
   midiToFreq,
@@ -65,6 +68,46 @@ describe('eventsForStep', () => {
       for (const event of eventsForStep(step)) {
         if (event.kind === 'bass') expect(event.note).toBeLessThan(60)
         if (event.kind === 'lead') expect(event.note).toBeGreaterThanOrEqual(60)
+      }
+    }
+  })
+})
+
+describe('boss track', () => {
+  const bossKinds = (step) => bossEventsForStep(step).map((e) => e.kind)
+
+  it('is registered next to the normal track and runs faster', () => {
+    expect(Object.keys(MUSIC_TRACKS)).toEqual(['normal', 'boss'])
+    expect(MUSIC_TRACKS.boss.bpm).toBe(BOSS_BPM)
+    expect(BOSS_BPM).toBeGreaterThan(MUSIC_BPM)
+    expect(MUSIC_TRACKS.boss.events).toBe(bossEventsForStep)
+  })
+
+  it('has a double kick, a backbeat snare and a gallop bass', () => {
+    for (const step of [0, 6, 8]) expect(bossKinds(step)).toContain('kick')
+    for (const step of [4, 12]) expect(bossKinds(step)).toContain('snare')
+    expect(bossKinds(2)).toContain('bass')
+    expect(bossKinds(1)).not.toContain('bass')
+  })
+
+  it('opens with a crash and a held chord on the first downbeat', () => {
+    expect(bossKinds(0)).toContain('crash')
+    expect(bossKinds(0).filter((k) => k === 'pad')).toHaveLength(3)
+  })
+
+  it('plays the riff in the first half and the hook in the second', () => {
+    expect(bossKinds(0)).toContain('riff')
+    expect(bossKinds(0)).not.toContain('lead')
+    const secondHalf = LOOP_STEPS / 2
+    expect(bossKinds(secondHalf)).toContain('lead')
+    expect(bossKinds(secondHalf)).not.toContain('riff')
+  })
+
+  it('loops and only emits notes with a pitch where one is needed', () => {
+    for (let step = 0; step < LOOP_STEPS; step++) {
+      expect(bossEventsForStep(step)).toEqual(bossEventsForStep(step + LOOP_STEPS))
+      for (const event of bossEventsForStep(step)) {
+        if (['bass', 'pad', 'riff', 'lead', 'tom'].includes(event.kind)) expect(event.note).toBeGreaterThan(0)
       }
     }
   })

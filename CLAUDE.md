@@ -47,12 +47,13 @@ record.
 
 ## Controls
 - WASD / arrow keys — move
-- Left click or Space — swing your sword
+- Left click or Space — cast / swing your weapon (ranged weapons, the Wizard Staff included, aim at the mouse cursor)
+- L — toggle auto-shoot (holds the trigger for ranged weapons; shown bottom-right)
 - E — enter or exit a nearby pod to hide
 - R — restart after losing
 - M — mute / unmute all sound, music and effects (remembered in `localStorage`)
 - F — open the nearest chest (costs crystals)
-- 1-5 — pick a weapon from the hotbar
+- 1-5 — pick a weapon from the hotbar (melee or firearm)
 - Q / Z / X / C / V — use your abilities, in the order you found them
 
 A standard gamepad works too (`src/logic/gamepad.js` maps a snapshot to
@@ -93,6 +94,8 @@ slashbattle/
     shockwave.js       # expanding ground rings (boss slam, player Shockwave)
     logic/resortLayout.js # seeded sundeck prop layout (pools, umbrellas, loungers, signs), isInPool
     logic/items.js     # weapon / ability / pet catalogs
+    logic/bullets.js   # player bullet rules (makeBullets, stepBullet)
+    bullets.js         # the pooled player-bullet meshes
     logic/inventory.js # crystals, hotbar, ability cooldowns, chest loot rolls
     logic/crystals.js  # crystal drops + movement rules
     logic/projectiles.js # fan velocities, projectile stepping/hits
@@ -354,6 +357,14 @@ each frame. `src/logic/sfx.js` rate-limits rapid voices (crystal, hit) and maps
 a kill's trick to its voice (`killVoiceForTrick`). Effects are not ducked on
 game over.
 
+## Boss music
+During the `bossFight` phase `main.js` calls `music.setMode('boss')` (back to
+`'normal'` afterwards and on game over): a faster (156 BPM), darker E-minor
+loop from `logic/music.js`'s `bossEventsForStep` -- galloping bass, double
+kick, tom runs, a held pad, a stabbing riff then a soaring hook -- registered in
+`MUSIC_TRACKS` with the normal track. `src/music.js` voices the extra `pad`,
+`riff` and `tom` events and restarts the loop (with a crash) on a switch.
+
 ## Bosses
 After one regular wave a boss fight, then two waves and a boss, then three,
 and so on (`wavesBeforeBoss`). `src/logic/bosses.js` defines seven bosses --
@@ -405,19 +416,43 @@ pill with a teal border and "OPEN" when affordable, a muted pill with a coral
 price and "NEED MORE" when not, and a butter "FREE" pill for a boss's chest. At most `CHEST_MAX_ACTIVE` exist at once, placed like pods (reusing
 `pickPodSpawnPoint`/`stepPodSpawner`), and a boss leaves a FREE one where it
 fell. Press F within `CHEST_INTERACT_RANGE` to pay and open one; it rolls
-(`rollChestLoot`) a weapon, ability or pet you don't own yet, or -- once you own
-all 14 items -- a score and heal bonus.
+(`rollChestLoot`) a weapon, ability or pet you don't own yet, or -- once every
+slot is full -- a score and heal bonus.
 
-- **Weapons** (`WEAPONS`, the 1-5 hotbar): Energy Sword (start), Twin Dagger,
-  Neon Spear, Mega Hammer, Moon Scythe, each with its own damage / range / arc /
-  cooldown / knockback and 3D model. `combat.js`'s `updatePlayerAttack` takes the
-  selected `weaponId`; a new weapon is equipped when found.
+The catalogs are bigger than the slots (17 weapons for a 5-slot hotbar with the
+Wizard Staff fixed in slot 1, 13 abilities for 5 keys, 20 pets for `MAX_PETS` = 5), and a
+chest only rolls items you don't own, so a maxed-out loadout differs run to run.
+Once every slot is full a chest pays out score and a heal ("LOADOUT FULL").
+
+- **Weapons** (`WEAPONS`, the 1-5 hotbar): The player starts with the **Wizard Staff** (`staff`, a firearm-style
+  weapon whose magic orbs, cause `magic`, trick "Magic Hour", fly toward the mouse;
+  `main.js`'s `mouseAimAngle` raycasts the cursor onto the ground and sets
+  `player.aimAngle`, which overrides the movement facing while a ranged weapon is
+  out, and L toggles `autoShoot`, passed to `updatePlayerAttack` as `autoAttack`).
+  Melee -- Energy Sword (now a chest find), Twin
+  Dagger, Neon Spear, Mega Hammer, Moon Scythe, Plasma Katana, Battle Axe, Pixel
+  Rapier, Disco Flail, Chainsaw, Boom Stick -- each with its own damage / range /
+  arc / cooldown / knockback and 3D model. **Firearms** (`gun: true`: Pop Pistol,
+  Confetti Shotgun, Bubble SMG, Rail Gun, Cannonball Launcher) skip the melee
+  zone and fire `pellets` bullets in a `spread` fan at the swing's hit moment;
+  `bullet` sets speed/life/radius/`pierce`/`explode`. `src/logic/bullets.js`
+  (`makeBullets`, `stepBullet`) is the pure flight/hit rule and `src/bullets.js`
+  the pooled meshes (`updateBullets` hits through `damageMonster`, cause `gun`,
+  trick "Last Call"). `combat.js`'s `updatePlayerAttack` takes the selected
+  `weaponId` plus damage / cooldown / knockback multipliers and the bullet pool.
 - **Abilities** (`ABILITIES`, keys Q Z X C V in pickup order, each on a
   cooldown shown on its slot): Blink, Shockwave, Heal Pulse, Bubble Shield,
-  Rage. Effects live in `main.js`'s `activateAbility`.
-- **Pets** (`PETS`): Sparky and Blasty zap the nearest enemy, Healbit heals,
-  Magneto widens the crystal pull, Shieldy softens every hit (`petEffects`).
-  They orbit you and can't be hurt (`src/pets.js`).
+  Rage, Lunge (dash + slash), Thunderstorm (lightning on the nearest 4), Gravity
+  Well (drag enemies in), Bullet Ring (16 shots), Life Drain (damage + heal),
+  Frenzy (attack twice as fast), Sprint (1.6x speed), Second Wind (resets the
+  other cooldowns). Effects live in `main.js`'s `activateAbility`.
+- **Pets** (`PETS`, kinds in logic/items.js): `zap` (Sparky, Blasty, Ember, Bolt,
+  Comet), `pulse` (Spike, Boomer: hit everything near the pet), `heal` (Healbit,
+  Mender, Sprout), `magnet` (Magneto, Vortex), `guard` (Shieldy, Plated) and
+  passive `buff` pets (Grumble +damage, Whirl faster swings, Zoom +speed, Goldie
+  +crystals, Bumper +knockback, Rascal a bit of several). `petEffects` folds them
+  into multipliers `main.js` applies. They orbit you and can't be hurt
+  (`src/pets.js`).
 
 `combat.js`'s `damageMonster` is the one place a monster takes a hit (sword,
 pet zap, shockwave all use it). The inventory HUD (crystal count, hotbar,

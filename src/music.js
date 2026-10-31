@@ -6,7 +6,7 @@
 // (src/sfx.js) through src/audio.js; only the game-over ducking filter
 // below belongs to music alone.
 import { createNoiseBuffer } from './audio.js'
-import { eventsForStep, midiToFreq, stepDuration } from './logic/music.js'
+import { MUSIC_TRACKS, midiToFreq, stepDuration } from './logic/music.js'
 
 const MUSIC_VOLUME = 0.32
 const LOOKAHEAD_SECONDS = 0.15
@@ -25,6 +25,7 @@ export function createMusic(audio) {
   let timer = null
   let nextStepTime = 0
   let stepIndex = 0
+  let mode = 'normal' // which MUSIC_TRACKS entry is playing
 
   function buildGraph() {
     ctx = audio.context
@@ -111,6 +112,26 @@ export function createMusic(audio) {
     arp: (time, e) => {
       tone('triangle', midiToFreq(e.note), time, 0.11, 0.2 * e.velocity, { cutoff: 4000 })
     },
+    // Boss track voices: a held detuned pad, a biting riff, and falling toms.
+    pad: (time, e, len) => {
+      const freq = midiToFreq(e.note)
+      tone('sawtooth', freq, time, len, 0.04, { attack: len * 0.25, cutoff: 1300, detune: -10 })
+      tone('sawtooth', freq, time, len, 0.04, { attack: len * 0.25, cutoff: 1300, detune: 10 })
+    },
+    riff: (time, e, len) => {
+      const freq = midiToFreq(e.note)
+      tone('sawtooth', freq, time, len * 0.8, 0.12, { cutoff: 2200, detune: -6 })
+      tone('square', freq, time, len * 0.8, 0.06, { cutoff: 1800, detune: 6 })
+    },
+    tom: (time, e) => {
+      const osc = ctx.createOscillator()
+      const freq = midiToFreq(e.note)
+      osc.frequency.setValueAtTime(freq * 1.8, time)
+      osc.frequency.exponentialRampToValueAtTime(freq, time + 0.12)
+      osc.connect(envelope(time, 0.6 * e.velocity, 0.003, 0.25))
+      osc.start(time)
+      osc.stop(time + 0.3)
+    },
     lead: (time, e, len) => {
       const freq = midiToFreq(e.note)
       tone('square', freq, time, len, 0.13, { attack: 0.012, cutoff: 3200 })
@@ -119,12 +140,13 @@ export function createMusic(audio) {
   }
 
   function scheduleAhead() {
-    const secondsPerStep = stepDuration()
+    const track = MUSIC_TRACKS[mode]
+    const secondsPerStep = stepDuration(track.bpm)
     // After a long stall (a backgrounded tab) don't replay the backlog in
     // one burst -- just pick the beat back up from now.
     if (nextStepTime < ctx.currentTime - 0.1) nextStepTime = ctx.currentTime + 0.05
     while (nextStepTime < ctx.currentTime + LOOKAHEAD_SECONDS) {
-      for (const event of eventsForStep(stepIndex)) {
+      for (const event of track.events(stepIndex)) {
         voices[event.kind](nextStepTime, event, event.steps * secondsPerStep)
       }
       nextStepTime += secondsPerStep
@@ -158,6 +180,14 @@ export function createMusic(audio) {
     setMuffled(muffled) {
       if (!muffle) return
       muffle.frequency.setTargetAtTime(muffled ? MUFFLED_CUTOFF : OPEN_CUTOFF, ctx.currentTime, 0.15)
+    },
+    // Switches between the 'normal' and 'boss' tracks, restarting the loop
+    // from its top (with the boss track's opening crash) on a change.
+    setMode(next) {
+      if (next === mode || !MUSIC_TRACKS[next]) return
+      mode = next
+      stepIndex = 0
+      if (ctx) nextStepTime = ctx.currentTime + 0.05
     },
     isMuted: () => audio.isMuted(),
   }

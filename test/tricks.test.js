@@ -23,6 +23,14 @@ describe('nameTrick', () => {
     expect(nameTrick({ cause: 'pet' })).toEqual({ id: 'turndownService', name: 'Turndown Service' })
   })
 
+  it('names a staff-orb kill "Magic Hour"', () => {
+    expect(nameTrick({ cause: 'magic' })).toEqual({ id: 'magicHour', name: 'Magic Hour' })
+  })
+
+  it('names a firearm kill "Last Call"', () => {
+    expect(nameTrick({ cause: 'gun' })).toEqual({ id: 'lastCall', name: 'Last Call' })
+  })
+
   it('names a Shockwave kill "Wake-Up Call"', () => {
     expect(nameTrick({ cause: 'shockwave' })).toEqual({ id: 'wakeUpCall', name: 'Wake-Up Call' })
   })

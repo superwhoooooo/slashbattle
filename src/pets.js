@@ -1,7 +1,7 @@
 // Pets: small hovering jellies that orbit the player and help out
-// according to their kind -- zap the nearest enemy, patch you up, or
-// (via logic/items.js's petEffects, applied by main.js) pull crystals in
-// and soften hits. Pets can't be hurt.
+// according to their kind -- zap the nearest enemy, pulse at everything
+// close, patch you up, or (via logic/items.js's petEffects, applied by
+// main.js) pull crystals in, soften hits and buff damage/speed/loot. Pets can't be hurt.
 import { PLAYER_MAX_HP } from './config.js'
 import { createPetMesh } from './characters.js'
 import { damageMonster } from './combat.js'
@@ -89,6 +89,29 @@ export function updatePets(pets, { dt, elapsed, player, monsters, obstacles, par
         cause: 'pet',
         hitstop,
       })
+    } else if (def.kind === 'pulse') {
+      pet.timer -= dt
+      if (pet.timer > 0) return
+      const inReach = monsters.filter(
+        (monster) =>
+          !monster.userData.dying &&
+          !monster.userData.spawning &&
+          !monster.userData.falling &&
+          Math.hypot(monster.position.x - mesh.position.x, monster.position.z - mesh.position.z) <= def.radius + (monster.userData.reachBonus ?? 0),
+      )
+      if (inReach.length === 0) return
+      pet.timer = def.interval
+      burst(particleSystem, { x: mesh.position.x, y: 0.5, z: mesh.position.z }, def.color, 14, def.radius * 1.3)
+      for (const target of inReach) {
+        damageMonster(target, def.damage, {
+          fromPos: { x: mesh.position.x, z: mesh.position.z },
+          knockback: def.knockback ?? 0,
+          obstacles,
+          particleSystem,
+          cause: 'pet',
+          hitstop,
+        })
+      }
     } else if (def.kind === 'heal') {
       pet.timer -= dt
       if (pet.timer > 0) return

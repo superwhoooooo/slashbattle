@@ -14,7 +14,7 @@ import {
 export function createInventory() {
   return {
     crystals: 0,
-    weapons: ['sword'], // hotbar slots, in the order they were found
+    weapons: ['staff'], // hotbar slots, in the order they were found
     selected: 0, // index into `weapons`
     abilities: [], // ability ids, in the order found (bound to ABILITY_KEYS)
     abilityReadyAt: {}, // ability id -> game time it's ready again
