@@ -22,6 +22,15 @@ export class Input {
     this._justMousePressed = new Set()
     this.mouse = { x: 0, y: 0, moved: false } // last cursor position in client pixels
 
+    // On-screen touch controls (src/touch.js) write into these: a move
+    // vector (right / forward positive, -1..1), and an aim stick (screen
+    // direction dx / dy with y down; `aiming` once pushed past its own
+    // deadzone, `active` while a finger is on it). They're virtual keys
+    // too: tapKey()/holdKey() below stand in for a key press / hold.
+    this.touchMode = false
+    this.touchMove = { x: 0, z: 0 }
+    this.touchAim = { active: false, aiming: false, dx: 0, dy: 0 }
+
     this._gamepadIndex = null // navigator.getGamepads() index of the pad we're following, or null if none
     this._activeGamepad = null // the real Gamepad object last polled, for rumble()
     this._prevGamepadSnapshot = null
@@ -91,6 +100,18 @@ export class Input {
     return this._justPressed.has(code)
   }
 
+  // A virtual key press (one frame, like a keydown) / hold, for the touch
+  // buttons: everything keyed off `wasPressed('KeyE')`, 'Digit2', 'KeyQ'...
+  // works unchanged.
+  tapKey(code) {
+    this._justPressed.add(code)
+  }
+
+  holdKey(code, down) {
+    if (down) this.keys.add(code)
+    else this.keys.delete(code)
+  }
+
   // Like wasPressed, for a mouse button index.
   wasMousePressed(button) {
     return this._justMousePressed.has(button)
@@ -110,8 +131,8 @@ export class Input {
       (this.isDown('KeyD') || this.isDown('ArrowRight') ? 1 : 0) -
       (this.isDown('KeyA') || this.isDown('ArrowLeft') ? 1 : 0)
     return {
-      x: strafeInput + this._gamepadActions.move.x,
-      z: forwardInput + this._gamepadActions.move.z,
+      x: strafeInput + this._gamepadActions.move.x + this.touchMove.x,
+      z: forwardInput + this._gamepadActions.move.z + this.touchMove.z,
     }
   }
 

@@ -10,6 +10,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { createArena, createEnvironmentMap, updateArena } from './arena.js'
 import { levelAt, levelIndexAfterBosses } from './logic/levels.js'
 import { createSandboxPanel } from './sandbox.js'
+import { createTouchControls, isTouchDevice } from './touch.js'
 import { sandboxToggleItem, sandboxTopUp } from './logic/sandbox.js'
 import { createAudio } from './audio.js'
 import { createMonsterMesh } from './characters.js'
@@ -202,11 +203,15 @@ import { clearSwingTrail, createSwingTrail } from './trail.js'
 
 const container = document.querySelector('#app')
 
+// Phones and tablets get touch controls and a lighter render (a lower pixel
+// ratio cap, no ambient occlusion pass) so the game stays smooth.
+const touchDevice = isTouchDevice()
+const PIXEL_RATIO_CAP = touchDevice ? Math.min(MAX_PIXEL_RATIO, 1.5) : MAX_PIXEL_RATIO
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' })
 renderer.setSize(window.innerWidth, window.innerHeight)
 // Capped rather than the raw devicePixelRatio -- a 3x display would
 // otherwise render (and composite) 9x the pixels for no visible gain.
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, MAX_PIXEL_RATIO))
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, PIXEL_RATIO_CAP))
 renderer.shadowMap.enabled = true
 renderer.shadowMap.type = THREE.PCFShadowMap
 // NeutralToneMapping keeps the sunlit scene's pastel colors true,
@@ -285,7 +290,7 @@ const gtaoPass = new SpriteSafeGTAOPass(scene, camera, window.innerWidth, window
   radius: GTAO_RADIUS,
 })
 gtaoPass.blendIntensity = GTAO_INTENSITY
-gtaoPass.enabled = GTAO_ENABLED
+gtaoPass.enabled = GTAO_ENABLED && !touchDevice
 composer.addPass(gtaoPass)
 const bloomPass = new UnrealBloomPass(
   new THREE.Vector2(window.innerWidth, window.innerHeight),
@@ -298,6 +303,7 @@ composer.addPass(new OutputPass())
 
 const input = new Input()
 const hud = createHud()
+const touchControls = touchDevice ? createTouchControls(input, hud) : null
 
 // Pooled visual effects are per-session singletons, like the composer
 // and HUD above: created once, added to the scene once, and reset
@@ -330,9 +336,8 @@ const aimRaycaster = new THREE.Raycaster()
 const aimPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -0.7)
 const aimPoint = new THREE.Vector3()
 const aimNdc = new THREE.Vector2()
-function mouseAimAngle(player) {
-  if (!input.mouse.moved) return null
-  aimNdc.set((input.mouse.x / window.innerWidth) * 2 - 1, -(input.mouse.y / window.innerHeight) * 2 + 1)
+function screenAimAngle(player, clientX, clientY) {
+  aimNdc.set((clientX / window.innerWidth) * 2 - 1, -(clientY / window.innerHeight) * 2 + 1)
   aimRaycaster.setFromCamera(aimNdc, camera)
   if (!aimRaycaster.ray.intersectPlane(aimPlane, aimPoint)) return null
   const dx = aimPoint.x - player.position.x
@@ -341,12 +346,31 @@ function mouseAimAngle(player) {
   return Math.atan2(dx, dz)
 }
 
+function mouseAimAngle(player) {
+  if (!input.mouse.moved) return null
+  return screenAimAngle(player, input.mouse.x, input.mouse.y)
+}
+
+// The touch aim stick's direction: a screen-space push from where the player
+// is on screen, turned into a ground yaw the same way the mouse is. null
+// while the stick is untouched or still inside its deadzone, so an attack
+// then just uses the facing.
+const aimProject = new THREE.Vector3()
+const TOUCH_AIM_REACH = 220 // px from the player the stick's full push points at
+function touchAimAngle(player) {
+  if (!input.touchAim.aiming) return null
+  aimProject.set(player.position.x, 0.7, player.position.z).project(camera)
+  const sx = (aimProject.x * 0.5 + 0.5) * window.innerWidth
+  const sy = (-aimProject.y * 0.5 + 0.5) * window.innerHeight
+  return screenAimAngle(player, sx + input.touchAim.dx * TOUCH_AIM_REACH, sy + input.touchAim.dy * TOUCH_AIM_REACH)
+}
+
 let autoShoot = false // L toggles; holds the trigger for ranged weapons
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight
   camera.updateProjectionMatrix()
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, MAX_PIXEL_RATIO))
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, PIXEL_RATIO_CAP))
   renderer.setSize(window.innerWidth, window.innerHeight)
   composer.setPixelRatio(renderer.getPixelRatio())
   composer.setSize(window.innerWidth, window.innerHeight)
@@ -1125,7 +1149,8 @@ function startSandbox() {
       else if (name === 'pod') trySpawnPod(game)
     },
   })
-  sandboxPanel.setOpen(true)
+  sandboxPanel.setOpen(!touchDevice) // on a phone the menu covers too much until asked for
+  touchControls?.addMenuButton(() => sandboxPanel.toggle())
   window.addEventListener('keydown', (event) => {
     if (event.code !== 'Tab') return
     event.preventDefault() // otherwise Tab moves browser focus onto the menu's buttons
@@ -1147,8 +1172,17 @@ function dismissStartCard(event) {
 }
 window.addEventListener('keydown', dismissStartCard, { once: true })
 window.addEventListener('mousedown', dismissStartCard, { once: true })
+window.addEventListener('pointerdown', dismissStartCard, { once: true }) // a finger tap
+// iOS only lets audio start from a finished tap, not the pointerdown above:
+// keep nudging the (shared, idempotent) audio start on every touch release.
+window.addEventListener('touchend', () => {
+  if (started) audio.start()
+}, { passive: true })
 
 let game = createGame()
+
+// Dev-server only: lets browser tests (and you, in the console) peek at the state.
+if (import.meta.env.DEV) window.__debug = { input, get game() { return game } }
 
 const timer = new THREE.Timer()
 
@@ -1288,7 +1322,13 @@ function animate(timestamp) {
 
   if (input.wasPressed('KeyL')) autoShoot = !autoShoot
   setAutoShoot(hud, autoShoot)
-  player.aimAngle = WEAPONS[selectedWeaponId(game.inventory)].gun ? mouseAimAngle(player) : null
+  // Touch: the aim stick aims any weapon (melee swings toward it too); the
+  // mouse only aims ranged ones.
+  player.aimAngle = input.touchMode
+    ? touchAimAngle(player)
+    : WEAPONS[selectedWeaponId(game.inventory)].gun
+      ? mouseAimAngle(player)
+      : null
   const petFx = petEffects(game.inventory.pets)
   player.speedMultiplier = petFx.speedMultiplier * (elapsedSeconds < player.sprintUntil ? SPRINT_SPEED_MULTIPLIER : 1)
   player.update(input, cameraYaw, gameplayDelta)
@@ -1539,8 +1579,8 @@ function animate(timestamp) {
       hud,
       affordable
         ? cost === 0
-          ? 'Press F to open the FREE chest'
-          : `Press F to open chest (💎 ${cost})`
+          ? `${input.touchMode ? 'Tap CHEST' : 'Press F'} to open the FREE chest`
+          : `${input.touchMode ? 'Tap CHEST' : 'Press F'} to open chest (💎 ${cost})`
         : `Chest needs 💎 ${cost} (you have ${game.inventory.crystals})`,
       !affordable,
     )

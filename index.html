@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1" />
     <title>SlashBattle</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='17' r='13' fill='%23FF6A4D'/><circle cx='11' cy='14' r='5' fill='%23fff'/><circle cx='21' cy='14' r='5' fill='%23fff'/><circle cx='12.5' cy='15' r='2.3' fill='%23222'/><circle cx='19.5' cy='13' r='2.3' fill='%23222'/></svg>" />
     <style>
@@ -430,6 +430,97 @@
         cursor: pointer;
       }
       #sandbox-btn:hover { background: var(--teal); color: #fff; }
+
+      /* Touch controls (src/touch.js): only present on a phone / tablet. */
+      body.touch { touch-action: none; overscroll-behavior: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+      #touch-layer { position: fixed; inset: 0; z-index: 3; pointer-events: none; }
+      .touch-zone { position: absolute; top: 18%; bottom: 0; pointer-events: auto; touch-action: none; }
+      #touch-move-zone { left: 0; width: 46%; }
+      #touch-aim-zone { right: 0; width: 54%; }
+      .touch-hint {
+        position: absolute;
+        bottom: 22px;
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.12em;
+        color: rgba(26, 36, 51, 0.55);
+        text-shadow: 0 1px 0 rgba(255, 255, 255, 0.6);
+        transition: opacity 0.4s;
+      }
+      #touch-move-zone .touch-hint { left: 24px; }
+      #touch-aim-zone .touch-hint { right: 24px; }
+      #touch-layer.used .touch-hint { opacity: 0; }
+      .touch-stick {
+        position: absolute;
+        width: 112px;
+        height: 112px;
+        margin: -56px 0 0 -56px;
+        border-radius: 50%;
+        border: 3px solid rgba(255, 255, 255, 0.85);
+        background: rgba(255, 255, 255, 0.25);
+        opacity: 0;
+        transition: opacity 0.12s;
+        pointer-events: none;
+      }
+      .touch-stick.on { opacity: 1; }
+      .touch-knob {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 54px;
+        height: 54px;
+        border-radius: 50%;
+        background: var(--teal);
+        border: 3px solid #fff;
+        transform: translate(-50%, -50%);
+      }
+      #touch-aim-zone .touch-knob { background: var(--coral); }
+      .touch-btn {
+        font: inherit;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        color: var(--ink);
+        background: rgba(255, 255, 255, 0.82);
+        border: 2px solid #fff;
+        border-radius: 50%;
+        pointer-events: auto;
+        touch-action: none;
+        box-shadow: 0 2px 8px rgba(26, 36, 51, 0.25);
+      }
+      .touch-btn.down { background: var(--butter); transform: scale(0.94); }
+      .touch-btn.big { width: 64px; height: 64px; font-size: 12px; }
+      .touch-btn.small { min-width: 44px; height: 38px; padding: 0 12px; font-size: 11px; border-radius: 19px; }
+      #touch-actions { position: absolute; right: 16px; bottom: 36%; display: flex; flex-direction: column; gap: 10px; }
+      #touch-toggles { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); display: flex; gap: 8px; }
+      /* HUD cards never swallow touches; the weapon / ability slots take them. */
+      body.touch .panel { pointer-events: none; }
+      body.touch .overlay .panel, body.touch #sandbox-panel, body.touch .overlay button { pointer-events: auto; }
+      body.touch .slot { pointer-events: auto; touch-action: none; }
+      body.touch .controls, body.touch .gamepad-legend, body.touch #sandbox-btn kbd { display: none; }
+      body.touch #hud, body.touch #hud-right, body.touch #crystal-card { zoom: 0.78; }
+      body.touch #crystal-card { top: 92px; bottom: auto; left: 12px; right: auto; }
+      body.touch #wave-banner { zoom: 0.55; top: 54px; }
+      body.touch #chest-prompt, body.touch #hide-prompt { zoom: 0.8; }
+      body.touch #auto-shoot { display: none; }
+      body.touch #hotbar .slot, body.touch #ability-bar .slot { width: 46px; height: 46px; }
+      body.touch #bottom-bar { bottom: 8px; }
+      body.touch #sandbox-panel { top: 8px; bottom: 8px; right: 8px; width: min(330px, 60vw); }
+      body.touch #sandbox-badge { display: none !important; }
+      #rotate-hint {
+        position: fixed;
+        inset: 0;
+        z-index: 20;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 24px;
+        background: rgba(26, 36, 51, 0.88);
+        color: #fff;
+        font-weight: 700;
+        font-size: 18px;
+      }
+      @media (orientation: portrait) { body.touch #rotate-hint { display: flex; } }
       #pet-bar {
         position: fixed;
         left: 16px;
@@ -896,6 +987,7 @@
       <div id="crystal-counter">💎 0</div>
       <span class="hud-label">Crystals</span>
     </div>
+    <div id="rotate-hint">Turn your phone sideways to play 📱↻</div>
     <div id="sandbox-badge" class="panel">SANDBOX · TAB: MENU</div>
     <div id="ambush-banner">AMBUSH!</div>
     <div id="wave-banner"><span id="wave-banner-lead"></span><span id="wave-banner-rest"></span></div>

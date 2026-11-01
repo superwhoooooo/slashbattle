@@ -94,6 +94,7 @@ slashbattle/
     projectiles.js     # pooled boss-barrage orbs
     shockwave.js       # expanding ground rings (boss slam, player Shockwave)
     props.js           # per-level prop models (beach umbrellas, ice crystals, lava spires, neon pylons, lollipops)
+    touch.js           # on-screen touch controls (floating sticks, HIDE/CHEST/AUTO buttons, tappable slots)
     sandbox.js         # sandbox mode's Tab menu (spawn, equip, levels, actions)
     logic/sandbox.js   # pure sandbox item toggling + top-up
     logic/levels.js    # the five places (themes) and which one follows each boss
@@ -191,6 +192,19 @@ obstacles in `game.obstacles`, and re-bakes the environment map. Each level's
 snow mounds, volcanic spires and lava rocks, neon pylons and speaker boxes,
 lollipops and gumdrops. A restart
 returns to the first place.
+
+## Touch controls
+On a phone or tablet (`src/touch.js`'s `isTouchDevice`: a coarse pointer and no
+fine one, or `#touch` in the address to test on a desktop) a touch layer feeds the
+same `Input`: a floating left stick moves, a floating right stick aims AND attacks
+(touching it holds Space; dragging past its deadzone sets `input.touchAim`, which
+`main.js`'s `touchAimAngle` turns into `player.aimAngle` for any weapon), HIDE /
+CHEST are E / F, AUTO / sound are L / M, tapping the hotbar and ability slots picks
+a weapon / uses an ability, tapping the game-over card restarts, and any tap on the
+play area advances a cutscene. They all go through `input.tapKey` / `holdKey` (virtual
+keys), so nothing else in the game cares. Touch mode also caps the pixel ratio,
+turns the AO pass off, shrinks the HUD, and asks for landscape. `window.__debug`
+(dev server only) exposes `input` and `game` for browser tests.
 
 ## Sandbox mode
 Press B (or click the button) on the start card instead of any other key to
