@@ -71,6 +71,7 @@ where the browser supports `vibrationActuator`.
 - `npm run dev` — start the Vite dev server
 - `npm test` — run the Vitest test suite
 - `npm run build` — produce a production build
+- `npm run build:single` — pack the build into one self-contained `dist-single/SlashBattle.html` (scripts, styles, fonts inlined) that opens by double-click, to send to someone
 
 ## Project layout
 ```
