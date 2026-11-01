@@ -411,30 +411,6 @@ export function createPlayerMesh() {
   return group
 }
 
-// Builds a pet: a small, cute jelly in the pet's own shape and color with
-// a goofy face, hovering rather than standing (pets.js lifts it off the
-// ground). Same body/face structure as a monster so updateJelly and
-// updateFace3D can animate it.
-const PET_SIZE = 0.8
-export function createPetMesh(pet, rng = Math.random) {
-  const geometry = GEOMETRY_BUILDERS[pet.shape](PET_SIZE)
-  const bodyCenterY = monsterBodyCenterY({ shape: pet.shape, size: PET_SIZE }, geometry)
-  const edgeColor = new THREE.Color(pet.color).lerp(new THREE.Color(0xffffff), 0.5).getHex()
-  const group = createJellyBody(geometry, createJellyMaterial(pet.color), edgeColor, bodyCenterY)
-  const face = createFace3D({
-    shape: pet.shape,
-    size: PET_SIZE,
-    bodyCenterY,
-    bodyColor: pet.color,
-    options: pickFaceOptions(rng),
-    faceTypeScale: 1.5,
-  })
-  group.add(face.group)
-  group.userData.face3d = face
-  group.userData.body = group.userData.jelly.body
-  return group
-}
-
 // Builds one monster of `type` (a key of MONSTER_TYPES) as a faceted,
 // flat-shaded jelly body in its own shape with glowing neon edges, a
 // randomly generated goofy 3D face (googly eyes, a mouth shape, and

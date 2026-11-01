@@ -1,30 +1,33 @@
-// Pets: small hovering jellies that orbit the player and help out
+// Pets: small animals and objects (src/petModels.js) that orbit the player and help out
 // according to their kind -- zap the nearest enemy, pulse at everything
 // close, patch you up, or (via logic/items.js's petEffects, applied by
-// main.js) pull crystals in, soften hits and buff damage/speed/loot. Pets can't be hurt.
+// main.js) pull crystals in or soften hits. Pets can't be hurt.
+import * as THREE from 'three'
 import { PLAYER_MAX_HP } from './config.js'
-import { createPetMesh } from './characters.js'
+import { createPetModel, createSaber } from './petModels.js'
 import { damageMonster } from './combat.js'
-import { updateFace3D } from './face3d.js'
-import { updateJelly } from './jelly.js'
 import { PETS } from './logic/items.js'
 import { dampAngle } from './logic/smoothing.js'
 import { burst } from './particles.js'
 
 const ORBIT_RADIUS = 1.9
 const FOLLOW_RATE = 6
-const HOVER_HEIGHT = 0.55
+const HOVER_HEIGHT = 0.6 // flyers (birds, bee, fish, rocket...) float this high; walkers hop along the ground
 const SPAWN_IN_TIME = 0.45
 const HEAL_COLOR = 0x7dffb0
+const SABER_SPEED = 24
+const SABER_SPIN = 28
+const SABER_HIT_DISTANCE = 0.9
+const SABER_MAX_LIFE = 1.2
 
 // Creates the pet `id` right next to the player, growing in.
 export function createPet(id, scene, player) {
   const def = PETS[id]
-  const mesh = createPetMesh(def)
-  mesh.position.set(player.position.x + 1, HOVER_HEIGHT, player.position.z + 1)
+  const mesh = createPetModel(def)
+  mesh.position.set(player.position.x + 1, 0, player.position.z + 1)
   mesh.scale.setScalar(0.01)
   scene.add(mesh)
-  return { def, mesh, age: 0, timer: def.interval ?? 0, lastX: mesh.position.x, lastZ: mesh.position.z }
+  return { def, mesh, scene, sabers: [], age: 0, timer: def.interval ?? 0, lastX: mesh.position.x, lastZ: mesh.position.z }
 }
 
 // Nearest monster to (x, z) within `range` that can be hit.
@@ -42,9 +45,72 @@ function nearestTarget(monsters, x, z, range) {
   return best
 }
 
+// Hurls a spinning lightsaber from the pet's raised hand at `target`; it
+// homes on the target's position and lands the hit in stepSabers.
+function throwSaber(pet, target) {
+  const mesh = createSaber(pet.def.saberColor ?? pet.def.color, 0.55)
+  const holder = new THREE.Group()
+  holder.add(mesh)
+  mesh.position.y = -0.3 // spin about the saber's middle, not its hilt
+  holder.position.set(pet.mesh.position.x, pet.mesh.position.y + 0.85, pet.mesh.position.z)
+  pet.scene.add(holder)
+  pet.sabers.push({ mesh: holder, target, life: SABER_MAX_LIFE })
+}
+
+// Flies every thrown saber toward its target, spinning flat like a
+// boomerang, and damages it on arrival (or drops the saber if the target is
+// already gone or it flew too long).
+function stepSabers(pet, dt, monsters, obstacles, particleSystem, hitstop) {
+  pet.sabers = pet.sabers.filter((saber) => {
+    saber.life -= dt
+    const { target } = saber
+    const gone = !monsters.includes(target) || target.userData.dying
+    if (gone || saber.life <= 0) {
+      pet.scene.remove(saber.mesh)
+      disposeTree(saber.mesh)
+      return false
+    }
+    const dx = target.position.x - saber.mesh.position.x
+    const dy = target.position.y + 0.8 - saber.mesh.position.y
+    const dz = target.position.z - saber.mesh.position.z
+    const distance = Math.hypot(dx, dy, dz)
+    if (distance <= SABER_HIT_DISTANCE) {
+      burst(particleSystem, { x: target.position.x, y: target.position.y + 0.8, z: target.position.z }, pet.def.saberColor ?? pet.def.color, 8, 2)
+      damageMonster(target, pet.def.damage, {
+        fromPos: { x: saber.mesh.position.x, z: saber.mesh.position.z },
+        knockback: pet.def.knockback ?? 0,
+        obstacles,
+        particleSystem,
+        cause: 'pet',
+        hitstop,
+      })
+      pet.scene.remove(saber.mesh)
+      disposeTree(saber.mesh)
+      return false
+    }
+    const stepLength = Math.min(distance, SABER_SPEED * dt)
+    saber.mesh.position.x += (dx / distance) * stepLength
+    saber.mesh.position.y += (dy / distance) * stepLength
+    saber.mesh.position.z += (dz / distance) * stepLength
+    saber.mesh.rotation.x = Math.PI / 2 // lie flat, then spin like a helicopter blade
+    saber.mesh.rotation.z += SABER_SPIN * dt
+    return true
+  })
+}
+
+function disposeTree(object) {
+  object.traverse((child) => {
+    if (child.geometry) child.geometry.dispose()
+    if (child.material && !child.material.userData?.shared) {
+      ;(Array.isArray(child.material) ? child.material : [child.material]).forEach((m) => m.dispose())
+    }
+  })
+}
+
 // Moves every pet around the player and runs its behavior for one tick.
 export function updatePets(pets, { dt, elapsed, player, monsters, obstacles, particleSystem, hitstop }) {
   const count = pets.length
+  for (const pet of pets) stepSabers(pet, dt, monsters, obstacles, particleSystem, hitstop)
   pets.forEach((pet, index) => {
     const { def, mesh } = pet
     pet.age += dt
@@ -55,7 +121,6 @@ export function updatePets(pets, { dt, elapsed, player, monsters, obstacles, par
     const follow = 1 - Math.exp(-FOLLOW_RATE * dt)
     mesh.position.x += (targetX - mesh.position.x) * follow
     mesh.position.z += (targetZ - mesh.position.z) * follow
-    mesh.position.y = HOVER_HEIGHT + Math.sin(elapsed * 3 + index * 1.7) * 0.12
     mesh.scale.setScalar(Math.max(0.01, Math.min(1, pet.age / SPAWN_IN_TIME)))
 
     const moveX = mesh.position.x - pet.lastX
@@ -65,8 +130,14 @@ export function updatePets(pets, { dt, elapsed, player, monsters, obstacles, par
     pet.lastX = mesh.position.x
     pet.lastZ = mesh.position.z
 
-    updateJelly(mesh, dt, elapsed, { speed, moveDir: { x: Math.sin(mesh.rotation.y), z: Math.cos(mesh.rotation.y) } })
-    updateFace3D(mesh, dt, elapsed)
+    // Flyers hover and bob; walkers sit on the ground and hop while moving.
+    const moving = speed > 0.3
+    mesh.position.y = mesh.userData.fly
+      ? HOVER_HEIGHT + Math.sin(elapsed * 3 + index * 1.7) * 0.12
+      : moving
+        ? Math.abs(Math.sin(elapsed * 9 + index)) * 0.14
+        : 0
+    mesh.userData.animate(elapsed + index * 0.7, moving)
 
     if (def.kind === 'zap') {
       pet.timer -= dt
@@ -89,6 +160,13 @@ export function updatePets(pets, { dt, elapsed, player, monsters, obstacles, par
         cause: 'pet',
         hitstop,
       })
+    } else if (def.kind === 'throw') {
+      pet.timer -= dt
+      if (pet.timer > 0) return
+      const target = nearestTarget(monsters, mesh.position.x, mesh.position.z, def.range)
+      if (!target) return
+      pet.timer = def.interval
+      throwSaber(pet, target)
     } else if (def.kind === 'pulse') {
       pet.timer -= dt
       if (pet.timer > 0) return
@@ -125,6 +203,10 @@ export function updatePets(pets, { dt, elapsed, player, monsters, obstacles, par
 
 export function disposePets(pets, scene) {
   for (const pet of pets) {
+    for (const saber of pet.sabers ?? []) {
+      scene.remove(saber.mesh)
+      disposeTree(saber.mesh)
+    }
     pet.mesh.traverse((child) => {
       if (child.geometry) child.geometry.dispose()
       if (child.material) (Array.isArray(child.material) ? child.material : [child.material]).forEach((m) => m.dispose())

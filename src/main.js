@@ -8,6 +8,9 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { createArena, createEnvironmentMap, updateArena } from './arena.js'
+import { levelAt, levelIndexAfterBosses } from './logic/levels.js'
+import { createSandboxPanel } from './sandbox.js'
+import { sandboxToggleItem, sandboxTopUp } from './logic/sandbox.js'
 import { createAudio } from './audio.js'
 import { createMonsterMesh } from './characters.js'
 import { updateFace3D } from './face3d.js'
@@ -219,8 +222,19 @@ const scene = new THREE.Scene()
 // the sky gradient plus a bright sun panel (see arena.js's
 // createEnvironmentMap). The sky colors are static, so this is built
 // once rather than per game/restart like the arena itself.
-scene.environment = createEnvironmentMap(renderer)
 scene.environmentIntensity = ENVIRONMENT_INTENSITY
+
+// Each level has its own sky, so the reflection map is re-baked when the
+// level changes (and when a restart drops back to the first one). Skipped
+// when the right one is already in place.
+let environmentLevelIndex = -1
+function setLevelEnvironment(levelIndex) {
+  if (environmentLevelIndex === levelIndex) return
+  environmentLevelIndex = levelIndex
+  const previous = scene.environment
+  scene.environment = createEnvironmentMap(renderer, levelAt(levelIndex))
+  if (previous) previous.dispose()
+}
 
 const camera = new THREE.PerspectiveCamera(
   70,
@@ -401,10 +415,11 @@ function disposeObject3D(object) {
 // see spawnMonster(). Positions the camera behind the player. Call
 // disposeGame() first if rebuilding on top of an existing game.
 function createGame() {
-  const arena = createArena()
+  const arena = createArena(levelAt(0))
   scene.add(arena.group)
   scene.background = new THREE.Color(arena.backgroundColor)
   scene.fog = arena.fog
+  setLevelEnvironment(0)
 
   // The sundeck's umbrellas/loungers/signs are static circular obstacles,
   // built once from arena.propObstacles; pods and chests are dynamic ones
@@ -419,6 +434,7 @@ function createGame() {
 
   const game = {
     arena,
+    levelIndex: 0, // which place (logic/levels.js) the run is in; advances with each boss defeated
     obstacles,
     props: arena.propObstacles, // the static props alone, so pod/chest/monster spawn points can steer clear of them specifically
     player,
@@ -1006,6 +1022,38 @@ function runCutscene(game, advancePressed, deltaSeconds, elapsedSeconds) {
   })
 }
 
+// Moves the run to another place: builds that level's arena (its props
+// steer clear of every pod, chest, monster and the player so nothing ends
+// up inside one), swaps it in for the old one, folds its prop obstacles
+// into the shared `obstacles` array in place of the old props', and
+// re-bakes the sky reflections.
+function changeLevel(game, levelIndex) {
+  const level = levelAt(levelIndex)
+  const occupied = [
+    ...game.pods,
+    ...game.chests,
+    ...game.monsters,
+    game.player.mesh,
+  ].map((mesh) => ({ x: mesh.position.x, z: mesh.position.z, radius: (mesh.userData?.radius ?? 1) + 1.5 }))
+
+  const arena = createArena(level, { avoid: occupied })
+  const oldProps = new Set(game.props)
+  const kept = game.obstacles.filter((obstacle) => !oldProps.has(obstacle))
+  game.obstacles.length = 0
+  game.obstacles.push(...kept, ...arena.propObstacles)
+
+  disposeObject3D(game.arena.group)
+  scene.add(arena.group)
+  scene.background = new THREE.Color(arena.backgroundColor)
+  scene.fog = arena.fog
+  setLevelEnvironment(levelIndex)
+
+  game.arena = arena
+  game.props = arena.propObstacles
+  game.levelIndex = levelIndex
+  return level
+}
+
 // Removes and disposes everything createGame()/spawnMonster() added to
 // the scene.
 function disposeGame(target) {
@@ -1028,11 +1076,69 @@ const music = createMusic(audio)
 const sfx = createSfx(audio)
 
 let started = false
-function dismissStartCard() {
+// Sandbox mode (pick it on the start card: B or its button): no waves, a
+// menu (Tab) to spawn anything / equip anything / hop levels, free
+// crystals, no cooldowns and (by default) god mode. See src/sandbox.js.
+let sandbox = false
+let godMode = true
+let sandboxPanel = null
+
+// Pops every monster (a boss too) the way a boss's death pops its minions.
+function clearAllMonsters(game) {
+  for (const mesh of game.monsters) {
+    if (mesh.userData.dying) continue
+    mesh.userData.dying = true
+    mesh.userData.deathPopElapsed = 0
+    jellyHit(mesh, JELLY_DEATH_INFLATE_STRENGTH)
+  }
+}
+
+function startSandbox() {
+  sandbox = true
+  document.body.classList.add('sandbox')
+  sandboxPanel = createSandboxPanel({
+    onSpawn(type, count) {
+      for (let i = 0; i < count; i++) spawnMonster(game, type, { facePlayer: true })
+    },
+    onItem(kind, id) {
+      const result = sandboxToggleItem(game.inventory, { kind, id })
+      game.inventory = result.inventory
+      if (result.petRemoved !== null) {
+        const [gone] = game.pets.splice(result.petRemoved, 1)
+        if (gone) disposePets([gone], scene)
+      }
+      if (result.petAdded) game.pets.push(createPet(result.petAdded, scene, game.player))
+      if (kind === 'weapon') {
+        setPlayerWeapon(game.player.mesh, selectedWeaponId(game.inventory))
+        game.attackState.swingElapsed = null
+        clearSwingTrail(swingTrail)
+      }
+    },
+    onLevel(index) {
+      changeLevel(game, index)
+    },
+    onAction(name) {
+      if (name === 'god') godMode = !godMode
+      else if (name === 'clear') clearAllMonsters(game)
+      else if (name === 'heal') game.player.hp = PLAYER_MAX_HP
+      else if (name === 'chest') trySpawnChest(game, { cost: 0 })
+      else if (name === 'pod') trySpawnPod(game)
+    },
+  })
+  sandboxPanel.setOpen(true)
+  window.addEventListener('keydown', (event) => {
+    if (event.code !== 'Tab') return
+    event.preventDefault() // otherwise Tab moves browser focus onto the menu's buttons
+    if (!event.repeat) sandboxPanel.toggle()
+  })
+}
+
+function dismissStartCard(event) {
   // Guards against the keydown/mousedown listeners below and a gamepad
   // press both landing on the same frame and dismissing it twice.
   if (started) return
   started = true
+  if (event?.code === 'KeyB' || event?.target?.closest?.('#sandbox-btn')) startSandbox()
   music.start()
   hideStartCard(hud)
   // The key/click that dismisses the card shouldn't also register as a
@@ -1131,12 +1237,10 @@ function animate(timestamp) {
   // count as alive, so the clearing phase waits on them too.
   const clearedWaveNumber = game.waveState.waveNumber
   const bossBeforeStep = currentBoss(game.waveState)
-  const { state: nextWaveState, spawns, events } = stepWaves(
-    game.waveState,
-    gameplayDelta,
-    monsters.length,
-    Math.random,
-  )
+  // Sandbox mode has no waves: nothing spawns or clears on its own.
+  const { state: nextWaveState, spawns, events } = sandbox
+    ? { state: game.waveState, spawns: [], events: [] }
+    : stepWaves(game.waveState, gameplayDelta, monsters.length, Math.random)
   game.waveState = nextWaveState
   spawns.forEach((type) => spawnMonster(game, type))
   if (events.includes('waveCleared')) {
@@ -1149,7 +1253,9 @@ function animate(timestamp) {
   if (events.includes('bossDefeated')) {
     const bonus = waveClearBonus(clearedWaveNumber) * 2
     game.score += bonus
-    showWaveClearedBanner(hud, bonus, { lead: bossBeforeStep.name, text: 'DEFEATED' })
+    game.bossesDefeated = (game.bossesDefeated ?? 0) + 1
+    const nextLevel = changeLevel(game, levelIndexAfterBosses(game.bossesDefeated))
+    showWaveClearedBanner(hud, bonus, { lead: bossBeforeStep.name, text: `DEFEATED - NEXT STOP: ${nextLevel.name.toUpperCase()}` })
     sfx.play('waveCleared')
     player.hp = Math.min(PLAYER_MAX_HP, player.hp + WAVE_CLEAR_HEAL * BOSS_DEFEAT_HEAL_MULTIPLIER)
   }
@@ -1390,7 +1496,11 @@ function animate(timestamp) {
 
   // Pets follow and help, crystals scatter/home/get collected, and chests
   // animate; F opens the nearest one in reach if you can afford it.
-  player.damageTakenMultiplier = petFx.damageTakenMultiplier
+  player.damageTakenMultiplier = sandbox && godMode ? 0 : petFx.damageTakenMultiplier
+  if (sandbox) {
+    game.inventory = sandboxTopUp(game.inventory)
+    sandboxPanel.refresh({ inventory: game.inventory, levelIndex: game.levelIndex, god: godMode })
+  }
   player.updateStatusEffects(elapsedSeconds)
   updatePets(game.pets, { dt: gameplayDelta, elapsed: elapsedSeconds, player, monsters: game.monsters, obstacles, particleSystem, hitstop: game.hitstop })
   const collected = updateCrystals(crystalSystem, gameplayDelta, elapsedSeconds, player.position.x, player.position.z, petFx.magnetRadius)
@@ -1440,7 +1550,7 @@ function animate(timestamp) {
   updateInventoryHud(hud, game.inventory, elapsedSeconds)
 
   const inBossFight = game.waveState.phase === 'bossFight'
-  const enemiesLeft = inBossFight
+  const enemiesLeft = inBossFight || sandbox
     ? game.monsters.length
     : waveSize(game.waveState.waveNumber) - game.waveState.spawnedCount + game.monsters.length
   const bossMesh = game.monsters.find((m) => m.userData.isBoss && !m.userData.dying)
@@ -1471,12 +1581,15 @@ function animate(timestamp) {
     hideTimeRemaining: player.hidden ? hideTimeRemaining(hidingState.enteredAt, elapsedSeconds, POD_HIDE_LIMIT) : null,
     hideLimit: POD_HIDE_LIMIT,
     showHidePrompt: showPrompt,
-    waveState: game.waveState,
+    // Sandbox never steps the wave controller, so it would sit in
+    // 'intermission' at 0s and the HUD would re-pick a PA line (and the
+    // announcement chime would fire) every single frame.
+    waveState: sandbox ? { ...game.waveState, phase: 'clearing' } : game.waveState,
     boss: bossHud,
     chain: liveChain,
     deltaSeconds,
   })
-  if (hud.waveAnnouncement !== previousAnnouncement) sfx.play('announcement')
+  if (!sandbox && hud.waveAnnouncement !== previousAnnouncement) sfx.play('announcement')
 
   // A slight look-ahead in the player's current movement direction,
   // scaled by how close to full speed they're actually moving (so it

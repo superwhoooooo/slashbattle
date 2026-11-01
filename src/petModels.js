@@ -1,0 +1,654 @@
+import * as THREE from 'three'
+
+// Pet models: little real animals and real things (a fox, a bee, a bomb, a
+// medkit...) built from a handful of primitives, instead of the jellies'
+// faceted shapes. Every model faces +Z (the way pets.js turns them to face
+// where they are heading), stands on y = 0 and is roughly 0.9 units tall at
+// most. `createPetModel(def)` returns a Group whose userData has:
+//   fly      - true for things that hover (birds, bee, fish, rocket, heart...)
+//   animate  - (elapsedSeconds, moving) => void, wagging tails, flapping wings
+// def.model picks the builder.
+
+const matCache = new Map()
+function mat(color, extra = {}) {
+  const key = `${color}:${JSON.stringify(extra)}`
+  if (!matCache.has(key)) {
+    matCache.set(key, new THREE.MeshStandardMaterial({ color, roughness: 0.7, metalness: 0, ...extra }))
+  }
+  return matCache.get(key)
+}
+
+function glow(color, intensity = 1.2) {
+  return mat(color, { emissive: new THREE.Color(color), emissiveIntensity: intensity, roughness: 0.4 })
+}
+
+// A mesh in one call: geometry, material, position, optional scale.
+function part(geometry, material, [x, y, z], scale = [1, 1, 1]) {
+  const mesh = new THREE.Mesh(geometry, material)
+  mesh.position.set(x, y, z)
+  mesh.scale.set(...scale)
+  return mesh
+}
+
+const sphere = (r) => new THREE.SphereGeometry(r, 16, 12)
+
+// A pair of googly-ish eyes: white ball, dark pupil poking forward.
+function addEyes(group, { x = 0.09, y, z, r = 0.055 }) {
+  for (const side of [-1, 1]) {
+    group.add(part(sphere(r), mat(0xffffff), [side * x, y, z]))
+    group.add(part(sphere(r * 0.6), mat(0x1b1b1b), [side * x, y, z + r * 0.7]))
+  }
+}
+
+// ---- Four-legged critters -------------------------------------------------
+
+// opts: body, belly, snout, nose, ear ('point' | 'round' | 'long'), earInner,
+// tail ('bushy' | 'puff' | 'short' | 'striped'), tailTip, mask, brows,
+// horns, wool, size
+function critter(opts) {
+  const group = new THREE.Group()
+  const body = mat(opts.body)
+  const size = opts.size ?? 1
+
+  group.add(part(sphere(0.3), opts.wool ? mat(opts.wool) : body, [0, 0.36, -0.02], [1, 0.85, 1.25]))
+  if (opts.belly) group.add(part(sphere(0.24), mat(opts.belly), [0, 0.3, 0.1], [1, 0.8, 1.1]))
+
+  const head = new THREE.Group()
+  head.position.set(0, 0.62, 0.3)
+  head.add(part(sphere(0.22), body, [0, 0, 0]))
+  head.add(part(sphere(0.11), mat(opts.snout ?? opts.belly ?? opts.body), [0, -0.04, 0.17], [1, 0.8, 1]))
+  head.add(part(sphere(0.035), mat(opts.nose ?? 0x2b2020), [0, -0.01, 0.27]))
+  addEyes(head, { x: 0.09, y: 0.05, z: 0.15 })
+  if (opts.mask) head.add(part(new THREE.BoxGeometry(0.4, 0.07, 0.1), mat(opts.mask), [0, 0.05, 0.14]))
+  if (opts.brows) {
+    for (const side of [-1, 1]) {
+      const brow = part(new THREE.BoxGeometry(0.11, 0.03, 0.03), mat(0x2b2020), [side * 0.09, 0.14, 0.18])
+      brow.rotation.z = side * -0.4
+      head.add(brow)
+    }
+  }
+  for (const side of [-1, 1]) {
+    if (opts.ear === 'long') {
+      const ear = part(new THREE.CapsuleGeometry(0.05, 0.3, 4, 8), body, [side * 0.1, 0.34, -0.02])
+      ear.rotation.z = side * -0.15
+      head.add(ear)
+      head.add(part(new THREE.CapsuleGeometry(0.025, 0.22, 4, 8), mat(opts.earInner ?? 0xffb6c1), [side * 0.1, 0.34, 0.01]))
+    } else if (opts.ear === 'round') {
+      head.add(part(sphere(0.08), body, [side * 0.15, 0.17, -0.02]))
+      head.add(part(sphere(0.045), mat(opts.earInner ?? 0xe0a890), [side * 0.15, 0.17, 0.02]))
+    } else {
+      const ear = part(new THREE.ConeGeometry(0.075, 0.2, 4), body, [side * 0.12, 0.25, -0.02])
+      ear.rotation.z = side * -0.2
+      head.add(ear)
+      head.add(part(new THREE.ConeGeometry(0.04, 0.12, 4), mat(opts.earInner ?? 0x2b2020), [side * 0.12, 0.23, 0.01]))
+    }
+    if (opts.horns) {
+      const horn = part(new THREE.TorusGeometry(0.1, 0.035, 8, 14, Math.PI * 1.5), mat(opts.horns), [side * 0.2, 0.04, -0.02])
+      horn.rotation.y = side * Math.PI / 2
+      horn.rotation.z = side > 0 ? 0.6 : Math.PI - 0.6
+      head.add(horn)
+    }
+  }
+  group.add(head)
+
+  const legMaterial = mat(opts.legs ?? opts.body)
+  for (const x of [-0.14, 0.14]) {
+    for (const z of [-0.2, 0.18]) {
+      group.add(part(new THREE.CylinderGeometry(0.06, 0.055, 0.2, 8), legMaterial, [x, 0.1, z]))
+    }
+  }
+
+  const tail = new THREE.Group()
+  tail.position.set(0, 0.4, -0.34)
+  if (opts.tail === 'bushy' || opts.tail === 'striped') {
+    const seg = part(new THREE.CapsuleGeometry(0.09, 0.28, 4, 10), body, [0, 0.05, -0.12])
+    seg.rotation.x = -1.0
+    tail.add(seg)
+    if (opts.tail === 'striped') {
+      for (const t of [0.1, 0.2, 0.3]) {
+        const ring = part(new THREE.TorusGeometry(0.095, 0.022, 6, 12), mat(0x2b2b2b), [0, 0.12 - t * 0.2, -0.04 - t * 0.55])
+        ring.rotation.x = -1.0 + Math.PI / 2
+        tail.add(ring)
+      }
+    }
+    if (opts.tailTip) tail.add(part(sphere(0.09), mat(opts.tailTip), [0, 0.2, -0.3]))
+  } else if (opts.tail === 'puff') {
+    tail.add(part(sphere(0.1), mat(opts.tailTip ?? 0xffffff), [0, 0.05, -0.06]))
+  } else {
+    tail.add(part(sphere(0.06), body, [0, 0, -0.04]))
+  }
+  group.add(tail)
+
+  group.scale.setScalar(size)
+  group.userData.fly = false
+  group.userData.animate = (t, moving) => {
+    tail.rotation.y = Math.sin(t * (moving ? 14 : 6)) * 0.45
+    head.rotation.x = Math.sin(t * 2.2) * 0.05
+  }
+  return group
+}
+
+// ---- Birds ---------------------------------------------------------------
+
+// opts: body, belly, beak, wing, eye ('plain' | 'owl'), tufts, crest, tail
+function bird(opts) {
+  const group = new THREE.Group()
+  const body = mat(opts.body)
+  group.add(part(sphere(0.28), body, [0, 0.5, 0], [1, 1, 1.1]))
+  if (opts.belly) group.add(part(sphere(0.22), mat(opts.belly), [0, 0.44, 0.1], [1, 1, 0.9]))
+  group.add(part(sphere(0.2), body, [0, 0.82, 0.12]))
+
+  if (opts.eye === 'owl') {
+    for (const side of [-1, 1]) {
+      group.add(part(sphere(0.095), mat(0xfff2c2), [side * 0.1, 0.86, 0.26], [1, 1, 0.5]))
+      group.add(part(sphere(0.05), mat(0x1b1b1b), [side * 0.1, 0.86, 0.3], [1, 1, 0.5]))
+    }
+  } else {
+    addEyes(group, { x: 0.09, y: 0.87, z: 0.24, r: 0.045 })
+  }
+  const beak = part(new THREE.ConeGeometry(0.06, 0.16, 8), mat(opts.beak ?? 0xffa63d), [0, 0.8, 0.36])
+  beak.rotation.x = Math.PI / 2
+  group.add(beak)
+
+  if (opts.tufts) {
+    for (const side of [-1, 1]) {
+      const tuft = part(new THREE.ConeGeometry(0.06, 0.16, 4), body, [side * 0.13, 1.0, 0.1])
+      tuft.rotation.z = side * -0.3
+      group.add(tuft)
+    }
+  }
+  if (opts.crest) {
+    const crest = part(new THREE.ConeGeometry(0.05, 0.14, 4), mat(opts.crest), [0, 1.03, 0.1])
+    crest.rotation.x = -0.4
+    group.add(crest)
+  }
+  const tail = part(new THREE.ConeGeometry(0.1, 0.3, 4), mat(opts.tail ?? opts.body), [0, 0.4, -0.38])
+  tail.rotation.x = -Math.PI / 2 - 0.3
+  group.add(tail)
+
+  const wings = []
+  for (const side of [-1, 1]) {
+    const wing = new THREE.Group()
+    wing.position.set(side * 0.26, 0.55, 0)
+    wing.add(part(sphere(0.2), mat(opts.wing ?? opts.body), [side * 0.07, 0, -0.02], [0.35, 0.8, 1]))
+    group.add(wing)
+    wings.push({ wing, side })
+  }
+  for (const x of [-0.08, 0.08]) {
+    group.add(part(new THREE.CylinderGeometry(0.018, 0.018, 0.14, 6), mat(0xffa63d), [x, 0.14, 0.04]))
+    group.add(part(new THREE.BoxGeometry(0.07, 0.02, 0.1), mat(0xffa63d), [x, 0.07, 0.07]))
+  }
+
+  group.userData.fly = true
+  group.userData.animate = (t, moving) => {
+    const flap = Math.sin(t * (moving ? 18 : 9)) * (moving ? 0.7 : 0.35)
+    for (const { wing, side } of wings) wing.rotation.z = side * flap
+  }
+  return group
+}
+
+// ---- Things ---------------------------------------------------------------
+
+function bomb() {
+  const group = new THREE.Group()
+  group.add(part(sphere(0.31), mat(0x222831, { roughness: 0.35, metalness: 0.3 }), [0, 0.34, 0]))
+  group.add(part(new THREE.CylinderGeometry(0.1, 0.12, 0.1, 12), mat(0x4a4f57, { metalness: 0.6 }), [0, 0.66, 0]))
+  const fuse = part(new THREE.TorusGeometry(0.12, 0.018, 6, 12, Math.PI * 1.1), mat(0xc9a15b), [0.1, 0.78, 0])
+  group.add(fuse)
+  const spark = part(sphere(0.06), glow(0xffa640, 2), [0.2, 0.86, 0])
+  group.add(spark)
+  group.add(part(sphere(0.07), mat(0xffffff, { opacity: 0.35, transparent: true }), [-0.12, 0.46, 0.24]))
+  group.userData.fly = false
+  group.userData.animate = (t) => {
+    spark.scale.setScalar(0.8 + Math.abs(Math.sin(t * 20)) * 0.6)
+  }
+  return group
+}
+
+function rocket() {
+  const group = new THREE.Group()
+  const hull = mat(0xf2f4f7, { roughness: 0.35 })
+  group.add(part(new THREE.CylinderGeometry(0.15, 0.17, 0.55, 14), hull, [0, 0.55, 0]))
+  group.add(part(new THREE.ConeGeometry(0.15, 0.28, 14), mat(0xe5484d), [0, 0.96, 0]))
+  group.add(part(sphere(0.07), mat(0x6ec6ff, { roughness: 0.1 }), [0, 0.65, 0.14], [1, 1, 0.6]))
+  for (let i = 0; i < 3; i++) {
+    const a = (i / 3) * Math.PI * 2
+    const fin = part(new THREE.BoxGeometry(0.03, 0.22, 0.16), mat(0xe5484d), [Math.sin(a) * 0.19, 0.38, Math.cos(a) * 0.19])
+    fin.rotation.y = a
+    group.add(fin)
+  }
+  const flame = part(new THREE.ConeGeometry(0.1, 0.3, 10), glow(0xff9d2e, 1.8), [0, 0.12, 0])
+  flame.rotation.x = Math.PI
+  group.add(flame)
+  group.userData.fly = true
+  group.userData.animate = (t) => {
+    flame.scale.set(1, 0.8 + Math.abs(Math.sin(t * 25)) * 0.6, 1)
+  }
+  return group
+}
+
+function cactus() {
+  const group = new THREE.Group()
+  group.add(part(new THREE.CylinderGeometry(0.2, 0.15, 0.22, 12), mat(0xc8683c), [0, 0.11, 0]))
+  group.add(part(new THREE.CylinderGeometry(0.21, 0.21, 0.04, 12), mat(0xd9794a), [0, 0.23, 0]))
+  const green = mat(0x4fae4a)
+  group.add(part(new THREE.CapsuleGeometry(0.15, 0.4, 6, 12), green, [0, 0.58, 0]))
+  for (const side of [-1, 1]) {
+    group.add(part(new THREE.CapsuleGeometry(0.06, 0.12, 4, 8), green, [side * 0.22, 0.52, 0]))
+    group.add(part(new THREE.CapsuleGeometry(0.055, 0.18, 4, 8), green, [side * 0.3, 0.66, 0]))
+  }
+  group.add(part(sphere(0.07), glow(0xff6fa5, 0.4), [0, 0.92, 0]))
+  addEyes(group, { x: 0.065, y: 0.62, z: 0.14, r: 0.04 })
+  for (let i = 0; i < 8; i++) {
+    const a = i * 2.4
+    const spine = part(new THREE.ConeGeometry(0.012, 0.06, 4), mat(0xfff5d6), [Math.sin(a) * 0.15, 0.4 + (i % 4) * 0.1, Math.cos(a) * 0.15])
+    spine.rotation.z = -Math.sin(a) * 1.4
+    spine.rotation.x = Math.cos(a) * 1.4
+    group.add(spine)
+  }
+  group.userData.fly = false
+  group.userData.animate = () => {}
+  return group
+}
+
+function tnt() {
+  const group = new THREE.Group()
+  const red = mat(0xd9382e)
+  for (const [x, z] of [[-0.1, 0], [0.1, 0], [0, -0.17]]) {
+    group.add(part(new THREE.CylinderGeometry(0.095, 0.095, 0.55, 12), red, [x, 0.3, z]))
+  }
+  group.add(part(new THREE.CylinderGeometry(0.2, 0.2, 0.09, 12), mat(0xefe6cf), [0, 0.32, 0.0], [1.1, 1, 0.9]))
+  group.add(part(new THREE.CylinderGeometry(0.012, 0.012, 0.18, 6), mat(0xc9a15b), [0, 0.65, 0]))
+  const spark = part(sphere(0.05), glow(0xffd23f, 2), [0, 0.76, 0])
+  group.add(spark)
+  group.userData.fly = false
+  group.userData.animate = (t) => {
+    spark.scale.setScalar(0.7 + Math.abs(Math.sin(t * 18)) * 0.7)
+  }
+  return group
+}
+
+function heart() {
+  const group = new THREE.Group()
+  const shape = new THREE.Shape()
+  shape.moveTo(0.25, 0.25)
+  shape.bezierCurveTo(0.25, 0.25, 0.2, 0, 0, 0)
+  shape.bezierCurveTo(-0.3, 0, -0.3, 0.35, -0.3, 0.35)
+  shape.bezierCurveTo(-0.3, 0.55, -0.15, 0.77, 0.25, 0.95)
+  shape.bezierCurveTo(0.6, 0.77, 0.8, 0.55, 0.8, 0.35)
+  shape.bezierCurveTo(0.8, 0.35, 0.8, 0, 0.5, 0)
+  shape.bezierCurveTo(0.35, 0, 0.25, 0.25, 0.25, 0.25)
+  const geometry = new THREE.ExtrudeGeometry(shape, { depth: 0.18, bevelEnabled: true, bevelThickness: 0.06, bevelSize: 0.06, bevelSegments: 4 })
+  geometry.translate(-0.25, -0.475, -0.09)
+  const body = new THREE.Mesh(geometry, mat(0xff4d7d, { roughness: 0.3 }))
+  body.scale.setScalar(0.62)
+  body.rotation.z = Math.PI // the shape's point is its (0, 0) end; flip it to point down
+  body.position.y = 0.6
+  group.add(body)
+  addEyes(group, { x: 0.08, y: 0.64, z: 0.17, r: 0.045 })
+  group.userData.fly = true
+  group.userData.animate = (t) => {
+    const beat = 1 + Math.max(0, Math.sin(t * 6)) * 0.12
+    body.scale.setScalar(0.62 * beat)
+  }
+  return group
+}
+
+function medkit() {
+  const group = new THREE.Group()
+  group.add(part(new THREE.BoxGeometry(0.56, 0.4, 0.22), mat(0xf4f4f4, { roughness: 0.4 }), [0, 0.28, 0]))
+  group.add(part(new THREE.BoxGeometry(0.58, 0.04, 0.24), mat(0xd7dbe0), [0, 0.2, 0]))
+  const red = mat(0xe5484d)
+  group.add(part(new THREE.BoxGeometry(0.2, 0.06, 0.03), red, [0, 0.3, 0.115]))
+  group.add(part(new THREE.BoxGeometry(0.06, 0.2, 0.03), red, [0, 0.3, 0.115]))
+  const handle = part(new THREE.TorusGeometry(0.1, 0.022, 6, 14, Math.PI), mat(0x8b9199, { metalness: 0.5 }), [0, 0.48, 0])
+  group.add(handle)
+  group.add(part(new THREE.BoxGeometry(0.06, 0.04, 0.02), mat(0xb0b6bd), [0.18, 0.28, 0.115]))
+  group.userData.fly = false
+  group.userData.animate = () => {}
+  return group
+}
+
+function sprout() {
+  const group = new THREE.Group()
+  group.add(part(new THREE.CylinderGeometry(0.2, 0.14, 0.24, 12), mat(0xc8683c), [0, 0.12, 0]))
+  group.add(part(new THREE.CylinderGeometry(0.21, 0.21, 0.04, 12), mat(0xd9794a), [0, 0.25, 0]))
+  group.add(part(new THREE.CylinderGeometry(0.17, 0.17, 0.02, 12), mat(0x4a3322), [0, 0.26, 0]))
+  group.add(part(new THREE.CylinderGeometry(0.025, 0.03, 0.36, 6), mat(0x5aa84a), [0, 0.44, 0]))
+  const leaves = []
+  for (const side of [-1, 1]) {
+    const leaf = new THREE.Group()
+    leaf.position.set(0, 0.6, 0)
+    leaf.add(part(sphere(0.14), mat(0x7ed35a), [side * 0.14, 0.04, 0], [1, 0.3, 0.6]))
+    group.add(leaf)
+    leaves.push({ leaf, side })
+  }
+  addEyes(group, { x: 0.065, y: 0.17, z: 0.19, r: 0.04 })
+  group.userData.fly = false
+  group.userData.animate = (t) => {
+    for (const { leaf, side } of leaves) leaf.rotation.z = side * (0.25 + Math.sin(t * 3 + side) * 0.12)
+  }
+  return group
+}
+
+function magnet() {
+  const group = new THREE.Group()
+  const red = mat(0xe5484d, { roughness: 0.35 })
+  const arch = part(new THREE.TorusGeometry(0.22, 0.075, 10, 24, Math.PI), red, [0, 0.5, 0])
+  group.add(arch)
+  for (const side of [-1, 1]) {
+    group.add(part(new THREE.CylinderGeometry(0.075, 0.075, 0.38, 12), red, [side * 0.22, 0.31, 0]))
+    group.add(part(new THREE.CylinderGeometry(0.078, 0.078, 0.14, 12), mat(0xd8dde3, { metalness: 0.7, roughness: 0.25 }), [side * 0.22, 0.07, 0]))
+  }
+  addEyes(group, { x: 0.07, y: 0.4, z: 0.075, r: 0.04 })
+  group.userData.fly = true
+  group.userData.animate = (t) => {
+    group.rotation.z = Math.sin(t * 2) * 0.08
+  }
+  return group
+}
+
+function turtle() {
+  const group = new THREE.Group()
+  const shell = new THREE.Mesh(new THREE.SphereGeometry(0.38, 18, 12, 0, Math.PI * 2, 0, Math.PI / 2), mat(0x3f9a5a, { roughness: 0.5 }))
+  shell.scale.set(1, 0.75, 1.15)
+  shell.position.y = 0.16
+  group.add(shell)
+  group.add(part(new THREE.TorusGeometry(0.38, 0.03, 6, 24), mat(0xd9c88a), [0, 0.17, 0]))
+  group.children[1].rotation.x = Math.PI / 2
+  group.children[1].scale.set(1, 1.15, 1)
+  for (const [x, z] of [[0, 0], [0.16, 0.14], [-0.16, 0.14], [0.16, -0.16], [-0.16, -0.16]]) {
+    group.add(part(new THREE.CylinderGeometry(0.09, 0.09, 0.03, 6), mat(0x2f7f48), [x, 0.4 - Math.hypot(x, z) * 0.3, z]))
+  }
+  const skin = mat(0x9ad06b)
+  const head = part(sphere(0.13), skin, [0, 0.2, 0.46])
+  group.add(head)
+  addEyes(group, { x: 0.06, y: 0.25, z: 0.54, r: 0.035 })
+  for (const x of [-0.26, 0.26]) {
+    for (const z of [-0.22, 0.24]) group.add(part(sphere(0.09), skin, [x, 0.06, z], [1, 0.7, 1.3]))
+  }
+  group.add(part(new THREE.ConeGeometry(0.05, 0.12, 6), skin, [0, 0.1, -0.5], [1, 1, 1]))
+  group.children[group.children.length - 1].rotation.x = -Math.PI / 2
+  group.userData.fly = false
+  group.userData.animate = (t) => {
+    head.position.z = 0.46 + Math.sin(t * 2) * 0.02
+  }
+  return group
+}
+
+function shield() {
+  const group = new THREE.Group()
+  const outline = new THREE.Shape()
+  outline.moveTo(-0.3, 0.32)
+  outline.lineTo(0.3, 0.32)
+  outline.lineTo(0.3, -0.05)
+  outline.quadraticCurveTo(0.26, -0.32, 0, -0.45)
+  outline.quadraticCurveTo(-0.26, -0.32, -0.3, -0.05)
+  outline.closePath()
+  const geometry = new THREE.ExtrudeGeometry(outline, { depth: 0.06, bevelEnabled: true, bevelThickness: 0.025, bevelSize: 0.025, bevelSegments: 3 })
+  geometry.translate(0, 0, -0.03)
+  const face = new THREE.Mesh(geometry, mat(0x9aa7b3, { metalness: 0.7, roughness: 0.3 }))
+  face.position.y = 0.55
+  group.add(face)
+  group.add(part(new THREE.BoxGeometry(0.08, 0.55, 0.03), mat(0xe5484d), [0, 0.58, 0.075]))
+  group.add(part(new THREE.BoxGeometry(0.4, 0.08, 0.03), mat(0xe5484d), [0, 0.64, 0.075]))
+  addEyes(group, { x: 0.09, y: 0.7, z: 0.09, r: 0.04 })
+  group.userData.fly = true
+  group.userData.animate = (t) => {
+    group.rotation.z = Math.sin(t * 1.6) * 0.05
+  }
+  return group
+}
+
+function bee() {
+  const group = new THREE.Group()
+  const yellow = mat(0xffd23f)
+  group.add(part(sphere(0.26), yellow, [0, 0.5, -0.05], [0.9, 0.85, 1.2]))
+  for (const z of [-0.12, -0.02, 0.08]) {
+    const stripe = part(new THREE.TorusGeometry(0.2 - Math.abs(z + 0.02) * 0.15, 0.04, 6, 18), mat(0x2b2b2b), [0, 0.5, z])
+    stripe.rotation.y = Math.PI / 2
+    group.add(stripe)
+  }
+  group.add(part(sphere(0.17), mat(0x2b2b2b), [0, 0.54, 0.26]))
+  addEyes(group, { x: 0.08, y: 0.58, z: 0.37, r: 0.05 })
+  for (const side of [-1, 1]) {
+    const feeler = part(new THREE.CylinderGeometry(0.01, 0.01, 0.16, 5), mat(0x2b2b2b), [side * 0.06, 0.74, 0.3])
+    feeler.rotation.z = side * -0.4
+    group.add(feeler)
+  }
+  const sting = part(new THREE.ConeGeometry(0.04, 0.12, 6), mat(0x2b2b2b), [0, 0.47, -0.38])
+  sting.rotation.x = -Math.PI / 2
+  group.add(sting)
+  const wings = []
+  for (const side of [-1, 1]) {
+    const wing = new THREE.Group()
+    wing.position.set(side * 0.1, 0.72, -0.04)
+    wing.add(part(sphere(0.17), mat(0xffffff, { transparent: true, opacity: 0.6 }), [side * 0.12, 0.02, 0], [1, 0.1, 0.55]))
+    group.add(wing)
+    wings.push({ wing, side })
+  }
+  group.userData.fly = true
+  group.userData.animate = (t) => {
+    for (const { wing, side } of wings) wing.rotation.z = side * Math.sin(t * 50) * 0.5
+  }
+  return group
+}
+
+function goldfish() {
+  const group = new THREE.Group()
+  const orange = mat(0xff9a2e, { roughness: 0.35 })
+  group.add(part(sphere(0.28), orange, [0, 0.5, 0.02], [0.7, 0.9, 1.25]))
+  addEyes(group, { x: 0.13, y: 0.58, z: 0.26, r: 0.06 })
+  const tail = new THREE.Group()
+  tail.position.set(0, 0.5, -0.28)
+  const fin = part(new THREE.ConeGeometry(0.2, 0.3, 3), mat(0xffb454, { transparent: true, opacity: 0.85 }), [0, 0, -0.12], [0.2, 1, 1])
+  fin.rotation.x = -Math.PI / 2
+  tail.add(fin)
+  group.add(tail)
+  const dorsal = part(new THREE.ConeGeometry(0.1, 0.22, 3), mat(0xffb454, { transparent: true, opacity: 0.85 }), [0, 0.78, -0.02], [0.2, 1, 1.4])
+  group.add(dorsal)
+  for (const side of [-1, 1]) {
+    const flipper = part(sphere(0.09), mat(0xffb454), [side * 0.2, 0.42, 0.06], [0.2, 0.7, 1.3])
+    flipper.rotation.z = side * -0.5
+    group.add(flipper)
+  }
+  group.add(part(sphere(0.03), mat(0xd9602a), [0, 0.46, 0.37]))
+  group.userData.fly = true
+  group.userData.animate = (t, moving) => {
+    tail.rotation.y = Math.sin(t * (moving ? 16 : 8)) * 0.5
+  }
+  return group
+}
+
+// ---- Matthias: a stylized, low-poly kid with a lightsaber ----------------
+
+// The "VACAY FOREVER" shirt badge (palms, a lime sun over a striped sea),
+// drawn on a canvas so the shirt has its print. Falls back to no texture
+// where there's no DOM (the unit tests).
+let badgeTexture = null
+function shirtBadgeTexture() {
+  if (typeof document === 'undefined') return null
+  if (badgeTexture) return badgeTexture
+  const size = 256
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')
+  ctx.fillStyle = '#f3f0e8'
+  ctx.fillRect(0, 0, size, size)
+  const cx = size / 2
+  const cy = size * 0.58
+  ctx.save()
+  ctx.beginPath()
+  ctx.arc(cx, cy, 78, 0, Math.PI * 2)
+  ctx.clip()
+  const sky = ctx.createLinearGradient(0, cy - 78, 0, cy)
+  sky.addColorStop(0, '#9be37a')
+  sky.addColorStop(1, '#e8f7e0')
+  ctx.fillStyle = sky
+  ctx.fillRect(0, cy - 78, size, 80)
+  ctx.fillStyle = '#c8f23a'
+  ctx.beginPath()
+  ctx.arc(cx, cy + 4, 30, Math.PI, 0)
+  ctx.fill()
+  const sea = ['#19a58f', '#27c4a8', '#1b7f6c', '#2b4a45']
+  sea.forEach((color, i) => {
+    ctx.fillStyle = color
+    ctx.fillRect(0, cy + 4 + i * 18, size, 18)
+  })
+  ctx.fillStyle = '#2b4a45'
+  for (const side of [-1, 1]) {
+    ctx.fillRect(cx + side * 54 - 4, cy - 40, 8, 60)
+    for (let i = 0; i < 5; i++) {
+      const a = side * (0.3 + i * 0.5)
+      ctx.beginPath()
+      ctx.ellipse(cx + side * 54 + Math.sin(a) * 18, cy - 44 + Math.cos(a) * 3 + i * 2, 20, 5, a * 0.6, 0, Math.PI * 2)
+      ctx.fill()
+    }
+  }
+  ctx.restore()
+  ctx.strokeStyle = '#2b4a45'
+  ctx.lineWidth = 6
+  ctx.beginPath()
+  ctx.arc(cx, cy, 80, 0, Math.PI * 2)
+  ctx.stroke()
+  ctx.fillStyle = '#2b3a3a'
+  ctx.font = 'bold 26px sans-serif'
+  ctx.textAlign = 'center'
+  ctx.fillText('VACAY', cx - 2, 34)
+  ctx.fillText('FOREVER', cx, 62)
+  badgeTexture = new THREE.CanvasTexture(canvas)
+  badgeTexture.colorSpace = THREE.SRGBColorSpace
+  return badgeTexture
+}
+
+// A lightsaber: a silver hilt and a glowing blade (an emissive core plus a
+// wider, additive halo), pointing along +Y from the origin. pets.js reuses
+// it for the ones Matthias throws.
+export function createSaber(color = 0x58ff6a, bladeLength = 0.5) {
+  const saber = new THREE.Group()
+  saber.add(part(new THREE.CylinderGeometry(0.022, 0.026, 0.16, 8), mat(0xc9ced6, { metalness: 0.8, roughness: 0.25 }), [0, 0.08, 0]))
+  saber.add(part(new THREE.CylinderGeometry(0.03, 0.03, 0.025, 8), mat(0x3a3f47), [0, 0.15, 0]))
+  saber.add(part(new THREE.CylinderGeometry(0.016, 0.016, bladeLength, 8), glow(0xffffff, 1.6), [0, 0.16 + bladeLength / 2, 0]))
+  const halo = part(
+    new THREE.CylinderGeometry(0.035, 0.035, bladeLength + 0.04, 10),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false }),
+    [0, 0.16 + bladeLength / 2, 0],
+  )
+  saber.add(halo)
+  return saber
+}
+
+function matthias() {
+  const group = new THREE.Group()
+  const skin = mat(0xe3ac8c)
+  const shirt = mat(0xf3f0e8, { roughness: 0.9 })
+  const shorts = mat(0x1f4d45, { roughness: 0.9 })
+  const hairMat = mat(0x4a3020, { roughness: 0.95 })
+
+  for (const side of [-1, 1]) {
+    group.add(part(new THREE.CylinderGeometry(0.05, 0.045, 0.2, 8), skin, [side * 0.075, 0.1, 0]))
+    group.add(part(new THREE.CylinderGeometry(0.078, 0.085, 0.2, 10), shorts, [side * 0.075, 0.28, 0]))
+    group.add(part(new THREE.BoxGeometry(0.085, 0.04, 0.14), mat(0xf5f5f5), [side * 0.075, 0.02, 0.025]))
+  }
+  group.add(part(new THREE.BoxGeometry(0.31, 0.12, 0.2), shorts, [0, 0.39, 0]))
+
+  group.add(part(new THREE.BoxGeometry(0.34, 0.34, 0.2), shirt, [0, 0.62, 0]))
+  const badgeMap = shirtBadgeTexture()
+  const badge = part(new THREE.CircleGeometry(0.13, 24), badgeMap ? new THREE.MeshStandardMaterial({ map: badgeMap, roughness: 0.9 }) : mat(0x6ecb7a), [0, 0.62, 0.102])
+  group.add(badge)
+
+  // Left arm hangs; the right arm is raised, gripping a lightsaber.
+  group.add(part(new THREE.CylinderGeometry(0.06, 0.065, 0.12, 10), shirt, [-0.22, 0.72, 0]))
+  group.add(part(new THREE.CylinderGeometry(0.042, 0.04, 0.24, 8), skin, [-0.22, 0.54, 0]))
+  group.add(part(sphere(0.045), skin, [-0.22, 0.4, 0.01]))
+  const arm = new THREE.Group()
+  arm.position.set(0.2, 0.72, 0)
+  arm.add(part(new THREE.CylinderGeometry(0.06, 0.065, 0.12, 10), shirt, [0.02, -0.02, 0]))
+  const forearm = part(new THREE.CylinderGeometry(0.042, 0.04, 0.24, 8), skin, [0.05, -0.15, 0.05])
+  forearm.rotation.x = -0.5
+  arm.add(forearm)
+  const hand = part(sphere(0.047), skin, [0.06, -0.24, 0.12])
+  arm.add(hand)
+  const saber = createSaber(0x58ff6a, 0.5)
+  saber.position.set(0.06, -0.27, 0.13)
+  saber.rotation.x = 0.2
+  arm.add(saber)
+  group.add(arm)
+
+  group.add(part(new THREE.CylinderGeometry(0.05, 0.055, 0.06, 8), skin, [0, 0.82, 0]))
+  const head = new THREE.Group()
+  head.position.set(0, 0.97, 0)
+  head.add(part(sphere(0.19), skin, [0, 0, 0], [0.95, 1.05, 0.95]))
+  for (const side of [-1, 1]) head.add(part(sphere(0.04), skin, [side * 0.18, -0.01, 0]))
+
+  // Messy brown hair: a cap with a fringe and a few sticking-up tufts.
+  head.add(part(new THREE.SphereGeometry(0.205, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), hairMat, [0, 0.03, -0.015], [1, 1, 1.02]))
+  for (const [x, y, z, r] of [[-0.12, 0.1, 0.13, 0.07], [-0.04, 0.12, 0.15, 0.07], [0.05, 0.12, 0.15, 0.07], [0.13, 0.09, 0.12, 0.065]]) {
+    head.add(part(sphere(r), hairMat, [x, y, z], [1, 0.8, 0.8]))
+  }
+  for (const [x, z, tilt] of [[-0.1, -0.05, -0.5], [0.08, -0.08, 0.4], [0.0, -0.12, 0.1]]) {
+    const tuft = part(new THREE.ConeGeometry(0.05, 0.12, 5), hairMat, [x, 0.22, z])
+    tuft.rotation.z = tilt
+    head.add(tuft)
+  }
+
+  // A sideways squint and a lopsided smirk.
+  for (const side of [-1, 1]) {
+    head.add(part(sphere(0.04), mat(0xffffff), [side * 0.07, -0.01, 0.165], [1, 0.55, 0.6]))
+    head.add(part(sphere(0.022), mat(0x2a1a10), [side * 0.07 + 0.016, -0.01, 0.182], [1, 0.8, 0.6]))
+  }
+  const browL = part(new THREE.BoxGeometry(0.09, 0.02, 0.02), hairMat, [-0.075, 0.055, 0.17])
+  browL.rotation.z = -0.35
+  const browR = part(new THREE.BoxGeometry(0.09, 0.02, 0.02), hairMat, [0.075, 0.07, 0.17])
+  browR.rotation.z = -0.15
+  head.add(browL, browR)
+  head.add(part(sphere(0.022), mat(0xd49478), [0, -0.05, 0.185]))
+  const smirk = part(new THREE.TorusGeometry(0.05, 0.011, 6, 12, Math.PI * 0.8), mat(0x8a3a3a), [-0.01, -0.08, 0.17])
+  smirk.rotation.z = Math.PI * 1.1
+  head.add(smirk)
+  group.add(head)
+
+  group.userData.fly = false
+  group.userData.animate = (t, moving) => {
+    head.rotation.z = Math.sin(t * 1.8) * 0.06
+    head.rotation.y = Math.sin(t * 1.1) * 0.12
+    arm.rotation.z = -0.25 + Math.sin(t * (moving ? 10 : 3)) * 0.12
+  }
+  return group
+}
+
+const BUILDERS = {
+  matthias,
+  chick: () => bird({ body: 0xffd84a, belly: 0xffeb8a, beak: 0xff9a2e, crest: 0xffd84a, tail: 0xffd84a }),
+  owl: () => bird({ body: 0x8a6a4a, belly: 0xe0cfb0, eye: 'owl', tufts: true, beak: 0xe0a030, wing: 0x6e5238 }),
+  magpie: () => bird({ body: 0x23262d, belly: 0xffffff, beak: 0x1b1b1b, wing: 0x3b4a7a, tail: 0x3b4a7a }),
+  fox: () => critter({ body: 0xe8782e, belly: 0xfff0dc, snout: 0xfff0dc, ear: 'point', tail: 'bushy', tailTip: 0xffffff, legs: 0x3a2a22 }),
+  bear: () => critter({ body: 0x8a5a38, snout: 0xd8b48a, ear: 'round', tail: 'short', brows: true, size: 1.1 }),
+  rabbit: () => critter({ body: 0xf4efe8, belly: 0xffffff, snout: 0xfff5f5, nose: 0xff8fa8, ear: 'long', tail: 'puff' }),
+  raccoon: () => critter({ body: 0x8c8f96, belly: 0xc9ccd2, snout: 0xe8e6e0, mask: 0x2b2b2b, ear: 'round', earInner: 0x4a4a4a, tail: 'striped', legs: 0x4a4a4a }),
+  ram: () => critter({ body: 0x3a2f2a, wool: 0xf3ede0, snout: 0x5a4a40, ear: 'round', earInner: 0x5a4a40, tail: 'short', horns: 0xc9b07a, legs: 0x3a2f2a, size: 1.05 }),
+  bomb,
+  rocket,
+  cactus,
+  tnt,
+  heart,
+  medkit,
+  sprout,
+  magnet,
+  turtle,
+  shield,
+  bee,
+  goldfish,
+}
+
+// Builds the model for pet `def` (by def.model), with shadows on.
+export function createPetModel(def) {
+  const model = (BUILDERS[def.model] ?? BUILDERS.chick)()
+  model.traverse((child) => {
+    if (child.isMesh) child.castShadow = true
+  })
+  return model
+}
+
+export const PET_MODELS = Object.keys(BUILDERS)

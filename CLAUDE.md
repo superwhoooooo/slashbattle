@@ -89,9 +89,14 @@ slashbattle/
     spawner.js         # the spawn-in effect: portal ring + beam, monster materialize animation
     crystals.js        # the dropped-crystal pool (InstancedMesh); scatter/pull/collect
     chests.js          # treasure chests with a crystal price over them
-    pets.js            # pets that orbit the player and zap/heal
+    pets.js            # pets that orbit the player and fight/heal
+    petModels.js       # the pets' real animal / object models (fox, bee, bomb, medkit...)
     projectiles.js     # pooled boss-barrage orbs
     shockwave.js       # expanding ground rings (boss slam, player Shockwave)
+    props.js           # per-level prop models (beach umbrellas, ice crystals, lava spires, neon pylons, lollipops)
+    sandbox.js         # sandbox mode's Tab menu (spawn, equip, levels, actions)
+    logic/sandbox.js   # pure sandbox item toggling + top-up
+    logic/levels.js    # the five places (themes) and which one follows each boss
     logic/resortLayout.js # seeded sundeck prop layout (pools, umbrellas, loungers, signs), isInPool
     logic/items.js     # weapon / ability / pet catalogs
     logic/bullets.js   # player bullet rules (makeBullets, stepBullet)
@@ -172,6 +177,31 @@ obstacles in `game.obstacles` (same `{ x, z, radius }` shape as pods), and
 `pickPodSpawnPoint`/`spawnPointNearPlayer` take them as `obstacles` so
 pods, chests and monsters don't spawn inside one. Pools are walkable;
 `isInPool` tells whether a point is in one.
+
+## Levels
+`src/logic/levels.js`'s `LEVELS` are five places (Orbital Resort, Frostbite Spa,
+Magma Marina, Neon Nightclub, Candy Cove), each a palette + layout seed + sign
+text: sky, fog, hull/deck/border colors, planet, lights, pool water, umbrella
+palette. Defeating a boss moves the run to the next one (`levelIndexAfterBosses`,
+wrapping), via `main.js`'s `changeLevel`: it builds `createArena(level, { avoid })`
+(props steer clear of pods, chests, monsters and the player), swaps the prop
+obstacles in `game.obstacles`, and re-bakes the environment map. Each level's
+`props.style` picks its own prop models from `src/props.js`'s `PROP_STYLES`
+(`feature` replaces the umbrellas, `seat` the loungers): ice crystal clusters and
+snow mounds, volcanic spires and lava rocks, neon pylons and speaker boxes,
+lollipops and gumdrops. A restart
+returns to the first place.
+
+## Sandbox mode
+Press B (or click the button) on the start card instead of any other key to
+start a sandbox run: no waves (`stepWaves` is skipped), crystals pinned to
+`SANDBOX_CRYSTALS`, no ability cooldowns (`logic/sandbox.js`'s `sandboxTopUp`)
+and god mode on by default. Tab opens `src/sandbox.js`'s menu (a DOM panel; its
+clicks stop propagation so they don't swing your weapon): spawn any monster or
+boss (shift-click for five), pop everything, heal, drop a chest or pod, toggle
+god mode, jump to any level (`changeLevel`), and click any weapon / ability / pet
+to equip it or take it away (`sandboxToggleItem`, which swaps a slot when full
+and keeps the Wizard Staff). `body.sandbox` hides the wave UI.
 
 ## Hiding pods
 Each hiding spot (`src/hiding.js`) is a piece of lost luggage: a
@@ -420,7 +450,7 @@ fell. Press F within `CHEST_INTERACT_RANGE` to pay and open one; it rolls
 slot is full -- a score and heal bonus.
 
 The catalogs are bigger than the slots (17 weapons for a 5-slot hotbar with the
-Wizard Staff fixed in slot 1, 13 abilities for 5 keys, 20 pets for `MAX_PETS` = 5), and a
+Wizard Staff fixed in slot 1, 13 abilities for 5 keys, 21 pets for `MAX_PETS` = 5), and a
 chest only rolls items you don't own, so a maxed-out loadout differs run to run.
 Once every slot is full a chest pays out score and a heal ("LOADOUT FULL").
 
@@ -446,13 +476,17 @@ Once every slot is full a chest pays out score and a heal ("LOADOUT FULL").
   Well (drag enemies in), Bullet Ring (16 shots), Life Drain (damage + heal),
   Frenzy (attack twice as fast), Sprint (1.6x speed), Second Wind (resets the
   other cooldowns). Effects live in `main.js`'s `activateAbility`.
-- **Pets** (`PETS`, kinds in logic/items.js): `zap` (Sparky, Blasty, Ember, Bolt,
-  Comet), `pulse` (Spike, Boomer: hit everything near the pet), `heal` (Healbit,
-  Mender, Sprout), `magnet` (Magneto, Vortex), `guard` (Shieldy, Plated) and
-  passive `buff` pets (Grumble +damage, Whirl faster swings, Zoom +speed, Goldie
-  +crystals, Bumper +knockback, Rascal a bit of several). `petEffects` folds them
-  into multipliers `main.js` applies. They orbit you and can't be hurt
-  (`src/pets.js`).
+- **Pets** (`PETS`, kinds in logic/items.js): `zap` (Sparky the chick, Blasty the
+  bomb, Ember the fox, Bolt the owl, Comet the rocket, Whirl the bee, Zoom the
+  rabbit, Goldie the goldfish, Bumper the ram, Rascal the raccoon), `pulse` (Spike
+  the cactus, Boomer the dynamite, Grumble the bear: hit everything near the pet),
+  `throw` (Matthias, a stylized low-poly kid in a "VACAY FOREVER" tee who hurls
+  spinning lightsabers that home on the nearest enemy), `heal` (Healbit the heart, Mender the medkit, Sprout), `magnet` (Magneto, Vortex
+  the magpie) and `guard` (Shieldy the turtle, Plated the shield). No pet buffs
+  the player's own stats any more -- they all fight, heal, pull or soften hits
+  (`petEffects` only folds magnet radius and damage taken). Each is a real
+  animal / object model from `src/petModels.js` (`def.model`), not a jelly. They
+  orbit you and can't be hurt (`src/pets.js`).
 
 `combat.js`'s `damageMonster` is the one place a monster takes a hit (sword,
 pet zap, shockwave all use it). The inventory HUD (crystal count, hotbar,

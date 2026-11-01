@@ -89,9 +89,18 @@ export function isInPool(pools, x, z) {
 // Every non-pool prop keeps CENTER_CLEARANCE from the origin and
 // EDGE_MARGIN from `radius`, and no two props (of any kind, including
 // pools) overlap once PROP_GAP is added to their radii.
-export function resortLayout({ radius, seed }) {
+export function resortLayout({
+  radius,
+  seed,
+  avoid = [],
+  umbrellaColors = UMBRELLA_COLORS,
+  signTexts = SIGN_TEXTS,
+}) {
   const rng = createRng(seed)
-  const placed = [] // every placed prop so far, as { x, z, radius } circles
+  // Every placed prop so far, as { x, z, radius } circles. `avoid` seeds it
+  // with spots that are already occupied (pods, chests, the player), so a
+  // mid-game relayout never drops a prop on top of them.
+  const placed = avoid.map(({ x, z, radius: r }) => ({ x, z, radius: r }))
 
   function fitsExisting(x, z, propRadius) {
     return placed.every((other) => {
@@ -166,7 +175,7 @@ export function resortLayout({ radius, seed }) {
   for (let i = 0; i < umbrellaCount; i++) {
     const point = placeRandom(UMBRELLA_RADIUS)
     if (point) {
-      const color = UMBRELLA_COLORS[Math.floor(rng() * UMBRELLA_COLORS.length)]
+      const color = umbrellaColors[Math.floor(rng() * umbrellaColors.length)]
       umbrellas.push({ x: point.x, z: point.z, radius: UMBRELLA_RADIUS, color })
     }
   }
@@ -196,7 +205,7 @@ export function resortLayout({ radius, seed }) {
   for (let i = 0; i < signCount; i++) {
     const point = placeRandom(SIGN_RADIUS)
     if (point) {
-      const text = SIGN_TEXTS[Math.floor(rng() * SIGN_TEXTS.length)]
+      const text = signTexts[Math.floor(rng() * signTexts.length)]
       signs.push({ x: point.x, z: point.z, radius: SIGN_RADIUS, text })
     }
   }

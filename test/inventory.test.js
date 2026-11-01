@@ -27,7 +27,7 @@ describe('catalogs', () => {
     expect(Object.keys(WEAPONS).length).toBeGreaterThan(HOTBAR_SLOTS)
     expect(Object.keys(ABILITIES).length).toBeGreaterThan(ABILITY_SLOTS)
     expect(Object.keys(PETS).length).toBeGreaterThan(MAX_PETS)
-    expect(Object.keys(PETS)).toHaveLength(20)
+    expect(Object.keys(PETS)).toHaveLength(21)
   })
 
   it('makes the staff a ranged starter whose orbs are magic, and the sword a chest find', () => {
@@ -56,11 +56,11 @@ describe('catalogs', () => {
   it('gives every pet a known kind with the numbers that kind needs', () => {
     const needs = {
       zap: ['damage', 'interval', 'range'],
+      throw: ['damage', 'interval', 'range', 'saberColor'],
       pulse: ['damage', 'interval', 'radius'],
       heal: ['amount', 'interval'],
       magnet: ['radius'],
       guard: ['reduction'],
-      buff: ['bonus'],
     }
     for (const pet of Object.values(PETS)) {
       expect(Object.keys(needs)).toContain(pet.kind)
@@ -209,13 +209,28 @@ describe('petEffects', () => {
     expect(fx.damageTakenMultiplier).toBeCloseTo(0.75)
   })
 
-  it('stacks buff pets multiplicatively and floors the swing speed-up', () => {
-    const fx = petEffects(['grumble', 'rascal', 'goldie', 'zoom', 'bumper'])
-    expect(fx.damageMultiplier).toBeCloseTo(1.2 * 1.1)
-    expect(fx.speedMultiplier).toBeCloseTo(1.15 * 1.08)
-    expect(fx.crystalMultiplier).toBeCloseTo(1.5 * 1.15)
-    expect(fx.knockbackMultiplier).toBeCloseTo(1.4)
-    expect(petEffects(['whirl']).cooldownMultiplier).toBeCloseTo(0.85)
+  it('makes every pet that is not a healer, magnet or guard an attacker', () => {
+    for (const pet of Object.values(PETS)) {
+      expect(['zap', 'pulse', 'throw', 'heal', 'magnet', 'guard']).toContain(pet.kind)
+    }
+    const fighters = Object.values(PETS).filter((pet) => pet.kind === 'zap' || pet.kind === 'pulse')
+    expect(fighters.length).toBeGreaterThanOrEqual(12)
+    const fx = petEffects(Object.keys(PETS))
+    expect(fx.damageMultiplier).toBe(1)
+    expect(fx.speedMultiplier).toBe(1)
+    expect(fx.crystalMultiplier).toBe(1)
+  })
+
+  it('gives every pet a real model', async () => {
+    const { PET_MODELS } = await import('../src/petModels.js')
+    const { createPetModel } = await import('../src/petModels.js')
+    for (const pet of Object.values(PETS)) {
+      expect(PET_MODELS).toContain(pet.model)
+      const model = createPetModel(pet)
+      expect(model.children.length).toBeGreaterThan(2)
+      expect(typeof model.userData.fly).toBe('boolean')
+      expect(() => model.userData.animate(1.3, true)).not.toThrow()
+    }
   })
 
   it('keeps the damage floor with several guard pets', () => {

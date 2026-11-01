@@ -2,60 +2,37 @@ import * as THREE from 'three'
 import {
   ARENA_CENTER_RING_PINSTRIPE_WIDTH,
   ARENA_CENTER_RING_WIDTH,
-  ARENA_DECK_BORDER_COLOR,
   ARENA_DECK_BORDER_WIDTH,
-  ARENA_DECK_PINSTRIPE_COLOR,
   ARENA_DECK_PINSTRIPE_INSET,
   ARENA_DECK_PINSTRIPE_WIDTH,
-  ARENA_DECK_PLANK_COLOR,
   ARENA_DECK_PLANK_LENGTH,
   ARENA_DECK_PLANK_WIDTH,
-  ARENA_DECK_SEAM_COLOR,
-  ARENA_HULL_COLOR,
   ARENA_RADIUS,
   ARENA_THICKNESS,
-  FOG_COLOR,
   FOG_FAR,
   FOG_NEAR,
-  GAS_GIANT_COLOR,
   GAS_GIANT_EMISSIVE_INTENSITY,
   GAS_GIANT_POSITION,
   GAS_GIANT_RADIUS,
-  GAS_GIANT_RING_COLOR,
   GAS_GIANT_RING_INNER_RADIUS,
   GAS_GIANT_RING_OPACITY,
   GAS_GIANT_RING_OUTER_RADIUS,
   GAS_GIANT_RING_TILT,
-  HEMI_LIGHT_GROUND_COLOR,
   HEMI_LIGHT_INTENSITY,
-  HEMI_LIGHT_SKY_COLOR,
-  KEY_LIGHT_COLOR,
   KEY_LIGHT_INTENSITY,
   KEY_LIGHT_OFFSET,
   KEY_LIGHT_SHADOW_EXTENT,
-  LOUNGER_COLOR,
-  LOUNGER_LENGTH,
-  LOUNGER_WIDTH,
-  POOL_RIM_COLOR,
-  POOL_WATER_COLOR,
   POOL_WATER_ROUGHNESS,
   RESORT_LAYOUT_SEED,
   SHADOW_MAP_SIZE,
-  SIGN_PANEL_COLOR,
   SIGN_PANEL_HEIGHT,
   SIGN_PANEL_WIDTH,
-  SIGN_POST_COLOR,
   SIGN_POST_HEIGHT,
-  SKY_GROUND_COLOR,
-  SKY_HORIZON_COLOR,
   SKY_RADIUS,
-  SKY_TOP_COLOR,
-  UMBRELLA_CANOPY_HEIGHT,
-  UMBRELLA_POLE_COLOR,
-  UMBRELLA_POLE_HEIGHT,
-  UMBRELLA_POLE_RADIUS,
 } from './config.js'
 import { platformLayout } from './logic/arena.js'
+import { LEVELS } from './logic/levels.js'
+import { PROP_STYLES } from './props.js'
 import { CENTER_CLEARANCE, resortLayout } from './logic/resortLayout.js'
 
 // A tileable composite-deck plank texture: a few planks side by side
@@ -66,7 +43,7 @@ import { CENTER_CLEARANCE, resortLayout } from './logic/resortLayout.js'
 // plank a sensible real-world size) rather than being drawn once at full
 // resolution, which a single canvas can't hold crisply at ARENA_RADIUS's
 // scale.
-function createDeckPlankTexture() {
+function createDeckPlankTexture(deck) {
   const planksAcross = 6
   const tileSize = 512
   const plankPixels = tileSize / planksAcross
@@ -75,7 +52,7 @@ function createDeckPlankTexture() {
   canvas.height = tileSize
   const ctx = canvas.getContext('2d')
 
-  const base = new THREE.Color(ARENA_DECK_PLANK_COLOR)
+  const base = new THREE.Color(deck.plank)
   for (let i = 0; i < planksAcross; i++) {
     // A narrow +-2.5% lightness range (rather than a wide one) keeps the
     // planks reading as one soft, near-white composite surface instead of
@@ -87,7 +64,7 @@ function createDeckPlankTexture() {
     // A butt-joint seam partway down this plank, staggered per column so
     // the repeating tile doesn't read as one continuous strip per plank.
     const jointY = (((i * 53) % 7) / 7) * tileSize
-    ctx.strokeStyle = ARENA_DECK_SEAM_COLOR
+    ctx.strokeStyle = deck.seam
     ctx.lineWidth = 1
     ctx.beginPath()
     ctx.moveTo(i * plankPixels, jointY)
@@ -95,7 +72,7 @@ function createDeckPlankTexture() {
     ctx.stroke()
   }
 
-  ctx.strokeStyle = ARENA_DECK_SEAM_COLOR
+  ctx.strokeStyle = deck.seam
   ctx.lineWidth = 1.5
   for (let i = 1; i < planksAcross; i++) {
     ctx.beginPath()
@@ -125,15 +102,15 @@ function createDeckPlankTexture() {
 // A vertical gradient (deep sky blue at the zenith -> a pale haze near
 // the horizon -> warm sand further down) for the daylight sky dome,
 // read top (y=+radius) to bottom (y=-radius).
-function createSkyTexture() {
+function createSkyTexture(sky) {
   const canvas = document.createElement('canvas')
   canvas.width = 2
   canvas.height = 256
   const ctx = canvas.getContext('2d')
   const gradient = ctx.createLinearGradient(0, 0, 0, 256)
-  gradient.addColorStop(0, SKY_TOP_COLOR)
-  gradient.addColorStop(0.7, SKY_HORIZON_COLOR)
-  gradient.addColorStop(1, SKY_GROUND_COLOR)
+  gradient.addColorStop(0, sky.top)
+  gradient.addColorStop(0.7, sky.horizon)
+  gradient.addColorStop(1, sky.ground)
   ctx.fillStyle = gradient
   ctx.fillRect(0, 0, 2, 256)
 
@@ -145,10 +122,10 @@ function createSkyTexture() {
 
 // A big inverted sphere wrapped in the daylight gradient, far outside
 // everything else so nothing clips through it.
-function createSkyDome() {
+function createSkyDome(sky) {
   const geometry = new THREE.SphereGeometry(SKY_RADIUS, 32, 16)
   const material = new THREE.MeshBasicMaterial({
-    map: createSkyTexture(),
+    map: createSkyTexture(sky),
     side: THREE.BackSide,
     fog: false,
   })
@@ -159,15 +136,15 @@ function createSkyDome() {
 // horizon -- see config.js's GAS_GIANT_* comment for where it's placed
 // and why. A touch of emissive keeps its unlit side from reading as a
 // flat black silhouette against the sky.
-function createGasGiant() {
+function createGasGiant(planetStyle) {
   const group = new THREE.Group()
   group.position.set(GAS_GIANT_POSITION.x, GAS_GIANT_POSITION.y, GAS_GIANT_POSITION.z)
 
   const planetMaterial = new THREE.MeshStandardMaterial({
-    color: GAS_GIANT_COLOR,
+    color: planetStyle.color,
     roughness: 0.9,
     metalness: 0,
-    emissive: new THREE.Color(GAS_GIANT_COLOR),
+    emissive: new THREE.Color(planetStyle.color),
     emissiveIntensity: GAS_GIANT_EMISSIVE_INTENSITY,
     fog: false,
   })
@@ -175,7 +152,7 @@ function createGasGiant() {
   group.add(planet)
 
   const ringMaterial = new THREE.MeshBasicMaterial({
-    color: GAS_GIANT_RING_COLOR,
+    color: planetStyle.ring,
     transparent: true,
     opacity: GAS_GIANT_RING_OPACITY,
     side: THREE.DoubleSide,
@@ -197,7 +174,7 @@ function createGasGiant() {
 // inside the top edge, a matching teal ring and pinstripe around the
 // central clear zone, and a tapered underside so it reads as a solid
 // floating sundeck.
-function createPlatform() {
+function createPlatform(level) {
   const group = new THREE.Group()
   const topRadius = ARENA_RADIUS
   const bottomRadius = ARENA_RADIUS * 0.7
@@ -208,12 +185,12 @@ function createPlatform() {
   const { discCenterY, topY } = platformLayout(ARENA_THICKNESS)
 
   const hullMaterial = new THREE.MeshStandardMaterial({
-    color: ARENA_HULL_COLOR,
+    color: level.hull,
     metalness: 0.35,
     roughness: 0.45,
   })
   const deckMaterial = new THREE.MeshStandardMaterial({
-    map: createDeckPlankTexture(),
+    map: createDeckPlankTexture(level.deck),
     roughness: 0.7,
     metalness: 0,
   })
@@ -231,7 +208,7 @@ function createPlatform() {
   const bandY = topY + 0.01
 
   const borderGeometry = new THREE.RingGeometry(topRadius - ARENA_DECK_BORDER_WIDTH, topRadius, 64)
-  const borderMaterial = new THREE.MeshStandardMaterial({ color: ARENA_DECK_BORDER_COLOR, roughness: 0.6 })
+  const borderMaterial = new THREE.MeshStandardMaterial({ color: level.deck.border, roughness: 0.6 })
   const border = new THREE.Mesh(borderGeometry, borderMaterial)
   border.rotation.x = -Math.PI / 2
   border.position.y = bandY
@@ -240,7 +217,7 @@ function createPlatform() {
 
   const pinstripeOuter = topRadius - ARENA_DECK_PINSTRIPE_INSET
   const pinstripeGeometry = new THREE.RingGeometry(pinstripeOuter - ARENA_DECK_PINSTRIPE_WIDTH, pinstripeOuter, 64)
-  const pinstripeMaterial = new THREE.MeshStandardMaterial({ color: ARENA_DECK_PINSTRIPE_COLOR, roughness: 0.6 })
+  const pinstripeMaterial = new THREE.MeshStandardMaterial({ color: level.deck.pinstripe, roughness: 0.6 })
   const pinstripe = new THREE.Mesh(pinstripeGeometry, pinstripeMaterial)
   pinstripe.rotation.x = -Math.PI / 2
   pinstripe.position.y = bandY
@@ -255,7 +232,7 @@ function createPlatform() {
   // it only out at the platform's edge.
   const centerRingOuter = CENTER_CLEARANCE
   const centerRingGeometry = new THREE.RingGeometry(centerRingOuter - ARENA_CENTER_RING_WIDTH, centerRingOuter, 64)
-  const centerRingMaterial = new THREE.MeshStandardMaterial({ color: ARENA_DECK_BORDER_COLOR, roughness: 0.6 })
+  const centerRingMaterial = new THREE.MeshStandardMaterial({ color: level.deck.border, roughness: 0.6 })
   const centerRing = new THREE.Mesh(centerRingGeometry, centerRingMaterial)
   centerRing.rotation.x = -Math.PI / 2
   centerRing.position.y = bandY
@@ -268,7 +245,7 @@ function createPlatform() {
     centerPinstripeOuter,
     64,
   )
-  const centerPinstripeMaterial = new THREE.MeshStandardMaterial({ color: ARENA_DECK_PINSTRIPE_COLOR, roughness: 0.6 })
+  const centerPinstripeMaterial = new THREE.MeshStandardMaterial({ color: level.deck.pinstripe, roughness: 0.6 })
   const centerPinstripe = new THREE.Mesh(centerPinstripeGeometry, centerPinstripeMaterial)
   centerPinstripe.rotation.x = -Math.PI / 2
   centerPinstripe.position.y = bandY
@@ -286,10 +263,16 @@ function createPlatform() {
 // Shallow recessed ellipses of glossy water with a white rim -- walkable
 // (no obstacle), but logic/resortLayout.js's isInPool lets other game
 // logic tell when the player or a falling monster lands in one.
-function createPools(pools, topY) {
+function createPools(pools, topY, poolStyle) {
   const group = new THREE.Group()
-  const waterMaterial = new THREE.MeshStandardMaterial({ color: POOL_WATER_COLOR, roughness: POOL_WATER_ROUGHNESS, metalness: 0.1 })
-  const rimMaterial = new THREE.MeshStandardMaterial({ color: POOL_RIM_COLOR, roughness: 0.5 })
+  const waterMaterial = new THREE.MeshStandardMaterial({
+    color: poolStyle.water,
+    roughness: POOL_WATER_ROUGHNESS,
+    metalness: 0.1,
+    emissive: new THREE.Color(poolStyle.water),
+    emissiveIntensity: poolStyle.glow,
+  })
+  const rimMaterial = new THREE.MeshStandardMaterial({ color: poolStyle.rim, roughness: 0.5 })
 
   for (const pool of pools) {
     const water = new THREE.Mesh(new THREE.CircleGeometry(1, 32), waterMaterial)
@@ -310,60 +293,14 @@ function createPools(pools, topY) {
   return group
 }
 
-// Beach umbrellas: a thin pole and an open (no base cap) cone canopy in
-// whichever color logic/resortLayout.js rolled for that umbrella.
-function createUmbrellas(umbrellas, topY) {
+// The layout's tall "feature" props (umbrellas, in the sundeck) and low
+// "seat" props (loungers), drawn in the level's own style -- beach
+// umbrellas and loungers, ice crystals and snow mounds, volcanic spires,
+// neon pylons and speakers, lollipops and gumdrops (see src/props.js).
+function createStyledProps(items, topY, level, kind) {
   const group = new THREE.Group()
-  const poleMaterial = new THREE.MeshStandardMaterial({ color: UMBRELLA_POLE_COLOR, metalness: 0.4, roughness: 0.4 })
-
-  for (const umbrella of umbrellas) {
-    const pole = new THREE.Mesh(
-      new THREE.CylinderGeometry(UMBRELLA_POLE_RADIUS, UMBRELLA_POLE_RADIUS, UMBRELLA_POLE_HEIGHT, 8),
-      poleMaterial,
-    )
-    pole.position.set(umbrella.x, topY + UMBRELLA_POLE_HEIGHT / 2, umbrella.z)
-    pole.castShadow = true
-    group.add(pole)
-
-    const canopyMaterial = new THREE.MeshStandardMaterial({ color: umbrella.color, roughness: 0.5, side: THREE.DoubleSide })
-    const canopy = new THREE.Mesh(
-      new THREE.ConeGeometry(umbrella.radius * 0.9, UMBRELLA_CANOPY_HEIGHT, 12, 1, true),
-      canopyMaterial,
-    )
-    canopy.position.set(umbrella.x, topY + UMBRELLA_POLE_HEIGHT, umbrella.z)
-    canopy.castShadow = true
-    group.add(canopy)
-  }
-
-  return group
-}
-
-// Loungers: a flat slatted seat plus a raised, reclined back.
-function createLoungers(loungers, topY) {
-  const group = new THREE.Group()
-  const material = new THREE.MeshStandardMaterial({ color: LOUNGER_COLOR, roughness: 0.6 })
-
-  for (const lounger of loungers) {
-    const seat = new THREE.Mesh(new THREE.BoxGeometry(LOUNGER_WIDTH, 0.08, LOUNGER_LENGTH), material)
-    seat.position.set(lounger.x, topY + 0.14, lounger.z)
-    seat.rotation.y = lounger.rotation
-    seat.castShadow = true
-    seat.receiveShadow = true
-    group.add(seat)
-
-    const backOffset = LOUNGER_LENGTH / 2 - 0.1
-    const back = new THREE.Mesh(new THREE.BoxGeometry(LOUNGER_WIDTH, 0.5, 0.08), material)
-    back.position.set(
-      lounger.x - Math.sin(lounger.rotation) * backOffset,
-      topY + 0.35,
-      lounger.z - Math.cos(lounger.rotation) * backOffset,
-    )
-    back.rotation.y = lounger.rotation
-    back.rotation.x = -0.3 // reclined, rather than standing bolt upright
-    back.castShadow = true
-    group.add(back)
-  }
-
+  const style = PROP_STYLES[level.props.style] ?? PROP_STYLES.resort
+  for (const item of items) group.add(style[kind](item, topY, level))
   return group
 }
 
@@ -389,13 +326,13 @@ function wrapLines(ctx, text, maxWidth) {
 
 // A small resort sign panel: white lettering, word-wrapped, on the
 // panel's own teal background.
-function createSignTexture(text) {
+function createSignTexture(text, panelColor) {
   const canvas = document.createElement('canvas')
   canvas.width = 512
   canvas.height = 220
   const ctx = canvas.getContext('2d')
 
-  ctx.fillStyle = new THREE.Color(SIGN_PANEL_COLOR).getStyle()
+  ctx.fillStyle = new THREE.Color(panelColor).getStyle()
   ctx.fillRect(0, 0, canvas.width, canvas.height)
 
   ctx.fillStyle = '#ffffff'
@@ -414,9 +351,9 @@ function createSignTexture(text) {
 }
 
 // Small resort signs: a post with a lettered panel on top.
-function createSigns(signs, topY) {
+function createSigns(signs, topY, props) {
   const group = new THREE.Group()
-  const postMaterial = new THREE.MeshStandardMaterial({ color: SIGN_POST_COLOR, metalness: 0.3, roughness: 0.4 })
+  const postMaterial = new THREE.MeshStandardMaterial({ color: props.signPost, metalness: 0.3, roughness: 0.4 })
 
   for (const sign of signs) {
     const post = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, SIGN_POST_HEIGHT, 8), postMaterial)
@@ -425,7 +362,7 @@ function createSigns(signs, topY) {
     group.add(post)
 
     const panelMaterial = new THREE.MeshStandardMaterial({
-      map: createSignTexture(sign.text),
+      map: createSignTexture(sign.text, props.signPanel),
       roughness: 0.6,
       side: THREE.DoubleSide,
     })
@@ -440,12 +377,12 @@ function createSigns(signs, topY) {
 
 // Builds every prop (pools, umbrellas, loungers, signs) from `layout`
 // (src/logic/resortLayout.js's pure data) into one group.
-function createProps(layout, topY) {
+function createProps(layout, topY, level) {
   const group = new THREE.Group()
-  group.add(createPools(layout.pools, topY))
-  group.add(createUmbrellas(layout.umbrellas, topY))
-  group.add(createLoungers(layout.loungers, topY))
-  group.add(createSigns(layout.signs, topY))
+  group.add(createPools(layout.pools, topY, level.pool))
+  group.add(createStyledProps(layout.umbrellas, topY, level, 'feature'))
+  group.add(createStyledProps(layout.loungers, topY, level, 'seat'))
+  group.add(createSigns(layout.signs, topY, level.props))
   return group
 }
 
@@ -455,10 +392,10 @@ function createProps(layout, topY) {
 // one), and the non-pool props as circular obstacles (umbrellas/
 // loungers/signs; static for the whole game, so the caller folds them
 // into its own obstacle list once).
-export function createArena() {
+export function createArena(level = LEVELS[0], { avoid = [] } = {}) {
   const group = new THREE.Group()
 
-  const hemiLight = new THREE.HemisphereLight(HEMI_LIGHT_SKY_COLOR, HEMI_LIGHT_GROUND_COLOR, HEMI_LIGHT_INTENSITY)
+  const hemiLight = new THREE.HemisphereLight(level.light.hemiSky, level.light.hemiGround, HEMI_LIGHT_INTENSITY)
   group.add(hemiLight)
 
   // The shadow frustum is a small, fixed size (KEY_LIGHT_SHADOW_EXTENT)
@@ -467,7 +404,7 @@ export function createArena() {
   // player every frame (at the same KEY_LIGHT_OFFSET this sets them at
   // initially) so that fixed frustum still covers wherever play is
   // actually happening.
-  const keyLight = new THREE.DirectionalLight(KEY_LIGHT_COLOR, KEY_LIGHT_INTENSITY)
+  const keyLight = new THREE.DirectionalLight(level.light.key, KEY_LIGHT_INTENSITY)
   keyLight.position.set(KEY_LIGHT_OFFSET.x, KEY_LIGHT_OFFSET.y, KEY_LIGHT_OFFSET.z)
   keyLight.castShadow = true
   keyLight.shadow.mapSize.set(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE)
@@ -480,20 +417,26 @@ export function createArena() {
   group.add(keyLight)
   group.add(keyLight.target) // needs to be in the graph for its moving position to take effect
 
-  const { group: platformGroup } = createPlatform()
+  const { group: platformGroup } = createPlatform(level)
   group.add(platformGroup)
 
   const { topY } = platformLayout(ARENA_THICKNESS)
-  const layout = resortLayout({ radius: ARENA_RADIUS, seed: RESORT_LAYOUT_SEED })
-  group.add(createProps(layout, topY))
+  const layout = resortLayout({
+    radius: ARENA_RADIUS,
+    seed: level.seed ?? RESORT_LAYOUT_SEED,
+    avoid,
+    umbrellaColors: level.props.umbrellaColors,
+    signTexts: level.props.signTexts,
+  })
+  group.add(createProps(layout, topY, level))
   const propObstacles = [...layout.umbrellas, ...layout.loungers, ...layout.signs]
 
-  group.add(createSkyDome())
-  group.add(createGasGiant())
+  group.add(createSkyDome(level.sky))
+  group.add(createGasGiant(level.planet))
 
-  const fog = new THREE.Fog(FOG_COLOR, FOG_NEAR, FOG_FAR)
+  const fog = new THREE.Fog(level.fog, FOG_NEAR, FOG_FAR)
 
-  return { group, fog, backgroundColor: FOG_COLOR, keyLight, pools: layout.pools, propObstacles }
+  return { group, fog, backgroundColor: level.fog, level, keyLight, pools: layout.pools, propObstacles }
 }
 
 // Builds scene.environment: a PMREM-baked reflection map from a small
@@ -503,12 +446,12 @@ export function createArena() {
 // renderer of its own to build this with, so main.js calls it once at
 // startup and hands over the renderer; the PMREMGenerator is disposed
 // right after baking, per three's own fromScene usage.
-export function createEnvironmentMap(renderer) {
+export function createEnvironmentMap(renderer, level = LEVELS[0]) {
   const envScene = new THREE.Scene()
-  const dome = createSkyDome()
+  const dome = createSkyDome(level.sky)
   envScene.add(dome)
 
-  const sunMaterial = new THREE.MeshBasicMaterial({ color: 0xfff6e0 })
+  const sunMaterial = new THREE.MeshBasicMaterial({ color: level.light.sun })
   const sun = new THREE.Mesh(new THREE.PlaneGeometry(140, 140), sunMaterial)
   sun.position.set(KEY_LIGHT_OFFSET.x * 8, KEY_LIGHT_OFFSET.y * 8, KEY_LIGHT_OFFSET.z * 8)
   sun.lookAt(0, 0, 0)

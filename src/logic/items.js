@@ -53,34 +53,33 @@ export const ABILITIES = {
 
 // kind: 'zap' (hits the nearest enemy in range), 'pulse' (hits every enemy
 // within `radius` of the pet), 'heal' (patches you up), 'magnet' (pulls
-// crystals in from afar), 'guard' (shrugs off part of every hit), 'buff'
-// (passive `bonus` multipliers: damage, cooldown, speed, crystals,
-// knockback).
+// crystals in from afar), 'guard' (shrugs off part of every hit), 'throw'
+// (hurls a spinning lightsaber at the nearest enemy; `saberColor`). Every
+// pet but the healers, magnets and guards fights. `model` picks the real
+// animal / object it looks like (src/petModels.js); `color` is the accent
+// used for its icon and attack particles.
 export const PETS = {
-  sparky: { id: 'sparky', name: 'Sparky', icon: '⚡', color: 0xffe14a, shape: 'octahedron', kind: 'zap', damage: 8, interval: 1.1, range: 7, blurb: 'Zaps nearby enemies' },
-  // A vivid lime/chartreuse -- far enough from sparky's warm yellow, the
-  // player's coral, and every monster's hue (blobbo's mint green,
-  // zippy's hot pink, grumpus's periwinkle) to stay readable on its own
-  // against the pale deck.
-  blasty: { id: 'blasty', name: 'Blasty', icon: '💣', color: 0xb4e61d, shape: 'dodecahedron', kind: 'zap', damage: 26, interval: 2.8, range: 11, knockback: 1.6, blurb: 'Slow, heavy blasts' },
-  healbit: { id: 'healbit', name: 'Healbit', icon: '💗', color: 0xff6fa5, shape: 'sphere', kind: 'heal', amount: 2, interval: 2.5, blurb: 'Heals you over time' },
-  magneto: { id: 'magneto', name: 'Magneto', icon: '🧲', color: 0x7a8cff, shape: 'cylinder', kind: 'magnet', radius: 10, blurb: 'Vacuums up crystals' },
-  shieldy: { id: 'shieldy', name: 'Shieldy', icon: '🔰', color: 0x4de0c0, shape: 'tetrahedron', kind: 'guard', reduction: 0.25, blurb: 'Takes 25% off every hit' },
-  ember: { id: 'ember', name: 'Ember', icon: '🔥', color: 0xff7a2e, shape: 'tetrahedron', kind: 'zap', damage: 4, interval: 0.55, range: 5, blurb: 'Rapid little burns' },
-  bolt: { id: 'bolt', name: 'Bolt', icon: '🌩️', color: 0x8fd0ff, shape: 'cone', kind: 'zap', damage: 14, interval: 1.8, range: 16, blurb: 'Zaps from far away' },
-  comet: { id: 'comet', name: 'Comet', icon: '☄️', color: 0xc07aff, shape: 'sphere', kind: 'zap', damage: 12, interval: 2.2, range: 9, knockback: 3.5, blurb: 'Shoves enemies back' },
-  spike: { id: 'spike', name: 'Spike', icon: '🌵', color: 0x58c24a, shape: 'cone', kind: 'pulse', damage: 7, interval: 1.6, radius: 3, blurb: 'Prickles everything close' },
-  boomer: { id: 'boomer', name: 'Boomer', icon: '💥', color: 0xff5a5a, shape: 'dodecahedron', kind: 'pulse', damage: 22, interval: 4.5, radius: 4.5, knockback: 2.5, blurb: 'Big slow blast around you' },
-  mender: { id: 'mender', name: 'Mender', icon: '🩹', color: 0xffd1dc, shape: 'cylinder', kind: 'heal', amount: 6, interval: 6, blurb: 'Big heal, now and then' },
-  sprout: { id: 'sprout', name: 'Sprout', icon: '🌱', color: 0x9be37a, shape: 'sphere', kind: 'heal', amount: 1, interval: 1, blurb: 'Constant trickle heal' },
-  grumble: { id: 'grumble', name: 'Grumble', icon: '😤', color: 0xd9534f, shape: 'octahedron', kind: 'buff', bonus: { damage: 1.2 }, blurb: '+20% weapon damage' },
-  whirl: { id: 'whirl', name: 'Whirl', icon: '🌪️', color: 0x7fe0e8, shape: 'cylinder', kind: 'buff', bonus: { cooldown: 0.85 }, blurb: 'Swing 15% faster' },
-  zoom: { id: 'zoom', name: 'Zoom', icon: '🛼', color: 0xffb347, shape: 'cone', kind: 'buff', bonus: { speed: 1.15 }, blurb: 'Run 15% faster' },
-  goldie: { id: 'goldie', name: 'Goldie', icon: '🪙', color: 0xffd23f, shape: 'dodecahedron', kind: 'buff', bonus: { crystals: 1.5 }, blurb: '+50% crystals' },
-  bumper: { id: 'bumper', name: 'Bumper', icon: '🥊', color: 0xff6f91, shape: 'sphere', kind: 'buff', bonus: { knockback: 1.4 }, blurb: '+40% knockback' },
-  plated: { id: 'plated', name: 'Plated', icon: '🛡️', color: 0xb0bec5, shape: 'octahedron', kind: 'guard', reduction: 0.15, blurb: 'Takes 15% off every hit' },
-  vortex: { id: 'vortex', name: 'Vortex', icon: '🧿', color: 0x4d6bff, shape: 'tetrahedron', kind: 'magnet', radius: 16, blurb: 'Huge crystal pull' },
-  rascal: { id: 'rascal', name: 'Rascal', icon: '🦝', color: 0x9e9e9e, shape: 'dodecahedron', kind: 'buff', bonus: { damage: 1.1, speed: 1.08, crystals: 1.15 }, blurb: 'A little of everything' },
+  sparky: { id: 'sparky', name: 'Sparky', icon: '🐥', color: 0xffe14a, model: 'chick', kind: 'zap', damage: 8, interval: 1.1, range: 7, blurb: 'A chick that zaps nearby enemies' },
+  blasty: { id: 'blasty', name: 'Blasty', icon: '💣', color: 0xb4e61d, model: 'bomb', kind: 'zap', damage: 26, interval: 2.8, range: 11, knockback: 1.6, blurb: 'A bomb with slow, heavy blasts' },
+  healbit: { id: 'healbit', name: 'Healbit', icon: '💗', color: 0xff6fa5, model: 'heart', kind: 'heal', amount: 2, interval: 2.5, blurb: 'A heart that heals you over time' },
+  magneto: { id: 'magneto', name: 'Magneto', icon: '🧲', color: 0x7a8cff, model: 'magnet', kind: 'magnet', radius: 10, blurb: 'A magnet that vacuums up crystals' },
+  shieldy: { id: 'shieldy', name: 'Shieldy', icon: '🐢', color: 0x4de0c0, model: 'turtle', kind: 'guard', reduction: 0.25, blurb: 'A turtle that takes 25% off every hit' },
+  ember: { id: 'ember', name: 'Ember', icon: '🦊', color: 0xff7a2e, model: 'fox', kind: 'zap', damage: 4, interval: 0.55, range: 5, blurb: 'A fox with rapid little burns' },
+  bolt: { id: 'bolt', name: 'Bolt', icon: '🦉', color: 0x8fd0ff, model: 'owl', kind: 'zap', damage: 14, interval: 1.8, range: 16, blurb: 'An owl that zaps from far away' },
+  comet: { id: 'comet', name: 'Comet', icon: '🚀', color: 0xc07aff, model: 'rocket', kind: 'zap', damage: 12, interval: 2.2, range: 9, knockback: 3.5, blurb: 'A rocket that shoves enemies back' },
+  spike: { id: 'spike', name: 'Spike', icon: '🌵', color: 0x58c24a, model: 'cactus', kind: 'pulse', damage: 7, interval: 1.6, radius: 3, blurb: 'A cactus that prickles everything close' },
+  boomer: { id: 'boomer', name: 'Boomer', icon: '🧨', color: 0xff5a5a, model: 'tnt', kind: 'pulse', damage: 22, interval: 4.5, radius: 4.5, knockback: 2.5, blurb: 'Dynamite: a big slow blast around you' },
+  mender: { id: 'mender', name: 'Mender', icon: '🧰', color: 0xffd1dc, model: 'medkit', kind: 'heal', amount: 6, interval: 6, blurb: 'A medkit: big heal, now and then' },
+  sprout: { id: 'sprout', name: 'Sprout', icon: '🌱', color: 0x9be37a, model: 'sprout', kind: 'heal', amount: 1, interval: 1, blurb: 'A potted sprout with a constant trickle heal' },
+  grumble: { id: 'grumble', name: 'Grumble', icon: '🐻', color: 0xd9534f, model: 'bear', kind: 'pulse', damage: 14, interval: 2.2, radius: 3.2, knockback: 2, blurb: 'A grumpy bear that swipes everything close' },
+  whirl: { id: 'whirl', name: 'Whirl', icon: '🐝', color: 0x7fe0e8, model: 'bee', kind: 'zap', damage: 6, interval: 0.7, range: 6, blurb: 'A bee that stings the nearest enemy, fast' },
+  zoom: { id: 'zoom', name: 'Zoom', icon: '🐰', color: 0xffb347, model: 'rabbit', kind: 'zap', damage: 9, interval: 1.2, range: 8, knockback: 2, blurb: 'A rabbit that boings enemies away' },
+  goldie: { id: 'goldie', name: 'Goldie', icon: '🐠', color: 0xffd23f, model: 'goldfish', kind: 'zap', damage: 10, interval: 1.5, range: 8, blurb: 'A goldfish that splashes the nearest enemy' },
+  bumper: { id: 'bumper', name: 'Bumper', icon: '🐏', color: 0xff6f91, model: 'ram', kind: 'zap', damage: 12, interval: 2.4, range: 5, knockback: 4.5, blurb: 'A ram that headbutts enemies off the edge' },
+  plated: { id: 'plated', name: 'Plated', icon: '🛡️', color: 0xb0bec5, model: 'shield', kind: 'guard', reduction: 0.15, blurb: 'A shield that takes 15% off every hit' },
+  vortex: { id: 'vortex', name: 'Vortex', icon: '🐦‍⬛', color: 0x4d6bff, model: 'magpie', kind: 'magnet', radius: 16, blurb: 'A magpie with a huge crystal pull' },
+  matthias: { id: 'matthias', name: 'Matthias', icon: '🧑', color: 0x58ff6a, saberColor: 0x58ff6a, model: 'matthias', kind: 'throw', damage: 18, interval: 1.3, range: 13, knockback: 2, blurb: 'Throws lightsabers at the nearest enemy' },
+  rascal: { id: 'rascal', name: 'Rascal', icon: '🦝', color: 0x9e9e9e, model: 'raccoon', kind: 'zap', damage: 7, interval: 0.9, range: 7, blurb: 'A raccoon that swipes the nearest enemy' },
 }
 
 export const ABILITY_KEYS = ['KeyQ', 'KeyZ', 'KeyX', 'KeyC', 'KeyV']
@@ -97,24 +96,20 @@ export const BASE_MAGNET_RADIUS = 3.2
 export function petEffects(petIds) {
   let magnetRadius = BASE_MAGNET_RADIUS
   let damageTakenMultiplier = 1
-  const fx = { damageMultiplier: 1, cooldownMultiplier: 1, speedMultiplier: 1, crystalMultiplier: 1, knockbackMultiplier: 1 }
   for (const id of petIds) {
     const pet = PETS[id]
     if (pet.kind === 'magnet') magnetRadius = Math.max(magnetRadius, pet.radius)
     if (pet.kind === 'guard') damageTakenMultiplier *= 1 - pet.reduction
-    if (pet.kind === 'buff') {
-      const { damage = 1, cooldown = 1, speed = 1, crystals = 1, knockback = 1 } = pet.bonus
-      fx.damageMultiplier *= damage
-      fx.cooldownMultiplier *= cooldown
-      fx.speedMultiplier *= speed
-      fx.crystalMultiplier *= crystals
-      fx.knockbackMultiplier *= knockback
-    }
   }
+  // Pets no longer buff the player's own stats (they fight instead), so the
+  // weapon / speed / loot multipliers are always neutral.
   return {
     magnetRadius,
     damageTakenMultiplier: Math.max(0.4, damageTakenMultiplier),
-    ...fx,
-    cooldownMultiplier: Math.max(0.5, fx.cooldownMultiplier),
+    damageMultiplier: 1,
+    cooldownMultiplier: 1,
+    speedMultiplier: 1,
+    crystalMultiplier: 1,
+    knockbackMultiplier: 1,
   }
 }
