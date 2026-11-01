@@ -618,8 +618,91 @@ function matthias() {
   return group
 }
 
+
+// ---- Benji and Remy: stylized, low-poly kids ------------------------------
+
+// One kid, built from primitives: head with hair, a top (optionally with a
+// chest pocket), trousers and shoes or socks, arms by their sides. Cartoon
+// proportions in the same style as Matthias.
+function kid({ skinColor, hairColor, hair, top, topColor, pocketColor, pants, shoes, grin = true }) {
+  const group = new THREE.Group()
+  const skin = mat(skinColor)
+  const topMat = mat(topColor, { roughness: 0.95 })
+  const pantsMat = mat(pants, { roughness: 0.9 })
+  const hairMat = mat(hairColor, { roughness: 0.95 })
+
+  for (const side of [-1, 1]) {
+    group.add(part(new THREE.CylinderGeometry(0.06, 0.055, 0.34, 8), pantsMat, [side * 0.075, 0.22, 0]))
+    group.add(part(new THREE.BoxGeometry(0.09, 0.045, 0.15), mat(shoes), [side * 0.075, 0.025, 0.03]))
+  }
+  group.add(part(new THREE.BoxGeometry(0.31, 0.1, 0.19), pantsMat, [0, 0.4, 0]))
+  group.add(part(new THREE.BoxGeometry(0.34, 0.34, 0.2), topMat, [0, 0.62, 0]))
+  if (top === 'fleece') {
+    // Zip line and a dark chest pocket.
+    group.add(part(new THREE.BoxGeometry(0.02, 0.32, 0.01), mat(0x16303a), [0, 0.62, 0.103]))
+    group.add(part(new THREE.BoxGeometry(0.1, 0.12, 0.012), mat(pocketColor), [0.08, 0.66, 0.104]))
+    group.add(part(new THREE.CylinderGeometry(0.075, 0.08, 0.06, 10), topMat, [0, 0.8, 0])) // stand collar
+  }
+  const arms = []
+  for (const side of [-1, 1]) {
+    const arm = new THREE.Group()
+    arm.position.set(side * 0.225, 0.76, 0)
+    arm.add(part(new THREE.CylinderGeometry(0.055, 0.05, 0.3, 8), topMat, [0, -0.15, 0]))
+    arm.add(part(sphere(0.047), skin, [0, -0.32, 0.01]))
+    group.add(arm)
+    arms.push(arm)
+  }
+  group.add(part(new THREE.CylinderGeometry(0.05, 0.055, 0.06, 8), skin, [0, 0.82, 0]))
+
+  const head = new THREE.Group()
+  head.position.set(0, 0.97, 0)
+  head.add(part(sphere(0.19), skin, [0, 0, 0], [0.95, 1.05, 0.95]))
+  for (const side of [-1, 1]) head.add(part(sphere(0.04), skin, [side * 0.18, -0.01, 0]))
+  // Hair: 'messy' = a dark mop with a fringe; 'sandy' = a longer, swept blond fringe.
+  head.add(part(new THREE.SphereGeometry(0.205, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), hairMat, [0, 0.03, -0.015], [1, 1, 1.02]))
+  if (hair === 'sandy') {
+    for (const [x, y, z, r] of [[-0.13, 0.08, 0.12, 0.075], [-0.05, 0.1, 0.15, 0.075], [0.04, 0.11, 0.15, 0.075], [0.12, 0.08, 0.13, 0.07]]) {
+      head.add(part(sphere(r), hairMat, [x, y, z], [1, 0.75, 0.8]))
+    }
+    for (const side of [-1, 1]) head.add(part(sphere(0.06), hairMat, [side * 0.17, 0.02, -0.02], [0.7, 1.1, 1]))
+  } else {
+    for (const [x, y, z, r] of [[-0.1, 0.1, 0.13, 0.065], [0, 0.12, 0.15, 0.065], [0.1, 0.1, 0.13, 0.065]]) {
+      head.add(part(sphere(r), hairMat, [x, y, z], [1, 0.85, 0.8]))
+    }
+    const tuft = part(new THREE.ConeGeometry(0.05, 0.1, 5), hairMat, [0.02, 0.22, -0.04])
+    tuft.rotation.z = 0.35
+    head.add(tuft)
+  }
+  for (const side of [-1, 1]) {
+    head.add(part(sphere(0.04), mat(0xffffff), [side * 0.07, -0.01, 0.165], [1, 0.8, 0.6]))
+    head.add(part(sphere(0.022), mat(0x2a1a10), [side * 0.07, -0.01, 0.183], [1, 1, 0.6]))
+  }
+  head.add(part(sphere(0.022), mat(0xd49478), [0, -0.05, 0.185]))
+  // A closed-mouth grin.
+  const smile = part(new THREE.TorusGeometry(0.055, 0.011, 6, 12, Math.PI * 0.8), mat(0x8a3a3a), [0, -0.075, 0.17])
+  smile.rotation.z = Math.PI * 1.1
+  head.add(smile)
+  group.add(head)
+
+  group.userData.fly = false
+  group.userData.animate = (t, moving) => {
+    head.rotation.z = Math.sin(t * 1.8) * 0.06
+    head.rotation.y = Math.sin(t * 1.1) * 0.12
+    arms[0].rotation.z = 0.1 + Math.sin(t * (moving ? 10 : 2.5)) * 0.1
+    arms[1].rotation.z = -0.1 - Math.sin(t * (moving ? 10 : 2.5)) * 0.1
+  }
+  return group
+}
+
+// Benji: dark tousled hair, a navy sweater, jeans.
+const benji = () => kid({ skinColor: 0xe0aa86, hairColor: 0x2e2018, hair: 'messy', top: 'sweater', topColor: 0x2c3548, pants: 0x4a6a96, shoes: 0x3a3a3a })
+// Remy: sandy-blond hair, a teal fleece with a dark chest pocket, grey jeans, teal socks.
+const remy = () => kid({ skinColor: 0xeab494, hairColor: 0xb88a4e, hair: 'sandy', top: 'fleece', topColor: 0x1f7f95, pocketColor: 0x3b4048, pants: 0x6b7480, shoes: 0x1f6f80 })
+
 const BUILDERS = {
   matthias,
+  benji,
+  remy,
   chick: () => bird({ body: 0xffd84a, belly: 0xffeb8a, beak: 0xff9a2e, crest: 0xffd84a, tail: 0xffd84a }),
   owl: () => bird({ body: 0x8a6a4a, belly: 0xe0cfb0, eye: 'owl', tufts: true, beak: 0xe0a030, wing: 0x6e5238 }),
   magpie: () => bird({ body: 0x23262d, belly: 0xffffff, beak: 0x1b1b1b, wing: 0x3b4a7a, tail: 0x3b4a7a }),

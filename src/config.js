@@ -38,6 +38,13 @@ export const MONSTER_TYPES = {
   blobbo: { shape: 'dodecahedron', size: 1.4, color: 0x5fd48e, edgeColor: 0xbfeed2, speed: 1.2, hp: 60, damage: 8, radius: 0.6 },
   zippy: { shape: 'octahedron', size: 0.6, color: 0xff5c8a, edgeColor: 0xffbed0, speed: 5.5, hp: 20, damage: 5, radius: 0.25 },
   grumpus: { shape: 'box', size: 1.1, color: 0x5c8dff, edgeColor: 0xbed1ff, speed: 2.0, hp: 100, damage: 15, radius: 0.45 },
+  // Late-game enemies (src/logic/enemies.js): bloaters (wave 4) lob poison at
+  // where you're heading, spinners (5) fire small orbs, splitters (6) burst
+  // into two splitlings. attackRange is how far out the shooters open fire.
+  bloater: { shape: 'sphere', size: 1.7, color: 0x9bd32a, edgeColor: 0xdff59a, speed: 1.3, hp: 90, damage: 6, radius: 0.8, attackRange: 11 },
+  spinner: { shape: 'tetrahedron', size: 1.0, color: 0xff9f1c, edgeColor: 0xffd699, speed: 2.4, hp: 55, damage: 5, radius: 0.45, attackRange: 9 },
+  splitter: { shape: 'cone', size: 1.5, color: 0xb06cff, edgeColor: 0xdcc2ff, speed: 2.2, hp: 80, damage: 11, radius: 0.6 },
+  splitling: { shape: 'cone', size: 0.6, color: 0xd7b0ff, edgeColor: 0xeedcff, speed: 4.6, hp: 18, damage: 5, radius: 0.28 },
   // The seven bosses (src/logic/bosses.js) share the same stat shape, plus
   // boss-only fields (attackRange, reachBonus, knockbackScale, special...).
   ...BOSS_MONSTER_TYPES,
@@ -103,7 +110,7 @@ export const FACE_PUPIL_HIT_KICK = 0.3
 // Scales every face feature on a monster up or down relative to its
 // body, so a small body (zippy) still reads clearly from the gameplay
 // camera. Keyed by MONSTER_TYPES key; the player isn't scaled.
-export const FACE_SCALE_BY_TYPE = { blobbo: 1, zippy: 1.6, grumpus: 1 }
+export const FACE_SCALE_BY_TYPE = { blobbo: 1, zippy: 1.6, grumpus: 1, bloater: 1, spinner: 1.3, splitter: 1, splitling: 1.6 }
 
 // Arena platform geometry and its sundeck surface: a tileable composite-
 // plank CanvasTexture (a single canvas can't hold enough resolution for

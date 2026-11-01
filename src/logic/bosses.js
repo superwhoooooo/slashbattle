@@ -16,7 +16,8 @@
 // moment the fight starts), `windup` the telegraphed pause before it
 // lands. Damage is a multiple of the boss's own stat.
 //   charge  - dash at the player at a multiple of its speed
-//   summon  - call in `count` minions (never past `maxMinions` alive)
+//   summon  - call in `count` minions (never past `maxMinions` alive); the first
+//             call comes `firstDelay` seconds into the fight, then one per `interval`
 //   slam    - ground-pound: damages everything within `radius`
 //   blink   - teleport to `distance` from the player
 //   barrage - fire a fan of `count` orbs at the player
@@ -24,7 +25,7 @@
 //             radius + `radiusBonus` every `tickInterval`
 export const BOSS_SPECIALS = {
   charge: { interval: 6, windup: 0, duration: 1.2, speedMultiplier: 2.6 },
-  summon: { interval: 60, windup: 0.6, count: 2, maxMinions: 3 },
+  summon: { interval: 60, firstDelay: 6, windup: 0.6, count: 2, maxMinions: 3 },
   slam: { interval: 7, windup: 0.9, radius: 6.5, damageMultiplier: 1.3 },
   blink: { interval: 6.5, windup: 0.5, distance: 3.5 },
   barrage: { interval: 6, windup: 0.7, count: 5, spread: 0.9, speed: 9, damageMultiplier: 0.6 },

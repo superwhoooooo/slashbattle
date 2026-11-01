@@ -416,6 +416,10 @@
         color: var(--ink);
         cursor: pointer;
       }
+      #loadout-panel { bottom: auto; max-height: calc(100vh - 24px); }
+      .lo-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+      .lo-btn { display: flex; justify-content: space-between; gap: 10px; text-align: left; padding: 8px 10px; }
+      .lo-blurb { font-weight: 500; opacity: 0.8; font-size: 11px; }
       .sb-btn:hover { border-color: var(--teal); }
       .sb-btn.on { background: var(--teal); color: #fff; border-color: var(--teal); }
       #sandbox-btn {
@@ -494,7 +498,7 @@
       #touch-toggles { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); display: flex; gap: 8px; }
       /* HUD cards never swallow touches; the weapon / ability slots take them. */
       body.touch .panel { pointer-events: none; }
-      body.touch .overlay .panel, body.touch #sandbox-panel, body.touch .overlay button { pointer-events: auto; }
+      body.touch .overlay .panel, body.touch #sandbox-panel, body.touch #loadout-panel, body.touch .overlay button { pointer-events: auto; }
       body.touch .slot { pointer-events: auto; touch-action: none; }
       body.touch .controls, body.touch .gamepad-legend, body.touch #sandbox-btn kbd { display: none; }
       body.touch #hud, body.touch #hud-right, body.touch #crystal-card { zoom: 0.78; }
@@ -505,6 +509,7 @@
       body.touch #hotbar .slot, body.touch #ability-bar .slot { width: 46px; height: 46px; }
       body.touch #bottom-bar { bottom: 8px; }
       body.touch #sandbox-panel { top: 8px; bottom: 8px; right: 8px; width: min(330px, 60vw); }
+      body.touch #loadout-panel { top: 8px; bottom: auto; right: 8px; width: min(330px, 60vw); }
       body.touch #sandbox-badge { display: none !important; }
       #rotate-hint {
         position: fixed;

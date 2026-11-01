@@ -24,6 +24,7 @@ import { createCooldown } from './logic/combat.js'
 import { jellyHit } from './jelly.js'
 import { BOSS_SPECIALS, stepSpecialTimer } from './logic/bosses.js'
 import { nextMonsterState } from './logic/monsterAI.js'
+import { predictPosition, RANGED_ATTACKS, smoothVelocity } from './logic/enemies.js'
 import { dampAngle } from './logic/smoothing.js'
 
 const INDICATOR_DURATION = 0.6
@@ -45,8 +46,20 @@ export function createMonsterAIState(stats = {}) {
     // don't all fire the moment the fight starts; `special` is the move
     // currently winding up/running, `chargeRemaining` a charge dash's time left.
     specialTimers: Object.fromEntries(
-      (stats.specials ?? []).map((name) => [name, BOSS_SPECIALS[name].interval * (0.55 + Math.random() * 0.35)]),
+      (stats.specials ?? []).map((name) => {
+        const cfg = BOSS_SPECIALS[name]
+        // A special with a long cooldown (summon) can name a short first
+        // delay, so it still shows up early in a fight.
+        return [name, cfg.firstDelay != null ? cfg.firstDelay + Math.random() * 3 : cfg.interval * (0.55 + Math.random() * 0.35)]
+      }),
     ),
+    // Shooters (bloater, spinner): time to the next shot, plus a smoothed
+    // read on where the player is heading so a lob can lead them.
+    rangedTimer: 1.2 + Math.random() * 1.8,
+    playerVel: { x: 0, z: 0 },
+    prevPlayerPos: null,
+    speedScale: 1,
+    damageScale: 1,
     special: null,
     chargeRemaining: 0,
     windUpElapsed: null,
@@ -252,6 +265,43 @@ function stepBossSpecials(monster, ai, stats, player, obstacles, dt, events) {
   return { speed, busy: false }
 }
 
+// A shooter in range: backs off if you crowd it, otherwise holds its ground,
+// puffing up for its wind-up and then firing. A bloater lobs poison at where
+// you'll BE (your smoothed velocity times the glob's flight time); a spinner
+// whirls and fires a small fan of orbs straight at you. Returns the speed
+// it moved at (for the jelly bulge).
+function stepRanged(monster, ai, ranged, player, obstacles, speed, dt, events) {
+  const x = monster.position.x
+  const z = monster.position.z
+  const dx = player.position.x - x
+  const dz = player.position.z - z
+  const distance = Math.hypot(dx, dz)
+
+  let moved = 0
+  if (distance < ranged.keepAway && distance > 1e-6) {
+    steerToward(monster, { x: x - (dx / distance) * 3, z: z - (dz / distance) * 3 }, speed * 0.9, dt, obstacles)
+    moved = speed * 0.9
+  }
+  if (ranged.spins) monster.rotation.y += 9 * dt
+  else if (moved === 0) monster.rotation.y = dampAngle(monster.rotation.y, Math.atan2(dx, dz), MONSTER_FACING_DAMPING, dt)
+
+  ai.rangedTimer -= dt
+  if (ai.rangedTimer <= ranged.windup) jellyHit(monster, -MONSTER_ATTACK_WINDUP_INFLATE_RATE * dt)
+  if (ai.rangedTimer > 0) return moved
+  // The faster they're scaled up, the sooner the next shot.
+  ai.rangedTimer = ranged.interval / Math.max(1, 0.5 + ai.speedScale * 0.5)
+  const damage = Math.round(MONSTER_TYPES[ai.type].damage * ai.damageScale)
+
+  if (ranged.kind === 'lob') {
+    const lead = predictPosition(player.position, ai.playerVel, ranged.flight)
+    const target = clampToPlatform(lead, ARENA_RADIUS - 1)
+    events.push({ type: 'lob', x, z, tx: target.x, tz: target.z, flight: ranged.flight, radius: ranged.puddleRadius, life: ranged.puddleLife, tick: ranged.tick, damage })
+  } else {
+    events.push({ type: 'shoot', x, z, aim: Math.atan2(dx, dz), count: ranged.count, spread: ranged.spread, speed: ranged.speed, size: ranged.orbSize, damage })
+  }
+  return moved
+}
+
 // Advances one monster's perception, AI state machine, movement, and (while
 // attacking) damage dealing. `monster` is its Three.js group, carrying its
 // AI fields on userData alongside the type/hp/radius set at spawn.
@@ -322,7 +372,13 @@ export function updateMonster(monster, player, obstacles, dt, now) {
   let hitPlayer = false
   const events = []
 
-  let speed = stats.speed
+  const ranged = RANGED_ATTACKS[ai.type]
+  if (ranged) {
+    ai.playerVel = smoothVelocity(ai.playerVel, ai.prevPlayerPos, player.position, dt)
+    ai.prevPlayerPos = { x: player.position.x, z: player.position.z }
+  }
+
+  let speed = stats.speed * ai.speedScale
   let busy = false
   if (stats.specials) {
     ;({ speed, busy } = stepBossSpecials(monster, ai, stats, player, obstacles, dt, events))
@@ -331,6 +387,8 @@ export function updateMonster(monster, player, obstacles, dt, now) {
 
   if (busy) {
     // Mid wind-up/spin: stepBossSpecials already moved/turned it.
+  } else if (ranged && ai.state === 'attack') {
+    ai.speed = stepRanged(monster, ai, ranged, player, obstacles, speed, dt, events)
   } else if (ai.state === 'wander' && ai.wanderTarget) {
     steerToward(monster, ai.wanderTarget, speed, dt, obstacles)
     ai.speed = speed
@@ -360,7 +418,7 @@ export function updateMonster(monster, player, obstacles, dt, now) {
       jellyHit(monster, -MONSTER_ATTACK_WINDUP_INFLATE_RATE * dt)
 
       if (ai.windUpElapsed >= MONSTER_ATTACK_WINDUP_DURATION) {
-        hitPlayer = player.damagePlayer(stats.damage, now)
+        hitPlayer = player.damagePlayer(Math.round(stats.damage * ai.damageScale), now)
         ai.attackCooldown.trigger(now)
         ai.windUpElapsed = null
       }

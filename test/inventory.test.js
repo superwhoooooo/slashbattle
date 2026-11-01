@@ -10,9 +10,10 @@ import {
   selectWeaponSlot,
   selectedWeaponId,
   spendCrystals,
+  toggleEquipPowerup,
   useAbility,
 } from '../src/logic/inventory.js'
-import { ABILITIES, ABILITY_SLOTS, BASE_MAGNET_RADIUS, HOTBAR_SLOTS, MAX_PETS, PETS, WEAPONS, petEffects } from '../src/logic/items.js'
+import { ABILITIES, ABILITY_SLOTS, BASE_MAGNET_RADIUS, HOTBAR_SLOTS, MAX_PETS, PETS, POWERUPS, POWERUP_SLOTS, WEAPONS, petEffects, powerupEffects } from '../src/logic/items.js'
 
 function createSeededRng(seed) {
   let state = seed + 1
@@ -27,7 +28,7 @@ describe('catalogs', () => {
     expect(Object.keys(WEAPONS).length).toBeGreaterThan(HOTBAR_SLOTS)
     expect(Object.keys(ABILITIES).length).toBeGreaterThan(ABILITY_SLOTS)
     expect(Object.keys(PETS).length).toBeGreaterThan(MAX_PETS)
-    expect(Object.keys(PETS)).toHaveLength(21)
+    expect(Object.keys(PETS)).toHaveLength(23)
   })
 
   it('makes the staff a ranged starter whose orbs are magic, and the sword a chest find', () => {
@@ -137,8 +138,8 @@ describe('chest loot', () => {
       seen.add(key)
       inv = grantItem(inv, loot)
     }
-    // 4 other hotbar slots + 5 ability slots + 5 pet slots, however big the catalogs are
-    expect(seen.size).toBe(HOTBAR_SLOTS - 1 + ABILITY_SLOTS + MAX_PETS)
+    // 4 other hotbar slots + 5 ability slots + 5 pet slots + every power-up (they take no slot to own)
+    expect(seen.size).toBe(HOTBAR_SLOTS - 1 + ABILITY_SLOTS + MAX_PETS + Object.keys(POWERUPS).length)
     expect(inv.weapons).toHaveLength(HOTBAR_SLOTS)
     expect(inv.abilities).toHaveLength(ABILITY_SLOTS)
     expect(inv.pets).toHaveLength(MAX_PETS)
@@ -161,10 +162,10 @@ describe('chest loot', () => {
     expect(loadouts.size).toBeGreaterThan(10)
   })
 
-  it('rolls across all three categories', () => {
+  it('rolls across all four categories', () => {
     const kinds = new Set()
     for (let seed = 0; seed < 60; seed++) kinds.add(rollChestLoot(createInventory(), createSeededRng(seed)).kind)
-    expect(kinds).toEqual(new Set(['weapon', 'ability', 'pet']))
+    expect(kinds).toEqual(new Set(['weapon', 'ability', 'pet', 'powerup']))
   })
 
   it('makes later chests cost more', () => {
@@ -235,5 +236,44 @@ describe('petEffects', () => {
 
   it('keeps the damage floor with several guard pets', () => {
     expect(petEffects(['shieldy', 'plated']).damageTakenMultiplier).toBeCloseTo(0.75 * 0.85)
+  })
+})
+
+describe('power-ups', () => {
+  const owned = (...ids) => ids.reduce((inv, id) => grantItem(inv, { kind: 'powerup', id }), createInventory())
+
+  it('switch themselves on while there is a free slot, then wait to be equipped', () => {
+    const ids = Object.keys(POWERUPS)
+    const inv = owned(...ids.slice(0, POWERUP_SLOTS + 1))
+    expect(inv.powerups).toHaveLength(POWERUP_SLOTS + 1)
+    expect(inv.equipped).toEqual(ids.slice(0, POWERUP_SLOTS))
+  })
+
+  it('toggle on and off, swapping out the oldest when full, and ignore ones you do not own', () => {
+    const ids = Object.keys(POWERUPS)
+    let inv = owned(...ids.slice(0, POWERUP_SLOTS + 1))
+    inv = toggleEquipPowerup(inv, ids[POWERUP_SLOTS])
+    expect(inv.equipped).toEqual([...ids.slice(1, POWERUP_SLOTS), ids[POWERUP_SLOTS]])
+    inv = toggleEquipPowerup(inv, ids[POWERUP_SLOTS])
+    expect(inv.equipped).not.toContain(ids[POWERUP_SLOTS])
+    expect(toggleEquipPowerup(createInventory(), 'swift').equipped).toEqual([])
+  })
+
+  it('multiply together in powerupEffects, and do nothing when none are equipped', () => {
+    expect(powerupEffects([])).toEqual({ speed: 1, damage: 1, cooldown: 1, damageTaken: 1, crystal: 1, knockback: 1, killHeal: 0 })
+    const fx = powerupEffects(['swift', 'heavy', 'thick', 'leech'])
+    expect(fx.speed).toBeCloseTo(1.25)
+    expect(fx.damage).toBeCloseTo(1.3)
+    expect(fx.damageTaken).toBeCloseTo(0.8)
+    expect(fx.killHeal).toBe(2)
+  })
+})
+
+describe('Benji and Remy', () => {
+  it('are fighting pets with their own models', () => {
+    expect(PETS.benji.kind).toBe('zap')
+    expect(PETS.remy.kind).toBe('pulse')
+    expect(PETS.benji.model).toBe('benji')
+    expect(PETS.remy.model).toBe('remy')
   })
 })

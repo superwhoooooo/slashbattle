@@ -115,6 +115,17 @@ describe('boss specials', () => {
     expect(summon).toMatchObject({ count: BOSS_SPECIALS.summon.count, maxMinions: BOSS_SPECIALS.summon.maxMinions })
   })
 
+  it('summon: first call comes early in the fight, then at most one a minute', () => {
+    const boss = fakeBoss('boss_wobble', 0, 0)
+    const player = fakePlayer(5, 0)
+    boss.userData.state = 'chase'
+    boss.userData.stateEnteredAt = 0
+    const summons = run(boss, player, 130).filter((e) => e.type === 'summon')
+    expect(summons.length).toBeGreaterThanOrEqual(2)
+    expect(summons[0].at).toBeLessThan(15)
+    for (let i = 1; i < summons.length; i++) expect(summons[i].at - summons[i - 1].at).toBeGreaterThanOrEqual(59)
+  })
+
   it('spin: whirls for its duration, ticking damage at the tick interval', () => {
     const boss = fakeBoss('boss_grumpsalot', 0, 0)
     const player = fakePlayer(0, 6)

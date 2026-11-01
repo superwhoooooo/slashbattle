@@ -4,7 +4,7 @@
 // (clear the arena, heal, drop a chest or pod, toggle god mode).
 // It's pure DOM -- main.js hands in the callbacks and calls `refresh`.
 import { BOSSES } from './logic/bosses.js'
-import { ABILITIES, PETS, WEAPONS } from './logic/items.js'
+import { ABILITIES, PETS, POWERUPS, WEAPONS } from './logic/items.js'
 import { LEVELS } from './logic/levels.js'
 import { MONSTER_TYPES } from './config.js'
 
@@ -98,6 +98,7 @@ export function createSandboxPanel(callbacks) {
   }
   addItems('Weapons (click to equip / remove)', 'weapon', WEAPONS)
   addItems('Abilities', 'ability', ABILITIES)
+  addItems('Power-ups (3 at a time)', 'powerup', POWERUPS)
   addItems('Pets', 'pet', PETS)
 
   document.body.appendChild(root)
@@ -117,7 +118,7 @@ export function createSandboxPanel(callbacks) {
     refresh({ inventory, levelIndex, god }) {
       for (const { b, kind, id } of itemButtons) {
         const owned =
-          kind === 'weapon' ? inventory.weapons.includes(id) : kind === 'ability' ? inventory.abilities.includes(id) : inventory.pets.includes(id)
+          kind === 'weapon' ? inventory.weapons.includes(id) : kind === 'ability' ? inventory.abilities.includes(id) : kind === 'powerup' ? inventory.equipped.includes(id) : inventory.pets.includes(id)
         b.classList.toggle('on', owned)
       }
       levelButtons.forEach((b, index) => b.classList.toggle('on', index === levelIndex))

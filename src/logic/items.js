@@ -79,6 +79,8 @@ export const PETS = {
   plated: { id: 'plated', name: 'Plated', icon: '🛡️', color: 0xb0bec5, model: 'shield', kind: 'guard', reduction: 0.15, blurb: 'A shield that takes 15% off every hit' },
   vortex: { id: 'vortex', name: 'Vortex', icon: '🐦‍⬛', color: 0x4d6bff, model: 'magpie', kind: 'magnet', radius: 16, blurb: 'A magpie with a huge crystal pull' },
   matthias: { id: 'matthias', name: 'Matthias', icon: '🧑', color: 0x58ff6a, saberColor: 0x58ff6a, model: 'matthias', kind: 'throw', damage: 18, interval: 1.3, range: 13, knockback: 2, blurb: 'Throws lightsabers at the nearest enemy' },
+  benji: { id: 'benji', name: 'Benji', icon: '🧒', color: 0x3a4a78, model: 'benji', kind: 'zap', damage: 11, interval: 0.8, range: 10, knockback: 0.8, blurb: 'A grinning kid in a navy sweater who zaps the nearest enemy, fast' },
+  remy: { id: 'remy', name: 'Remy', icon: '👦', color: 0x1f7f95, model: 'remy', kind: 'pulse', damage: 20, interval: 2.6, radius: 4, knockback: 3, blurb: 'A kid in a teal fleece who stomps everything nearby away' },
   rascal: { id: 'rascal', name: 'Rascal', icon: '🦝', color: 0x9e9e9e, model: 'raccoon', kind: 'zap', damage: 7, interval: 0.9, range: 7, blurb: 'A raccoon that swipes the nearest enemy' },
 }
 
@@ -112,4 +114,34 @@ export function petEffects(petIds) {
     crystalMultiplier: 1,
     knockbackMultiplier: 1,
   }
+}
+
+// Power-ups: passive perks found in chests. You choose which to equip (up to
+// POWERUP_SLOTS) in the Tab menu; equipped ones multiply together.
+export const POWERUP_SLOTS = 3
+export const POWERUPS = {
+  swift: { id: 'swift', name: 'Swift Boots', icon: '👟', blurb: '+25% move speed', speed: 1.25 },
+  heavy: { id: 'heavy', name: 'Heavy Hitter', icon: '💪', blurb: '+30% damage', damage: 1.3 },
+  quick: { id: 'quick', name: 'Quick Hands', icon: '⚡', blurb: 'Attack 25% faster', cooldown: 0.75 },
+  thick: { id: 'thick', name: 'Thick Skin', icon: '🧱', blurb: 'Take 20% less damage', damageTaken: 0.8 },
+  greed: { id: 'greed', name: 'Gem Greed', icon: '💎', blurb: '+50% crystals', crystal: 1.5 },
+  shove: { id: 'shove', name: 'Big Shove', icon: '🥊', blurb: '+60% knockback', knockback: 1.6 },
+  leech: { id: 'leech', name: 'Second Helping', icon: '🍰', blurb: 'Heal 2 HP on every kill', killHeal: 2 },
+}
+
+// What the equipped power-ups add up to (multipliers start at 1).
+export function powerupEffects(ids = []) {
+  const fx = { speed: 1, damage: 1, cooldown: 1, damageTaken: 1, crystal: 1, knockback: 1, killHeal: 0 }
+  for (const id of ids) {
+    const perk = POWERUPS[id]
+    if (!perk) continue
+    fx.speed *= perk.speed ?? 1
+    fx.damage *= perk.damage ?? 1
+    fx.cooldown *= perk.cooldown ?? 1
+    fx.damageTaken *= perk.damageTaken ?? 1
+    fx.crystal *= perk.crystal ?? 1
+    fx.knockback *= perk.knockback ?? 1
+    fx.killHeal += perk.killHeal ?? 0
+  }
+  return fx
 }

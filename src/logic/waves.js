@@ -6,7 +6,7 @@
 import { bossForFight, bossById, shuffleBossOrder, wavesBeforeBoss } from './bosses.js'
 
 export const WAVE_BASE_SIZE = 3
-export const WAVE_GROWTH = 2
+export const WAVE_GROWTH = 3
 
 // A strictly increasing enemy count for wave `n` (1-indexed).
 export function waveSize(n) {
@@ -14,8 +14,8 @@ export function waveSize(n) {
 }
 
 export const WAVE_BASE_SPAWN_INTERVAL = 2.5 // seconds
-export const WAVE_SPAWN_INTERVAL_DECAY = 0.1 // seconds faster per wave
-export const WAVE_MIN_SPAWN_INTERVAL = 1.5 // seconds
+export const WAVE_SPAWN_INTERVAL_DECAY = 0.15 // seconds faster per wave
+export const WAVE_MIN_SPAWN_INTERVAL = 0.9 // seconds
 
 // Seconds between enemies trickling in one at a time during wave `n`,
 // never faster than WAVE_MIN_SPAWN_INTERVAL.
@@ -38,8 +38,17 @@ function typeWeights(n) {
   if (n === 2) return { blobbo: 0.6, zippy: 0.4 }
 
   const grumpus = Math.min(GRUMPUS_WEIGHT_BASE + GRUMPUS_WEIGHT_GROWTH * (n - 3), GRUMPUS_WEIGHT_MAX)
-  const remaining = 1 - grumpus
-  return { blobbo: remaining * 0.55, zippy: remaining * 0.45, grumpus }
+  // The late enemies: bloaters from wave 4, spinners from 5, splitters from 6,
+  // each starting small and growing (capped), carved out of the common share.
+  const bloater = n >= 4 ? Math.min(0.08 + 0.02 * (n - 4), 0.2) : 0
+  const spinner = n >= 5 ? Math.min(0.08 + 0.02 * (n - 5), 0.2) : 0
+  const splitter = n >= 6 ? Math.min(0.08 + 0.02 * (n - 6), 0.18) : 0
+  const remaining = 1 - grumpus - bloater - spinner - splitter
+  const weights = { blobbo: remaining * 0.55, zippy: remaining * 0.45, grumpus }
+  if (bloater) weights.bloater = bloater
+  if (spinner) weights.spinner = spinner
+  if (splitter) weights.splitter = splitter
+  return weights
 }
 
 // Picks a monster type to spawn on wave `n`, weighted per typeWeights.
@@ -161,7 +170,7 @@ export function stepWaves(state, dt, aliveCount, rng = Math.random) {
   return { state: next, spawns, events }
 }
 
-const SCORE_BY_TYPE = { blobbo: 100, zippy: 75, grumpus: 150 }
+const SCORE_BY_TYPE = { blobbo: 100, zippy: 75, grumpus: 150, bloater: 200, spinner: 175, splitter: 225, splitling: 40 }
 
 // Points awarded for killing one monster of `type` (including falling
 // off the platform's edge), 0 for an unrecognized type.

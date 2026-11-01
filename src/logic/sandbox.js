@@ -3,6 +3,7 @@
 // if you already have it, takes it away. Every function returns a NEW
 // inventory, like logic/inventory.js.
 import { ABILITY_SLOTS, HOTBAR_SLOTS, MAX_PETS } from './items.js'
+import { toggleEquipPowerup } from './inventory.js'
 
 // The Wizard Staff is fixed in the first hotbar slot, so it never gets
 // removed or swapped out.
@@ -59,6 +60,17 @@ export function sandboxToggleItem(inventory, { kind, id }) {
       result.inventory = { ...inventory, pets: [...inventory.pets.slice(0, -1), id] }
       result.petRemoved = inventory.pets.length - 1
       result.petAdded = id
+    }
+    return result
+  }
+
+  if (kind === 'powerup') {
+    // Free play: clicking owns AND equips it, clicking again takes it away.
+    if (inventory.equipped.includes(id)) {
+      result.inventory = { ...inventory, equipped: inventory.equipped.filter((p) => p !== id), powerups: inventory.powerups.filter((p) => p !== id) }
+    } else {
+      const owned = inventory.powerups.includes(id) ? inventory : { ...inventory, powerups: [...inventory.powerups, id] }
+      result.inventory = toggleEquipPowerup(owned, id)
     }
     return result
   }

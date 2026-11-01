@@ -52,12 +52,16 @@ describe('pickMonsterType', () => {
     }
   })
 
-  it('can pick all three types once grumpus unlocks', () => {
-    const seen = new Set()
-    for (let i = 0; i <= 100; i++) {
-      seen.add(pickMonsterType(6, () => i / 100))
+  it('unlocks bloaters on wave 4, spinners on 5 and splitters on 6', () => {
+    const typesAt = (n) => {
+      const seen = new Set()
+      for (let i = 0; i <= 200; i++) seen.add(pickMonsterType(n, () => i / 200))
+      return seen
     }
-    expect(seen).toEqual(new Set(['blobbo', 'zippy', 'grumpus']))
+    expect(typesAt(3)).toEqual(new Set(['blobbo', 'zippy', 'grumpus']))
+    expect(typesAt(4)).toEqual(new Set(['blobbo', 'zippy', 'grumpus', 'bloater']))
+    expect(typesAt(5)).toEqual(new Set(['blobbo', 'zippy', 'grumpus', 'bloater', 'spinner']))
+    expect(typesAt(6)).toEqual(new Set(['blobbo', 'zippy', 'grumpus', 'bloater', 'spinner', 'splitter']))
   })
 })
 

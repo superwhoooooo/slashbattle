@@ -55,6 +55,7 @@ record.
 - F — open the nearest chest (costs crystals)
 - 1-5 — pick a weapon from the hotbar (melee or firearm)
 - Q / Z / X / C / V — use your abilities, in the order you found them
+- Tab — open the power-up menu (pauses the game): click a power-up to equip / unequip it (in sandbox mode Tab opens the sandbox menu instead)
 
 A standard gamepad works too (`src/logic/gamepad.js` maps a snapshot to
 actions; `src/input.js` polls it each frame via `pollGamepad()` and merges
@@ -97,6 +98,9 @@ slashbattle/
     props.js           # per-level prop models (beach umbrellas, ice crystals, lava spires, neon pylons, lollipops)
     touch.js           # on-screen touch controls (floating sticks, HIDE/CHEST/AUTO buttons, tappable slots)
     sandbox.js         # sandbox mode's Tab menu (spawn, equip, levels, actions)
+    loadout.js         # the Tab power-up menu (equip / unequip, pauses the game)
+    hazards.js         # bloater poison globs + puddles (pooled meshes)
+    logic/enemies.js   # the late enemies' rules (ranged attacks, splitting, poison) + enemyScale difficulty ramp
     logic/sandbox.js   # pure sandbox item toggling + top-up
     logic/levels.js    # the five places (themes) and which one follows each boss
     logic/resortLayout.js # seeded sundeck prop layout (pools, umbrellas, loungers, signs), isInPool
@@ -246,6 +250,27 @@ popped out with a knockback-sized push, losing `POD_EJECT_PENALTY_FRACTION`
 monster's hit gets). Leaving early with E avoids that penalty, but
 either way the pod disappears -- it's a one-time hiding spot, and a new
 one takes its turn once a slot frees up.
+
+## Power-ups
+`logic/items.js`'s `POWERUPS` (Swift Boots, Heavy Hitter, Quick Hands, Thick Skin, Gem
+Greed, Big Shove, Second Helping) are passive perks found in chests (a fourth loot
+category; `inventory.powerups` owned, `inventory.equipped` on, up to `POWERUP_SLOTS` = 3,
+a new one equips itself if there's room). Tab opens `src/loadout.js`'s menu to pick which
+are on (`toggleEquipPowerup`, a full set swaps out the oldest) and freezes the frame.
+`powerupEffects(equipped)` multiplies them; `main.js` folds it in next to `petEffects`.
+The player's movement is NOT frozen by hitstop (only the world is), so landing hits never
+stalls you.
+
+## Late enemies and difficulty
+Regular enemies (`src/logic/enemies.js`, stats in `config.js`) unlock by wave:
+**bloater** (wave 4) keeps its distance and lobs a poison glob at where you'll BE
+(`predictPosition` on a smoothed player velocity), which lands as a damaging puddle
+(`src/hazards.js`); **spinner** (5) whirls and fires a fan of small orbs
+(`fireProjectile` with `size`); **splitter** (6) bursts into two fast
+`splitling`s when killed (not when it falls or is popped). `RANGED_ATTACKS` tunes the
+shooters; `monster.js`'s `stepRanged` runs them in the attack state. Every regular
+monster also scales with the wave (`enemyScale`: +10% hp, +6% damage, +3% speed per
+wave, damage/speed capped), waves grow by 3 and enemies arrive faster (down to 0.9s).
 
 ## Waves
 `src/logic/waves.js`'s wave controller (`createWaveState`/`stepWaves`)
@@ -465,7 +490,7 @@ fell. Press F within `CHEST_INTERACT_RANGE` to pay and open one; it rolls
 slot is full -- a score and heal bonus.
 
 The catalogs are bigger than the slots (17 weapons for a 5-slot hotbar with the
-Wizard Staff fixed in slot 1, 13 abilities for 5 keys, 21 pets for `MAX_PETS` = 5), and a
+Wizard Staff fixed in slot 1, 13 abilities for 5 keys, 23 pets for `MAX_PETS` = 5), and a
 chest only rolls items you don't own, so a maxed-out loadout differs run to run.
 Once every slot is full a chest pays out score and a heal ("LOADOUT FULL").
 
@@ -496,7 +521,7 @@ Once every slot is full a chest pays out score and a heal ("LOADOUT FULL").
   rabbit, Goldie the goldfish, Bumper the ram, Rascal the raccoon), `pulse` (Spike
   the cactus, Boomer the dynamite, Grumble the bear: hit everything near the pet),
   `throw` (Matthias, a stylized low-poly kid in a "VACAY FOREVER" tee who hurls
-  spinning lightsabers that home on the nearest enemy), `heal` (Healbit the heart, Mender the medkit, Sprout), `magnet` (Magneto, Vortex
+  spinning lightsabers that home on the nearest enemy), `zap` also covers Benji and Remy is a `pulse` stomp (both stylized low-poly kids, `petModels.js`'s `kid()`); `heal` (Healbit the heart, Mender the medkit, Sprout), `magnet` (Magneto, Vortex
   the magpie) and `guard` (Shieldy the turtle, Plated the shield). No pet buffs
   the player's own stats any more -- they all fight, heal, pull or soften hits
   (`petEffects` only folds magnet radius and damage taken). Each is a real

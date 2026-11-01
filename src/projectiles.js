@@ -29,12 +29,13 @@ export function createProjectilePool() {
 
 // Launches an orb from (x, z) with velocity (vx, vz) that deals `damage`.
 // Silently skipped when the pool is full.
-export function fireProjectile(pool, { x, z, vx, vz, damage, color = 0xff5a7a }) {
+export function fireProjectile(pool, { x, z, vx, vz, damage, color = 0xff5a7a, size = 1 }) {
   const slot = pool.slots.find((s) => !s.active)
   if (!slot) return
   slot.active = true
-  slot.data = { x, z, vx, vz, life: ORB_LIFE, damage, radius: ORB_RADIUS }
+  slot.data = { x, z, vx, vz, life: ORB_LIFE, damage, radius: ORB_RADIUS * size }
   slot.mesh.material.color.setHex(color)
+  slot.mesh.scale.setScalar(size)
   slot.mesh.position.set(x, ORB_HEIGHT, z)
   slot.mesh.visible = true
 }

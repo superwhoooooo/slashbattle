@@ -8,6 +8,8 @@ import {
   HOTBAR_SLOTS,
   MAX_PETS,
   PETS,
+  POWERUPS,
+  POWERUP_SLOTS,
   WEAPONS,
 } from './items.js'
 
@@ -19,6 +21,8 @@ export function createInventory() {
     abilities: [], // ability ids, in the order found (bound to ABILITY_KEYS)
     abilityReadyAt: {}, // ability id -> game time it's ready again
     pets: [],
+    powerups: [], // power-ups found (owned)
+    equipped: [], // the ones switched on in the Tab menu (up to POWERUP_SLOTS)
     chestsOpened: 0,
   }
 }
@@ -56,6 +60,7 @@ export function availableLoot(inventory) {
   if (inventory.pets.length < MAX_PETS) {
     for (const id of Object.keys(PETS)) if (!inventory.pets.includes(id)) loot.push({ kind: 'pet', id })
   }
+  for (const id of Object.keys(POWERUPS)) if (!(inventory.powerups ?? []).includes(id)) loot.push({ kind: 'powerup', id })
   return loot
 }
 
@@ -83,6 +88,11 @@ export function grantItem(inventory, { kind, id }) {
   }
   if (kind === 'pet' && !inventory.pets.includes(id)) {
     return { ...inventory, pets: [...inventory.pets, id] }
+  }
+  if (kind === 'powerup' && !inventory.powerups.includes(id)) {
+    // A new power-up switches itself on if there's a free slot.
+    const equipped = inventory.equipped.length < POWERUP_SLOTS ? [...inventory.equipped, id] : inventory.equipped
+    return { ...inventory, powerups: [...inventory.powerups, id], equipped }
   }
   return inventory
 }
@@ -112,4 +122,13 @@ export function useAbility(inventory, slot, now) {
 export function abilityCooldownFraction(inventory, id, now) {
   const readyAt = inventory.abilityReadyAt[id] ?? 0
   return Math.min(1, Math.max(0, (readyAt - now) / ABILITIES[id].cooldown))
+}
+
+// Switches an OWNED power-up on or off (the Tab menu). Switching one on with
+// every slot taken swaps out the one that's been on longest.
+export function toggleEquipPowerup(inventory, id) {
+  if (!inventory.powerups.includes(id)) return inventory
+  if (inventory.equipped.includes(id)) return { ...inventory, equipped: inventory.equipped.filter((p) => p !== id) }
+  const equipped = inventory.equipped.length < POWERUP_SLOTS ? inventory.equipped : inventory.equipped.slice(1)
+  return { ...inventory, equipped: [...equipped, id] }
 }

@@ -17,6 +17,8 @@ export function crystalDrops(type, isBoss = false) {
   if (isBoss) return Array(8).fill(5)
   if (type === 'grumpus') return [2, 2, 2]
   if (type === 'zippy') return [2]
+  if (type === 'bloater' || type === 'spinner' || type === 'splitter') return [2, 2]
+  if (type === 'splitling') return [1]
   return [1, 1]
 }
 

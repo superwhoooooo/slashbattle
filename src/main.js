@@ -9,6 +9,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { createArena, createEnvironmentMap, updateArena } from './arena.js'
 import { levelAt, levelIndexAfterBosses } from './logic/levels.js'
+import { createLoadoutPanel } from './loadout.js'
 import { createSandboxPanel } from './sandbox.js'
 import { createTouchControls, isTouchDevice } from './touch.js'
 import { sandboxToggleItem, sandboxTopUp } from './logic/sandbox.js'
@@ -167,13 +168,14 @@ import {
   chestCost,
   createInventory,
   grantItem,
+  toggleEquipPowerup,
   rollChestLoot,
   selectWeaponSlot,
   selectedWeaponId,
   spendCrystals,
   useAbility,
 } from './logic/inventory.js'
-import { ABILITIES, ABILITY_KEYS, HOTBAR_KEYS, PETS, WEAPONS, petEffects } from './logic/items.js'
+import { ABILITIES, ABILITY_KEYS, HOTBAR_KEYS, PETS, POWERUPS, WEAPONS, petEffects, powerupEffects } from './logic/items.js'
 import { stepFall } from './logic/falling.js'
 import { evaluateGameState } from './logic/gameState.js'
 import { createHitstopState, stepHitstop, triggerHitstop } from './logic/hitstop.js'
@@ -189,12 +191,14 @@ import {
   waveClearBonus,
   waveSize,
 } from './logic/waves.js'
+import { enemyScale, SPLITS } from './logic/enemies.js'
 import { createMonsterAIState, separateMonsters, updateMonster } from './monster.js'
 import { burst, createParticleSystem, resetParticles, shardBurst, updateParticles } from './particles.js'
 import { createPet, disposePets, updatePets } from './pets.js'
 import { Player } from './player.js'
 import { createBulletPool, fireBullets, resetBullets, updateBullets } from './bullets.js'
 import { makeBullets } from './logic/bullets.js'
+import { createPoisonPool, lobPoison, resetPoison, updatePoison } from './hazards.js'
 import { createProjectilePool, fireProjectile, resetProjectiles, updateProjectiles } from './projectiles.js'
 import { createShockwavePool, resetShockwaves, spawnShockwave, updateShockwaves } from './shockwave.js'
 import { createPopupPool, resetPopups, showPopup, updatePopups } from './popups.js'
@@ -319,6 +323,8 @@ const crystalSystem = createCrystalSystem()
 scene.add(crystalSystem.mesh)
 const projectilePool = createProjectilePool()
 scene.add(projectilePool.group)
+const poisonPool = createPoisonPool()
+scene.add(poisonPool.group)
 const shockwavePool = createShockwavePool()
 scene.add(shockwavePool.group)
 const bulletPool = createBulletPool()
@@ -757,6 +763,10 @@ function openChestNow(game, chest, now) {
     const ability = ABILITIES[loot.id]
     const key = ABILITY_KEYS[game.inventory.abilities.indexOf(loot.id)].replace('Key', '')
     showLootToast(hud, { title: `NEW ABILITY  [${key}]`, name: `${ability.icon} ${ability.name}`, blurb: ability.blurb })
+  } else if (loot.kind === 'powerup') {
+    const perk = POWERUPS[loot.id]
+    const on = game.inventory.equipped.includes(loot.id)
+    showLootToast(hud, { title: on ? 'NEW POWER-UP  [equipped, Tab to change]' : 'NEW POWER-UP  [Tab to equip]', name: `${perk.icon} ${perk.name}`, blurb: perk.blurb })
   } else {
     game.pets.push(createPet(loot.id, scene, game.player))
     const pet = PETS[loot.id]
@@ -822,6 +832,13 @@ function spawnMonster(game, type, { at = null, effectOptions, hpScale = 1, faceP
   mesh.userData.fallState = { velocityY: 0, fallenY: 0 }
   mesh.userData.spawning = true
   Object.assign(mesh.userData, createMonsterAIState(stats))
+  // Regular monsters get tougher every wave (bosses have their own scaling).
+  if (!stats.boss) {
+    const scale = enemyScale(game.waveState?.waveNumber ?? 1)
+    mesh.userData.hp = mesh.userData.maxHp = Math.round(stats.hp * scale.hp * hpScale)
+    mesh.userData.speedScale = scale.speed
+    mesh.userData.damageScale = scale.damage
+  }
   scene.add(mesh)
   game.monsters.push(mesh)
 
@@ -895,6 +912,7 @@ function popMinions(game) {
 }
 
 const pendingSummons = []
+const pendingSplits = []
 
 // Turns the specials a boss fired this tick (see monster.js's
 // updateMonster) into their effects: shockwave rings and damage for a slam
@@ -920,6 +938,13 @@ function applyBossEvents(game, bossMesh, events, now) {
     } else if (event.type === 'barrage') {
       for (const { vx, vz } of fanVelocities(event.aim, event.count, event.spread, event.speed)) {
         fireProjectile(projectilePool, { x: event.x, z: event.z, vx, vz, damage: event.damage })
+      }
+    } else if (event.type === 'lob') {
+      lobPoison(poisonPool, event)
+      burst(particleSystem, { x: event.x, y: 1.2, z: event.z }, 0x9bd32a, 10, 2.5)
+    } else if (event.type === 'shoot') {
+      for (const { vx, vz } of fanVelocities(event.aim, event.count, event.spread, event.speed)) {
+        fireProjectile(projectilePool, { x: event.x, z: event.z, vx, vz, damage: event.damage, color: 0xffa83a, size: event.size })
       }
     } else if (event.type === 'summon') {
       // Deferred: we're mid-way through filtering game.monsters, which is
@@ -968,6 +993,8 @@ function scoreKill(game, mesh, cause, position, now) {
   game.chainState = stepChain(game.chainState, now, trick.id)
   const points = trickPoints(scoreForKill(mesh.userData.type), game.chainState.multiplier)
   game.score += points
+  const killHeal = powerupEffects(game.inventory.equipped).killHeal
+  if (killHeal) game.player.hp = Math.min(PLAYER_MAX_HP, game.player.hp + killHeal)
   const pointsLine = game.chainState.multiplier > 1 ? `+${points} ×${game.chainState.multiplier}` : `+${points}`
   showPopup(popupPool, position, trick.name, pointsLine, popupColorForTrick(trick.id))
   showTrickSticker(hud, { name: trick.name, points, multiplier: game.chainState.multiplier, tone: trickToneForId(trick.id) })
@@ -1150,13 +1177,30 @@ function startSandbox() {
     },
   })
   sandboxPanel.setOpen(!touchDevice) // on a phone the menu covers too much until asked for
-  touchControls?.addMenuButton(() => sandboxPanel.toggle())
-  window.addEventListener('keydown', (event) => {
-    if (event.code !== 'Tab') return
-    event.preventDefault() // otherwise Tab moves browser focus onto the menu's buttons
-    if (!event.repeat) sandboxPanel.toggle()
-  })
+  loadoutPanel.setOpen(false)
 }
+
+// The Tab menu of a normal run: pick which found power-ups are equipped.
+// (Sandbox mode has its own bigger Tab menu instead.) It pauses the game.
+const loadoutPanel = createLoadoutPanel({
+  onToggle(id) {
+    game.inventory = toggleEquipPowerup(game.inventory, id)
+    loadoutPanel.refresh(game.inventory)
+  },
+})
+const loadoutOpen = () => !sandbox && loadoutPanel.isOpen()
+function toggleMenu() {
+  if (sandbox) return sandboxPanel.toggle()
+  if (!started || game.player.hp <= 0) return
+  loadoutPanel.refresh(game.inventory)
+  loadoutPanel.toggle()
+}
+window.addEventListener('keydown', (event) => {
+  if (event.code !== 'Tab') return
+  event.preventDefault() // otherwise Tab moves browser focus onto the menu's buttons
+  if (!event.repeat) toggleMenu()
+})
+touchControls?.addMenuButton(toggleMenu)
 
 function dismissStartCard(event) {
   // Guards against the keydown/mousedown listeners below and a gamepad
@@ -1233,6 +1277,7 @@ function animate(timestamp) {
       resetParticles(particleSystem)
       resetPopups(popupPool)
       resetProjectiles(projectilePool)
+      resetPoison(poisonPool)
       resetBullets(bulletPool)
       resetCrystals(crystalSystem)
       setChestPrompt(hud, null)
@@ -1258,6 +1303,12 @@ function animate(timestamp) {
   // that actually moves/animates the game world uses gameplayDelta, which
   // is 0 for the frame(s) a freeze covers (or a fraction of deltaSeconds
   // the frame it ends partway through, so no time is lost overall).
+  // The Tab power-up menu pauses the world (freeze the frame, still render).
+  if (loadoutOpen()) {
+    composer.render()
+    input.endFrame()
+    return
+  }
   const { state: nextHitstop, scale: hitstopScale } = stepHitstop(game.hitstop, deltaSeconds)
   game.hitstop = nextHitstop
   const gameplayDelta = deltaSeconds * hitstopScale
@@ -1330,8 +1381,11 @@ function animate(timestamp) {
       ? mouseAimAngle(player)
       : null
   const petFx = petEffects(game.inventory.pets)
-  player.speedMultiplier = petFx.speedMultiplier * (elapsedSeconds < player.sprintUntil ? SPRINT_SPEED_MULTIPLIER : 1)
-  player.update(input, cameraYaw, gameplayDelta)
+  const perk = powerupEffects(game.inventory.equipped)
+  player.speedMultiplier = petFx.speedMultiplier * perk.speed * (elapsedSeconds < player.sprintUntil ? SPRINT_SPEED_MULTIPLIER : 1)
+  // The player keeps full speed through a hitstop freeze: only the world stops,
+  // otherwise every landed hit stalls your movement for a moment.
+  player.update(input, cameraYaw, deltaSeconds)
   if (!player.falling && !player.hidden && !isOnPlatform(player.position, ARENA_RADIUS)) {
     player.startFalling()
   }
@@ -1342,7 +1396,7 @@ function animate(timestamp) {
     input.rumble(RUMBLE_STRONG_STRENGTH, RUMBLE_STRONG_DURATION)
     game.hitstop.remaining = triggerHitstop(game.hitstop, HITSTOP_PLAYER_HURT).remaining
   }
-  updateJelly(player.mesh, gameplayDelta, elapsedSeconds, { speed: player.speed, moveDir: player.moveDir })
+  updateJelly(player.mesh, deltaSeconds, elapsedSeconds, { speed: player.speed, moveDir: player.moveDir })
   updateFace3D(player.mesh, gameplayDelta, elapsedSeconds)
 
   // wasHidden, compared against player.hidden after updateHiding runs,
@@ -1415,9 +1469,9 @@ function animate(timestamp) {
     particleSystem,
     swingTrail,
     weaponId: selectedWeaponId(game.inventory),
-    damageMultiplier: elapsedDamageMultiplier(player, elapsedSeconds) * petFx.damageMultiplier,
-    cooldownMultiplier: petFx.cooldownMultiplier * (elapsedSeconds < player.frenzyUntil ? FRENZY_COOLDOWN_MULTIPLIER : 1),
-    knockbackMultiplier: petFx.knockbackMultiplier,
+    damageMultiplier: elapsedDamageMultiplier(player, elapsedSeconds) * petFx.damageMultiplier * perk.damage,
+    cooldownMultiplier: petFx.cooldownMultiplier * perk.cooldown * (elapsedSeconds < player.frenzyUntil ? FRENZY_COOLDOWN_MULTIPLIER : 1),
+    knockbackMultiplier: petFx.knockbackMultiplier * perk.knockback,
     bulletPool,
     autoAttack: autoShoot,
     hitstop: game.hitstop,
@@ -1459,6 +1513,7 @@ function animate(timestamp) {
         scoreKill(game, mesh, mesh.userData.lastHitBy ?? 'sword', mesh.position, elapsedSeconds)
         dropCrystals(crystalSystem, mesh.position.x, mesh.position.z, crystalDrops(mesh.userData.type, mesh.userData.isBoss))
         scene.remove(mesh)
+        if (SPLITS[mesh.userData.type] && mesh.userData.lastHitBy) pendingSplits.push({ type: mesh.userData.type, x: mesh.position.x, z: mesh.position.z })
         if (mesh.userData.isBoss) {
           bossGone = true
           bossDeathPoint = { x: mesh.position.x, z: mesh.position.z }
@@ -1505,6 +1560,14 @@ function animate(timestamp) {
     return true
   })
   game.monsters = monsters
+  pendingSplits.splice(0).forEach(({ type, x, z }) => {
+    const { into, count } = SPLITS[type]
+    for (let i = 0; i < count; i++) {
+      const angle = (i / count) * Math.PI * 2 + Math.random()
+      const at = clampToPlatform({ x: x + Math.sin(angle) * 1.2, z: z + Math.cos(angle) * 1.2 }, ARENA_RADIUS - SPAWN_NEAR_PLAYER_MARGIN)
+      spawnMonster(game, into, { at })
+    }
+  })
   pendingSummons.splice(0).forEach(({ bossMesh, count, maxMinions }) => summonMinions(game, bossMesh, count, maxMinions))
   if (bossGone) {
     popMinions(game)
@@ -1526,7 +1589,9 @@ function animate(timestamp) {
     sfx.play('hit', { x: player.position.x, z: player.position.z })
     input.rumble(RUMBLE_LIGHT_STRENGTH, RUMBLE_LIGHT_DURATION)
   }
-  if (updateProjectiles(projectilePool, gameplayDelta, player, elapsedSeconds, ARENA_RADIUS)) {
+  const orbHurt = updateProjectiles(projectilePool, gameplayDelta, player, elapsedSeconds, ARENA_RADIUS)
+  const poisonHurt = updatePoison(poisonPool, gameplayDelta, player, elapsedSeconds)
+  if (orbHurt || poisonHurt) {
     triggerShake(shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
     triggerDamageFlash(hud)
     sfx.play('playerHurt', { x: player.position.x, z: player.position.z })
@@ -1536,7 +1601,7 @@ function animate(timestamp) {
 
   // Pets follow and help, crystals scatter/home/get collected, and chests
   // animate; F opens the nearest one in reach if you can afford it.
-  player.damageTakenMultiplier = sandbox && godMode ? 0 : petFx.damageTakenMultiplier
+  player.damageTakenMultiplier = sandbox && godMode ? 0 : Math.max(0.3, petFx.damageTakenMultiplier * perk.damageTaken)
   if (sandbox) {
     game.inventory = sandboxTopUp(game.inventory)
     sandboxPanel.refresh({ inventory: game.inventory, levelIndex: game.levelIndex, god: godMode })
@@ -1545,7 +1610,7 @@ function animate(timestamp) {
   updatePets(game.pets, { dt: gameplayDelta, elapsed: elapsedSeconds, player, monsters: game.monsters, obstacles, particleSystem, hitstop: game.hitstop })
   const collected = updateCrystals(crystalSystem, gameplayDelta, elapsedSeconds, player.position.x, player.position.z, petFx.magnetRadius)
   if (collected > 0) {
-    game.inventory = addCrystals(game.inventory, Math.max(1, Math.round(collected * petFx.crystalMultiplier)))
+    game.inventory = addCrystals(game.inventory, Math.max(1, Math.round(collected * petFx.crystalMultiplier * perk.crystal)))
     sfx.play('crystal')
   }
 
