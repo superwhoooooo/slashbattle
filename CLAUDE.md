@@ -1,3 +1,7 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # SlashBattle
 
 SlashBattle is a 3D goofy neon brawler built with Three.js. The player
@@ -11,7 +15,7 @@ There's no win state: monsters (a mix of Blobbo, Zippy, and Grumpus)
 arrive in endless waves, each bigger than the last, trickling in one at
 a time with a glowing spawn-in effect on a ring 14-22 units out from the
 PLAYER's current position (not the platform's actual edge -- the
-platform's much bigger than that now, and an edge spawn would take too
+platform is big enough that an edge spawn would take too
 long to close in), clamped onto the platform. Losing all
 your hp loses the game. Monsters wander until they spot you, chase, and
 attack once in range; hiding in a pod breaks their line of sight, so a
@@ -70,8 +74,17 @@ where the browser supports `vibrationActuator`.
 - `npm install` — install dependencies
 - `npm run dev` — start the Vite dev server
 - `npm test` — run the Vitest test suite
+- `npx vitest run test/waves.test.js` — run one spec file
+- `npx vitest run -t "pattern"` — run only tests whose names match
+- `npx vitest` — watch mode
 - `npm run build` — produce a production build
-- `npm run build:single` — pack the build into one self-contained `dist-single/SlashBattle.html` (scripts, styles, fonts inlined) that opens by double-click, to send to someone
+- `npm run build:single` — pack the build into one self-contained `dist-single/SlashBattle.html` (scripts, styles, fonts inlined) that opens by double-click, to send to someone (`scripts/make-single-file.mjs` does the packing)
+
+`vite.config.js` sets `base: './'` so the build works from any folder or
+URL (GitHub Pages serves it from `/slashbattle/`); keep asset paths relative.
+`.github/workflows/deploy.yml` runs `npm ci`, `npm test` and `npm run build`
+on every push to `main` and deploys `dist/` to GitHub Pages -- pushing to
+`main` publishes the game, and a failing test blocks the deploy.
 
 ## Project layout
 ```
@@ -128,21 +141,35 @@ slashbattle/
     hiding.js          # cargo pod visuals/states + interaction (find nearest, enter/exit)
     combat.js          # hit detection (range + facing arc), damage, knockback, cooldowns
     hud.js             # DOM HUD updates (health, score, wave, enemies left, banners, game over)
+    logic/arena.js     # platform layout, on-platform checks, obstacle-aware movement, random points
+    logic/combat.js    # attack arc, damage/ambush multiplier, knockback, cooldowns
+    logic/falling.js   # falling physics (stepFall)
+    logic/gameState.js # lose-state evaluation
+    logic/hiding.js    # pod rules (nearest pod, enter, exit point, ambush window, hide limit/eject)
+    logic/jelly.js     # springStep and the per-vertex jellyOffset
+    logic/monsterAI.js # monster states and nextMonsterState transitions
+    logic/math.js      # clamp
+    logic/smoothing.js # damp, dampAngle, wrapAngle, rampToward
+    logic/faceLayout.js  # body surface distance per shape, face feature placement
+    logic/faceOptions.js # random face options and PLAYER_FACE
+    logic/podSpawner.js  # pod/chest spawn points and spawn timing
+    logic/waves.js     # wave sizes/intervals, monster type weights, the wave phase controller
     logic/             # pure, Three-free functions so they can be unit tested
-  test/                # Vitest specs for logic/ (combat, AI, hiding, arena, falling, jelly, waves, particles, trail)
+  scripts/make-single-file.mjs # inlines dist/ into dist-single/SlashBattle.html
+  test/                # Vitest specs, one per logic module (plus config and boss specials)
 ```
-
-All files listed above now exist.
 
 ## Conventions
 Testable game rules (distance/arc checks, AI state transitions, platform
 collision, hide eligibility, falling physics, and similar) live in
 `src/logic/` as plain, pure functions with no Three.js imports. This
 keeps them covered by Vitest specs in `test/` without needing a WebGL
-context.
+context. Tests may also import non-logic modules (e.g. `src/config.js`,
+`src/monster.js`) as long as nothing they load needs a WebGL context or the
+DOM -- Three.js itself loads fine under Node.
 
 ## Arena
-The dungeon has been replaced by a single circular platform (radius
+The arena is a single circular platform (radius
 `ARENA_RADIUS`, 48) floating in space, with no walls at the edge -- line
 of sight is always clear, so monsters see the player whenever they're
 within `SIGHT_RANGE` and not hidden. Hiding pods are circular obstacles
@@ -435,7 +462,7 @@ events (`slam`, `spinTick`, `barrage`, `summon`, `blink`) that
 `main.js`'s `applyBossEvents` turns into damage, shockwave rings
 (`src/shockwave.js`), orbs and minions. A special fizzles if you hide.
 
-The wave controller (`src/logic/waves.js`) gained `bossIntro` and `bossFight`
+The wave controller (`src/logic/waves.js`) also has `bossIntro` and `bossFight`
 phases: after the last regular wave's intermission it emits `bossIntro`, and
 `main.js`'s `startBossCutscene` drops the boss in straight ahead of the player
 through a widened portal while `game.cutscene` freezes gameplay (the hide timer
@@ -474,7 +501,7 @@ Once every slot is full a chest pays out score and a heal ("LOADOUT FULL").
   `main.js`'s `mouseAimAngle` raycasts the cursor onto the ground and sets
   `player.aimAngle`, which overrides the movement facing while a ranged weapon is
   out, and L toggles `autoShoot`, passed to `updatePlayerAttack` as `autoAttack`).
-  Melee -- Energy Sword (now a chest find), Twin
+  Melee -- Energy Sword (a chest find), Twin
   Dagger, Neon Spear, Mega Hammer, Moon Scythe, Plasma Katana, Battle Axe, Pixel
   Rapier, Disco Flail, Chainsaw, Boom Stick -- each with its own damage / range /
   arc / cooldown / knockback and 3D model. **Firearms** (`gun: true`: Pop Pistol,
