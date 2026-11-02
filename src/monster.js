@@ -77,7 +77,19 @@ export function createMonsterAIState(stats = {}) {
 // intended move, nudges sideways too, so direct steering doesn't stick on
 // its edge. Turns the mesh smoothly (dampAngle, shortest way around)
 // toward the direction actually moved, instead of snapping to face it.
-function steerToward(monster, targetPos, speed, dt, obstacles) {
+// The labyrinth's navigator (logic/maze.js's createNavigator), or null on the
+// open sundeck. With one set, monsters route around walls and can't see or
+// hit through them.
+let navigator = null
+export function setMonsterNavigator(nav) {
+  navigator = nav
+}
+
+function steerToward(monster, rawTarget, speed, dt, obstacles) {
+  let targetPos = rawTarget
+  if (navigator && (navigator.insideWall(rawTarget.x, rawTarget.z) || !navigator.hasLineOfSight(monster.position, rawTarget))) {
+    targetPos = navigator.nextWaypoint(monster.position, rawTarget)
+  }
   const clampedTarget = clampToPlatform(targetPos, ARENA_RADIUS - MONSTER_PLATFORM_MARGIN)
   const dx = clampedTarget.x - monster.position.x
   const dz = clampedTarget.z - monster.position.z
@@ -190,6 +202,9 @@ function fireSpecial(monster, ai, stats, player, obstacles, events) {
       { x: player.position.x + Math.sin(angle) * cfg.distance, z: player.position.z + Math.cos(angle) * cfg.distance },
       ARENA_RADIUS - MONSTER_PLATFORM_MARGIN,
     )
+    // In the labyrinth a blink can't land in (or through) a wall.
+    const blocked = navigator && (navigator.insideWall(target.x, target.z) || !navigator.hasLineOfSight(player.position, target))
+    if (blocked) return
     monster.position.x = target.x
     monster.position.z = target.z
     events.push({ type: 'blink', from: { x, z }, to: target })
@@ -348,11 +363,19 @@ export function updateMonster(monster, player, obstacles, dt, now) {
     player.position.x - monsterPos.x,
     player.position.z - monsterPos.z,
   )
-  const canSeePlayer = distanceToPlayer <= SIGHT_RANGE
+  let canSeePlayer = distanceToPlayer <= SIGHT_RANGE
+  let perceivedDistance = distanceToPlayer
+  if (navigator) {
+    // Walls hide you from sight, but monsters hunt by sound/scent: anyone within
+    // a few corridors comes looking. They can only strike what they can see.
+    const clear = navigator.hasLineOfSight(monsterPos, player.position)
+    canSeePlayer = clear ? distanceToPlayer <= SIGHT_RANGE : navigator.pathCells(monsterPos, player.position) <= 3
+    if (!clear) perceivedDistance = Math.max(distanceToPlayer, 99)
+  }
 
   const perception = {
     canSeePlayer,
-    distanceToPlayer,
+    distanceToPlayer: perceivedDistance,
     playerPos: player.position,
     playerHidden: player.hidden === true,
   }

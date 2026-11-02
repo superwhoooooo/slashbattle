@@ -3,6 +3,7 @@
 // weapon / ability / pet, jump to any level, and run a few actions
 // (clear the arena, heal, drop a chest or pod, toggle god mode).
 // It's pure DOM -- main.js hands in the callbacks and calls `refresh`.
+import { iconImg } from './icons.js'
 import { BOSSES } from './logic/bosses.js'
 import { ABILITIES, PETS, POWERUPS, WEAPONS } from './logic/items.js'
 import { LEVELS } from './logic/levels.js'
@@ -90,7 +91,8 @@ export function createSandboxPanel(callbacks) {
   const addItems = (title, kind, catalog) => {
     const s = section(title)
     for (const item of Object.values(catalog)) {
-      const b = button(`${item.icon} ${item.name}`, item.blurb, () => callbacks.onItem(kind, item.id))
+      const b = button(item.name, item.blurb, () => callbacks.onItem(kind, item.id))
+      b.prepend(iconImg(kind, item.id, true))
       s.grid.appendChild(b)
       itemButtons.push({ b, kind, id: item.id })
     }

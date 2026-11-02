@@ -285,10 +285,10 @@ describe('power-ups', () => {
   })
 
   it('multiply together in powerupEffects, and do nothing when none are equipped', () => {
-    expect(powerupEffects([])).toEqual({ speed: 1, damage: 1, cooldown: 1, damageTaken: 1, crystal: 1, knockback: 1, killHeal: 0 })
+    expect(powerupEffects([])).toEqual({ speed: 1, damage: 1, cooldown: 1, damageTaken: 1, crystal: 1, knockback: 1, killHeal: 0, regen: 0, haste: 1, magnet: 1 })
     const fx = powerupEffects(['swift', 'heavy', 'thick', 'leech'])
-    expect(fx.speed).toBeCloseTo(1.25)
-    expect(fx.damage).toBeCloseTo(1.3)
+    expect(fx.speed).toBeCloseTo(1.2)
+    expect(fx.damage).toBeCloseTo(1.25)
     expect(fx.damageTaken).toBeCloseTo(0.8)
     expect(fx.killHeal).toBe(2)
   })

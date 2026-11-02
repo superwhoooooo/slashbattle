@@ -21,8 +21,8 @@ describe('enemyScale', () => {
   it('starts at 1 and gets harder every wave, with speed and damage capped', () => {
     expect(enemyScale(1)).toEqual({ hp: 1, damage: 1, speed: 1 })
     for (let n = 1; n < 30; n++) expect(enemyScale(n + 1).hp).toBeGreaterThan(enemyScale(n).hp)
-    expect(enemyScale(100).speed).toBe(1.5)
-    expect(enemyScale(100).damage).toBe(2.5)
+    expect(enemyScale(100).speed).toBe(1.3)
+    expect(enemyScale(100).damage).toBe(2)
   })
 })
 

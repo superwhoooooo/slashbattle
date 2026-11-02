@@ -2,6 +2,7 @@
 // or pet and every slot of that kind is taken: pick one of your items to
 // swap out for the new one, or keep what you have. Pure DOM; main.js hands
 // in the callbacks. While it is open the game is paused.
+import { iconImg } from './icons.js'
 import { ABILITIES, PETS, WEAPONS } from './logic/items.js'
 
 const CATALOGS = { weapon: WEAPONS, ability: ABILITIES, pet: PETS }
@@ -37,7 +38,9 @@ export function createSwapPanel({ onSwap, onKeep }) {
       const item = catalog[loot.id]
       root.textContent = ''
       const header = el('div', 'sb-header')
-      header.appendChild(el('strong', null, `NEW ${KIND_LABEL[loot.kind]}: ${item.icon} ${item.name}`))
+      const title = el('strong', null, `NEW ${KIND_LABEL[loot.kind]}: `)
+      title.append(iconImg(loot.kind, loot.id, true), item.name)
+      header.appendChild(title)
       header.appendChild(el('span', 'sb-hint', 'Esc: keep yours'))
       root.appendChild(header)
       root.appendChild(el('div', 'sb-hint', `${item.blurb}. Slots are full, so pick one to swap out:`))
@@ -46,7 +49,9 @@ export function createSwapPanel({ onSwap, onKeep }) {
         const owned = catalog[id]
         const b = el('button', 'sb-btn lo-btn')
         b.type = 'button'
-        b.appendChild(el('span', 'lo-name', `${owned.icon} ${owned.name}`))
+        const ownedName = el('span', 'lo-name', owned.name)
+        ownedName.prepend(iconImg(loot.kind, id, true))
+        b.appendChild(ownedName)
         b.appendChild(el('span', 'lo-blurb', owned.blurb))
         b.addEventListener('click', (event) => {
           event.currentTarget.blur()

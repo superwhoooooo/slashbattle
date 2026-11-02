@@ -13,6 +13,7 @@ import {
   WAVE_CLEARED_BANNER_DURATION,
 } from './config.js'
 import { ABILITIES, ABILITY_KEYS, ABILITY_SLOTS, HOTBAR_SLOTS, PETS, WEAPONS } from './logic/items.js'
+import { iconImg } from './icons.js'
 import { abilityCooldownFraction } from './logic/inventory.js'
 import { pickAnnouncement } from './logic/announcements.js'
 import { enemiesLeftText } from './logic/hudText.js'
@@ -28,6 +29,7 @@ function createSlot(keyLabel, extraClass = '', withLabel = false) {
   key.className = 'slot-key'
   key.textContent = keyLabel
   const icon = document.createElement('span')
+  icon.className = 'slot-icon'
   const cooldown = document.createElement('div')
   cooldown.className = 'cooldown'
   element.append(icon, cooldown, key)
@@ -39,6 +41,11 @@ function createSlot(keyLabel, extraClass = '', withLabel = false) {
     slot.label = label
   }
   return slot
+}
+
+// Puts an item's picture (see icons.js) in a slot, or empties it.
+function setSlotIcon(slot, kind, id) {
+  slot.icon.replaceChildren(...(id ? [iconImg(kind, id)] : []))
 }
 
 // Grabs the HUD elements already present in index.html (and builds the
@@ -179,7 +186,7 @@ export function updateInventoryHud(hud, inventory, now) {
   hud.hotbarSlots.forEach((slot, i) => {
     const id = inventory.weapons[i]
     setIfChanged(hud, `weapon${i}`, id ?? '', (v) => {
-      slot.icon.textContent = v ? WEAPONS[v].icon : ''
+      setSlotIcon(slot, 'weapon', v)
       slot.label.textContent = v ? WEAPONS[v].short : ''
       slot.element.classList.toggle('empty', !v)
     })
@@ -189,7 +196,7 @@ export function updateInventoryHud(hud, inventory, now) {
   hud.abilitySlots.forEach((slot, i) => {
     const id = inventory.abilities[i]
     setIfChanged(hud, `ability${i}`, id ?? '', (v) => {
-      slot.icon.textContent = v ? ABILITIES[v].icon : ''
+      setSlotIcon(slot, 'ability', v)
       slot.element.classList.toggle('empty', !v)
     })
     if (!id) return
@@ -203,7 +210,7 @@ export function updateInventoryHud(hud, inventory, now) {
       ...inventory.pets.map((id) => {
         const slot = createSlot('')
         slot.element.classList.remove('empty')
-        slot.icon.textContent = PETS[id].icon
+        setSlotIcon(slot, 'pet', id)
         return slot.element
       }),
     )
@@ -228,9 +235,9 @@ export function setAutoShoot(hud, on) {
 }
 
 // Pops the "NEW WEAPON: ..." toast for what a chest just gave.
-export function showLootToast(hud, { title, name, blurb }) {
+export function showLootToast(hud, { title, name, blurb, icon = null }) {
   hud.lootToastTitle.textContent = title
-  hud.lootToastName.textContent = name
+  hud.lootToastName.replaceChildren(...(icon ? [iconImg(icon.kind, icon.id, true)] : []), name)
   hud.lootToastBlurb.textContent = blurb
   hud.lootToast.classList.remove('show')
   void hud.lootToast.offsetWidth // restart the CSS animation

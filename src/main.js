@@ -8,8 +8,22 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { createArena, createEnvironmentMap, updateArena } from './arena.js'
+import { createLabyrinthArena } from './labyrinth.js'
+import {
+  BOSSES_PER_FLOOR,
+  LABYRINTH_FLOORS,
+  SPIKE_MONSTER_DAMAGE,
+  SPIKE_PLAYER_DAMAGE,
+  bossSpot,
+  buildFloor,
+  cellOf,
+  createNavigator,
+  spikeState,
+} from './logic/maze.js'
 import { levelAt, levelIndexAfterBosses } from './logic/levels.js'
+import { iconImg } from './icons.js'
 import { createLoadoutPanel } from './loadout.js'
+import { createPauseMenu, loadBrightness } from './pauseMenu.js'
 import { createSwapPanel } from './swap.js'
 import { createWarp } from './warp.js'
 import { playBulletTrail, playHitFx, playWeaponFx } from './weaponFx.js'
@@ -199,7 +213,7 @@ import {
   waveSize,
 } from './logic/waves.js'
 import { enemyScale, SPLITS } from './logic/enemies.js'
-import { createMonsterAIState, separateMonsters, updateMonster } from './monster.js'
+import { createMonsterAIState, separateMonsters, setMonsterNavigator, updateMonster } from './monster.js'
 import { burst, createParticleSystem, resetParticles, shardBurst, updateParticles } from './particles.js'
 import { createPet, disposePets, updatePets } from './pets.js'
 import { Player } from './player.js'
@@ -228,7 +242,7 @@ renderer.shadowMap.type = THREE.PCFShadowMap
 // NeutralToneMapping keeps the sunlit scene's pastel colors true,
 // without a filmic curve crushing its highlights and shadows.
 renderer.toneMapping = THREE.NeutralToneMapping
-renderer.toneMappingExposure = TONE_MAPPING_EXPOSURE
+renderer.toneMappingExposure = TONE_MAPPING_EXPOSURE * loadBrightness()
 renderer.outputColorSpace = THREE.SRGBColorSpace
 container.appendChild(renderer.domElement)
 
@@ -455,8 +469,27 @@ function disposeObject3D(object) {
 // Monsters arrive via waves once the game loop starts stepping them --
 // see spawnMonster(). Positions the camera behind the player. Call
 // disposeGame() first if rebuilding on top of an existing game.
+// 'resort' (the endless sundeck) or 'labyrinth' (3 walled floors); chosen on the start card.
+let gameMode = 'resort'
+const LAB_SPAWN_RADIUS = 30 // pods / chests / monsters stay inside the maze's square
+const LAB_EXIT_KEEPOUT = 5 // nothing spawns on the exit pad's cell
+
+// Builds the labyrinth state for floor `index`: the maze data, its arena, the
+// shared obstacle lists and the monsters' navigator.
+function buildLabyrinthFloor(index) {
+  const floor = buildFloor(index)
+  const arena = createLabyrinthArena(floor)
+  setMonsterNavigator(createNavigator(floor.maze))
+  return { floor, arena, props: [...arena.propObstacles, { x: floor.exit.x, z: floor.exit.z, radius: LAB_EXIT_KEEPOUT }] }
+}
+
 function createGame() {
-  const arena = createArena(levelAt(0))
+  const lab = gameMode === 'labyrinth'
+  const labFloor = lab ? buildLabyrinthFloor(0) : null
+  if (!lab) setMonsterNavigator(null)
+  document.body.classList.toggle('labyrinth', lab)
+  scene.environmentIntensity = lab ? ENVIRONMENT_INTENSITY * 0.3 : ENVIRONMENT_INTENSITY
+  const arena = lab ? labFloor.arena : createArena(levelAt(0))
   scene.add(arena.group)
   scene.background = new THREE.Color(arena.backgroundColor)
   scene.fog = arena.fog
@@ -468,16 +501,16 @@ function createGame() {
   // them. `obstacles` is mutated in place as pods/chests spawn/despawn
   // (via trySpawnPod/despawnPod) so the player and monsters, which hold
   // this same array, stay in sync without it ever being reassigned.
-  const obstacles = [...arena.propObstacles]
+  const obstacles = lab ? [...arena.propObstacles, ...arena.gateObstacles] : [...arena.propObstacles]
 
-  const player = new Player({ spawn: { x: 0, z: 0 }, obstacles, particleSystem })
+  const player = new Player({ spawn: lab ? { x: labFloor.floor.start.x, z: labFloor.floor.start.z } : { x: 0, z: 0 }, obstacles, particleSystem })
   scene.add(player.mesh)
 
   const game = {
     arena,
     levelIndex: 0, // which place (logic/levels.js) the run is in; advances with each boss defeated
     obstacles,
-    props: arena.propObstacles, // the static props alone, so pod/chest/monster spawn points can steer clear of them specifically
+    props: lab ? labFloor.props : arena.propObstacles, // the static props alone, so pod/chest/monster spawn points can steer clear of them specifically
     player,
     pods: [],
     despawningPods: [], // pod meshes mid-dematerialize: still animating, no longer collidable or counted toward POD_MAX_ACTIVE
@@ -498,8 +531,12 @@ function createGame() {
     hitstop: createHitstopState(), // a brief freeze of gameplay time on impact; see stepHitstop below
     gameOverRecorded: false,
     gameOverStats: null,
+    // Labyrinth runs: which floor, how many of its bosses are down, whether the gate is open.
+    labyrinth: lab ? { floorIndex: 0, floor: labFloor.floor, bossesThisFloor: 0, gateOpen: false, won: false } : null,
   }
+  if (lab) game.waveState.wavesUntilBoss = 1 // a wave, then a boss, on every floor
 
+  game.spawnRadius = lab ? LAB_SPAWN_RADIUS : ARENA_RADIUS
   const initialPodCount =
     POD_INITIAL_COUNT_MIN + Math.floor(Math.random() * (POD_INITIAL_COUNT_MAX - POD_INITIAL_COUNT_MIN + 1))
   for (let i = 0; i < initialPodCount; i++) trySpawnPod(game)
@@ -523,7 +560,7 @@ function createGame() {
 // not forced into a bad position.
 function trySpawnPod(game) {
   const point = pickPodSpawnPoint(Math.random, {
-    arenaRadius: ARENA_RADIUS,
+    arenaRadius: game.spawnRadius,
     margin: POD_SPAWN_MARGIN,
     existingPods: game.pods.map((pod) => ({ x: pod.position.x, z: pod.position.z })),
     minSpacing: POD_MIN_SPACING,
@@ -560,7 +597,7 @@ function trySpawnChest(game, { at = null, cost = null } = {}) {
   const point =
     at ??
     pickPodSpawnPoint(Math.random, {
-      arenaRadius: ARENA_RADIUS,
+      arenaRadius: game.spawnRadius,
       margin: CHEST_SPAWN_MARGIN,
       existingPods: [...game.pods, ...game.chests].map((m) => ({ x: m.position.x, z: m.position.z })),
       minSpacing: CHEST_MIN_SPACING,
@@ -763,7 +800,7 @@ function updateMeteors(game, dt) {
 
 // Fires the ability in `slot` if it's ready, applying its effect.
 function activateAbility(game, slot, now) {
-  const used = useAbility(game.inventory, slot, now)
+  const used = useAbility(game.inventory, slot, now, powerupEffects(game.inventory.equipped).haste)
   if (!used.abilityId) return
   game.inventory = used.inventory
   const { player } = game
@@ -1013,15 +1050,15 @@ function receiveLoot(game, loot, swappedOut = null) {
     game.attackState.swingElapsed = null
     clearSwingTrail(swingTrail)
     const weapon = WEAPONS[loot.id]
-    showLootToast(hud, { title: `${verb} WEAPON  [${game.inventory.weapons.indexOf(loot.id) + 1}]`, name: `${weapon.icon} ${weapon.name}`, blurb: weapon.blurb })
+    showLootToast(hud, { title: `${verb} WEAPON  [${game.inventory.weapons.indexOf(loot.id) + 1}]`, name: weapon.name, icon: { kind: 'weapon', id: weapon.id }, blurb: weapon.blurb })
   } else if (loot.kind === 'ability') {
     const ability = ABILITIES[loot.id]
     const key = ABILITY_KEYS[game.inventory.abilities.indexOf(loot.id)].replace('Key', '')
-    showLootToast(hud, { title: `${verb} ABILITY  [${key}]`, name: `${ability.icon} ${ability.name}`, blurb: ability.blurb })
+    showLootToast(hud, { title: `${verb} ABILITY  [${key}]`, name: ability.name, icon: { kind: 'ability', id: ability.id }, blurb: ability.blurb })
   } else if (loot.kind === 'powerup') {
     const perk = POWERUPS[loot.id]
     const on = game.inventory.equipped.includes(loot.id)
-    showLootToast(hud, { title: on ? 'NEW POWER-UP  [equipped, Tab to change]' : 'NEW POWER-UP  [Tab to equip]', name: `${perk.icon} ${perk.name}`, blurb: perk.blurb })
+    showLootToast(hud, { title: on ? 'NEW POWER-UP  [equipped, Tab to change]' : 'NEW POWER-UP  [Tab to equip]', name: perk.name, icon: { kind: 'powerup', id: perk.id }, blurb: perk.blurb })
   } else {
     if (swappedOut) {
       const index = game.pets.findIndex((p) => p.def.id === swappedOut)
@@ -1032,7 +1069,7 @@ function receiveLoot(game, loot, swappedOut = null) {
     }
     game.pets.push(createPet(loot.id, scene, game.player))
     const pet = PETS[loot.id]
-    showLootToast(hud, { title: `${verb} PET`, name: `${pet.icon} ${pet.name}`, blurb: pet.blurb })
+    showLootToast(hud, { title: `${verb} PET`, name: pet.name, icon: { kind: 'pet', id: pet.id }, blurb: pet.blurb })
   }
 }
 
@@ -1072,10 +1109,11 @@ function spawnMonster(game, type, { at = null, effectOptions, hpScale = 1, faceP
     game.player.position,
     SPAWN_NEAR_PLAYER_MIN_DIST,
     SPAWN_NEAR_PLAYER_MAX_DIST,
-    ARENA_RADIUS,
+    game.spawnRadius,
     SPAWN_NEAR_PLAYER_MARGIN,
     game.props,
     stats.radius,
+    game.labyrinth ? 40 : 10,
   )
 
   const mesh = createMonsterMesh(type)
@@ -1123,6 +1161,8 @@ function startBossCutscene(game) {
   if (Math.hypot(at.x - player.position.x, at.z - player.position.z) < BOSS_SPAWN_DISTANCE * 0.8) {
     at = clampToPlatform({ x: player.position.x, z: player.position.z + BOSS_SPAWN_DISTANCE }, limit)
   }
+  // In the labyrinth the boss arrives down a straight corridor, never inside a wall.
+  if (game.labyrinth) at = bossSpot(game.labyrinth.floor.maze, player.position)
   const mesh = spawnMonster(game, boss.id, {
     at,
     effectOptions: { scale: BOSS_SPAWN_EFFECT_SCALE, duration: BOSS_SPAWN_EFFECT_DURATION },
@@ -1146,6 +1186,11 @@ function startBossCutscene(game) {
 
 // Calls a summoner boss's minions in around it (skipped while it already
 // has `maxMinions` alive), each through the usual portal spawn-in.
+// True if a spot in the labyrinth is open floor (not inside a wall or the gate).
+function labSpotClear(game, at) {
+  return !game.obstacles.some((o) => Math.hypot(o.x - at.x, o.z - at.z) < o.radius + 0.4)
+}
+
 function summonMinions(game, bossMesh, count, maxMinions) {
   const living = game.monsters.filter((m) => !m.userData.isBoss && !m.userData.dying).length
   if (living >= maxMinions) return
@@ -1153,10 +1198,11 @@ function summonMinions(game, bossMesh, count, maxMinions) {
   for (let i = 0; i < toSpawn; i++) {
     const angle = Math.random() * Math.PI * 2
     const distance = bossMesh.userData.radius + 2 + Math.random() * 2
-    const at = clampToPlatform(
+    let at = clampToPlatform(
       { x: bossMesh.position.x + Math.sin(angle) * distance, z: bossMesh.position.z + Math.cos(angle) * distance },
       ARENA_RADIUS - SPAWN_NEAR_PLAYER_MARGIN,
     )
+    if (game.labyrinth && !labSpotClear(game, at)) at = { x: bossMesh.position.x, z: bossMesh.position.z }
     const minion = spawnMonster(game, pickMonsterType(Math.max(2, game.waveState.waveNumber)), { at })
     bossMesh.userData.minions = [...(bossMesh.userData.minions ?? []), minion]
   }
@@ -1368,6 +1414,118 @@ function changeLevel(game, levelIndex) {
   return level
 }
 
+// Spike traps hurt anyone standing on them while the spikes are up; the gate's
+// exit pad leads down to the next floor once it is open.
+function updateLabyrinth(game, now, realDt) {
+  const lab = game.labyrinth
+  const { player } = game
+  game.arena.update(now, realDt)
+  for (const trap of lab.floor.traps) {
+    if (spikeState(trap.phase, now) !== 'up') continue
+    if (!player.falling && !player.hidden && now >= (player.ghostUntil ?? -Infinity)
+      && Math.hypot(player.position.x - trap.x, player.position.z - trap.z) < trap.radius + PLAYER_RADIUS * 0.5
+      && player.damagePlayer(SPIKE_PLAYER_DAMAGE, now)) {
+      triggerShake(game.shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
+      triggerDamageFlash(hud)
+      sfx.play('playerHurt', { x: player.position.x, z: player.position.z })
+      input.rumble(RUMBLE_STRONG_STRENGTH, RUMBLE_STRONG_DURATION)
+      burst(particleSystem, { x: trap.x, y: 0.6, z: trap.z }, 0xff5a4a, 14, 3)
+    }
+    for (const mesh of game.monsters) {
+      const ud = mesh.userData
+      if (ud.spawning || ud.dying || ud.falling) continue
+      if (now - (ud.spikeHitAt ?? -Infinity) < 0.9) continue
+      if (Math.hypot(mesh.position.x - trap.x, mesh.position.z - trap.z) >= trap.radius + ud.radius * 0.5) continue
+      ud.spikeHitAt = now
+      damageMonster(mesh, ud.isBoss ? SPIKE_MONSTER_DAMAGE * 0.4 : SPIKE_MONSTER_DAMAGE, {
+        fromPos: { x: trap.x, z: trap.z },
+        knockback: 0.4,
+        obstacles: game.obstacles,
+        particleSystem,
+        cause: 'spike',
+      })
+    }
+  }
+  const exit = lab.floor.exit
+  if (lab.gateOpen && !lab.won && !player.hidden && Math.hypot(player.position.x - exit.x, player.position.z - exit.z) < 2.3) {
+    advanceFloor(game)
+  }
+}
+
+// Opens the gate: the bars rise and the doorway stops blocking.
+function openLabyrinthGate(game) {
+  const lab = game.labyrinth
+  lab.gateOpen = true
+  game.arena.setGateOpen(true)
+  for (const o of game.arena.gateObstacles) {
+    const i = game.obstacles.indexOf(o)
+    if (i !== -1) game.obstacles.splice(i, 1)
+  }
+  game.waveState = { ...game.waveState, phase: 'gateOpen', phaseElapsed: 0 }
+}
+
+// Takes the player down to the next floor (or wins on the last one).
+function advanceFloor(game) {
+  const lab = game.labyrinth
+  const { player } = game
+  if (lab.floorIndex + 1 >= LABYRINTH_FLOORS) {
+    lab.won = true
+    game.score += 3000
+    const best = loadHighScore()
+    saveHighScore({ bestScore: Math.max(best.bestScore, game.score), bestWave: Math.max(best.bestWave, game.waveState.waveNumber) })
+    document.getElementById('win-score').textContent = `Score: ${game.score}`
+    return
+  }
+  const index = lab.floorIndex + 1
+  game.monsters.forEach((m) => disposeObject3D(m))
+  game.monsters = []
+  game.spawnEffects.forEach(({ effect }) => disposeObject3D(effect.group))
+  game.spawnEffects = []
+  game.pods.forEach((p) => disposeObject3D(p))
+  game.despawningPods.forEach((p) => disposeObject3D(p))
+  game.pods = []
+  game.despawningPods = []
+  game.chests.forEach((c) => disposeObject3D(c))
+  game.chests = []
+  setChestPrompt(hud, null)
+  resetProjectiles(projectilePool)
+  resetPoison(poisonPool)
+  resetBullets(bulletPool)
+  pendingSummons.length = 0
+  pendingSplits.length = 0
+  game.hidingState = createHidingState()
+  player.hidden = false
+
+  game.obstacles.length = 0
+  disposeObject3D(game.arena.group)
+  const built = buildLabyrinthFloor(index)
+  scene.add(built.arena.group)
+  scene.background = new THREE.Color(built.arena.backgroundColor)
+  scene.fog = built.arena.fog
+  game.arena = built.arena
+  game.props = built.props
+  game.obstacles.push(...built.arena.propObstacles, ...built.arena.gateObstacles)
+  lab.floorIndex = index
+  lab.floor = built.floor
+  lab.bossesThisFloor = 0
+  lab.gateOpen = false
+  game.waveState = { ...game.waveState, phase: 'intermission', phaseElapsed: 0, spawnedCount: 0, wavesUntilBoss: 1 }
+
+  player.position.x = built.floor.start.x
+  player.position.z = built.floor.start.z
+  player.mesh.position.x = player.position.x
+  player.mesh.position.z = player.position.z
+  player.hp = Math.min(PLAYER_MAX_HP, player.hp + PLAYER_MAX_HP * 0.4)
+  camera.position.set(player.position.x + CAMERA_OFFSET.x, CAMERA_OFFSET.y, player.position.z + CAMERA_OFFSET.z)
+
+  trySpawnPod(game)
+  trySpawnPod(game)
+  trySpawnChest(game)
+  game.score += 1000
+  showWaveClearedBanner(hud, 1000, { lead: `FLOOR ${index + 1}`, text: built.floor.def.name.split(': ')[1].toUpperCase() })
+  sfx.play('waveCleared')
+}
+
 // Removes and disposes everything createGame()/spawnMonster() added to
 // the scene.
 function disposeGame(target) {
@@ -1484,12 +1642,41 @@ window.addEventListener('keydown', (event) => {
 })
 touchControls?.addMenuButton(toggleMenu)
 
+const pauseMenu = createPauseMenu({
+  getMuted: () => music.isMuted(),
+  onToggleMute: () => music.toggleMuted(),
+  onBrightness: (v) => {
+    renderer.toneMappingExposure = TONE_MAPPING_EXPOSURE * v
+  },
+  onRestart: () => {
+    loadoutPanel.setOpen(false)
+    restartGame()
+  },
+})
+function togglePause() {
+  if (!started || swapPanel.isOpen() || (!sandbox && loadoutPanel.isOpen())) return
+  pauseMenu.toggle()
+}
+window.addEventListener('keydown', (event) => {
+  if (event.repeat) return
+  if (event.code === 'Digit8' || event.code === 'Numpad8') togglePause()
+  else if (event.code === 'Escape' && pauseMenu.isOpen()) pauseMenu.setOpen(false)
+  else if (event.code === 'Escape' && !swapPanel.isOpen()) togglePause()
+})
+touchControls?.addMenuButton(togglePause, 'PAUSE')
+
 function dismissStartCard(event) {
   // Guards against the keydown/mousedown listeners below and a gamepad
   // press both landing on the same frame and dismissing it twice.
   if (started) return
   started = true
   if (event?.code === 'KeyB' || event?.target?.closest?.('#sandbox-btn')) startSandbox()
+  else if (event?.code === 'KeyK' || event?.target?.closest?.('#labyrinth-btn')) {
+    gameMode = 'labyrinth'
+    // The sundeck world was already built behind the start card: swap it for the labyrinth.
+    disposeGame(game)
+    game = createGame()
+  }
   music.start()
   hideStartCard(hud)
   // The key/click that dismisses the card shouldn't also register as a
@@ -1512,6 +1699,56 @@ if (import.meta.env.DEV) window.__debug = { input, get game() { return game } }
 
 const timer = new THREE.Timer()
 
+// Throws the current run away and starts a fresh one (same map).
+function restartGame() {
+  disposeGame(game)
+  game = createGame()
+  resetParticles(particleSystem)
+  resetPopups(popupPool)
+  resetProjectiles(projectilePool)
+  resetPoison(poisonPool)
+  resetBullets(bulletPool)
+  resetCrystals(crystalSystem)
+  setChestPrompt(hud, null)
+  resetShockwaves(shockwavePool)
+  warp.reset()
+  warpFields.length = 0
+  meteors.splice(0).forEach(disposeMeteor)
+  pendingSummons.length = 0
+  clearSwingTrail(swingTrail)
+}
+
+// The equipped power-ups, as a little strip of icons on the HUD.
+const perkBar = document.getElementById('perk-bar')
+let perkBarKey = ''
+function updatePerkBar(equipped) {
+  const key = equipped.join(',')
+  if (key === perkBarKey) return
+  perkBarKey = key
+  perkBar.replaceChildren(
+    ...equipped.map((id) => {
+      const chip = document.createElement('div')
+      chip.className = 'perk-chip panel'
+      chip.title = `${POWERUPS[id].name}: ${POWERUPS[id].blurb}`
+      chip.style.setProperty('--perk', POWERUPS[id].color)
+      chip.appendChild(iconImg('powerup', id))
+      return chip
+    }),
+  )
+}
+
+const winScreen = document.getElementById('win-screen')
+const floorChip = document.getElementById('floor-chip')
+function updateFloorChip(game) {
+  const lab = game.labyrinth
+  const gate = lab.gateOpen ? '<span class="gate-open">GATE OPEN</span>' : '<span class="gate-locked">GATE LOCKED</span>'
+  const html = `FLOOR ${lab.floorIndex + 1}/${LABYRINTH_FLOORS} &middot; BOSSES ${lab.bossesThisFloor}/${BOSSES_PER_FLOOR} &middot; ${gate}`
+  if (floorChip.dataset.html !== html) {
+    floorChip.dataset.html = html
+    floorChip.innerHTML = html
+  }
+}
+
 function animate(timestamp) {
   // Updates the timer's internal delta/elapsed state from this frame's
   // rAF timestamp, so the getDelta()/getElapsed() calls below return a
@@ -1532,10 +1769,12 @@ function animate(timestamp) {
   warp.update(deltaSeconds, timer.getElapsed())
   const elapsedSeconds = timer.getElapsed()
 
-  const gameState = evaluateGameState({ playerHp: game.player.hp })
+  const gameState = game.labyrinth?.won ? 'won' : evaluateGameState({ playerHp: game.player.hp })
+  winScreen.style.display = gameState === 'won' ? 'flex' : 'none'
+  if (game.labyrinth) updateFloorChip(game)
 
   if (input.wasPressed('KeyM') || input.wasMutePressed()) music.toggleMuted()
-  music.setMuffled(gameState !== 'playing')
+  music.setMuffled(gameState !== 'playing' || pauseMenu.isOpen())
   music.setMode(game.waveState.phase === 'bossFight' && gameState === 'playing' ? 'boss' : 'normal')
 
   // Recorded once, the frame the player dies: compares this run against
@@ -1551,26 +1790,16 @@ function animate(timestamp) {
     saveHighScore({ bestScore, bestWave })
     game.gameOverStats = { wave: game.waveState.waveNumber, score: game.score, bestScore, isNewBest }
   }
-  showGameOverlay(hud, gameState === 'playing' ? null : gameState, game.gameOverStats)
+  showGameOverlay(hud, gameState === 'lost' ? 'lost' : null, game.gameOverStats)
 
   if (!started || gameState !== 'playing') {
-    if (started && gameState !== 'playing' && (input.wasPressed('KeyR') || input.wasRestartPressed())) {
-      disposeGame(game)
-      game = createGame()
-      resetParticles(particleSystem)
-      resetPopups(popupPool)
-      resetProjectiles(projectilePool)
-      resetPoison(poisonPool)
-      resetBullets(bulletPool)
-      resetCrystals(crystalSystem)
-      setChestPrompt(hud, null)
-      resetShockwaves(shockwavePool)
-      warp.reset()
-      warpFields.length = 0
-      meteors.splice(0).forEach(disposeMeteor)
-      pendingSummons.length = 0
-      clearSwingTrail(swingTrail)
-    }
+    if (started && gameState !== 'playing' && (input.wasPressed('KeyR') || input.wasRestartPressed())) restartGame()
+    composer.render()
+    input.endFrame()
+    return
+  }
+
+  if (pauseMenu.isOpen()) {
     composer.render()
     input.endFrame()
     return
@@ -1625,8 +1854,20 @@ function animate(timestamp) {
     const bonus = waveClearBonus(clearedWaveNumber) * 2
     game.score += bonus
     game.bossesDefeated = (game.bossesDefeated ?? 0) + 1
-    const nextLevel = changeLevel(game, levelIndexAfterBosses(game.bossesDefeated))
-    showWaveClearedBanner(hud, bonus, { lead: bossBeforeStep.name, text: `DEFEATED - NEXT STOP: ${nextLevel.name.toUpperCase()}` })
+    if (game.labyrinth) {
+      const lab = game.labyrinth
+      lab.bossesThisFloor += 1
+      game.waveState = { ...game.waveState, wavesUntilBoss: 1 }
+      if (lab.bossesThisFloor >= BOSSES_PER_FLOOR) {
+        openLabyrinthGate(game)
+        showWaveClearedBanner(hud, bonus, { lead: bossBeforeStep.name, text: 'DEFEATED - THE GATE IS OPEN! FIND THE EXIT' })
+      } else {
+        showWaveClearedBanner(hud, bonus, { lead: bossBeforeStep.name, text: 'DEFEATED - ONE MORE BOSS GUARDS THE GATE' })
+      }
+    } else {
+      const nextLevel = changeLevel(game, levelIndexAfterBosses(game.bossesDefeated))
+      showWaveClearedBanner(hud, bonus, { lead: bossBeforeStep.name, text: `DEFEATED - NEXT STOP: ${nextLevel.name.toUpperCase()}` })
+    }
     sfx.play('waveCleared')
     player.hp = Math.min(PLAYER_MAX_HP, player.hp + WAVE_CLEAR_HEAL * BOSS_DEFEAT_HEAL_MULTIPLIER)
   }
@@ -1857,7 +2098,8 @@ function animate(timestamp) {
     const { into, count } = SPLITS[type]
     for (let i = 0; i < count; i++) {
       const angle = (i / count) * Math.PI * 2 + Math.random()
-      const at = clampToPlatform({ x: x + Math.sin(angle) * 1.2, z: z + Math.cos(angle) * 1.2 }, ARENA_RADIUS - SPAWN_NEAR_PLAYER_MARGIN)
+      let at = clampToPlatform({ x: x + Math.sin(angle) * 1.2, z: z + Math.cos(angle) * 1.2 }, ARENA_RADIUS - SPAWN_NEAR_PLAYER_MARGIN)
+      if (game.labyrinth && !labSpotClear(game, at)) at = { x, z }
       spawnMonster(game, into, { at })
     }
   })
@@ -1875,6 +2117,14 @@ function animate(timestamp) {
 
   separateMonsters(monsters, player, obstacles)
   updateArena(game.arena, player.position)
+  if (game.labyrinth) {
+    updateLabyrinth(game, elapsedSeconds, deltaSeconds)
+    if (game.labyrinth.won) {
+      composer.render()
+      input.endFrame()
+      return
+    }
+  }
   updateParticles(particleSystem, gameplayDelta)
   updatePopups(popupPool, gameplayDelta)
   updateShockwaves(shockwavePool, gameplayDelta)
@@ -1920,8 +2170,9 @@ function animate(timestamp) {
     sandboxPanel.refresh({ inventory: game.inventory, levelIndex: game.levelIndex, god: godMode })
   }
   player.updateStatusEffects(elapsedSeconds)
+  if (perk.regen > 0 && player.hp > 0) player.hp = Math.min(PLAYER_MAX_HP, player.hp + perk.regen * gameplayDelta)
   updatePets(game.pets, { dt: gameplayDelta, elapsed: elapsedSeconds, player, monsters: game.monsters, obstacles, particleSystem, hitstop: game.hitstop })
-  const collected = updateCrystals(crystalSystem, gameplayDelta, elapsedSeconds, player.position.x, player.position.z, petFx.magnetRadius)
+  const collected = updateCrystals(crystalSystem, gameplayDelta, elapsedSeconds, player.position.x, player.position.z, petFx.magnetRadius * perk.magnet)
   if (collected > 0) {
     game.inventory = addCrystals(game.inventory, Math.max(1, Math.round(collected * petFx.crystalMultiplier * perk.crystal)))
     sfx.play('crystal')
@@ -1966,9 +2217,10 @@ function animate(timestamp) {
     setChestPrompt(hud, null)
   }
   updateInventoryHud(hud, game.inventory, elapsedSeconds)
+  updatePerkBar(game.inventory.equipped)
 
   const inBossFight = game.waveState.phase === 'bossFight'
-  const enemiesLeft = inBossFight || sandbox
+  const enemiesLeft = inBossFight || sandbox || game.labyrinth?.gateOpen
     ? game.monsters.length
     : waveSize(game.waveState.waveNumber) - game.waveState.spawnedCount + game.monsters.length
   const bossMesh = game.monsters.find((m) => m.userData.isBoss && !m.userData.dying)
@@ -2002,7 +2254,7 @@ function animate(timestamp) {
     // Sandbox never steps the wave controller, so it would sit in
     // 'intermission' at 0s and the HUD would re-pick a PA line (and the
     // announcement chime would fire) every single frame.
-    waveState: sandbox ? { ...game.waveState, phase: 'clearing' } : game.waveState,
+    waveState: sandbox || game.labyrinth?.gateOpen ? { ...game.waveState, phase: 'clearing' } : game.waveState,
     boss: bossHud,
     chain: liveChain,
     deltaSeconds,

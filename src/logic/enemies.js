@@ -37,9 +37,9 @@ export function smoothVelocity(velocity, previousPosition, position, dt, blend =
 export function enemyScale(n) {
   const w = Math.max(0, n - 1)
   return {
-    hp: 1 + 0.1 * w,
-    damage: Math.min(2.5, 1 + 0.06 * w),
-    speed: Math.min(1.5, 1 + 0.03 * w),
+    hp: 1 + 0.06 * w,
+    damage: Math.min(2, 1 + 0.035 * w),
+    speed: Math.min(1.3, 1 + 0.015 * w),
   }
 }
 

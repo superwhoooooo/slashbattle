@@ -1,6 +1,7 @@
 // The Tab menu for a normal run: your power-ups, and which of them are
 // switched on. Click one to equip / unequip it (a full set swaps out the
 // oldest). Pure DOM; main.js hands in the callback and calls `refresh`.
+import { iconImg } from './icons.js'
 import { POWERUPS, POWERUP_SLOTS } from './logic/items.js'
 
 function el(tag, className, text) {
@@ -25,24 +26,29 @@ export function createLoadoutPanel({ onToggle }) {
   root.appendChild(header)
   const count = el('div', 'sb-hint', '')
   root.appendChild(count)
-  const list = el('div', 'lo-list')
-  root.appendChild(list)
+  const slotRow = el('div', 'perk-slots')
+  root.appendChild(slotRow)
+  const grid = el('div', 'perk-grid')
+  root.appendChild(grid)
   const empty = el('p', 'sb-hint', 'None yet. Open chests to find power-ups.')
   root.appendChild(empty)
   document.body.appendChild(root)
 
   const rows = new Map()
   for (const perk of Object.values(POWERUPS)) {
-    const b = el('button', 'sb-btn lo-btn')
+    const b = el('button', 'perk-card')
     b.type = 'button'
-    b.appendChild(el('span', 'lo-name', `${perk.icon} ${perk.name}`))
-    b.appendChild(el('span', 'lo-blurb', perk.blurb))
+    b.style.setProperty('--perk', perk.color)
+    b.appendChild(el('span', 'pc-tag', perk.tag))
+    b.appendChild(iconImg('powerup', perk.id))
+    b.appendChild(el('span', 'pc-name', perk.name))
+    b.appendChild(el('span', 'pc-blurb', perk.blurb))
     b.addEventListener('click', (event) => {
       onToggle(perk.id)
       event.currentTarget.blur()
     })
     b.style.display = 'none'
-    list.appendChild(b)
+    grid.appendChild(b)
     rows.set(perk.id, b)
   }
 
@@ -56,7 +62,19 @@ export function createLoadoutPanel({ onToggle }) {
     setOpen,
     toggle: () => setOpen(!open),
     refresh(inventory) {
-      count.textContent = `Equipped ${inventory.equipped.length} / ${POWERUP_SLOTS}`
+      count.textContent = `Equipped ${inventory.equipped.length} / ${POWERUP_SLOTS}. Click a power-up to switch it on or off.`
+      slotRow.replaceChildren(
+        ...Array.from({ length: POWERUP_SLOTS }, (_, i) => {
+          const id = inventory.equipped[i]
+          const slot = el('div', id ? 'perk-slot filled' : 'perk-slot')
+          if (id) {
+            slot.style.setProperty('--perk', POWERUPS[id].color)
+            slot.title = POWERUPS[id].name
+            slot.appendChild(iconImg('powerup', id))
+          }
+          return slot
+        }),
+      )
       for (const [id, b] of rows) {
         b.style.display = inventory.powerups.includes(id) ? '' : 'none'
         b.classList.toggle('on', inventory.equipped.includes(id))

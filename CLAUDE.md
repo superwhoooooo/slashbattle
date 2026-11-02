@@ -198,6 +198,23 @@ snow mounds, volcanic spires and lava rocks, neon pylons and speaker boxes,
 lollipops and gumdrops. A restart
 returns to the first place.
 
+## Labyrinth map
+Pick it on the start card (button or K). `src/logic/maze.js` (pure) builds a seeded 7x7 maze per
+floor (`buildFloor`, `FLOOR_DEFS`: Cellars, Crypt, Furnace), its walls as circle-chain obstacles
+(so all the existing circle collision just works), spike-trap timing (`spikeState`), a navigator
+(`createNavigator`: BFS waypoints + line of sight) that `monster.js` uses via `setMonsterNavigator`
+so monsters route around walls and can't see/hit through them, and `bossSpot`. `src/labyrinth.js`
+builds the 3D floor, walls, torches, spike traps and the portcullis gate + exit pad. A floor is:
+one wave, a boss, one wave, a boss (`BOSSES_PER_FLOOR`); the second boss opens the gate
+(`openLabyrinthGate`), and stepping on the exit pad goes down a floor (`advanceFloor`). Floor 3's exit
+wins. Spikes hurt the player and monsters (trick "Pin Cushion"). The wave controller sits in a
+`gateOpen` phase once the gate is open.
+
+## Item icons
+`src/icons.js` draws every weapon and pet as a small render of its real 3D model (an offscreen
+renderer, cached data URLs) and abilities/power-ups as canvas pictograms; the `icon` emoji fields in
+`logic/items.js` are no longer shown. Weapon models live in `src/weaponModels.js`.
+
 ## Touch controls
 On a phone or tablet (`src/touch.js`'s `isTouchDevice`: a coarse pointer and no
 fine one, or `#touch` in the address to test on a desktop) a touch layer feeds the

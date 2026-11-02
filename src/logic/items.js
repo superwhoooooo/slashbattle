@@ -134,18 +134,21 @@ export function petEffects(petIds) {
 // POWERUP_SLOTS) in the Tab menu; equipped ones multiply together.
 export const POWERUP_SLOTS = 3
 export const POWERUPS = {
-  swift: { id: 'swift', name: 'Swift Boots', icon: '👟', blurb: '+25% move speed', speed: 1.25 },
-  heavy: { id: 'heavy', name: 'Heavy Hitter', icon: '💪', blurb: '+30% damage', damage: 1.3 },
-  quick: { id: 'quick', name: 'Quick Hands', icon: '⚡', blurb: 'Attack 25% faster', cooldown: 0.75 },
-  thick: { id: 'thick', name: 'Thick Skin', icon: '🧱', blurb: 'Take 20% less damage', damageTaken: 0.8 },
-  greed: { id: 'greed', name: 'Gem Greed', icon: '💎', blurb: '+50% crystals', crystal: 1.5 },
-  shove: { id: 'shove', name: 'Big Shove', icon: '🥊', blurb: '+60% knockback', knockback: 1.6 },
-  leech: { id: 'leech', name: 'Second Helping', icon: '🍰', blurb: 'Heal 2 HP on every kill', killHeal: 2 },
+  swift: { id: 'swift', name: 'Swift Boots', icon: '👟', color: '#4dc8ff', tag: 'MOVE', blurb: '+20% move speed', speed: 1.2 },
+  heavy: { id: 'heavy', name: 'Heavy Hitter', icon: '💪', color: '#ff6a4d', tag: 'OFFENSE', blurb: '+25% damage', damage: 1.25 },
+  quick: { id: 'quick', name: 'Quick Hands', icon: '⚡', color: '#ffc928', tag: 'OFFENSE', blurb: 'Attack 20% faster', cooldown: 0.8 },
+  thick: { id: 'thick', name: 'Thick Skin', icon: '🧱', color: '#c8643e', tag: 'DEFENSE', blurb: 'Take 20% less damage', damageTaken: 0.8 },
+  greed: { id: 'greed', name: 'Gem Greed', icon: '💎', color: '#3cc9e8', tag: 'LOOT', blurb: '+40% crystals from pickups', crystal: 1.4 },
+  shove: { id: 'shove', name: 'Big Shove', icon: '🥊', color: '#e83a4a', tag: 'OFFENSE', blurb: '+50% knockback (ring-outs!)', knockback: 1.5 },
+  leech: { id: 'leech', name: 'Second Helping', icon: '🍰', color: '#e86a9a', tag: 'HEALING', blurb: 'Heal 2 HP on every kill', killHeal: 2 },
+  regen: { id: 'regen', name: 'Slow Burn', icon: '🌿', color: '#46d27a', tag: 'HEALING', blurb: 'Regain 1 HP every 2 seconds', regen: 0.5 },
+  haste: { id: 'haste', name: 'Quick Study', icon: '⏳', color: '#8a6bff', tag: 'ABILITY', blurb: 'Abilities recharge 25% faster', haste: 0.75 },
+  magnet: { id: 'magnet', name: 'Gem Magnet', icon: '🧲', color: '#7a8cff', tag: 'LOOT', blurb: 'Crystals fly to you from 60% farther', magnet: 1.6 },
 }
 
 // What the equipped power-ups add up to (multipliers start at 1).
 export function powerupEffects(ids = []) {
-  const fx = { speed: 1, damage: 1, cooldown: 1, damageTaken: 1, crystal: 1, knockback: 1, killHeal: 0 }
+  const fx = { speed: 1, damage: 1, cooldown: 1, damageTaken: 1, crystal: 1, knockback: 1, killHeal: 0, regen: 0, haste: 1, magnet: 1 }
   for (const id of ids) {
     const perk = POWERUPS[id]
     if (!perk) continue
@@ -156,6 +159,9 @@ export function powerupEffects(ids = []) {
     fx.crystal *= perk.crystal ?? 1
     fx.knockback *= perk.knockback ?? 1
     fx.killHeal += perk.killHeal ?? 0
+    fx.regen += perk.regen ?? 0
+    fx.haste *= perk.haste ?? 1
+    fx.magnet *= perk.magnet ?? 1
   }
   return fx
 }

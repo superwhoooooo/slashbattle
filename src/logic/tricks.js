@@ -24,6 +24,7 @@ export function nameTrick({ cause, inPool = false, ambush = false, boss = false 
   if (fell) return { id: 'checkout', name: 'Checkout' }
   if (inPool) return { id: 'cannonball', name: 'Cannonball' }
   if (ambush) return { id: 'roomService', name: 'Room Service' }
+  if (cause === 'spike') return { id: 'pinCushion', name: 'Pin Cushion' }
   if (cause === 'pet') return { id: 'turndownService', name: 'Turndown Service' }
   if (cause === 'shockwave') return { id: 'wakeUpCall', name: 'Wake-Up Call' }
   if (cause === 'magic') return { id: 'magicHour', name: 'Magic Hour' }

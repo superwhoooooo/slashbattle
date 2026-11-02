@@ -137,12 +137,12 @@ export function chestCost(chestsOpened, rng = Math.random) {
 
 // Uses the ability in `slot` if it exists and is off cooldown. Returns
 // { inventory, abilityId } -- abilityId null when nothing fired.
-export function useAbility(inventory, slot, now) {
+export function useAbility(inventory, slot, now, cooldownScale = 1) {
   const id = inventory.abilities[slot]
   if (!id) return { inventory, abilityId: null }
   if (now < (inventory.abilityReadyAt[id] ?? 0)) return { inventory, abilityId: null }
   return {
-    inventory: { ...inventory, abilityReadyAt: { ...inventory.abilityReadyAt, [id]: now + ABILITIES[id].cooldown } },
+    inventory: { ...inventory, abilityReadyAt: { ...inventory.abilityReadyAt, [id]: now + ABILITIES[id].cooldown * cooldownScale } },
     abilityId: id,
   }
 }

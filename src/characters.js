@@ -20,6 +20,7 @@ import { createJellyBody } from './jelly.js'
 import { PLAYER_FACE, pickFaceOptions } from './logic/faceOptions.js'
 import { WEAPONS } from './logic/items.js'
 import { applyWeaponPose } from './weaponAnim.js'
+import { buildFancyWeapon } from './weaponModels.js'
 import {
   CONE_HEIGHT_FACTOR,
   CONE_RADIUS_FACTOR,
@@ -137,6 +138,11 @@ function darkPole(length, radius, y) {
 // whose +y runs toward the business end, with a `tip` child at the far
 // end for the swing trail -- the same contract the original sword had, so
 // the swing animation (rotation.z) drives any of them.
+// The same model, for the item icons (src/icons.js).
+export function createWeaponModel(id) {
+  return createWeaponMesh(id)
+}
+
 function createWeaponMesh(id) {
   const group = buildWeaponMesh(id)
   applyWeaponPose(group, id, null)
@@ -144,6 +150,8 @@ function createWeaponMesh(id) {
 }
 
 function buildWeaponMesh(id) {
+  const fancy = buildFancyWeapon(id, id === 'sword' ? SWORD_BLADE_COLOR : WEAPON_COLORS[id])
+  if (fancy) return fancy
   if (id === 'sword') return createSword()
   const group = new THREE.Group()
   const color = WEAPON_COLORS[id]
@@ -455,6 +463,11 @@ function monsterBodyCenterY(stats, geometry) {
 export function createPlayerMesh() {
   const geometry = createPlayerGeometry()
   const material = createJellyMaterial(PLAYER_BODY_COLOR)
+  // The player's candy shell is a touch darker and less glossy so it stops glaring.
+  material.color.multiplyScalar(0.8)
+  material.sheen = 0.1
+  material.clearcoat = 0.5
+  material.envMapIntensity = 0.55
   const group = createJellyBody(geometry, material, PLAYER_EDGE_COLOR, PLAYER_BODY_RADIUS)
 
   const { body } = group.userData.jelly

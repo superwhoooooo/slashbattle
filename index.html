@@ -435,6 +435,41 @@
         cursor: pointer;
       }
       #sandbox-btn:hover { background: var(--teal); color: #fff; }
+      .map-row { display: flex; gap: 12px; margin-top: 6px; flex-wrap: wrap; justify-content: center; }
+      .map-btn {
+        font: inherit;
+        font-weight: 700;
+        padding: 10px 18px;
+        border-radius: 12px;
+        border: 2px solid var(--teal);
+        background: rgba(255, 255, 255, 0.7);
+        color: var(--ink);
+        cursor: pointer;
+        text-align: left;
+        min-width: 190px;
+      }
+      .map-btn small { display: block; font-weight: 400; color: var(--muted); font-size: 12px; margin-top: 2px; }
+      .map-btn:hover { background: var(--teal); color: #fff; }
+      .map-btn:hover small { color: #e9fffb; }
+      #floor-chip {
+        position: fixed;
+        top: 124px;
+        left: 16px;
+        z-index: 4;
+        padding: 6px 14px;
+        font-weight: 800;
+        font-size: 13px;
+        letter-spacing: 0.08em;
+        display: none;
+        pointer-events: none;
+        white-space: nowrap;
+      }
+      body.labyrinth #floor-chip { display: block; }
+      #floor-chip .gate-locked { color: var(--coral, #ff6a4d); }
+      #floor-chip .gate-open { color: var(--teal); }
+      #win-screen { display: none; }
+      .item-icon { width: 100%; height: 100%; object-fit: contain; display: block; pointer-events: none; image-rendering: auto; }
+      .inline-icon { width: 1.5em; height: 1.5em; vertical-align: middle; margin-right: 6px; object-fit: contain; }
 
       /* Touch controls (src/touch.js): only present on a phone / tablet. */
       body.touch { touch-action: none; overscroll-behavior: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
@@ -549,6 +584,8 @@
         overflow: hidden;
         transition: transform 0.12s ease-out, box-shadow 0.12s ease-out;
       }
+      .slot-icon { display: flex; align-items: center; justify-content: center; width: 72%; height: 62%; margin-bottom: 8px; }
+      .slot.small .slot-icon, #pet-bar .slot .slot-icon { width: 80%; height: 80%; margin-bottom: 0; }
       .slot.empty { opacity: 0.4; }
       .slot.selected {
         transform: translateY(-4px) scale(1.08);
@@ -588,6 +625,31 @@
       }
       .slot.ready { border-color: var(--teal); }
       #ability-bar .slot.empty, #ability-bar:empty { display: none; }
+      #perk-bar { position: fixed; left: 16px; bottom: 16px; display: flex; gap: 6px; z-index: 4; pointer-events: none; }
+      .perk-chip { width: 38px; height: 38px; padding: 4px; border: 2px solid var(--perk, var(--teal)); box-shadow: 0 0 10px color-mix(in srgb, var(--perk, #19b5a5) 55%, transparent); }
+      .perk-chip img { width: 100%; height: 100%; object-fit: contain; display: block; }
+      body.touch #perk-bar { bottom: 70px; left: 8px; zoom: 0.8; }
+      .perk-slots { display: flex; gap: 8px; margin: 8px 0 4px; }
+      .perk-slot { flex: 1; height: 54px; border-radius: 12px; border: 2px dashed var(--card-border); display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.4); }
+      .perk-slot.filled { border-style: solid; border-color: var(--perk); background: color-mix(in srgb, var(--perk) 14%, white); }
+      .perk-slot img { width: 40px; height: 40px; object-fit: contain; }
+      .perk-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+      .perk-card { position: relative; display: flex; flex-direction: column; align-items: center; gap: 3px; text-align: center; padding: 10px 6px 8px; border-radius: 12px; border: 2px solid var(--card-border); background: rgba(255,255,255,0.85); color: var(--ink); font: inherit; cursor: pointer; transition: transform 0.1s, box-shadow 0.1s; }
+      .perk-card:hover { transform: translateY(-2px); border-color: var(--perk); }
+      .perk-card img { width: 46px; height: 46px; object-fit: contain; }
+      .perk-card .pc-name { font-weight: 800; font-size: 12px; }
+      .perk-card .pc-tag { position: absolute; top: 5px; left: 7px; font-size: 8px; font-weight: 800; letter-spacing: 0.1em; color: var(--perk); }
+      .perk-card .pc-blurb { font-size: 10.5px; opacity: 0.8; line-height: 1.25; }
+      .perk-card.on { border-color: var(--perk); background: color-mix(in srgb, var(--perk) 16%, white); box-shadow: 0 0 0 2px color-mix(in srgb, var(--perk) 40%, transparent), 0 4px 14px rgba(26,36,51,0.15); }
+      .perk-card.on::after { content: 'EQUIPPED'; position: absolute; top: 5px; right: 7px; font-size: 8px; font-weight: 800; letter-spacing: 0.1em; color: var(--perk); }
+      #pause-screen { z-index: 40; background: rgba(20, 26, 40, 0.5); }
+      #pause-screen .card { min-width: 300px; }
+      .pause-btn { font: inherit; font-weight: 700; width: 100%; padding: 10px 18px; border-radius: 10px; border: 2px solid var(--teal); background: transparent; color: var(--teal); cursor: pointer; }
+      .pause-btn:hover, .pause-btn.primary { background: var(--teal); color: #fff; }
+      .pause-btn.primary:hover { filter: brightness(1.08); }
+      .pause-row { display: flex; align-items: center; gap: 10px; width: 100%; font-weight: 700; font-size: 13px; color: var(--ink); margin-top: 6px; }
+      .pause-row input { flex: 1; accent-color: var(--teal); }
+      .pause-readout { width: 42px; text-align: right; color: var(--muted); font-weight: 600; }
       #pet-bar .slot { width: 40px; height: 40px; font-size: 19px; }
 
       #chest-prompt {
@@ -822,10 +884,11 @@
       }
 
       .controls {
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
+        display: grid;
+        grid-template-columns: auto auto;
+        gap: 8px 36px;
         margin: 4px 0;
+        text-align: left;
       }
       .control-row {
         display: flex;
@@ -1008,6 +1071,7 @@
       <div id="loot-toast-blurb"></div>
     </div>
     <div id="pet-bar"></div>
+    <div id="perk-bar"></div>
     <div id="auto-shoot" class="panel">AUTO SHOOT <kbd>L</kbd> <span id="auto-shoot-state">OFF</span></div>
     <div id="bottom-bar">
       <div id="ability-bar"></div>
@@ -1056,9 +1120,22 @@
           <span><kbd class="pad">Start</kbd> restart</span>
           <span><kbd class="pad">Back</kbd> mute</span>
         </div>
-        <p class="hint">Press any key or click to begin</p>
+        <p class="hint">Choose a map (or press any key for the Sundeck)</p>
+        <div class="map-row">
+          <button id="resort-btn" class="map-btn" type="button">Orbital Sundeck<small>Endless waves on a floating platform</small></button>
+          <button id="labyrinth-btn" class="map-btn" type="button">Labyrinth <kbd>K</kbd><small>3 floors of walls &amp; spike traps. Beat 2 bosses per floor to open the gate.</small></button>
+        </div>
         <button id="sandbox-btn" type="button">Sandbox mode <kbd>B</kbd></button>
         <p>No waves: spawn anything, grab any gear, hop between levels.</p>
+      </div>
+    </div>
+    <div id="floor-chip" class="panel"></div>
+    <div id="win-screen" class="overlay">
+      <div class="card panel">
+        <h1>ESCAPED!</h1>
+        <p>You beat the Labyrinth.</p>
+        <p id="win-score">Score: 0</p>
+        <p class="hint">Press R to play again</p>
       </div>
     </div>
     <div id="lose-screen" class="overlay">
