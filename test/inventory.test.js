@@ -28,7 +28,7 @@ describe('catalogs', () => {
     expect(Object.keys(WEAPONS).length).toBeGreaterThan(HOTBAR_SLOTS)
     expect(Object.keys(ABILITIES).length).toBeGreaterThan(ABILITY_SLOTS)
     expect(Object.keys(PETS).length).toBeGreaterThan(MAX_PETS)
-    expect(Object.keys(PETS)).toHaveLength(23)
+    expect(Object.keys(PETS)).toHaveLength(22)
   })
 
   it('makes the staff a ranged starter whose orbs are magic, and the sword a chest find', () => {
@@ -228,7 +228,9 @@ describe('petEffects', () => {
     for (const pet of Object.values(PETS)) {
       expect(PET_MODELS).toContain(pet.model)
       const model = createPetModel(pet)
-      expect(model.children.length).toBeGreaterThan(2)
+      let meshes = 0
+      model.traverse((child) => child.isMesh && meshes++)
+      expect(meshes).toBeGreaterThan(2)
       expect(typeof model.userData.fly).toBe('boolean')
       expect(() => model.userData.animate(1.3, true)).not.toThrow()
     }
@@ -269,11 +271,12 @@ describe('power-ups', () => {
   })
 })
 
-describe('Benji and Remy', () => {
-  it('are fighting pets with their own models', () => {
-    expect(PETS.benji.kind).toBe('zap')
-    expect(PETS.remy.kind).toBe('pulse')
-    expect(PETS.benji.model).toBe('benji')
-    expect(PETS.remy.model).toBe('remy')
+describe('Remy & Benji', () => {
+  it('are one throwing pet that alternates junk and bananas', () => {
+    expect(PETS.benji).toBeUndefined()
+    expect(PETS.remy).toBeUndefined()
+    expect(PETS.remybenji.kind).toBe('throw')
+    expect(PETS.remybenji.thrown).toEqual(['junk', 'banana'])
+    expect(PETS.remybenji.model).toBe('remybenji')
   })
 })

@@ -490,7 +490,7 @@ fell. Press F within `CHEST_INTERACT_RANGE` to pay and open one; it rolls
 slot is full -- a score and heal bonus.
 
 The catalogs are bigger than the slots (17 weapons for a 5-slot hotbar with the
-Wizard Staff fixed in slot 1, 13 abilities for 5 keys, 23 pets for `MAX_PETS` = 5), and a
+Wizard Staff fixed in slot 1, 13 abilities for 5 keys, 22 pets for `MAX_PETS` = 5), and a
 chest only rolls items you don't own, so a maxed-out loadout differs run to run.
 Once every slot is full a chest pays out score and a heal ("LOADOUT FULL").
 
@@ -521,7 +521,7 @@ Once every slot is full a chest pays out score and a heal ("LOADOUT FULL").
   rabbit, Goldie the goldfish, Bumper the ram, Rascal the raccoon), `pulse` (Spike
   the cactus, Boomer the dynamite, Grumble the bear: hit everything near the pet),
   `throw` (Matthias, a stylized low-poly kid in a "VACAY FOREVER" tee who hurls
-  spinning lightsabers that home on the nearest enemy), `zap` also covers Benji and Remy is a `pulse` stomp (both stylized low-poly kids, `petModels.js`'s `kid()`); `heal` (Healbit the heart, Mender the medkit, Sprout), `magnet` (Magneto, Vortex
+  spinning lightsabers that home on the nearest enemy), Remy & Benji are one `throw` pet (two stylized low-poly kids, `petModels.js`'s `kid()`) who alternate chucking junk and bananas; `heal` (Healbit the heart, Mender the medkit, Sprout), `magnet` (Magneto, Vortex
   the magpie) and `guard` (Shieldy the turtle, Plated the shield). No pet buffs
   the player's own stats any more -- they all fight, heal, pull or soften hits
   (`petEffects` only folds magnet radius and damage taken). Each is a real

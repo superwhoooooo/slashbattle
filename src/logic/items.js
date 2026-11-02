@@ -79,8 +79,7 @@ export const PETS = {
   plated: { id: 'plated', name: 'Plated', icon: '🛡️', color: 0xb0bec5, model: 'shield', kind: 'guard', reduction: 0.15, blurb: 'A shield that takes 15% off every hit' },
   vortex: { id: 'vortex', name: 'Vortex', icon: '🐦‍⬛', color: 0x4d6bff, model: 'magpie', kind: 'magnet', radius: 16, blurb: 'A magpie with a huge crystal pull' },
   matthias: { id: 'matthias', name: 'Matthias', icon: '🧑', color: 0x58ff6a, saberColor: 0x58ff6a, model: 'matthias', kind: 'throw', damage: 18, interval: 1.3, range: 13, knockback: 2, blurb: 'Throws lightsabers at the nearest enemy' },
-  benji: { id: 'benji', name: 'Benji', icon: '🧒', color: 0x3a4a78, model: 'benji', kind: 'zap', damage: 11, interval: 0.8, range: 10, knockback: 0.8, blurb: 'A grinning kid in a navy sweater who zaps the nearest enemy, fast' },
-  remy: { id: 'remy', name: 'Remy', icon: '👦', color: 0x1f7f95, model: 'remy', kind: 'pulse', damage: 20, interval: 2.6, radius: 4, knockback: 3, blurb: 'A kid in a teal fleece who stomps everything nearby away' },
+  remybenji: { id: 'remybenji', name: 'Remy & Benji', icon: '👦', color: 0xffd84a, saberColor: 0xffd84a, model: 'remybenji', kind: 'throw', thrown: ['junk', 'banana'], damage: 16, interval: 0.9, range: 12, knockback: 1.5, blurb: 'Remy chucks junk, Benji lobs bananas, at the nearest enemy' },
   rascal: { id: 'rascal', name: 'Rascal', icon: '🦝', color: 0x9e9e9e, model: 'raccoon', kind: 'zap', damage: 7, interval: 0.9, range: 7, blurb: 'A raccoon that swipes the nearest enemy' },
 }
 

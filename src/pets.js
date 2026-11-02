@@ -4,7 +4,7 @@
 // main.js) pull crystals in or soften hits. Pets can't be hurt.
 import * as THREE from 'three'
 import { PLAYER_MAX_HP } from './config.js'
-import { createPetModel, createSaber } from './petModels.js'
+import { createPetModel, createSaber, createThrown } from './petModels.js'
 import { damageMonster } from './combat.js'
 import { PETS } from './logic/items.js'
 import { dampAngle } from './logic/smoothing.js'
@@ -48,10 +48,14 @@ function nearestTarget(monsters, x, z, range) {
 // Hurls a spinning lightsaber from the pet's raised hand at `target`; it
 // homes on the target's position and lands the hit in stepSabers.
 function throwSaber(pet, target) {
-  const mesh = createSaber(pet.def.saberColor ?? pet.def.color, 0.55)
+  // Remy & Benji alternate their `thrown` items (junk, banana); everyone else throws a saber.
+  const kinds = pet.def.thrown
+  const thrownKind = kinds ? kinds[(pet.throws = (pet.throws ?? 0) + 1) % kinds.length] : null
+  const mesh = thrownKind ? createThrown(thrownKind, pet.throws) : createSaber(pet.def.saberColor ?? pet.def.color, 0.55)
   const holder = new THREE.Group()
   holder.add(mesh)
-  mesh.position.y = -0.3 // spin about the saber's middle, not its hilt
+  if (!thrownKind) mesh.position.y = -0.3 // spin about the saber's middle, not its hilt
+  holder.userData.tumble = Boolean(thrownKind)
   holder.position.set(pet.mesh.position.x, pet.mesh.position.y + 0.85, pet.mesh.position.z)
   pet.scene.add(holder)
   pet.sabers.push({ mesh: holder, target, life: SABER_MAX_LIFE })
@@ -92,8 +96,13 @@ function stepSabers(pet, dt, monsters, obstacles, particleSystem, hitstop) {
     saber.mesh.position.x += (dx / distance) * stepLength
     saber.mesh.position.y += (dy / distance) * stepLength
     saber.mesh.position.z += (dz / distance) * stepLength
-    saber.mesh.rotation.x = Math.PI / 2 // lie flat, then spin like a helicopter blade
-    saber.mesh.rotation.z += SABER_SPIN * dt
+    if (saber.mesh.userData.tumble) {
+      saber.mesh.rotation.x += SABER_SPIN * 0.4 * dt
+      saber.mesh.rotation.z += SABER_SPIN * 0.3 * dt
+    } else {
+      saber.mesh.rotation.x = Math.PI / 2 // lie flat, then spin like a helicopter blade
+      saber.mesh.rotation.z += SABER_SPIN * dt
+    }
     return true
   })
 }

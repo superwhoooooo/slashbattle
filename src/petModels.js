@@ -699,10 +699,51 @@ const benji = () => kid({ skinColor: 0xe0aa86, hairColor: 0x2e2018, hair: 'messy
 // Remy: sandy-blond hair, a teal fleece with a dark chest pocket, grey jeans, teal socks.
 const remy = () => kid({ skinColor: 0xeab494, hairColor: 0xb88a4e, hair: 'sandy', top: 'fleece', topColor: 0x1f7f95, pocketColor: 0x3b4048, pants: 0x6b7480, shoes: 0x1f6f80 })
 
+// Remy (left) and Benji (right) as one pet, standing side by side.
+function duo() {
+  const group = new THREE.Group()
+  const a = remy()
+  const b = benji()
+  for (const [kidModel, x] of [[a, -0.24], [b, 0.24]]) {
+    kidModel.scale.setScalar(0.85)
+    kidModel.position.x = x
+    group.add(kidModel)
+  }
+  group.userData.fly = false
+  group.userData.animate = (t, moving) => {
+    a.userData.animate(t, moving)
+    b.userData.animate(t + 0.9, moving)
+  }
+  return group
+}
+
+// What the pair throws: a pile-of-junk item (tin can, old boot or cardboard box) or a banana.
+export function createThrown(kind, variant = 0) {
+  const item = new THREE.Group()
+  if (kind === 'banana') {
+    const peel = mat(0xffd84a, { roughness: 0.6 })
+    item.add(part(new THREE.TorusGeometry(0.17, 0.05, 8, 16, Math.PI * 0.8), peel, [0, 0, 0]))
+    item.add(part(sphere(0.035), mat(0x5a4326), [0.17, 0, 0]))
+    item.add(part(sphere(0.035), mat(0x5a4326), [-0.17 * Math.cos(Math.PI * 0.8), 0.17 * Math.sin(Math.PI * 0.8), 0]))
+    return item
+  }
+  const pick = variant % 3
+  if (pick === 0) {
+    item.add(part(new THREE.CylinderGeometry(0.1, 0.1, 0.2, 12), mat(0xb8bec6, { metalness: 0.7, roughness: 0.4 }), [0, 0, 0]))
+    item.add(part(new THREE.CylinderGeometry(0.102, 0.102, 0.05, 12), mat(0xc83c3c), [0, 0.02, 0]))
+  } else if (pick === 1) {
+    item.add(part(new THREE.BoxGeometry(0.12, 0.2, 0.1), mat(0x6b4a2e, { roughness: 0.95 }), [0, 0.04, 0]))
+    item.add(part(new THREE.BoxGeometry(0.28, 0.1, 0.1), mat(0x5a3d25, { roughness: 0.95 }), [0.08, -0.08, 0]))
+  } else {
+    item.add(part(new THREE.BoxGeometry(0.24, 0.2, 0.2), mat(0xc9a06a, { roughness: 0.95 }), [0, 0, 0]))
+    item.add(part(new THREE.BoxGeometry(0.25, 0.03, 0.06), mat(0xe8d8b0), [0, 0.1, 0]))
+  }
+  return item
+}
+
 const BUILDERS = {
   matthias,
-  benji,
-  remy,
+  remybenji: () => duo(),
   chick: () => bird({ body: 0xffd84a, belly: 0xffeb8a, beak: 0xff9a2e, crest: 0xffd84a, tail: 0xffd84a }),
   owl: () => bird({ body: 0x8a6a4a, belly: 0xe0cfb0, eye: 'owl', tufts: true, beak: 0xe0a030, wing: 0x6e5238 }),
   magpie: () => bird({ body: 0x23262d, belly: 0xffffff, beak: 0x1b1b1b, wing: 0x3b4a7a, tail: 0x3b4a7a }),

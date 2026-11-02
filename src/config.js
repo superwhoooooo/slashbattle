@@ -520,9 +520,9 @@ export const SHAKE_NOISE_FREQUENCY_B = 71 // radians/second
 // hit or dying, and the player getting hurt. The camera shake/flash, HUD,
 // music and cutscene keep running in real time so the screen still reacts
 // while gameplay is paused.
-export const HITSTOP_HIT = 0.045 // seconds, a sword hit landing on a regular monster
-export const HITSTOP_KILL = 0.08 // seconds, a kill (any player-caused source)
-export const HITSTOP_BOSS = 0.12 // seconds, a boss taking a hit, or dying
+export const HITSTOP_HIT = 0 // seconds, a sword hit landing on a regular monster
+export const HITSTOP_KILL = 0 // seconds, a kill (any player-caused source)
+export const HITSTOP_BOSS = 0 // seconds, a boss taking a hit, or dying
 export const HITSTOP_PLAYER_HURT = 0.07 // seconds, the player taking damage
 
 // Gamepad input (src/logic/gamepad.js, src/input.js): the left stick's
