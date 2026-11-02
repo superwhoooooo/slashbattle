@@ -25,10 +25,10 @@
 //             radius + `radiusBonus` every `tickInterval`
 export const BOSS_SPECIALS = {
   charge: { interval: 6, windup: 0, duration: 1.2, speedMultiplier: 2.6 },
-  summon: { interval: 60, firstDelay: 6, windup: 0.6, count: 2, maxMinions: 3 },
+  summon: { interval: 22, firstDelay: 6, windup: 0.6, count: 2, maxMinions: 4 },
   slam: { interval: 7, windup: 0.9, radius: 6.5, damageMultiplier: 1.3 },
   blink: { interval: 6.5, windup: 0.5, distance: 3.5 },
-  barrage: { interval: 6, windup: 0.7, count: 5, spread: 0.9, speed: 9, damageMultiplier: 0.6 },
+  barrage: { interval: 5, windup: 0.7, count: 5, spread: 0.9, speed: 9, damageMultiplier: 0.6 },
   spin: { interval: 9, windup: 0.8, duration: 2.2, tickInterval: 0.45, radiusBonus: 2.4, damageMultiplier: 0.7 },
 }
 
@@ -37,7 +37,7 @@ const BOSS_DEFS = [
     id: 'boss_gloop',
     name: 'KING GLOOP',
     title: 'Monarch of the Mildly Damp',
-    specials: ['slam'],
+    specials: ['slam', 'barrage', 'summon'],
     score: 1000,
     stats: { shape: 'sphere', size: 4.2, color: 0x2e8b57, edgeColor: 0xabd1bc, speed: 1.6, hp: 1140, damage: 18, radius: 1.9 },
     lines: [
@@ -50,7 +50,7 @@ const BOSS_DEFS = [
     id: 'boss_zipzilla',
     name: 'ZIPZILLA',
     title: 'Speed Limit: Yes',
-    specials: ['charge', 'blink'],
+    specials: ['charge', 'blink', 'barrage', 'summon'],
     score: 1100,
     stats: { shape: 'tetrahedron', size: 3.4, color: 0x7b2fd1, edgeColor: 0xcaaced, speed: 2.6, hp: 960, damage: 16, radius: 1.3 },
     lines: [
@@ -63,7 +63,7 @@ const BOSS_DEFS = [
     id: 'boss_grumpsalot',
     name: 'SIR GRUMPSALOT',
     title: 'Knight of the Bad Mood',
-    specials: ['spin'],
+    specials: ['spin', 'barrage', 'summon'],
     score: 1200,
     stats: { shape: 'box', size: 3.6, color: 0xd2491e, edgeColor: 0xedb6a5, speed: 1.9, hp: 1380, damage: 22, radius: 1.5 },
     lines: [
@@ -76,7 +76,7 @@ const BOSS_DEFS = [
     id: 'boss_wobble',
     name: 'DOCTOR WOBBLE',
     title: 'Surgeon of Silly Business',
-    specials: ['summon', 'barrage'],
+    specials: ['summon', 'barrage', 'blink'],
     score: 1300,
     stats: { shape: 'cylinder', size: 3.6, color: 0xc2217d, edgeColor: 0xe7a6cb, speed: 1.7, hp: 1020, damage: 14, radius: 1.6 },
     lines: [
@@ -89,7 +89,7 @@ const BOSS_DEFS = [
     id: 'boss_conefather',
     name: 'THE CONE FATHER',
     title: 'He Made You an Offer',
-    specials: ['barrage', 'slam'],
+    specials: ['barrage', 'slam', 'summon', 'spin'],
     score: 1400,
     stats: { shape: 'cone', size: 4.4, color: 0x1f4fa8, edgeColor: 0xa5b9dc, speed: 1.5, hp: 1680, damage: 24, radius: 2.0 },
     lines: [
@@ -102,7 +102,7 @@ const BOSS_DEFS = [
     id: 'boss_mayhem',
     name: 'MADAM MAYHEM',
     title: 'Queen of Questionable Decisions',
-    specials: ['blink', 'spin'],
+    specials: ['blink', 'spin', 'barrage', 'summon'],
     score: 1500,
     stats: { shape: 'octahedron', size: 3.8, color: 0xd6243f, edgeColor: 0xefa7b2, speed: 2.4, hp: 1260, damage: 20, radius: 1.45 },
     lines: [
@@ -115,7 +115,7 @@ const BOSS_DEFS = [
     id: 'boss_omega',
     name: 'OMEGA JELLO',
     title: 'The Final Dessert',
-    specials: ['summon', 'slam'],
+    specials: ['summon', 'slam', 'barrage', 'charge'],
     score: 1800,
     stats: { shape: 'dodecahedron', size: 5, color: 0x14b8ae, edgeColor: 0xa1e3df, speed: 1.4, hp: 1920, damage: 20, radius: 2.3 },
     lines: [

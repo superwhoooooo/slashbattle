@@ -22,6 +22,7 @@ export function makeBullets(weapon, { x, z, aimAngle, damageMultiplier = 1, knoc
     knockback: weapon.knockback * knockbackMultiplier,
     color: bullet.color,
     cause: weapon.cause ?? 'gun',
+    weaponId: weapon.id ?? null, // which weapon fired it (null for the Bullet Ring), for its trail/impact effects
     ambush,
     hitIds: new Set(),
   }))

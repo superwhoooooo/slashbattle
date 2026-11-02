@@ -30,6 +30,11 @@ export const WEAPONS = {
   shotgun: { id: 'shotgun', name: 'Confetti Shotgun', short: 'Shotgun', icon: '💨', gun: true, damage: 9, range: 8, arc: 0, cooldown: 0.9, swing: 0.15, knockback: 1.4, pellets: 7, spread: 0.7, bullet: { speed: 22, life: 0.35, radius: 0.2, pierce: 0, explode: 0, color: 0xff8ad8 }, blurb: 'Close-range spray' },
   smg: { id: 'smg', name: 'Bubble SMG', short: 'SMG', icon: '🫧', gun: true, damage: 6, range: 10, arc: 0, cooldown: 0.08, swing: 0.06, knockback: 0.2, pellets: 1, spread: 0.12, bullet: { speed: 24, life: 0.45, radius: 0.18, pierce: 0, explode: 0, color: 0x66f0ff }, blurb: 'Hose them down' },
   railgun: { id: 'railgun', name: 'Rail Gun', short: 'Railgun', icon: '🚀', gun: true, damage: 48, range: 30, arc: 0, cooldown: 1.3, swing: 0.2, knockback: 1.8, pellets: 1, spread: 0, bullet: { speed: 60, life: 0.55, radius: 0.3, pierce: 5, explode: 0, color: 0x7cffb0 }, blurb: 'Pierces whole lines' },
+  whip: { id: 'whip', name: 'Neon Whip', short: 'Whip', icon: '🪢', damage: 14, range: 3.1, arc: Math.PI / 5, cooldown: 0.3, swing: 0.14, knockback: 0.6, blurb: 'Cracks from way out' },
+  nunchucks: { id: 'nunchucks', name: 'Nunchucks', short: 'Chucks', icon: '🥋', damage: 12, range: 1.5, arc: Math.PI, cooldown: 0.18, swing: 0.12, knockback: 0.7, blurb: 'Fast wide flurries' },
+  crossbow: { id: 'crossbow', name: 'Party Crossbow', short: 'Crossbow', icon: '🏹', gun: true, damage: 30, range: 22, arc: 0, cooldown: 0.8, swing: 0.15, knockback: 1.2, pellets: 1, spread: 0, bullet: { speed: 42, life: 0.6, radius: 0.24, pierce: 2, explode: 0, color: 0xc9ff5a }, blurb: 'Bolts that skewer two extra foes' },
+  flamer: { id: 'flamer', name: 'Flame Thrower', short: 'Flamer', icon: '🔥', gun: true, damage: 5, range: 6, arc: 0, cooldown: 0.07, swing: 0.05, knockback: 0.1, pellets: 3, spread: 0.45, bullet: { speed: 14, life: 0.4, radius: 0.26, pierce: 1, explode: 0, color: 0xff6a2a }, blurb: 'A short, hot, continuous spray' },
+  blaster: { id: 'blaster', name: 'Disco Blaster', short: 'Blaster', icon: '✨', gun: true, damage: 11, range: 14, arc: 0, cooldown: 0.45, swing: 0.12, knockback: 0.9, pellets: 5, spread: 0.35, bullet: { speed: 28, life: 0.55, radius: 0.2, pierce: 1, explode: 0, color: 0xd96bff }, blurb: 'A sparkly five-shot fan' },
   launcher: { id: 'launcher', name: 'Cannonball Launcher', short: 'Launcher', icon: '💣', gun: true, damage: 34, range: 16, arc: 0, cooldown: 1.1, swing: 0.2, knockback: 2.6, pellets: 1, spread: 0, bullet: { speed: 16, life: 1.0, radius: 0.32, pierce: 0, explode: 3.0, color: 0xff8a3a }, blurb: 'Explodes on impact' },
 }
 
@@ -48,6 +53,11 @@ export const ABILITIES = {
   drain: { id: 'drain', name: 'Life Drain', icon: '🧛', cooldown: 16, blurb: 'Steal HP from nearby foes' },
   frenzy: { id: 'frenzy', name: 'Frenzy', icon: '⚡', cooldown: 20, duration: 6, blurb: 'Attack twice as fast' },
   sprint: { id: 'sprint', name: 'Sprint', icon: '👟', cooldown: 12, duration: 5, blurb: 'Run 1.6x faster' },
+  meteor: { id: 'meteor', name: 'Meteor Strike', icon: '☄️', cooldown: 15, damage: 70, radius: 4, distance: 6, blurb: 'Drop a meteor ahead of you' },
+  ghost: { id: 'ghost', name: 'Ghost Form', icon: '👻', cooldown: 16, duration: 2.5, blurb: 'Untouchable for 2.5s' },
+  vacuum: { id: 'vacuum', name: 'Warp Field', icon: '🕳️', cooldown: 14, duration: 4.5, radius: 5.5, damage: 9, range: 18, blurb: 'Warp space at your cursor: confuses and hurts, pulls in crystals' },
+  quake: { id: 'quake', name: 'Earthquake', icon: '🌋', cooldown: 17, damage: 30, radius: 9, blurb: 'Shake everything in a wide ring' },
+  fanblast: { id: 'fanblast', name: 'Fan Blast', icon: '🎇', cooldown: 8, damage: 22, blurb: 'Seven heavy shots ahead' },
   refresh: { id: 'refresh', name: 'Second Wind', icon: '♻️', cooldown: 30, blurb: 'Reset other cooldowns' },
 }
 
@@ -80,6 +90,11 @@ export const PETS = {
   vortex: { id: 'vortex', name: 'Vortex', icon: '🐦‍⬛', color: 0x4d6bff, model: 'magpie', kind: 'magnet', radius: 16, blurb: 'A magpie with a huge crystal pull' },
   matthias: { id: 'matthias', name: 'Matthias', icon: '🧑', color: 0x58ff6a, saberColor: 0x58ff6a, model: 'matthias', kind: 'throw', damage: 18, interval: 1.3, range: 13, knockback: 2, blurb: 'Throws lightsabers at the nearest enemy' },
   remybenji: { id: 'remybenji', name: 'Remy & Benji', icon: '👦', color: 0xffd84a, saberColor: 0xffd84a, model: 'remybenji', kind: 'throw', thrown: ['junk', 'banana'], damage: 16, interval: 0.9, range: 12, knockback: 1.5, blurb: 'Remy chucks junk, Benji lobs bananas, at the nearest enemy' },
+  frosty: { id: 'frosty', name: 'Frosty', icon: '🐺', color: 0xbfe9ff, model: 'wolf', kind: 'zap', damage: 11, interval: 1.4, range: 8, knockback: 1, blurb: 'An arctic wolf with icy bites' },
+  pandy: { id: 'pandy', name: 'Pandy', icon: '🐼', color: 0xeeeeee, model: 'panda', kind: 'pulse', damage: 10, interval: 1.8, radius: 3.4, knockback: 1.2, blurb: 'A panda that bonks everything close' },
+  polly: { id: 'polly', name: 'Polly', icon: '🦜', color: 0xff4a4a, model: 'parrot', kind: 'zap', damage: 9, interval: 1, range: 10, blurb: 'A parrot that squawks damage at foes' },
+  quackers: { id: 'quackers', name: 'Quackers', icon: '🦆', color: 0xfff1a8, model: 'duck', kind: 'heal', amount: 3, interval: 3.5, blurb: 'A duck that quacks you back to health' },
+  shadow: { id: 'shadow', name: 'Shadow', icon: '🥷', color: 0x6b5b95, model: 'ninjacoon', kind: 'zap', damage: 5, interval: 0.35, range: 5, blurb: 'A ninja raccoon with a blur of stabs' },
   rascal: { id: 'rascal', name: 'Rascal', icon: '🦝', color: 0x9e9e9e, model: 'raccoon', kind: 'zap', damage: 7, interval: 0.9, range: 7, blurb: 'A raccoon that swipes the nearest enemy' },
 }
 

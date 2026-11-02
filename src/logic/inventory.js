@@ -47,21 +47,50 @@ export function selectWeaponSlot(inventory, slot) {
   return { ...inventory, selected: slot }
 }
 
-// Everything a chest could still hand out: weapons, abilities and pets
-// not yet owned, while there's room for them.
+// Everything a chest could still hand out: every weapon, ability and pet
+// not yet owned. When that category is already full, the item is still
+// on offer -- you get to swap it in for something you have (see needsSwap).
 export function availableLoot(inventory) {
   const loot = []
-  if (inventory.weapons.length < HOTBAR_SLOTS) {
-    for (const id of Object.keys(WEAPONS)) if (!inventory.weapons.includes(id)) loot.push({ kind: 'weapon', id })
-  }
-  if (inventory.abilities.length < ABILITY_SLOTS) {
-    for (const id of Object.keys(ABILITIES)) if (!inventory.abilities.includes(id)) loot.push({ kind: 'ability', id })
-  }
-  if (inventory.pets.length < MAX_PETS) {
-    for (const id of Object.keys(PETS)) if (!inventory.pets.includes(id)) loot.push({ kind: 'pet', id })
-  }
+  for (const id of Object.keys(WEAPONS)) if (!inventory.weapons.includes(id)) loot.push({ kind: 'weapon', id })
+  for (const id of Object.keys(ABILITIES)) if (!inventory.abilities.includes(id)) loot.push({ kind: 'ability', id })
+  for (const id of Object.keys(PETS)) if (!inventory.pets.includes(id)) loot.push({ kind: 'pet', id })
   for (const id of Object.keys(POWERUPS)) if (!(inventory.powerups ?? []).includes(id)) loot.push({ kind: 'powerup', id })
   return loot
+}
+
+// True when `loot` is a weapon / ability / pet whose slots are all taken, so
+// the player has to pick something to swap out (or pass on it).
+export function needsSwap(inventory, { kind }) {
+  if (kind === 'weapon') return inventory.weapons.length >= HOTBAR_SLOTS
+  if (kind === 'ability') return inventory.abilities.length >= ABILITY_SLOTS
+  if (kind === 'pet') return inventory.pets.length >= MAX_PETS
+  return false
+}
+
+// What can be swapped out for a `kind` of loot: everything owned of that
+// kind except the Wizard Staff, which is fixed in hotbar slot 1.
+export function swappableIds(inventory, kind) {
+  if (kind === 'weapon') return inventory.weapons.filter((id) => id !== 'staff')
+  if (kind === 'ability') return inventory.abilities
+  if (kind === 'pet') return inventory.pets
+  return []
+}
+
+// Replaces owned item `outId` with the new loot, in the same slot. A new
+// weapon becomes the selected one. Returns the inventory unchanged if
+// `outId` can't be swapped.
+export function swapItem(inventory, { kind, id }, outId) {
+  if (!swappableIds(inventory, kind).includes(outId)) return inventory
+  if (kind === 'weapon') {
+    const weapons = inventory.weapons.map((w) => (w === outId ? id : w))
+    return { ...inventory, weapons, selected: weapons.indexOf(id) }
+  }
+  if (kind === 'ability') {
+    const { [outId]: _gone, ...abilityReadyAt } = inventory.abilityReadyAt
+    return { ...inventory, abilities: inventory.abilities.map((a) => (a === outId ? id : a)), abilityReadyAt }
+  }
+  return { ...inventory, pets: inventory.pets.map((p) => (p === outId ? id : p)) }
 }
 
 // Rolls a chest's reward: first a category (weapon / ability / pet, equal

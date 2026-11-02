@@ -1,3 +1,4 @@
+import { applyWeaponPose } from './weaponAnim.js'
 import * as THREE from 'three'
 import {
   AMBUSH_WINDOW,
@@ -43,8 +44,6 @@ const scratchTipPosition = new THREE.Vector3()
 // The sword rotates through this arc (radians, around its local Z axis)
 // over the swing, and the hit is checked once the swing crosses the
 // midpoint, so it lands when the blade is roughly in front of the player.
-const SWING_START_ANGLE = -Math.PI / 3
-const SWING_END_ANGLE = Math.PI / 3
 const SWING_HIT_FRACTION = 0.5
 
 // Mutable state for the player's attack: the cooldown plus the current
@@ -69,7 +68,7 @@ export function createAttackState() {
 // hit landed, so the caller can trigger a (smaller) screen shake.
 export function updatePlayerAttack(
   attackState,
-  { player, monsters, obstacles, input, elapsedSeconds, deltaSeconds, particleSystem, swingTrail, weaponId = 'sword', damageMultiplier = 1, cooldownMultiplier = 1, knockbackMultiplier = 1, bulletPool = null, autoAttack = false, hitstop = null },
+  { player, monsters, obstacles, input, elapsedSeconds, deltaSeconds, particleSystem, swingTrail, weaponId = 'sword', damageMultiplier = 1, cooldownMultiplier = 1, knockbackMultiplier = 1, bulletPool = null, autoAttack = false, hitstop = null, onMeleeHit = null },
 ) {
   const weapon = WEAPONS[weaponId]
   if (player.hidden) return { ambushHit: false, hitAny: false }
@@ -93,7 +92,7 @@ export function updatePlayerAttack(
 
   attackState.swingElapsed += deltaSeconds
   const progress = Math.min(attackState.swingElapsed / weapon.swing, 1)
-  sword.rotation.z = THREE.MathUtils.lerp(SWING_START_ANGLE, SWING_END_ANGLE, progress)
+  applyWeaponPose(sword, weaponId, progress)
 
   sword.userData.tip.getWorldPosition(scratchTipPosition)
   updateSwingTrail(swingTrail, scratchTipPosition)
@@ -119,13 +118,13 @@ export function updatePlayerAttack(
         }),
       )
     } else {
-      ;({ ambushHit, hitAny } = resolveAttackHits(player, monsters, obstacles, elapsedSeconds, particleSystem, weapon, damageMultiplier, knockbackMultiplier, hitstop))
+      ;({ ambushHit, hitAny } = resolveAttackHits(player, monsters, obstacles, elapsedSeconds, particleSystem, weapon, damageMultiplier, knockbackMultiplier, hitstop, onMeleeHit))
     }
   }
 
   if (progress >= 1) {
     attackState.swingElapsed = null
-    sword.rotation.z = 0
+    applyWeaponPose(sword, weaponId, null)
     clearSwingTrail(swingTrail)
   }
 
@@ -198,7 +197,7 @@ export function damageMonster(monster, damage, { fromPos, knockback = 0, obstacl
 // within the ambush window after popping out of hiding) and knockback.
 // A monster still materializing in (spawning) can't be hit. Returns
 // { ambushHit, hitAny } for the whole swing.
-function resolveAttackHits(player, monsters, obstacles, now, particleSystem, weapon, damageMultiplier, knockbackMultiplier, hitstop) {
+function resolveAttackHits(player, monsters, obstacles, now, particleSystem, weapon, damageMultiplier, knockbackMultiplier, hitstop, onMeleeHit = null) {
   const attackerPos = player.position
   const ambush = isAmbushActive(now, player.exitedAt, AMBUSH_WINDOW)
   let ambushHit = false
@@ -215,6 +214,7 @@ function resolveAttackHits(player, monsters, obstacles, now, particleSystem, wea
     const damage = computeDamage(weapon.damage * damageMultiplier, { ambush })
     damageMonster(monster, damage, { fromPos: attackerPos, knockback: weapon.knockback * knockbackMultiplier, obstacles, particleSystem, cause: 'sword', ambush, hitstop })
     hitAny = true
+    if (onMeleeHit) onMeleeHit(weapon.id, targetPos, attackerPos)
     if (ambush) ambushHit = true
   }
 

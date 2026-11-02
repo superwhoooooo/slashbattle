@@ -43,7 +43,7 @@ export function updateShockwaves(pool, dt) {
     const t = Math.min(slot.elapsed / DURATION, 1)
     const eased = 1 - (1 - t) * (1 - t)
     slot.mesh.scale.setScalar(Math.max(slot.radius * eased, 0.01))
-    slot.mesh.material.opacity = 0.85 * (1 - t)
+    slot.mesh.material.opacity = 0.28 * (1 - t)
     if (t >= 1) {
       slot.elapsed = null
       slot.mesh.visible = false

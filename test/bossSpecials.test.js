@@ -55,7 +55,7 @@ function engage(boss, name, timer = 0.2) {
 describe('boss specials', () => {
   it('gives every boss timers for exactly its own specials', () => {
     const boss = fakeBoss('boss_zipzilla')
-    expect(Object.keys(boss.userData.specialTimers).sort()).toEqual(['blink', 'charge'])
+    expect(Object.keys(boss.userData.specialTimers).sort()).toEqual(['barrage', 'blink', 'charge', 'summon'])
   })
 
   it('slam: winds up (showing its ring), then fires once with the right radius and damage', () => {
@@ -115,7 +115,7 @@ describe('boss specials', () => {
     expect(summon).toMatchObject({ count: BOSS_SPECIALS.summon.count, maxMinions: BOSS_SPECIALS.summon.maxMinions })
   })
 
-  it('summon: first call comes early in the fight, then at most one a minute', () => {
+  it('summon: first call comes early in the fight, then one every ~22s', () => {
     const boss = fakeBoss('boss_wobble', 0, 0)
     const player = fakePlayer(5, 0)
     boss.userData.state = 'chase'
@@ -123,7 +123,7 @@ describe('boss specials', () => {
     const summons = run(boss, player, 130).filter((e) => e.type === 'summon')
     expect(summons.length).toBeGreaterThanOrEqual(2)
     expect(summons[0].at).toBeLessThan(15)
-    for (let i = 1; i < summons.length; i++) expect(summons[i].at - summons[i - 1].at).toBeGreaterThanOrEqual(59)
+    for (let i = 1; i < summons.length; i++) expect(summons[i].at - summons[i - 1].at).toBeGreaterThanOrEqual(BOSS_SPECIALS.summon.interval - 1)
   })
 
   it('spin: whirls for its duration, ticking damage at the tick interval', () => {

@@ -47,7 +47,7 @@ function retire(slot) {
 // Advances every bullet, damaging whatever it touches (and blasting the
 // surroundings for an exploding one). Returns whether anything was hit this
 // frame, for the caller's hit shake/sound.
-export function updateBullets(pool, dt, { monsters, obstacles, particleSystem, hitstop, arenaRadius }) {
+export function updateBullets(pool, dt, { monsters, obstacles, particleSystem, hitstop, arenaRadius, onExplode = null, onTrail = null, onHit = null }) {
   let hitAny = false
   const targets = []
   for (const mesh of monsters) {
@@ -63,9 +63,12 @@ export function updateBullets(pool, dt, { monsters, obstacles, particleSystem, h
     for (const { mesh } of hits) {
       hitAny = true
       damageMonster(mesh, bullet.damage, { fromPos: from, knockback: bullet.knockback, obstacles, particleSystem, cause: bullet.cause, ambush: bullet.ambush, hitstop })
+      if (onHit) onHit(bullet, mesh)
     }
+    if (alive && onTrail) onTrail(bullet)
     if (hits.length > 0 && bullet.explode > 0) {
       burst(particleSystem, { x: bullet.x, y: BULLET_HEIGHT, z: bullet.z }, bullet.color, 30, 4)
+      if (onExplode) onExplode(bullet.x, bullet.z, bullet.explode, bullet.color)
       for (const target of targets) {
         if (target.mesh.userData.dying || hits.some((h) => h.id === target.id)) continue
         if (Math.hypot(target.x - bullet.x, target.z - bullet.z) > bullet.explode + target.radius) continue

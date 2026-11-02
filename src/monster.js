@@ -319,6 +319,30 @@ export function updateMonster(monster, player, obstacles, dt, now) {
   if (ai.dying) return { hitPlayer: false, events: [] }
 
   const stats = MONSTER_TYPES[ai.type]
+
+  // Confused (caught in a Warp Field): stumbles about at random, spinning,
+  // too dizzy to chase or attack. Bosses shrug it off.
+  if (!ai.isBoss && now < (ai.confusedUntil ?? -Infinity)) {
+    ai.confuseTimer = (ai.confuseTimer ?? 0) - dt
+    if (ai.confuseTimer <= 0 || !ai.confuseHeading) {
+      ai.confuseTimer = 0.35 + Math.random() * 0.35
+      ai.confuseHeading = Math.random() * Math.PI * 2
+    }
+    const speed = stats.speed * ai.speedScale
+    steerToward(
+      monster,
+      { x: monster.position.x + Math.sin(ai.confuseHeading) * 4, z: monster.position.z + Math.cos(ai.confuseHeading) * 4 },
+      speed * 0.9,
+      dt,
+      obstacles,
+    )
+    monster.rotation.y += dt * 11
+    ai.speed = speed * 0.5
+    ai.windUpElapsed = null
+    if (ai.indicatorElapsed === null) showIndicator(monster, 'search')
+    return { hitPlayer: false, events: [] }
+  }
+
   const monsterPos = { x: monster.position.x, z: monster.position.z }
   const distanceToPlayer = Math.hypot(
     player.position.x - monsterPos.x,

@@ -6,6 +6,9 @@ import {
   chestCost,
   createInventory,
   grantItem,
+  needsSwap,
+  swapItem,
+  swappableIds,
   rollChestLoot,
   selectWeaponSlot,
   selectedWeaponId,
@@ -28,7 +31,7 @@ describe('catalogs', () => {
     expect(Object.keys(WEAPONS).length).toBeGreaterThan(HOTBAR_SLOTS)
     expect(Object.keys(ABILITIES).length).toBeGreaterThan(ABILITY_SLOTS)
     expect(Object.keys(PETS).length).toBeGreaterThan(MAX_PETS)
-    expect(Object.keys(PETS)).toHaveLength(22)
+    expect(Object.keys(PETS)).toHaveLength(27)
   })
 
   it('makes the staff a ranged starter whose orbs are magic, and the sword a chest find', () => {
@@ -130,21 +133,41 @@ describe('chest loot', () => {
     let inv = createInventory()
     const rng = createSeededRng(7)
     const seen = new Set()
-    for (let i = 0; i < 100; i++) {
+    for (let i = 0; i < 200; i++) {
       const loot = rollChestLoot(inv, rng)
       if (!loot) break
-      const key = `${loot.kind}:${loot.id}`
-      expect(seen.has(key)).toBe(false)
-      seen.add(key)
-      inv = grantItem(inv, loot)
+      // Never something currently owned (a swapped-out item may come back).
+      const owned = { weapon: inv.weapons, ability: inv.abilities, pet: inv.pets, powerup: inv.powerups }[loot.kind]
+      expect(owned).not.toContain(loot.id)
+      seen.add(`${loot.kind}:${loot.id}`)
+      // A full category swaps the new item in for the first swappable one.
+      inv = needsSwap(inv, loot) ? swapItem(inv, loot, swappableIds(inv, loot.kind)[0]) : grantItem(inv, loot)
     }
-    // 4 other hotbar slots + 5 ability slots + 5 pet slots + every power-up (they take no slot to own)
-    expect(seen.size).toBe(HOTBAR_SLOTS - 1 + ABILITY_SLOTS + MAX_PETS + Object.keys(POWERUPS).length)
     expect(inv.weapons).toHaveLength(HOTBAR_SLOTS)
     expect(inv.abilities).toHaveLength(ABILITY_SLOTS)
     expect(inv.pets).toHaveLength(MAX_PETS)
-    expect(rollChestLoot(inv, rng)).toBeNull()
-    expect(availableLoot(inv)).toEqual([])
+    expect(seen.size).toBeGreaterThan(HOTBAR_SLOTS + ABILITY_SLOTS + MAX_PETS)
+  })
+
+  it('still offers weapons, abilities and pets once their slots are full', () => {
+    const inv = { ...createInventory(), weapons: ['staff', 'sword', 'dagger', 'spear', 'hammer'], abilities: ['blink', 'shockwave', 'heal', 'shield', 'rage'], pets: ['sparky', 'blasty', 'healbit', 'magneto', 'shieldy'] }
+    const loot = availableLoot(inv)
+    for (const kind of ['weapon', 'ability', 'pet']) expect(loot.some((item) => item.kind === kind)).toBe(true)
+    expect(needsSwap(inv, { kind: 'weapon', id: 'axe' })).toBe(true)
+    expect(needsSwap(inv, { kind: 'powerup', id: 'swift' })).toBe(false)
+    expect(needsSwap(createInventory(), { kind: 'weapon', id: 'axe' })).toBe(false)
+  })
+
+  it('swaps an owned item for the new one in the same slot, never the staff', () => {
+    const inv = { ...createInventory(), weapons: ['staff', 'sword', 'dagger', 'spear', 'hammer'], abilities: ['blink', 'shockwave', 'heal', 'shield', 'rage'], pets: ['sparky', 'blasty', 'healbit', 'magneto', 'shieldy'] }
+    expect(swappableIds(inv, 'weapon')).not.toContain('staff')
+    expect(swapItem(inv, { kind: 'weapon', id: 'axe' }, 'staff')).toBe(inv)
+    const w = swapItem(inv, { kind: 'weapon', id: 'axe' }, 'dagger')
+    expect(w.weapons).toEqual(['staff', 'sword', 'axe', 'spear', 'hammer'])
+    expect(w.selected).toBe(2)
+    expect(swapItem(inv, { kind: 'ability', id: 'meteor' }, 'heal').abilities).toEqual(['blink', 'shockwave', 'meteor', 'shield', 'rage'])
+    expect(swapItem(inv, { kind: 'pet', id: 'pandy' }, 'sparky').pets[0]).toBe('pandy')
+    expect(swapItem(inv, { kind: 'pet', id: 'pandy' }, 'nope')).toBe(inv)
   })
 
   it('fills the same slots with different loadouts for different seeds', () => {

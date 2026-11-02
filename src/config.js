@@ -545,10 +545,10 @@ export const RUMBLE_STRONG_DURATION = 180
 export const PARTICLE_POOL_SIZE = 300
 export const PARTICLE_GRAVITY = 9
 export const PARTICLE_DRAG = 0.96
-export const PARTICLE_BASE_SIZE = 46 // sprite point size in pixels at 1 world unit from the camera
+export const PARTICLE_BASE_SIZE = 22 // sprite point size in pixels at 1 world unit from the camera
 export const PARTICLE_LIFE_MIN = 0.3 // seconds
 export const PARTICLE_LIFE_MAX = 0.7 // seconds
-export const PARTICLE_BRIGHTNESS = 0.65 // dims each spark's tint before it's additively blended
+export const PARTICLE_BRIGHTNESS = 0.25 // dims each spark's tint before it's additively blended
 
 // Pooled tumbling shard instances (src/particles.js): a fixed-size
 // InstancedMesh pool of small low-poly tetrahedra, for the big death

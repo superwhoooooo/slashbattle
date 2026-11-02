@@ -10,6 +10,10 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { createArena, createEnvironmentMap, updateArena } from './arena.js'
 import { levelAt, levelIndexAfterBosses } from './logic/levels.js'
 import { createLoadoutPanel } from './loadout.js'
+import { createSwapPanel } from './swap.js'
+import { createWarp } from './warp.js'
+import { playBulletTrail, playHitFx, playWeaponFx } from './weaponFx.js'
+import { clampTargetToRange, inCircle } from './logic/warp.js'
 import { createSandboxPanel } from './sandbox.js'
 import { createTouchControls, isTouchDevice } from './touch.js'
 import { sandboxToggleItem, sandboxTopUp } from './logic/sandbox.js'
@@ -168,6 +172,9 @@ import {
   chestCost,
   createInventory,
   grantItem,
+  needsSwap,
+  swapItem,
+  swappableIds,
   toggleEquipPowerup,
   rollChestLoot,
   selectWeaponSlot,
@@ -303,6 +310,10 @@ const bloomPass = new UnrealBloomPass(
   BLOOM_THRESHOLD,
 )
 composer.addPass(bloomPass)
+// The screen-warp pass (Warp Field, Gravity Well, ripples from slams and
+// heavy weapons) bends the finished frame, so it goes before OutputPass.
+const warp = createWarp(camera)
+composer.addPass(warp.pass)
 composer.addPass(new OutputPass())
 
 const input = new Input()
@@ -588,6 +599,168 @@ function elapsedDamageMultiplier(player, now) {
   return now < player.rageUntil ? RAGE_DAMAGE_MULTIPLIER : 1
 }
 
+// What the weapon effects draw with (see src/weaponFx.js).
+function weaponFxContext() {
+  return {
+    particleSystem,
+    shockwavePool,
+    warp,
+    shake: (amount) => triggerShake(game.shake, SHAKE_HIT_MAGNITUDE * amount, SHAKE_HIT_DURATION),
+  }
+}
+
+// Warp Fields and falling meteors live here (per session, cleared on restart).
+const warpFields = []
+const meteors = []
+
+// The ground point an ability aims at: under the mouse (or the touch aim
+// stick), else straight ahead of the player, held within `range`.
+function abilityTargetPoint(player, range) {
+  let target
+  if (input.mouse.moved && !input.touchMode) {
+    aimNdc.set((input.mouse.x / window.innerWidth) * 2 - 1, -(input.mouse.y / window.innerHeight) * 2 + 1)
+    aimRaycaster.setFromCamera(aimNdc, camera)
+    if (aimRaycaster.ray.intersectPlane(aimPlane, aimPoint)) target = { x: aimPoint.x, z: aimPoint.z }
+  }
+  if (!target) {
+    const angle = touchAimAngle(player) ?? player.facing
+    target = { x: player.position.x + Math.sin(angle) * 8, z: player.position.z + Math.cos(angle) * 8 }
+  }
+  const held = clampTargetToRange(player.position, target, range)
+  return clampToPlatform(held, ARENA_RADIUS - 1)
+}
+
+// Sparks strung between two ground points (a streak, a drain beam).
+function streak(a, b, color, steps, y = 0.9) {
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps
+    burst(particleSystem, { x: a.x + (b.x - a.x) * t, y, z: a.z + (b.z - a.z) * t }, color, 2, 1.2)
+  }
+}
+
+// A tall column of sparks rising from the ground (heals, lightning).
+function column(x, z, color, height, steps = 12) {
+  for (let i = 0; i <= steps; i++) burst(particleSystem, { x, y: (height * i) / steps, z }, color, 3, 1.8)
+}
+
+// A ring of sparks around a point.
+function sparkRing(x, z, radius, color, steps = 16) {
+  for (let i = 0; i < steps; i++) {
+    const a = (i / steps) * Math.PI * 2
+    burst(particleSystem, { x: x + Math.sin(a) * radius, y: 0.7, z: z + Math.cos(a) * radius }, color, 2, 2)
+  }
+}
+
+// Sustained auras while a timed buff is up: orbiting bubble sparks (shield),
+// rising flames (rage), crackling bolts (frenzy), speed streaks (sprint).
+function updateBuffAuras(player, now, dt) {
+  const { x, z } = player.position
+  if (now < player.shieldUntil) {
+    const a = now * 6
+    for (const k of [0, Math.PI]) burst(particleSystem, { x: x + Math.sin(a + k) * 1.3, y: 0.9 + Math.sin(a * 0.7) * 0.4, z: z + Math.cos(a + k) * 1.3 }, 0x66f0ff, 1, 0.4)
+  }
+  if (now < player.rageUntil) {
+    burst(particleSystem, { x: x + (Math.random() - 0.5) * 1.2, y: 0.4, z: z + (Math.random() - 0.5) * 1.2 }, Math.random() < 0.5 ? 0xff4a3a : 0xffb454, 2, 1.2, 2.5)
+  }
+  if (now < player.frenzyUntil) {
+    const a = Math.random() * Math.PI * 2
+    burst(particleSystem, { x: x + Math.sin(a) * 1.1, y: 0.4 + Math.random() * 1.3, z: z + Math.cos(a) * 1.1 }, 0xfff27a, 2, 2.5)
+  }
+  if (now < player.sprintUntil && player.speed > 0.5) {
+    burst(particleSystem, { x: x - Math.sin(player.facing) * 0.8, y: 0.3 + Math.random() * 0.4, z: z - Math.cos(player.facing) * 0.8 }, 0x9be37a, 3, 0.8)
+  }
+}
+
+// Opens a Warp Field: the screen visibly twists over the area, and while it
+// lasts it drags monsters toward its centre, confuses them (they stumble
+// about instead of fighting) and hurts them in ticks.
+function openWarpField(at) {
+  const def = ABILITIES.vacuum
+  warpFields.push({ x: at.x, z: at.z, radius: def.radius, life: def.duration, age: 0, tick: 0.3 })
+  warp.add('swirl', at.x, at.z, def.radius * 1.15, def.duration)
+  spawnShockwave(shockwavePool, at.x, at.z, def.radius, 0xa070ff)
+}
+
+function updateWarpFields(game, dt, now) {
+  for (let i = warpFields.length - 1; i >= 0; i--) {
+    const field = warpFields[i]
+    field.age += dt
+    if (field.age >= field.life) {
+      warpFields.splice(i, 1)
+      continue
+    }
+    field.tick -= dt
+    const ticking = field.tick <= 0
+    if (ticking) field.tick = 0.5
+    // A ring of sparks spiralling inward sells the pull.
+    const a = field.age * 5
+    for (const k of [0, 2.1, 4.2]) {
+      burst(particleSystem, { x: field.x + Math.sin(a + k) * field.radius * 0.9, y: 0.6, z: field.z + Math.cos(a + k) * field.radius * 0.9 }, 0xc9a8ff, 1, 1.5)
+    }
+    for (const mesh of game.monsters) {
+      if (mesh.userData.dying || mesh.userData.spawning || mesh.userData.falling) continue
+      if (!inCircle(mesh.position.x, mesh.position.z, field.x, field.z, field.radius + (mesh.userData.reachBonus ?? 0))) continue
+      if (!mesh.userData.isBoss) mesh.userData.confusedUntil = now + 0.6
+      const dx = field.x - mesh.position.x
+      const dz = field.z - mesh.position.z
+      const d = Math.hypot(dx, dz)
+      const pull = Math.min(d, (mesh.userData.isBoss ? 0.8 : 2.4) * dt)
+      if (d > 1e-4) {
+        mesh.position.x += (dx / d) * pull
+        mesh.position.z += (dz / d) * pull
+      }
+      if (ticking) {
+        damageMonster(mesh, ABILITIES.vacuum.damage, { fromPos: { x: field.x, z: field.z }, knockback: 0, obstacles: game.obstacles, particleSystem, cause: 'shockwave', hitstop: game.hitstop })
+      }
+    }
+  }
+}
+
+// A meteor streaks down from the sky onto `at`, then blasts.
+function dropMeteor(at) {
+  const group = new THREE.Group()
+  const core = new THREE.Mesh(new THREE.SphereGeometry(0.7, 14, 10), new THREE.MeshBasicMaterial({ color: 0xffd08a }))
+  const glow = new THREE.Mesh(new THREE.SphereGeometry(1.4, 14, 10), new THREE.MeshBasicMaterial({ color: 0xff6a2a, transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false }))
+  group.add(core, glow)
+  scene.add(group)
+  meteors.push({ group, x: at.x, z: at.z, age: 0, fall: 0.7 })
+  spawnShockwave(shockwavePool, at.x, at.z, ABILITIES.meteor.radius, 0xff7a2e) // the landing marker
+}
+
+function disposeMeteor(meteor) {
+  scene.remove(meteor.group)
+  meteor.group.traverse((c) => {
+    if (c.geometry) c.geometry.dispose()
+    if (c.material) c.material.dispose()
+  })
+}
+
+function updateMeteors(game, dt) {
+  const def = ABILITIES.meteor
+  for (let i = meteors.length - 1; i >= 0; i--) {
+    const m = meteors[i]
+    m.age += dt
+    const t = Math.min(1, m.age / m.fall)
+    m.group.position.set(m.x - (1 - t) * 8, 0.7 + (1 - t) * (1 - t) * 30, m.z - (1 - t) * 4)
+    burst(particleSystem, m.group.position, 0xff8a3a, 2, 1.5)
+    if (t < 1) continue
+    disposeMeteor(m)
+    meteors.splice(i, 1)
+    const at = { x: m.x, z: m.z }
+    spawnShockwave(shockwavePool, at.x, at.z, def.radius, 0xffb454)
+    warp.add('ripple', at.x, at.z, def.radius * 1.6, 0.6)
+    burst(particleSystem, { x: at.x, y: 1, z: at.z }, 0xff7a2e, 60, 6, 1)
+    shardBurst(particleSystem, { x: at.x, y: 0.6, z: at.z }, 0xffb454, 18, 4)
+    triggerShake(game.shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
+    sfx.play('bossSlam', at)
+    for (const mesh of game.monsters) {
+      if (mesh.userData.dying || mesh.userData.spawning || mesh.userData.falling) continue
+      if (Math.hypot(mesh.position.x - at.x, mesh.position.z - at.z) > def.radius + (mesh.userData.reachBonus ?? 0)) continue
+      damageMonster(mesh, def.damage, { fromPos: at, knockback: 2.5, obstacles: game.obstacles, particleSystem, cause: 'shockwave', hitstop: game.hitstop })
+    }
+  }
+}
+
 // Fires the ability in `slot` if it's ready, applying its effect.
 function activateAbility(game, slot, now) {
   const used = useAbility(game.inventory, slot, now)
@@ -607,13 +780,17 @@ function activateAbility(game, slot, now) {
       ARENA_RADIUS - 1,
     )
     burst(particleSystem, center, 0xe9a3ff, 24, 3)
+    warp.add('swirl', player.position.x, player.position.z, 2.8, 0.35) // the old spot collapses
+    streak(player.position, target, 0xe9a3ff, 12)
     player.position = target
     player.mesh.position.x = target.x
     player.mesh.position.z = target.z
     player.invulnerableUntil = Math.max(player.invulnerableUntil, now + BLINK_IFRAMES)
     burst(particleSystem, { x: target.x, y: 0.8, z: target.z }, 0xe9a3ff, 24, 3)
+    warp.add('ripple', target.x, target.z, 3.5, 0.45) // the new spot pops
   } else if (used.abilityId === 'shockwave') {
     spawnShockwave(shockwavePool, player.position.x, player.position.z, SHOCKWAVE_RADIUS, SHOCKWAVE_COLOR)
+    warp.add('ripple', player.position.x, player.position.z, SHOCKWAVE_RADIUS * 1.2, 0.6)
     burst(particleSystem, center, SHOCKWAVE_COLOR, 36, 5)
     triggerShake(game.shake, SHAKE_HIT_MAGNITUDE, SHAKE_HIT_DURATION)
     for (const mesh of game.monsters) {
@@ -632,12 +809,22 @@ function activateAbility(game, slot, now) {
   } else if (used.abilityId === 'heal') {
     player.hp = Math.min(PLAYER_MAX_HP, player.hp + HEAL_PULSE_AMOUNT)
     burst(particleSystem, center, 0x7dffb0, 30, 2.5, 1)
+    column(player.position.x, player.position.z, 0x7dffb0, 4.5)
+    sparkRing(player.position.x, player.position.z, 1.6, 0xbfffd8)
+    spawnShockwave(shockwavePool, player.position.x, player.position.z, 3, 0x7dffb0)
   } else if (used.abilityId === 'shield') {
     player.shieldUntil = now + ABILITIES.shield.duration
     burst(particleSystem, center, 0x66f0ff, 24, 2.5)
+    sparkRing(player.position.x, player.position.z, 1.4, 0x66f0ff, 20)
+    spawnShockwave(shockwavePool, player.position.x, player.position.z, 2.5, 0x66f0ff)
+    warp.add('ripple', player.position.x, player.position.z, 2.5, 0.45)
   } else if (used.abilityId === 'rage') {
     player.rageUntil = now + ABILITIES.rage.duration
     burst(particleSystem, center, 0xff4a3a, 30, 3.5, 0.5)
+    column(player.position.x, player.position.z, 0xff4a3a, 3.5, 8)
+    spawnShockwave(shockwavePool, player.position.x, player.position.z, 4, 0xff4a3a)
+    warp.add('ripple', player.position.x, player.position.z, 4.5, 0.55)
+    triggerShake(game.shake, SHAKE_HIT_MAGNITUDE, SHAKE_HIT_DURATION)
   } else if (used.abilityId === 'lunge') {
     const start = { x: player.position.x, z: player.position.z }
     const dash = { x: Math.sin(player.facing) * LUNGE_DISTANCE, z: Math.cos(player.facing) * LUNGE_DISTANCE }
@@ -656,6 +843,9 @@ function activateAbility(game, slot, now) {
     for (const t of [0, 0.25, 0.5, 0.75, 1]) {
       burst(particleSystem, { x: start.x + segX * t, y: 0.8, z: start.z + segZ * t }, LUNGE_COLOR, 10, 2.5)
     }
+    warp.add('ripple', target.x, target.z, 3.2, 0.4)
+    streak(start, target, 0xffffff, 14)
+    triggerShake(game.shake, SHAKE_HIT_MAGNITUDE, SHAKE_HIT_DURATION)
     player.position = target
     player.mesh.position.x = target.x
     player.mesh.position.z = target.z
@@ -668,13 +858,17 @@ function activateAbility(game, slot, now) {
       .sort((a, b) => a.distance - b.distance)
       .slice(0, THUNDER_TARGETS)
     for (const { m } of struck) {
-      for (const y of [0.4, 1.4, 2.4, 3.4]) burst(particleSystem, { x: m.position.x, y, z: m.position.z }, THUNDER_COLOR, 6, 2)
+      column(m.position.x, m.position.z, THUNDER_COLOR, 16, 20)
+      column(m.position.x + 0.3, m.position.z - 0.2, 0xffffff, 16, 10)
+      spawnShockwave(shockwavePool, m.position.x, m.position.z, 2.5, THUNDER_COLOR)
+      warp.add('ripple', m.position.x, m.position.z, 2.5, 0.35)
       damageMonster(m, THUNDER_DAMAGE, { fromPos: player.position, knockback: 0.5, obstacles: game.obstacles, particleSystem, cause: 'shockwave', hitstop: game.hitstop })
     }
     if (struck.length > 0) triggerShake(game.shake, SHAKE_HIT_MAGNITUDE, SHAKE_HIT_DURATION)
     burst(particleSystem, center, THUNDER_COLOR, 16, 3)
   } else if (used.abilityId === 'gravity') {
     spawnShockwave(shockwavePool, player.position.x, player.position.z, GRAVITY_RADIUS, GRAVITY_COLOR)
+    warp.add('swirl', player.position.x, player.position.z, GRAVITY_RADIUS * 0.9, 1.1)
     burst(particleSystem, center, GRAVITY_COLOR, 30, 4)
     for (const mesh of game.monsters) {
       if (mesh.userData.dying || mesh.userData.spawning || mesh.userData.falling) continue
@@ -700,6 +894,9 @@ function activateAbility(game, slot, now) {
     }
     fireBullets(bulletPool, makeBullets(ring, { x: player.position.x, z: player.position.z, aimAngle: player.facing, damageMultiplier: elapsedDamageMultiplier(player, now) }))
     burst(particleSystem, center, 0xff9a3a, 20, 3)
+    spawnShockwave(shockwavePool, player.position.x, player.position.z, 3.5, 0xff9a3a)
+    sparkRing(player.position.x, player.position.z, 1.2, 0xff9a3a, 24)
+    warp.add('ripple', player.position.x, player.position.z, 3.5, 0.4)
   } else if (used.abilityId === 'drain') {
     spawnShockwave(shockwavePool, player.position.x, player.position.z, DRAIN_RADIUS, DRAIN_COLOR)
     let drained = 0
@@ -709,21 +906,63 @@ function activateAbility(game, slot, now) {
       if (distance > DRAIN_RADIUS + (mesh.userData.reachBonus ?? 0)) continue
       damageMonster(mesh, DRAIN_DAMAGE, { fromPos: player.position, knockback: 0.4, obstacles: game.obstacles, particleSystem, cause: 'shockwave', hitstop: game.hitstop })
       burst(particleSystem, { x: mesh.position.x, y: 0.8, z: mesh.position.z }, DRAIN_COLOR, 8, 2)
+      streak(mesh.position, player.position, DRAIN_COLOR, 10, 1.2) // life streams back to you
       drained += 1
     }
     player.hp = Math.min(PLAYER_MAX_HP, player.hp + drained * DRAIN_HEAL_PER_HIT)
     burst(particleSystem, center, DRAIN_COLOR, 20, 2.5, 1)
+    warp.add('swirl', player.position.x, player.position.z, DRAIN_RADIUS * 0.8, 0.9)
   } else if (used.abilityId === 'frenzy') {
     player.frenzyUntil = now + ABILITIES.frenzy.duration
     burst(particleSystem, center, 0xfff27a, 30, 3.5, 0.5)
+    sparkRing(player.position.x, player.position.z, 1.5, 0xfff27a, 20)
+    spawnShockwave(shockwavePool, player.position.x, player.position.z, 3.5, 0xfff27a)
+    warp.add('ripple', player.position.x, player.position.z, 3.5, 0.45)
   } else if (used.abilityId === 'sprint') {
     player.sprintUntil = now + ABILITIES.sprint.duration
     burst(particleSystem, center, 0x9be37a, 24, 3)
+    streak(player.position, { x: player.position.x - Math.sin(player.facing) * 4, z: player.position.z - Math.cos(player.facing) * 4 }, 0x9be37a, 10)
+    warp.add('ripple', player.position.x, player.position.z, 3, 0.4)
+  } else if (used.abilityId === 'meteor') {
+    dropMeteor(abilityTargetPoint(player, ABILITIES.meteor.range))
+  } else if (used.abilityId === 'ghost') {
+    player.invulnerableUntil = Math.max(player.invulnerableUntil, now + ABILITIES.ghost.duration)
+    player.ghostUntil = now + ABILITIES.ghost.duration
+    warp.add('ripple', player.position.x, player.position.z, 3, 0.5)
+    burst(particleSystem, center, 0xdcd6ff, 30, 3, 0.5)
+  } else if (used.abilityId === 'vacuum') {
+    attractAllCrystals(crystalSystem)
+    openWarpField(abilityTargetPoint(player, ABILITIES.vacuum.range))
+  } else if (used.abilityId === 'quake') {
+    const def = ABILITIES.quake
+    warp.add('ripple', player.position.x, player.position.z, def.radius, 0.9)
+    for (const r of [def.radius * 0.4, def.radius * 0.7, def.radius]) spawnShockwave(shockwavePool, player.position.x, player.position.z, r, 0xb08a5a)
+    burst(particleSystem, center, 0xb08a5a, 40, 5)
+    triggerShake(game.shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
+    for (const mesh of game.monsters) {
+      if (mesh.userData.dying || mesh.userData.spawning || mesh.userData.falling) continue
+      const distance = Math.hypot(mesh.position.x - player.position.x, mesh.position.z - player.position.z)
+      if (distance > def.radius + (mesh.userData.reachBonus ?? 0)) continue
+      damageMonster(mesh, def.damage, { fromPos: player.position, knockback: 1.8, obstacles: game.obstacles, particleSystem, cause: 'shockwave', hitstop: game.hitstop })
+    }
+  } else if (used.abilityId === 'fanblast') {
+    const fan = {
+      pellets: 7,
+      spread: 0.9,
+      damage: ABILITIES.fanblast.damage,
+      knockback: 1.2,
+      bullet: { speed: 24, life: 0.6, radius: 0.26, pierce: 1, explode: 0, color: 0xff5fa8 },
+    }
+    fireBullets(bulletPool, makeBullets(fan, { x: player.position.x, z: player.position.z, aimAngle: player.facing, damageMultiplier: elapsedDamageMultiplier(player, now) }))
+    burst(particleSystem, center, 0xff5fa8, 20, 3)
   } else if (used.abilityId === 'refresh') {
     // Every other ability comes back right away; Second Wind itself stays on cooldown.
     const { refresh } = game.inventory.abilityReadyAt
     game.inventory = { ...game.inventory, abilityReadyAt: { refresh } }
     burst(particleSystem, center, 0x7dffb0, 30, 3, 1)
+    ;[[2, 0xff5fa8], [3.5, 0xffe14a], [5, 0x66f0ff]].forEach(([r, c]) => spawnShockwave(shockwavePool, player.position.x, player.position.z, r, c))
+    warp.add('swirl', player.position.x, player.position.z, 4, 0.7)
+    column(player.position.x, player.position.z, 0xffffff, 5)
   }
 }
 
@@ -752,25 +991,48 @@ function openChestNow(game, chest, now) {
     return
   }
 
-  game.inventory = grantItem(game.inventory, loot)
+  // Slots full: ask which of your items to swap out (the game pauses).
+  if (needsSwap(game.inventory, loot)) {
+    pendingSwapLoot = loot
+    swapPanel.show(loot, swappableIds(game.inventory, loot.kind))
+    return
+  }
+  receiveLoot(game, loot)
+}
+
+let pendingSwapLoot = null
+
+// Hands over a rolled item (already swapped into the inventory if the slots
+// were full) and sets up its in-world side: the held weapon model, or the pet.
+function receiveLoot(game, loot, swappedOut = null) {
+  if (swappedOut) game.inventory = swapItem(game.inventory, loot, swappedOut)
+  else game.inventory = grantItem(game.inventory, loot)
+  const verb = swappedOut ? 'SWAPPED IN' : 'NEW'
   if (loot.kind === 'weapon') {
     setPlayerWeapon(game.player.mesh, loot.id)
     game.attackState.swingElapsed = null
     clearSwingTrail(swingTrail)
     const weapon = WEAPONS[loot.id]
-    showLootToast(hud, { title: `NEW WEAPON  [${game.inventory.weapons.length}]`, name: `${weapon.icon} ${weapon.name}`, blurb: weapon.blurb })
+    showLootToast(hud, { title: `${verb} WEAPON  [${game.inventory.weapons.indexOf(loot.id) + 1}]`, name: `${weapon.icon} ${weapon.name}`, blurb: weapon.blurb })
   } else if (loot.kind === 'ability') {
     const ability = ABILITIES[loot.id]
     const key = ABILITY_KEYS[game.inventory.abilities.indexOf(loot.id)].replace('Key', '')
-    showLootToast(hud, { title: `NEW ABILITY  [${key}]`, name: `${ability.icon} ${ability.name}`, blurb: ability.blurb })
+    showLootToast(hud, { title: `${verb} ABILITY  [${key}]`, name: `${ability.icon} ${ability.name}`, blurb: ability.blurb })
   } else if (loot.kind === 'powerup') {
     const perk = POWERUPS[loot.id]
     const on = game.inventory.equipped.includes(loot.id)
     showLootToast(hud, { title: on ? 'NEW POWER-UP  [equipped, Tab to change]' : 'NEW POWER-UP  [Tab to equip]', name: `${perk.icon} ${perk.name}`, blurb: perk.blurb })
   } else {
+    if (swappedOut) {
+      const index = game.pets.findIndex((p) => p.def.id === swappedOut)
+      if (index !== -1) {
+        const [gone] = game.pets.splice(index, 1)
+        disposePets([gone], scene)
+      }
+    }
     game.pets.push(createPet(loot.id, scene, game.player))
     const pet = PETS[loot.id]
-    showLootToast(hud, { title: 'NEW PET', name: `${pet.icon} ${pet.name}`, blurb: pet.blurb })
+    showLootToast(hud, { title: `${verb} PET`, name: `${pet.icon} ${pet.name}`, blurb: pet.blurb })
   }
 }
 
@@ -926,6 +1188,7 @@ function applyBossEvents(game, bossMesh, events, now) {
   for (const event of events) {
     if (event.type === 'slam') {
       spawnShockwave(shockwavePool, event.x, event.z, event.radius, 0xff3355)
+      warp.add('ripple', event.x, event.z, event.radius * 1.1, 0.6)
       burst(particleSystem, { x: event.x, y: 0.3, z: event.z }, 0xff9a5a, 36, 4.5)
       sfx.play('bossSlam', { x: event.x, z: event.z })
       if (playerDistance(event.x, event.z) <= event.radius && player.damagePlayer(event.damage, now)) hurtPlayer = true
@@ -1189,9 +1452,28 @@ const loadoutPanel = createLoadoutPanel({
   },
 })
 const loadoutOpen = () => !sandbox && loadoutPanel.isOpen()
+const swapPanel = createSwapPanel({
+  onSwap(outId) {
+    const loot = pendingSwapLoot
+    pendingSwapLoot = null
+    swapPanel.hide()
+    if (loot) receiveLoot(game, loot, outId)
+  },
+  onKeep() {
+    pendingSwapLoot = null
+    swapPanel.hide()
+    showLootToast(hud, { title: 'KEPT YOUR LOADOUT', name: 'Swap declined', blurb: 'The chest is empty now' })
+  },
+})
+window.addEventListener('keydown', (event) => {
+  if (event.code === 'Escape' && swapPanel.isOpen()) {
+    pendingSwapLoot = null
+    swapPanel.hide()
+  }
+})
 function toggleMenu() {
   if (sandbox) return sandboxPanel.toggle()
-  if (!started || game.player.hp <= 0) return
+  if (!started || game.player.hp <= 0 || swapPanel.isOpen()) return
   loadoutPanel.refresh(game.inventory)
   loadoutPanel.toggle()
 }
@@ -1247,6 +1529,7 @@ function animate(timestamp) {
   // Clamped so a dropped/backgrounded-tab frame doesn't feed a huge dt
   // into movement/physics and teleport everything forward.
   const deltaSeconds = Math.min(timer.getDelta(), MAX_DELTA_SECONDS)
+  warp.update(deltaSeconds, timer.getElapsed())
   const elapsedSeconds = timer.getElapsed()
 
   const gameState = evaluateGameState({ playerHp: game.player.hp })
@@ -1282,6 +1565,9 @@ function animate(timestamp) {
       resetCrystals(crystalSystem)
       setChestPrompt(hud, null)
       resetShockwaves(shockwavePool)
+      warp.reset()
+      warpFields.length = 0
+      meteors.splice(0).forEach(disposeMeteor)
       pendingSummons.length = 0
       clearSwingTrail(swingTrail)
     }
@@ -1304,7 +1590,7 @@ function animate(timestamp) {
   // is 0 for the frame(s) a freeze covers (or a fraction of deltaSeconds
   // the frame it ends partway through, so no time is lost overall).
   // The Tab power-up menu pauses the world (freeze the frame, still render).
-  if (loadoutOpen()) {
+  if (loadoutOpen() || swapPanel.isOpen()) {
     composer.render()
     input.endFrame()
     return
@@ -1475,9 +1761,16 @@ function animate(timestamp) {
     bulletPool,
     autoAttack: autoShoot,
     hitstop: game.hitstop,
+    onMeleeHit: (id, at, from) => playHitFx(id, at, Math.atan2(at.x - from.x, at.z - from.z), weaponFxContext()),
   })
   if (!hadSwing && attackState.swingElapsed !== null) {
     sfx.play('swing', { x: player.position.x, z: player.position.z })
+    playWeaponFx(selectedWeaponId(game.inventory), player.position, player.facing, {
+      particleSystem,
+      shockwavePool,
+      warp,
+      shake: (amount) => triggerShake(shake, SHAKE_HIT_MAGNITUDE * amount, SHAKE_HIT_DURATION),
+    })
   }
   if (ambushHit) showAmbushBanner(hud)
   if (hitAny) {
@@ -1585,7 +1878,27 @@ function animate(timestamp) {
   updateParticles(particleSystem, gameplayDelta)
   updatePopups(popupPool, gameplayDelta)
   updateShockwaves(shockwavePool, gameplayDelta)
-  if (updateBullets(bulletPool, gameplayDelta, { monsters, obstacles, particleSystem, hitstop: game.hitstop, arenaRadius: ARENA_RADIUS })) {
+  updateWarpFields(game, gameplayDelta, elapsedSeconds)
+  updateMeteors(game, gameplayDelta)
+  updateBuffAuras(player, elapsedSeconds, gameplayDelta)
+  // Ghost Form leaves a trail of pale wisps.
+  if (elapsedSeconds < (player.ghostUntil ?? -Infinity)) {
+    burst(particleSystem, { x: player.position.x, y: 0.5 + Math.random() * 1.2, z: player.position.z }, 0xdcd6ff, 2, 1.2, 0.8)
+  }
+  if (updateBullets(bulletPool, gameplayDelta, {
+    monsters,
+    obstacles,
+    particleSystem,
+    hitstop: game.hitstop,
+    arenaRadius: ARENA_RADIUS,
+    onTrail: (bullet) => playBulletTrail(bullet, weaponFxContext()),
+    onHit: (bullet, mesh) => playHitFx(bullet.weaponId, mesh.position, Math.atan2(bullet.vx, bullet.vz), weaponFxContext()),
+    onExplode: (x, z, radius, color) => {
+      warp.add('ripple', x, z, radius * 1.5, 0.5)
+      spawnShockwave(shockwavePool, x, z, radius, color)
+      shardBurst(particleSystem, { x, y: 0.6, z }, color, 10, 3)
+    },
+  })) {
     sfx.play('hit', { x: player.position.x, z: player.position.z })
     input.rumble(RUMBLE_LIGHT_STRENGTH, RUMBLE_LIGHT_DURATION)
   }

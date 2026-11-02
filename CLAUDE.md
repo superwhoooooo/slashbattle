@@ -451,6 +451,8 @@ body's resting height comes off its bounding box. A run shuffles the seven
 (`shuffleBossOrder`), so all appear before any repeats; later visits have more
 hp (`bossHpScale`).
 
+Every boss has `barrage` (shoots a fan of orbs) and `summon` (calls minions every ~22s, up to 4 alive) on top of its own moves.
+
 Specials (tuned in `BOSS_SPECIALS`): `charge` (dash), `summon` (minions),
 `slam` (ground-pound with a red danger ring during its wind-up), `blink`
 (teleport next to you), `barrage` (a fan of orbs, `src/projectiles.js`) and
@@ -472,6 +474,17 @@ to the boss, the boss materializes, a concierge welcomes it (`introLines`,
 `beginBossFight`. A boss health bar shows during the fight; beating it (or
 knocking it off the edge) pops its minions, scores bonus points, and heals extra.
 
+## Screen warp and weapon/ability effects
+`src/warp.js` is a post-processing pass (before OutputPass) that bends the rendered
+frame around world-space zones: a `swirl` (twist + pinch + chromatic fringe; Warp Field,
+Gravity Well) or a `ripple` (an outward refracting ring; Shockwave, Earthquake, Meteor
+impact, boss slams, exploding bullets, heavy weapons). `logic/warp.js` holds the pure
+envelope math. The Warp Field ability (`vacuum`) opens at the cursor's ground point,
+drags monsters in, confuses them (`confusedUntil` in `monster.js`: they stumble and spin,
+bosses are immune) and damages them in ticks. Meteor Strike is a falling fireball.
+`src/weaponFx.js`'s `playWeaponFx` gives every weapon its own swing effect (whip crack,
+hammer slam, scythe crescent, rail beam, flail whirl...) when a swing starts.
+
 ## Crystals, chests, and loot
 Every kill that finishes its death pop drops crystals (`crystalDrops`: a couple
 of 1s for blobbo, a 2 for zippy, three 2s for grumpus, eight 5s for a boss; a
@@ -489,10 +502,12 @@ fell. Press F within `CHEST_INTERACT_RANGE` to pay and open one; it rolls
 (`rollChestLoot`) a weapon, ability or pet you don't own yet, or -- once every
 slot is full -- a score and heal bonus.
 
-The catalogs are bigger than the slots (17 weapons for a 5-slot hotbar with the
-Wizard Staff fixed in slot 1, 13 abilities for 5 keys, 22 pets for `MAX_PETS` = 5), and a
-chest only rolls items you don't own, so a maxed-out loadout differs run to run.
-Once every slot is full a chest pays out score and a heal ("LOADOUT FULL").
+The catalogs are bigger than the slots (22 weapons for a 5-slot hotbar with the
+Wizard Staff fixed in slot 1, 18 abilities for 5 keys, 27 pets for `MAX_PETS` = 5), and a
+chest only rolls items you don't own. When that category is full the game pauses on
+`src/swap.js`'s panel (`needsSwap`/`swappableIds`/`swapItem` in `logic/inventory.js`):
+click one of your items to swap it out (never the Staff), or Esc / "Keep what I have".
+Only once you own everything does a chest pay out score and a heal ("LOADOUT FULL").
 
 - **Weapons** (`WEAPONS`, the 1-5 hotbar): The player starts with the **Wizard Staff** (`staff`, a firearm-style
   weapon whose magic orbs, cause `magic`, trick "Magic Hour", fly toward the mouse;

@@ -19,6 +19,7 @@ import { createFace3D } from './face3d.js'
 import { createJellyBody } from './jelly.js'
 import { PLAYER_FACE, pickFaceOptions } from './logic/faceOptions.js'
 import { WEAPONS } from './logic/items.js'
+import { applyWeaponPose } from './weaponAnim.js'
 import {
   CONE_HEIGHT_FACTOR,
   CONE_RADIUS_FACTOR,
@@ -90,6 +91,7 @@ const WEAPON_COLORS = {
   dagger: 0xffa94d, spear: 0x7cffb0, hammer: 0xff4fa3, scythe: 0xb48cff,
   katana: 0x4de0ff, axe: 0xff7a45, rapier: 0xf5f07a, flail: 0xff6fe0, chainsaw: 0xffd23f, boomstick: 0x8cff6f,
   staff: 0xb48cff, pistol: 0xffe14a, shotgun: 0xff8ad8, smg: 0x66f0ff, railgun: 0x7cffb0, launcher: 0xff8a3a,
+  whip: 0xff5fa8, nunchucks: 0x5affc4, crossbow: 0xc9ff5a, flamer: 0xff6a2a, blaster: 0xd96bff,
 }
 
 function glowMaterial(color, intensity = 1) {
@@ -136,10 +138,17 @@ function darkPole(length, radius, y) {
 // end for the swing trail -- the same contract the original sword had, so
 // the swing animation (rotation.z) drives any of them.
 function createWeaponMesh(id) {
+  const group = buildWeaponMesh(id)
+  applyWeaponPose(group, id, null)
+  return group
+}
+
+function buildWeaponMesh(id) {
   if (id === 'sword') return createSword()
   const group = new THREE.Group()
   const color = WEAPON_COLORS[id]
   let tipY
+  let customTip = null // weapons with moving parts carry their own tip
 
   if (id === 'dagger') {
     group.add(glowBox(0.045, 0.45, 0.02, color, 0.22))
@@ -185,10 +194,21 @@ function createWeaponMesh(id) {
     group.add(darkPole(0.16, 0.025, -0.08))
     tipY = 1.35
   } else if (id === 'flail') {
+    // A handle with a chain and spiked ball that really swings on its pivot,
+    // trailing behind as the flail whirls.
     group.add(darkPole(0.7, 0.035, 0.3))
-    group.add(glowBox(0.04, 0.5, 0.04, color, 0.85, { glow: false }))
-    group.add(glowBox(0.34, 0.34, 0.34, color, 1.2))
-    tipY = 1.3
+    const pivot = new THREE.Group()
+    pivot.position.y = 0.65
+    pivot.add(glowBox(0.04, 0.5, 0.04, color, 0.27, { glow: false }))
+    pivot.add(glowBox(0.34, 0.34, 0.34, color, 0.62))
+    pivot.add(glowBox(0.2, 0.2, 0.2, color, 0.62, { glow: false, rotationZ: Math.PI / 4 }))
+    customTip = new THREE.Object3D()
+    customTip.position.y = 0.62
+    pivot.add(customTip)
+    group.add(pivot)
+    group.userData.flex = (t) => {
+      pivot.rotation.z = t === null ? 0.5 : 1.0 * Math.sin(Math.min(1, t / 0.2) * Math.PI / 2) * (1 - 0.6 * Math.max(0, (t - 0.8) / 0.2))
+    }
   } else if (id === 'chainsaw') {
     group.add(darkPole(0.3, 0.07, 0.05))
     group.add(glowBox(0.12, 0.8, 0.04, color, 0.6))
@@ -197,10 +217,55 @@ function createWeaponMesh(id) {
     group.add(darkPole(0.7, 0.05, 0.3))
     group.add(glowBox(0.22, 0.5, 0.22, color, 0.85))
     tipY = 1.15
+  } else if (id === 'whip') {
+    // A handle and a chain of linked segments: a wave runs down them, so it
+    // coils back and then snaps out straight with a crack.
+    group.add(darkPole(0.3, 0.04, 0.05))
+    const segments = []
+    let parent = group
+    const SEGMENT = 0.23
+    for (let i = 0; i < 13; i++) {
+      const segment = new THREE.Group()
+      segment.position.y = i === 0 ? 0.2 : SEGMENT
+      segment.add(glowBox(0.04 * (1 - i * 0.045), SEGMENT, 0.04 * (1 - i * 0.045), color, SEGMENT / 2, { glow: i % 2 === 0 }))
+      parent.add(segment)
+      segments.push(segment)
+      parent = segment
+    }
+    customTip = new THREE.Object3D()
+    customTip.position.y = SEGMENT
+    parent.add(customTip)
+    group.userData.flex = (t) => {
+      segments.forEach((segment, i) => {
+        if (t === null) segment.rotation.z = 0.04
+        else {
+          const amp = t < 0.5 ? 0.32 : 0.55 * (1 - Math.min(1, (t - 0.5) * 1.6))
+          segment.rotation.z = amp * Math.sin(i * 0.7 - t * 18)
+        }
+      })
+    }
+  } else if (id === 'nunchucks') {
+    // Two sticks on a chain: the second really whips around the joint.
+    group.add(darkPole(0.5, 0.04, 0.1))
+    group.add(glowBox(0.09, 0.14, 0.09, color, 0.34))
+    group.add(glowBox(0.03, 0.06, 0.03, color, 0.42, { glow: false }))
+    group.add(glowBox(0.03, 0.06, 0.03, color, 0.47, { glow: false, rotationZ: Math.PI / 2 }))
+    const joint = new THREE.Group()
+    joint.position.y = 0.5
+    joint.add(darkPole(0.5, 0.04, 0.28))
+    joint.add(glowBox(0.09, 0.14, 0.09, color, 0.18))
+    customTip = new THREE.Object3D()
+    customTip.position.y = 0.54
+    joint.add(customTip)
+    group.add(joint)
+    group.userData.flex = (t) => {
+      if (t === null) joint.rotation.set(0.15, 0, 0.35)
+      else joint.rotation.set(1.3 * Math.sin(t * Math.PI * 5), 0, 1.2 * Math.cos(t * Math.PI * 5) + 0.3)
+    }
   } else if (WEAPONS[id].gun) {
     // Firearms: a dark grip and body with a glowing barrel pointing along +y
     // (the player's forward once the sword's pose is applied).
-    const long = id === 'railgun' || id === 'shotgun'
+    const long = id === 'railgun' || id === 'shotgun' || id === 'crossbow' || id === 'flamer'
     group.add(darkPole(0.3, 0.05, 0))
     group.add(glowBox(0.14, long ? 0.8 : 0.45, 0.14, color, long ? 0.5 : 0.35))
     if (id === 'launcher') group.add(glowBox(0.3, 0.3, 0.3, color, 0.75))
@@ -212,6 +277,11 @@ function createWeaponMesh(id) {
     group.add(glowBox(0.55, 0.07, 0.03, color, 1.15, { x: 0.25, rotationZ: -0.25 }))
     group.add(glowBox(0.3, 0.07, 0.03, color, 1.0, { x: 0.58, rotationZ: -0.95 }))
     tipY = 1.0
+  }
+
+  if (customTip) {
+    group.userData.tip = customTip
+    return group
   }
 
   const tip = new THREE.Object3D()
@@ -239,7 +309,6 @@ export function setPlayerWeapon(playerMesh, id) {
   const old = playerMesh.userData.sword
   const next = createWeaponMesh(id)
   if (old) {
-    next.position.copy(old.position)
     playerMesh.remove(old)
     disposeObject(old)
   }
@@ -402,7 +471,6 @@ export function createPlayerMesh() {
   group.userData.face3d = face
 
   const sword = createWeaponMesh('staff')
-  sword.position.set(PLAYER_BODY_RADIUS + 0.1, PLAYER_BODY_RADIUS * 0.6, 0)
   group.add(sword)
 
   group.userData.body = body
