@@ -18,7 +18,7 @@ import {
 import { createFace3D } from './face3d.js'
 import { createJellyBody } from './jelly.js'
 import { PLAYER_FACE, pickFaceOptions } from './logic/faceOptions.js'
-import { WEAPONS } from './logic/items.js'
+import { WEAPONS, weaponBase } from './logic/items.js'
 import { applyWeaponPose } from './weaponAnim.js'
 import { buildFancyWeapon } from './weaponModels.js'
 import {
@@ -88,6 +88,7 @@ function createSword() {
   return group
 }
 
+const WEAPON_TINTS = { trident: 0x4de0ff, cleaver: 0xff5a5a, mace: 0xffd23f, glaive: 0x8aa8ff }
 const WEAPON_COLORS = {
   dagger: 0xffa94d, spear: 0x7cffb0, hammer: 0xff4fa3, scythe: 0xb48cff,
   katana: 0x4de0ff, axe: 0xff7a45, rapier: 0xf5f07a, flail: 0xff6fe0, chainsaw: 0xffd23f, boomstick: 0x8cff6f,
@@ -149,12 +150,15 @@ function createWeaponMesh(id) {
   return group
 }
 
-function buildWeaponMesh(id) {
-  const fancy = buildFancyWeapon(id, id === 'sword' ? SWORD_BLADE_COLOR : WEAPON_COLORS[id])
+function buildWeaponMesh(requestedId) {
+  // New weapons reuse an older one's model, retinted with their own bullet / glow color.
+  const id = weaponBase(requestedId)
+  const tint = WEAPON_TINTS[requestedId] ?? (requestedId !== id ? WEAPONS[requestedId]?.bullet?.color : undefined)
+  const fancy = buildFancyWeapon(id, id === 'sword' ? SWORD_BLADE_COLOR : tint ?? WEAPON_COLORS[id])
   if (fancy) return fancy
   if (id === 'sword') return createSword()
   const group = new THREE.Group()
-  const color = WEAPON_COLORS[id]
+  const color = tint ?? WEAPON_COLORS[id]
   let tipY
   let customTip = null // weapons with moving parts carry their own tip
 

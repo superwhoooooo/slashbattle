@@ -408,6 +408,89 @@ const DRAW = {
       fillStroke(c, '#3cc9e8', null)
     }
   },
+  dizzy(c) {
+    spiral(c, 56, 56, 38, 2.4, '#ffd23f', 7)
+    for (const [x, y] of [[24, 28], [88, 34], [40, 92]]) {
+      circle(c, x, y, 7)
+      fillStroke(c, '#fff3b0', '#c98a00', 3)
+    }
+  },
+  starfall(c) {
+    for (const [x, y, r] of [[34, 40, 16], [76, 32, 12], [60, 80, 18]]) {
+      line(c, [[x + r * 1.8, y - r * 1.8], [x, y]])
+      fillStroke(c, null, 'rgba(255,200,90,0.6)', 6)
+      circle(c, x, y, r * 0.6)
+      fillStroke(c, '#ffe9a0', '#d98a1a', 3)
+    }
+  },
+  crossfire(c) {
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      line(c, [[56 + dx * 14, 56 + dy * 14], [56 + dx * 44, 56 + dy * 44]])
+      fillStroke(c, null, '#7ae8ff', 8)
+    }
+    circle(c, 56, 56, 11)
+    fillStroke(c, '#ffffff', '#2c9ac0', 4)
+  },
+  bulwark(c) {
+    line(c, [[20, 96], [20, 42], [34, 42], [34, 30], [46, 30], [46, 42], [66, 42], [66, 30], [78, 30], [78, 42], [92, 42], [92, 96]], true)
+    fillStroke(c, '#b8c4d6', '#5a6a82', 5)
+    c.beginPath()
+    c.arc(56, 96, 14, Math.PI, 0)
+    fillStroke(c, '#3a4a62', null)
+  },
+  glass(c) {
+    glow(c, 56, 56, 40, 'rgba(255,79,163,0.55)')
+    circle(c, 56, 56, 26)
+    fillStroke(c, 'rgba(255,200,230,0.9)', '#c2307a', 5)
+    bolt(c, 56, 56, 26)
+  },
+  iron(c) {
+    c.beginPath()
+    c.moveTo(56, 12)
+    c.lineTo(94, 26)
+    c.lineTo(88, 68)
+    c.quadraticCurveTo(80, 92, 56, 102)
+    c.quadraticCurveTo(32, 92, 24, 68)
+    c.lineTo(18, 26)
+    c.closePath()
+    fillStroke(c, '#9fb0c6', '#56677f', 5)
+    line(c, [[56, 24], [56, 88]])
+    fillStroke(c, null, '#56677f', 4)
+  },
+  thirst(c) {
+    c.beginPath()
+    c.moveTo(56, 12)
+    c.bezierCurveTo(84, 46, 94, 64, 78, 86)
+    c.bezierCurveTo(66, 100, 46, 100, 34, 86)
+    c.bezierCurveTo(18, 64, 30, 46, 56, 12)
+    fillStroke(c, '#d12a4a', '#6e0a1e', 5)
+    circle(c, 46, 70, 6)
+    fillStroke(c, 'rgba(255,255,255,0.7)', null)
+  },
+  turbo(c) {
+    line(c, [[56, 10], [76, 62], [56, 52], [36, 62]], true)
+    fillStroke(c, '#ff8a3b', '#a83a10', 5)
+    for (const x of [44, 56, 68]) {
+      line(c, [[x, 72], [x, 98]])
+      fillStroke(c, null, '#ffd23f', 5)
+    }
+  },
+  jackpot(c) {
+    for (const [x, y] of [[38, 56], [74, 56]]) {
+      circle(c, x, y, 22)
+      fillStroke(c, '#f5c518', '#a87c00', 5)
+    }
+    circle(c, 56, 78, 22)
+    fillStroke(c, '#ffe066', '#a87c00', 5)
+  },
+  focus(c) {
+    for (const r of [14, 28, 42]) {
+      circle(c, 56, 56, r)
+      fillStroke(c, null, '#6fd3c8', 5)
+    }
+    circle(c, 56, 56, 6)
+    fillStroke(c, '#2a8a80', null)
+  },
   leech(c) {
     line(c, [[18, 78], [96, 78], [96, 94], [18, 94]], true)
     fillStroke(c, '#f6dba8', '#a8723a', 4)

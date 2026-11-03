@@ -32,7 +32,7 @@ function el(tag, className, text) {
 
 // Returns { isOpen, setOpen, toggle }. `getMuted` / `onToggleMute` / `onBrightness(v)` /
 // `onRestart` / `onResume` are supplied by main.js.
-export function createPauseMenu({ getMuted, onToggleMute, onBrightness, onRestart, onClose }) {
+export function createPauseMenu({ getMuted, onToggleMute, onBrightness, onRestart, onMainMenu, onClose }) {
   const root = el('div', 'overlay')
   root.id = 'pause-screen'
   root.style.display = 'none'
@@ -43,8 +43,9 @@ export function createPauseMenu({ getMuted, onToggleMute, onBrightness, onRestar
 
   const resume = el('button', 'pause-btn primary', 'Resume')
   const restart = el('button', 'pause-btn', 'Restart run')
+  const mainMenu = el('button', 'pause-btn', 'Main menu')
   const sound = el('button', 'pause-btn', '')
-  for (const b of [resume, restart, sound]) b.type = 'button'
+  for (const b of [resume, restart, mainMenu, sound]) b.type = 'button'
 
   const brightRow = el('label', 'pause-row')
   const brightLabel = el('span', null, 'Brightness')
@@ -64,7 +65,7 @@ export function createPauseMenu({ getMuted, onToggleMute, onBrightness, onRestar
   })
   brightRow.append(brightLabel, slider, readout)
 
-  card.append(resume, restart, sound, brightRow)
+  card.append(resume, restart, mainMenu, sound, brightRow)
   card.appendChild(el('p', 'hint', '8 / Esc: resume'))
   root.appendChild(card)
   document.body.appendChild(root)
@@ -84,12 +85,16 @@ export function createPauseMenu({ getMuted, onToggleMute, onBrightness, onRestar
     setOpen(false)
     onRestart()
   })
+  mainMenu.addEventListener('click', () => {
+    setOpen(false)
+    onMainMenu?.()
+  })
   sound.addEventListener('click', () => {
     onToggleMute()
     refreshSound()
   })
   // Space / Enter on a focused button shouldn't leak into gameplay on resume.
-  for (const b of [resume, restart, sound]) b.addEventListener('click', () => b.blur())
+  for (const b of [resume, restart, mainMenu, sound]) b.addEventListener('click', () => b.blur())
   slider.addEventListener('change', () => slider.blur())
 
   return { isOpen: () => open, setOpen, toggle: () => setOpen(!open) }

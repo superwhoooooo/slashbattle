@@ -2,7 +2,7 @@
 // switched on. Click one to equip / unequip it (a full set swaps out the
 // oldest). Pure DOM; main.js hands in the callback and calls `refresh`.
 import { iconImg } from './icons.js'
-import { POWERUPS, POWERUP_SLOTS } from './logic/items.js'
+import { POWERUPS, SLOT_LIMITS } from './logic/items.js'
 
 function el(tag, className, text) {
   const node = document.createElement(tag)
@@ -62,9 +62,9 @@ export function createLoadoutPanel({ onToggle }) {
     setOpen,
     toggle: () => setOpen(!open),
     refresh(inventory) {
-      count.textContent = `Equipped ${inventory.equipped.length} / ${POWERUP_SLOTS}. Click a power-up to switch it on or off.`
+      count.textContent = `Equipped ${inventory.equipped.length} / ${SLOT_LIMITS.powerups}. Click a power-up to switch it on or off.`
       slotRow.replaceChildren(
-        ...Array.from({ length: POWERUP_SLOTS }, (_, i) => {
+        ...Array.from({ length: SLOT_LIMITS.powerups }, (_, i) => {
           const id = inventory.equipped[i]
           const slot = el('div', id ? 'perk-slot filled' : 'perk-slot')
           if (id) {

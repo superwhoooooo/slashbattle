@@ -85,6 +85,18 @@ export function setMonsterNavigator(nav) {
   navigator = nav
 }
 
+// True if nothing (a labyrinth wall) blocks the straight line a -> b. Always
+// true on the open sundeck. Attacks, bullets and pets use it so nothing
+// reaches through a wall.
+export function hasWallLineOfSight(a, b) {
+  return !navigator || navigator.hasLineOfSight(a, b)
+}
+
+// True if the point is inside a labyrinth wall (never on the sundeck).
+export function isInsideWall(x, z) {
+  return Boolean(navigator) && navigator.insideWall(x, z)
+}
+
 function steerToward(monster, rawTarget, speed, dt, obstacles) {
   let targetPos = rawTarget
   if (navigator && (navigator.insideWall(rawTarget.x, rawTarget.z) || !navigator.hasLineOfSight(monster.position, rawTarget))) {
@@ -377,7 +389,8 @@ export function updateMonster(monster, player, obstacles, dt, now) {
     canSeePlayer,
     distanceToPlayer: perceivedDistance,
     playerPos: player.position,
-    playerHidden: player.hidden === true,
+    // Hiding in a pod and Ghost Form both make you unseen.
+    playerHidden: player.hidden === true || now < (player.ghostUntil ?? -Infinity),
   }
 
   const next = nextMonsterState(

@@ -77,7 +77,7 @@ describe('boss track', () => {
   const bossKinds = (step) => bossEventsForStep(step).map((e) => e.kind)
 
   it('is registered next to the normal track and runs faster', () => {
-    expect(Object.keys(MUSIC_TRACKS)).toEqual(['normal', 'boss'])
+    expect(Object.keys(MUSIC_TRACKS)).toEqual(['chill', 'normal', 'boss'])
     expect(MUSIC_TRACKS.boss.bpm).toBe(BOSS_BPM)
     expect(BOSS_BPM).toBeGreaterThan(MUSIC_BPM)
     expect(MUSIC_TRACKS.boss.events).toBe(bossEventsForStep)
@@ -109,6 +109,25 @@ describe('boss track', () => {
       for (const event of bossEventsForStep(step)) {
         if (['bass', 'pad', 'riff', 'lead', 'tom'].includes(event.kind)) expect(event.note).toBeGreaterThan(0)
       }
+    }
+  })
+})
+
+import { CHILL_BPM, MUSIC_TRACKS, chillEventsForStep, LOOP_STEPS } from '../src/logic/music.js'
+
+describe('chill track', () => {
+  it('is registered, slow, and loops', () => {
+    expect(MUSIC_TRACKS.chill.bpm).toBe(CHILL_BPM)
+    expect(CHILL_BPM).toBeLessThan(90)
+    expect(chillEventsForStep(5).map((e) => e.kind)).toEqual(chillEventsForStep(5 + LOOP_STEPS).map((e) => e.kind))
+  })
+
+  it('has chords, bass and a kick on the downbeat of every bar', () => {
+    for (let bar = 0; bar < 8; bar++) {
+      const kinds = chillEventsForStep(bar * 16).map((e) => e.kind)
+      expect(kinds).toContain('keys')
+      expect(kinds).toContain('sub')
+      expect(kinds).toContain('kick')
     }
   })
 })

@@ -209,3 +209,10 @@ describe('boss rounds', () => {
     expect(scoreForKill('boss_gloop')).toBeGreaterThan(scoreForKill('grumpus'))
   })
 })
+
+describe('spawn pacing', () => {
+  it('sends in at least 4 enemies on wave 1, steadily growing', () => {
+    expect(waveSize(1)).toBeGreaterThanOrEqual(4)
+    expect(waveSize(2) - waveSize(1)).toBeGreaterThanOrEqual(4)
+  })
+})

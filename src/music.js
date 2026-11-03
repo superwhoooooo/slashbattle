@@ -132,6 +132,21 @@ export function createMusic(audio) {
       osc.start(time)
       osc.stop(time + 0.3)
     },
+    // Chill track voices: a soft electric piano, a round sine bass, a glassy bell, vinyl ticks.
+    keys: (time, e, len) => {
+      const freq = midiToFreq(e.note)
+      tone('sine', freq, time, len, 0.075 * e.velocity, { attack: 0.02, detune: -4 })
+      tone('triangle', freq, time, len * 0.8, 0.05 * e.velocity, { attack: 0.02, cutoff: 1500, detune: 5 })
+    },
+    sub: (time, e, len) => {
+      tone('sine', midiToFreq(e.note), time, len, 0.5 * e.velocity, { attack: 0.015 })
+    },
+    bell: (time, e, len) => {
+      const freq = midiToFreq(e.note)
+      tone('sine', freq, time, len * 1.4, 0.1, { attack: 0.01 })
+      tone('sine', freq * 2, time, len * 0.7, 0.03, { attack: 0.01 })
+    },
+    crackle: (time, e) => noise(time, 0.012, 0.05 * e.velocity, 'highpass', 3500),
     lead: (time, e, len) => {
       const freq = midiToFreq(e.note)
       tone('square', freq, time, len, 0.13, { attack: 0.012, cutoff: 3200 })
@@ -181,7 +196,7 @@ export function createMusic(audio) {
       if (!muffle) return
       muffle.frequency.setTargetAtTime(muffled ? MUFFLED_CUTOFF : OPEN_CUTOFF, ctx.currentTime, 0.15)
     },
-    // Switches between the 'normal' and 'boss' tracks, restarting the loop
+    // Switches between the 'normal', 'boss' and 'chill' (pause) tracks, restarting the loop
     // from its top (with the boss track's opening crash) on a change.
     setMode(next) {
       if (next === mode || !MUSIC_TRACKS[next]) return

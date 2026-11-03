@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { clampTargetToRange, inCircle, rippleState, swirlStrength } from '../src/logic/warp.js'
 import { WEAPON_FX_IDS } from '../src/weaponFx.js'
-import { WEAPONS } from '../src/logic/items.js'
+import { WEAPONS, weaponBase } from '../src/logic/items.js'
 
 describe('warp', () => {
   it('fades a swirl in and out', () => {
@@ -23,6 +23,6 @@ describe('warp', () => {
     expect(inCircle(3, 0, 0, 0, 2)).toBe(false)
   })
   it('gives every weapon its own swing effect', () => {
-    for (const id of Object.keys(WEAPONS)) expect(WEAPON_FX_IDS).toContain(id)
+    for (const id of Object.keys(WEAPONS)) expect(WEAPON_FX_IDS).toContain(weaponBase(id))
   })
 })

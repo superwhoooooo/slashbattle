@@ -5,6 +5,7 @@ import * as THREE from 'three'
 import { PLAYER_RADIUS } from './config.js'
 import { isOnPlatform } from './logic/arena.js'
 import { projectileHits, stepProjectile } from './logic/projectiles.js'
+import { segmentBlocked } from './bullets.js'
 
 const POOL_SIZE = 40
 const ORB_RADIUS = 0.32
@@ -43,11 +44,12 @@ export function fireProjectile(pool, { x, z, vx, vz, damage, color = 0xff5a7a, s
 // Advances every orb; one that reaches the player calls
 // player.damagePlayer (returning true if it landed, so the caller can
 // shake the screen). Orbs vanish on a hit, on timing out, or off the edge.
-export function updateProjectiles(pool, dt, player, now, arenaRadius) {
+export function updateProjectiles(pool, dt, player, now, arenaRadius, blockers = null) {
   let hitPlayer = false
   for (const slot of pool.slots) {
     if (!slot.active) continue
-    const alive = stepProjectile(slot.data, dt)
+    const before = { x: slot.data.x, z: slot.data.z }
+    const alive = stepProjectile(slot.data, dt) && !segmentBlocked(before, slot.data, blockers)
     const hit = alive && !player.hidden && projectileHits(slot.data, player.position, PLAYER_RADIUS)
     if (hit && player.damagePlayer(slot.data.damage, now)) hitPlayer = true
     if (!alive || hit || !isOnPlatform(slot.data, arenaRadius + 6)) {

@@ -7,9 +7,25 @@ import { damageMonster } from './combat.js'
 import { isOnPlatform } from './logic/arena.js'
 import { stepBullet } from './logic/bullets.js'
 import { burst } from './particles.js'
+import { hasWallLineOfSight, isInsideWall } from './monster.js'
 
 const POOL_SIZE = 80
 const BULLET_HEIGHT = 0.7
+
+// True if the segment a -> b passes through any blocker circle ({ x, z, radius }),
+// e.g. a Bulwark wall block. Checks both ends and a few points between so a
+// fast shot can't hop over a block in one frame.
+export function segmentBlocked(a, b, blockers) {
+  if (!blockers || blockers.length === 0) return false
+  for (let i = 0; i <= 4; i++) {
+    const x = a.x + ((b.x - a.x) * i) / 4
+    const z = a.z + ((b.z - a.z) * i) / 4
+    for (const blocker of blockers) {
+      if (Math.hypot(x - blocker.x, z - blocker.z) <= blocker.radius) return true
+    }
+  }
+  return false
+}
 
 export function createBulletPool() {
   const group = new THREE.Group()
@@ -47,7 +63,7 @@ function retire(slot) {
 // Advances every bullet, damaging whatever it touches (and blasting the
 // surroundings for an exploding one). Returns whether anything was hit this
 // frame, for the caller's hit shake/sound.
-export function updateBullets(pool, dt, { monsters, obstacles, particleSystem, hitstop, arenaRadius, onExplode = null, onTrail = null, onHit = null }) {
+export function updateBullets(pool, dt, { monsters, obstacles, particleSystem, hitstop, arenaRadius, onExplode = null, onTrail = null, onHit = null, blockers = null }) {
   let hitAny = false
   const targets = []
   for (const mesh of monsters) {
@@ -60,7 +76,14 @@ export function updateBullets(pool, dt, { monsters, obstacles, particleSystem, h
     const bullet = slot.data
     const from = { x: bullet.x, z: bullet.z }
     const { alive, hits } = stepBullet(bullet, dt, targets)
+    if (isInsideWall(bullet.x, bullet.z) || segmentBlocked(from, bullet, blockers)) {
+      // Spent against a labyrinth wall or a Bulwark wall: a puff, and no hits through it.
+      burst(particleSystem, { x: bullet.x, y: BULLET_HEIGHT, z: bullet.z }, bullet.color, 6, 2)
+      retire(slot)
+      continue
+    }
     for (const { mesh } of hits) {
+      if (!hasWallLineOfSight(from, mesh.position)) continue
       hitAny = true
       damageMonster(mesh, bullet.damage, { fromPos: from, knockback: bullet.knockback, obstacles, particleSystem, cause: bullet.cause, ambush: bullet.ambush, hitstop })
       if (onHit) onHit(bullet, mesh)

@@ -22,7 +22,12 @@ import {
 } from './logic/maze.js'
 import { levelAt, levelIndexAfterBosses } from './logic/levels.js'
 import { iconImg } from './icons.js'
+import { PICKUP_RADIUS, createPerkPickup, updatePerkPickup } from './pickups.js'
 import { createLoadoutPanel } from './loadout.js'
+import { createHub } from './hub.js'
+import { loadProfile, saveProfile } from './profile.js'
+import { activeLoadoutPets, addToCollection, bankCrystals } from './logic/profile.js'
+import { combineEffects, skillEffects } from './logic/skills.js'
 import { createPauseMenu, loadBrightness } from './pauseMenu.js'
 import { createSwapPanel } from './swap.js'
 import { createWarp } from './warp.js'
@@ -173,7 +178,7 @@ import {
   updateInventoryHud,
 } from './hud.js'
 import { Input } from './input.js'
-import { bossById, bossHpScale } from './logic/bosses.js'
+import { bossById, bossEase, bossHpScale } from './logic/bosses.js'
 import { fanVelocities } from './logic/projectiles.js'
 import { clampToPlatform, isOnPlatform, resolveArenaMove, spawnPointNearPlayer } from './logic/arena.js'
 import { crystalDrops } from './logic/crystals.js'
@@ -183,6 +188,7 @@ import { killVoiceForTrick } from './logic/sfx.js'
 import { CUTSCENE_ENTER_DURATION, createCutscene, introLines, speakerFor, stepCutscene, visibleChars } from './logic/cutscene.js'
 import {
   addCrystals,
+  availablePowerups,
   chestCost,
   createInventory,
   grantItem,
@@ -196,7 +202,7 @@ import {
   spendCrystals,
   useAbility,
 } from './logic/inventory.js'
-import { ABILITIES, ABILITY_KEYS, HOTBAR_KEYS, PETS, POWERUPS, WEAPONS, petEffects, powerupEffects } from './logic/items.js'
+import { ABILITIES, ABILITY_KEYS, HOTBAR_KEYS, PETS, POWERUPS, WEAPONS, petEffects, powerupEffects, setSlotBonuses } from './logic/items.js'
 import { stepFall } from './logic/falling.js'
 import { evaluateGameState } from './logic/gameState.js'
 import { createHitstopState, stepHitstop, triggerHitstop } from './logic/hitstop.js'
@@ -471,6 +477,33 @@ function disposeObject3D(object) {
 // disposeGame() first if rebuilding on top of an existing game.
 // 'resort' (the endless sundeck) or 'labyrinth' (3 walled floors); chosen on the start card.
 let gameMode = 'resort'
+
+// What persists on this device (banked crystals, pet collection, loadouts,
+// skill / power-up levels): see logic/profile.js. Always replace it via setProfile.
+let profile = loadProfile()
+function setProfile(next) {
+  profile = next
+  saveProfile(profile)
+  applySlotBonuses()
+}
+// The skill tree's slot skills widen how many power-ups / pets / abilities you can hold.
+function applySlotBonuses() {
+  const fx = skillEffects(profile.skills)
+  setSlotBonuses({ powerups: fx.slotsPowerups, pets: fx.slotsPets, abilities: fx.slotsAbilities })
+}
+applySlotBonuses()
+const hideLimit = () => POD_HIDE_LIMIT + activeFx(game.inventory.equipped).hideTime
+// The equipped power-ups (at their upgrade levels) plus the learned skills, as one effect set.
+const activeFx = (equipped) => combineEffects(powerupEffects(equipped, profile.powerups), skillEffects(profile.skills))
+
+// Starts the run with the active loadout's pets (replacing any pets already out).
+function applyLoadoutPets(game) {
+  disposePets(game.pets, scene)
+  const ids = activeLoadoutPets(profile)
+  // Runs start with the skill tree's bonus crystals (the Pocket Change / Fat Wallet nodes).
+  game.inventory = { ...game.inventory, pets: ids, crystals: Math.round(skillEffects(profile.skills).startCrystals) }
+  for (const id of ids) game.pets.push(createPet(id, scene, game.player))
+}
 const LAB_SPAWN_RADIUS = 30 // pods / chests / monsters stay inside the maze's square
 const LAB_EXIT_KEEPOUT = 5 // nothing spawns on the exit pad's cell
 
@@ -522,6 +555,8 @@ function createGame() {
     pets: [], // live pet objects (src/pets.js) for inventory.pets
     chests: [], // chest meshes on the platform
     chestSpawnerState: createPodSpawnerState(),
+    pickups: [], // power-ups lying on the ground, waiting to be walked over
+    pickupSpawnerState: createPodSpawnerState(),
     cutscene: null, // { boss, mesh, dir, state } while a boss intro is playing; freezes gameplay
     score: 0,
     chainState: createChainState(), // the current kill-chain count/multiplier (src/logic/tricks.js)
@@ -541,6 +576,10 @@ function createGame() {
     POD_INITIAL_COUNT_MIN + Math.floor(Math.random() * (POD_INITIAL_COUNT_MAX - POD_INITIAL_COUNT_MIN + 1))
   for (let i = 0; i < initialPodCount; i++) trySpawnPod(game)
   trySpawnChest(game)
+  trySpawnPerkPickup(game)
+  applyLoadoutPets(game)
+  game.player.maxHp = Math.round(PLAYER_MAX_HP + skillEffects(profile.skills).maxHp)
+  game.player.hp = game.player.maxHp
 
   camera.position.set(
     player.position.x + CAMERA_OFFSET.x,
@@ -611,13 +650,42 @@ function trySpawnChest(game, { at = null, cost = null } = {}) {
     })
   if (point === null) return
 
-  const chest = createChest(point, cost ?? chestCost(game.inventory.chestsOpened))
+  const chest = createChest(point, cost ?? Math.max(1, Math.round(chestCost(game.inventory.chestsOpened) * activeFx(game.inventory.equipped).chestPrice)))
   const obstacle = { x: point.x, z: point.z, radius: CHEST_OBSTACLE_RADIUS }
   chest.userData.obstacle = obstacle
   scene.add(chest)
   game.chests.push(chest)
   game.obstacles.push(obstacle)
   burst(particleSystem, { x: point.x, y: 0.5, z: point.z }, CHEST_FLASH_COLOR, POD_SPAWN_BURST_COUNT, POD_SPAWN_BURST_SPEED)
+}
+
+// Drops a power-up pickup (one you don't own yet, and that isn't already lying
+// around) at `at`, or somewhere valid on the map. A no-op if nothing fits or
+// you own them all.
+function trySpawnPerkPickup(game, at = null) {
+  const lying = new Set(game.pickups.map((p) => p.userData.id))
+  const options = availablePowerups(game.inventory).filter((id) => !lying.has(id))
+  if (options.length === 0) return
+  const point =
+    at ??
+    pickPodSpawnPoint(Math.random, {
+      arenaRadius: game.spawnRadius,
+      margin: CHEST_SPAWN_MARGIN,
+      existingPods: [...game.pods, ...game.chests, ...game.pickups].map((m) => ({ x: m.position.x, z: m.position.z })),
+      minSpacing: CHEST_MIN_SPACING,
+      playerPos: game.player.position,
+      minPlayerDistance: POD_MIN_PLAYER_DISTANCE,
+      monsterPositions: game.monsters.map((mesh) => ({ x: mesh.position.x, z: mesh.position.z })),
+      monsterAvoidRadius: POD_MONSTER_AVOID_RADIUS,
+      obstacles: game.props,
+      obstacleMargin: CHEST_OBSTACLE_RADIUS,
+      maxAttempts: POD_SPAWN_MAX_ATTEMPTS,
+    })
+  if (point === null) return
+  const pickup = createPerkPickup(point, options[Math.floor(Math.random() * options.length)])
+  scene.add(pickup)
+  game.pickups.push(pickup)
+  burst(particleSystem, { x: point.x, y: 0.6, z: point.z }, 0xffffff, POD_SPAWN_BURST_COUNT, POD_SPAWN_BURST_SPEED)
 }
 
 // Switches the hotbar to `slot` (if filled) and swaps the sword model.
@@ -754,14 +822,14 @@ function updateWarpFields(game, dt, now) {
 }
 
 // A meteor streaks down from the sky onto `at`, then blasts.
-function dropMeteor(at) {
+function dropMeteor(at, { damage = null, radius = null } = {}) {
   const group = new THREE.Group()
   const core = new THREE.Mesh(new THREE.SphereGeometry(0.7, 14, 10), new THREE.MeshBasicMaterial({ color: 0xffd08a }))
   const glow = new THREE.Mesh(new THREE.SphereGeometry(1.4, 14, 10), new THREE.MeshBasicMaterial({ color: 0xff6a2a, transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false }))
   group.add(core, glow)
   scene.add(group)
-  meteors.push({ group, x: at.x, z: at.z, age: 0, fall: 0.7 })
-  spawnShockwave(shockwavePool, at.x, at.z, ABILITIES.meteor.radius, 0xff7a2e) // the landing marker
+  meteors.push({ group, x: at.x, z: at.z, age: 0, fall: 0.7, damage, radius })
+  spawnShockwave(shockwavePool, at.x, at.z, radius ?? ABILITIES.meteor.radius, 0xff7a2e) // the landing marker
 }
 
 function disposeMeteor(meteor) {
@@ -784,23 +852,103 @@ function updateMeteors(game, dt) {
     disposeMeteor(m)
     meteors.splice(i, 1)
     const at = { x: m.x, z: m.z }
-    spawnShockwave(shockwavePool, at.x, at.z, def.radius, 0xffb454)
-    warp.add('ripple', at.x, at.z, def.radius * 1.6, 0.6)
+    const blastRadius = m.radius ?? def.radius
+    const blastDamage = m.damage ?? def.damage
+    spawnShockwave(shockwavePool, at.x, at.z, blastRadius, 0xffb454)
+    warp.add('ripple', at.x, at.z, blastRadius * 1.6, 0.6)
     burst(particleSystem, { x: at.x, y: 1, z: at.z }, 0xff7a2e, 60, 6, 1)
     shardBurst(particleSystem, { x: at.x, y: 0.6, z: at.z }, 0xffb454, 18, 4)
     triggerShake(game.shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
     sfx.play('bossSlam', at)
     for (const mesh of game.monsters) {
       if (mesh.userData.dying || mesh.userData.spawning || mesh.userData.falling) continue
-      if (Math.hypot(mesh.position.x - at.x, mesh.position.z - at.z) > def.radius + (mesh.userData.reachBonus ?? 0)) continue
-      damageMonster(mesh, def.damage, { fromPos: at, knockback: 2.5, obstacles: game.obstacles, particleSystem, cause: 'shockwave', hitstop: game.hitstop })
+      if (Math.hypot(mesh.position.x - at.x, mesh.position.z - at.z) > blastRadius + (mesh.userData.reachBonus ?? 0)) continue
+      damageMonster(mesh, blastDamage, { fromPos: at, knockback: 2.5, obstacles: game.obstacles, particleSystem, cause: 'shockwave', hitstop: game.hitstop })
     }
   }
 }
 
+// Bulwark: a temporary wall of glowing blocks across the player's facing. Its
+// blocks are circle obstacles (so monsters and the player collide with them)
+// until it crumbles.
+const bulwarkWalls = []
+function raiseBulwarkWall(game, now) {
+  const def = ABILITIES.bulwark
+  const { player } = game
+  const fx = Math.sin(player.facing)
+  const fz = Math.cos(player.facing)
+  const group = new THREE.Group()
+  const blocks = []
+  const material = new THREE.MeshStandardMaterial({ color: 0x9fb4d0, emissive: 0x4a6a9a, emissiveIntensity: 0.6, roughness: 0.4, transparent: true, opacity: 0.9 })
+  const count = def.blocks
+  for (let i = 0; i < count; i++) {
+    const side = (i - (count - 1) / 2) * def.spacing
+    const x = player.position.x + fx * def.distance - fz * side
+    const z = player.position.z + fz * def.distance + fx * side
+    const obstacle = { x, z, radius: def.spacing * 0.6 }
+    game.obstacles.push(obstacle)
+    const block = new THREE.Mesh(new THREE.BoxGeometry(def.spacing * 1.05, 1.6, 0.9), material)
+    block.position.set(x, 0.8, z)
+    block.rotation.y = player.facing
+    block.castShadow = true
+    group.add(block)
+    blocks.push(obstacle)
+    burst(particleSystem, { x, y: 0.8, z }, 0xb0c4de, 8, 2.5)
+  }
+  scene.add(group)
+  bulwarkWalls.push({ game, group, blocks, material, expires: now + def.duration })
+  spawnShockwave(shockwavePool, player.position.x + fx * def.distance, player.position.z + fz * def.distance, 2.5, 0xb0c4de)
+  triggerShake(game.shake, SHAKE_HIT_MAGNITUDE, SHAKE_HIT_DURATION)
+}
+
+function removeBulwarkWall(wall) {
+  for (const obstacle of wall.blocks) {
+    const index = wall.game.obstacles.indexOf(obstacle)
+    if (index !== -1) wall.game.obstacles.splice(index, 1)
+  }
+  scene.remove(wall.group)
+  wall.group.traverse((child) => child.geometry?.dispose())
+  wall.material.dispose()
+}
+
+// Every standing Bulwark block: shots (yours and the enemies') stop against these.
+const bulwarkBlockers = () => bulwarkWalls.flatMap((wall) => wall.blocks)
+
+function updateBulwarkWalls(now) {
+  for (let i = bulwarkWalls.length - 1; i >= 0; i--) {
+    const wall = bulwarkWalls[i]
+    const left = wall.expires - now
+    if (left > 0) {
+      if (left < 1) wall.material.opacity = 0.9 * left // fades out over its last second
+      continue
+    }
+    for (const obstacle of wall.blocks) burst(particleSystem, { x: obstacle.x, y: 0.8, z: obstacle.z }, 0xb0c4de, 6, 2)
+    removeBulwarkWall(wall)
+    bulwarkWalls.splice(i, 1)
+  }
+}
+
 // Fires the ability in `slot` if it's ready, applying its effect.
+// Fades the player's whole model to `alpha` (1 restores it). Original
+// transparency settings are remembered per material the first time.
+function setGhostLook(root, alpha) {
+  if (root.userData.ghostAlpha === alpha) return
+  root.userData.ghostAlpha = alpha
+  root.traverse((child) => {
+    for (const m of child.material ? [].concat(child.material) : []) {
+      if (m.userData.ghostBase === undefined) m.userData.ghostBase = { opacity: m.opacity, transparent: m.transparent, depthWrite: m.depthWrite }
+      const base = m.userData.ghostBase
+      const transparent = alpha < 1 || base.transparent
+      if (m.transparent !== transparent) m.needsUpdate = true // only a flag flip needs a shader rebuild
+      m.transparent = transparent
+      m.opacity = base.opacity * alpha
+      m.depthWrite = alpha < 1 ? false : base.depthWrite
+    }
+  })
+}
+
 function activateAbility(game, slot, now) {
-  const used = useAbility(game.inventory, slot, now, powerupEffects(game.inventory.equipped).haste)
+  const used = useAbility(game.inventory, slot, now, activeFx(game.inventory.equipped).haste)
   if (!used.abilityId) return
   game.inventory = used.inventory
   const { player } = game
@@ -844,7 +992,7 @@ function activateAbility(game, slot, now) {
       })
     }
   } else if (used.abilityId === 'heal') {
-    player.hp = Math.min(PLAYER_MAX_HP, player.hp + HEAL_PULSE_AMOUNT)
+    player.hp = Math.min(player.maxHp, player.hp + HEAL_PULSE_AMOUNT)
     burst(particleSystem, center, 0x7dffb0, 30, 2.5, 1)
     column(player.position.x, player.position.z, 0x7dffb0, 4.5)
     sparkRing(player.position.x, player.position.z, 1.6, 0xbfffd8)
@@ -946,7 +1094,7 @@ function activateAbility(game, slot, now) {
       streak(mesh.position, player.position, DRAIN_COLOR, 10, 1.2) // life streams back to you
       drained += 1
     }
-    player.hp = Math.min(PLAYER_MAX_HP, player.hp + drained * DRAIN_HEAL_PER_HIT)
+    player.hp = Math.min(player.maxHp, player.hp + drained * DRAIN_HEAL_PER_HIT)
     burst(particleSystem, center, DRAIN_COLOR, 20, 2.5, 1)
     warp.add('swirl', player.position.x, player.position.z, DRAIN_RADIUS * 0.8, 0.9)
   } else if (used.abilityId === 'frenzy') {
@@ -992,6 +1140,41 @@ function activateAbility(game, slot, now) {
     }
     fireBullets(bulletPool, makeBullets(fan, { x: player.position.x, z: player.position.z, aimAngle: player.facing, damageMultiplier: elapsedDamageMultiplier(player, now) }))
     burst(particleSystem, center, 0xff5fa8, 20, 3)
+  } else if (used.abilityId === 'dizzy') {
+    const def = ABILITIES.dizzy
+    spawnShockwave(shockwavePool, player.position.x, player.position.z, def.radius, 0xffd23f)
+    warp.add('swirl', player.position.x, player.position.z, def.radius * 0.8, 0.8)
+    burst(particleSystem, center, 0xffd23f, 30, 4)
+    for (const mesh of game.monsters) {
+      if (mesh.userData.dying || mesh.userData.spawning || mesh.userData.falling) continue
+      if (Math.hypot(mesh.position.x - player.position.x, mesh.position.z - player.position.z) > def.radius + (mesh.userData.reachBonus ?? 0)) continue
+      if (!mesh.userData.isBoss) mesh.userData.confusedUntil = now + def.duration
+      damageMonster(mesh, def.damage, { fromPos: player.position, knockback: 0.4, obstacles: game.obstacles, particleSystem, cause: 'shockwave', hitstop: game.hitstop })
+    }
+  } else if (used.abilityId === 'starfall') {
+    const def = ABILITIES.starfall
+    game.monsters
+      .filter((m) => !m.userData.dying && !m.userData.spawning && !m.userData.falling)
+      .map((m) => ({ m, d: Math.hypot(m.position.x - player.position.x, m.position.z - player.position.z) }))
+      .sort((a, b) => a.d - b.d)
+      .slice(0, def.targets)
+      .forEach(({ m }) => dropMeteor({ x: m.position.x, z: m.position.z }, { damage: def.damage, radius: def.radius }))
+    burst(particleSystem, center, 0xffe9a0, 20, 3)
+  } else if (used.abilityId === 'crossfire') {
+    for (let i = 0; i < 4; i++) {
+      const arrow = {
+        pellets: 1,
+        spread: 0,
+        damage: ABILITIES.crossfire.damage,
+        knockback: 1,
+        bullet: { speed: 30, life: 0.75, radius: 0.28, pierce: 3, explode: 0, color: 0x7ae8ff },
+      }
+      fireBullets(bulletPool, makeBullets(arrow, { x: player.position.x, z: player.position.z, aimAngle: player.facing + (i * Math.PI) / 2, damageMultiplier: elapsedDamageMultiplier(player, now) }))
+    }
+    burst(particleSystem, center, 0x7ae8ff, 20, 3)
+    sparkRing(player.position.x, player.position.z, 1.2, 0x7ae8ff, 20)
+  } else if (used.abilityId === 'bulwark') {
+    raiseBulwarkWall(game, now)
   } else if (used.abilityId === 'refresh') {
     // Every other ability comes back right away; Second Wind itself stays on cooldown.
     const { refresh } = game.inventory.abilityReadyAt
@@ -1023,7 +1206,7 @@ function openChestNow(game, chest, now) {
   const loot = rollChestLoot(game.inventory)
   if (!loot) {
     game.score += CHEST_ALL_OWNED_SCORE
-    game.player.hp = Math.min(PLAYER_MAX_HP, game.player.hp + CHEST_ALL_OWNED_HEAL)
+    game.player.hp = Math.min(game.player.maxHp, game.player.hp + CHEST_ALL_OWNED_HEAL)
     showLootToast(hud, { title: 'LOADOUT FULL', name: `+${CHEST_ALL_OWNED_SCORE} SCORE`, blurb: 'Plus a big heal' })
     return
   }
@@ -1169,6 +1352,7 @@ function startBossCutscene(game) {
     hpScale: bossHpScale(game.waveState.bossesDefeated),
     facePlayer: true,
   })
+  mesh.userData.damageScale = bossEase(game.waveState.bossesDefeated).damage
   const dx = player.position.x - at.x
   const dz = player.position.z - at.z
   const length = Math.hypot(dx, dz) || 1
@@ -1300,10 +1484,10 @@ function scoreKill(game, mesh, cause, position, now) {
     boss: mesh.userData.isBoss,
   })
   game.chainState = stepChain(game.chainState, now, trick.id)
-  const points = trickPoints(scoreForKill(mesh.userData.type), game.chainState.multiplier)
+  const points = Math.round(trickPoints(scoreForKill(mesh.userData.type), game.chainState.multiplier) * activeFx(game.inventory.equipped).scoreMult)
   game.score += points
-  const killHeal = powerupEffects(game.inventory.equipped).killHeal
-  if (killHeal) game.player.hp = Math.min(PLAYER_MAX_HP, game.player.hp + killHeal)
+  const killHeal = activeFx(game.inventory.equipped).killHeal
+  if (killHeal) game.player.hp = Math.min(game.player.maxHp, game.player.hp + killHeal)
   const pointsLine = game.chainState.multiplier > 1 ? `+${points} ×${game.chainState.multiplier}` : `+${points}`
   showPopup(popupPool, position, trick.name, pointsLine, popupColorForTrick(trick.id))
   showTrickSticker(hud, { name: trick.name, points, multiplier: game.chainState.multiplier, tone: trickToneForId(trick.id) })
@@ -1487,6 +1671,8 @@ function advanceFloor(game) {
   game.despawningPods = []
   game.chests.forEach((c) => disposeObject3D(c))
   game.chests = []
+  game.pickups.forEach((p) => disposeObject3D(p))
+  game.pickups = []
   setChestPrompt(hud, null)
   resetProjectiles(projectilePool)
   resetPoison(poisonPool)
@@ -1515,12 +1701,13 @@ function advanceFloor(game) {
   player.position.z = built.floor.start.z
   player.mesh.position.x = player.position.x
   player.mesh.position.z = player.position.z
-  player.hp = Math.min(PLAYER_MAX_HP, player.hp + PLAYER_MAX_HP * 0.4)
+  player.hp = Math.min(player.maxHp, player.hp + PLAYER_MAX_HP * 0.4)
   camera.position.set(player.position.x + CAMERA_OFFSET.x, CAMERA_OFFSET.y, player.position.z + CAMERA_OFFSET.z)
 
   trySpawnPod(game)
   trySpawnPod(game)
   trySpawnChest(game)
+  trySpawnPerkPickup(game)
   game.score += 1000
   showWaveClearedBanner(hud, 1000, { lead: `FLOOR ${index + 1}`, text: built.floor.def.name.split(': ')[1].toUpperCase() })
   sfx.play('waveCleared')
@@ -1536,6 +1723,7 @@ function disposeGame(target) {
   target.monsters.forEach((mesh) => disposeObject3D(mesh))
   target.spawnEffects.forEach(({ effect }) => disposeObject3D(effect.group))
   target.chests.forEach((chest) => disposeObject3D(chest))
+  target.pickups.forEach((p) => disposeObject3D(p))
   if (target.cutscene) disposeObject3D(target.cutscene.carpet.group)
   disposePets(target.pets, scene)
 }
@@ -1592,7 +1780,7 @@ function startSandbox() {
     onAction(name) {
       if (name === 'god') godMode = !godMode
       else if (name === 'clear') clearAllMonsters(game)
-      else if (name === 'heal') game.player.hp = PLAYER_MAX_HP
+      else if (name === 'heal') game.player.hp = game.player.maxHp
       else if (name === 'chest') trySpawnChest(game, { cost: 0 })
       else if (name === 'pod') trySpawnPod(game)
     },
@@ -1631,7 +1819,7 @@ window.addEventListener('keydown', (event) => {
 })
 function toggleMenu() {
   if (sandbox) return sandboxPanel.toggle()
-  if (!started || game.player.hp <= 0 || swapPanel.isOpen()) return
+  if (!started || game.player.hp <= 0 || swapPanel.isOpen() || hub.isOpen()) return
   loadoutPanel.refresh(game.inventory)
   loadoutPanel.toggle()
 }
@@ -1641,6 +1829,47 @@ window.addEventListener('keydown', (event) => {
   if (!event.repeat) toggleMenu()
 })
 touchControls?.addMenuButton(toggleMenu)
+
+// Stocks the run's crystals in the bank (T): they leave this run but stay on the device
+// for the skill tree and power-up upgrades.
+function bankRunCrystals() {
+  if (sandbox || !started || game.player.hp <= 0) return
+  const amount = game.inventory.crystals
+  if (amount <= 0) {
+    showLootToast(hud, { title: 'BANK', name: 'Nothing to bank', blurb: 'Collect crystals first, then press T' })
+    return
+  }
+  setProfile(bankCrystals(profile, amount))
+  game.inventory = { ...game.inventory, crystals: 0 }
+  sfx.play('chestOpen')
+  showLootToast(hud, { title: 'BANKED', name: `◆ ${amount} stocked`, blurb: `${profile.bank} in the bank. Spend it on skills [6] and power-ups [7]` })
+  hub.refresh()
+}
+
+const hub = createHub({
+  getProfile: () => profile,
+  setProfile,
+  getRun: () => ({ inRun: started && !sandbox, crystals: game.inventory.crystals, owned: game.inventory.powerups, equipped: game.inventory.equipped }),
+  onBank: bankRunCrystals,
+})
+const HUB_KEYS = { Digit6: 'skills', Numpad6: 'skills', Digit7: 'powerups', Numpad7: 'powerups', Digit9: 'loadout', Numpad9: 'loadout' }
+function canOpenHub() {
+  return !swapPanel.isOpen() && !pauseMenu.isOpen() && !(started && game.player.hp <= 0) && !(started && !sandbox && loadoutPanel.isOpen()) && !(started && sandbox && sandboxPanel?.isOpen?.())
+}
+window.addEventListener('keydown', (event) => {
+  if (event.repeat) return
+  const page = HUB_KEYS[event.code]
+  if (page && (hub.isOpen() || canOpenHub())) {
+    event.preventDefault()
+    hub.toggle(page)
+  } else if (event.code === 'Escape' && hub.isOpen()) {
+    hub.close()
+    event.hubClosed = true // so the pause menu's own Escape handler leaves it alone
+  } else if (event.code === 'KeyT') bankRunCrystals()
+})
+document.getElementById('hub-open-btn')?.addEventListener('click', () => hub.open('loadout'))
+touchControls?.addMenuButton(() => (hub.isOpen() ? hub.close() : hub.open('skills')), 'SKILLS')
+touchControls?.addMenuButton(bankRunCrystals, 'BANK')
 
 const pauseMenu = createPauseMenu({
   getMuted: () => music.isMuted(),
@@ -1652,16 +1881,18 @@ const pauseMenu = createPauseMenu({
     loadoutPanel.setOpen(false)
     restartGame()
   },
+  // Back to the start card (map choice): a fresh page load is the cleanest reset.
+  onMainMenu: () => window.location.reload(),
 })
 function togglePause() {
-  if (!started || swapPanel.isOpen() || (!sandbox && loadoutPanel.isOpen())) return
+  if (!started || swapPanel.isOpen() || hub.isOpen() || (!sandbox && loadoutPanel.isOpen())) return
   pauseMenu.toggle()
 }
 window.addEventListener('keydown', (event) => {
   if (event.repeat) return
   if (event.code === 'Digit8' || event.code === 'Numpad8') togglePause()
   else if (event.code === 'Escape' && pauseMenu.isOpen()) pauseMenu.setOpen(false)
-  else if (event.code === 'Escape' && !swapPanel.isOpen()) togglePause()
+  else if (event.code === 'Escape' && !swapPanel.isOpen() && !event.hubClosed) togglePause()
 })
 touchControls?.addMenuButton(togglePause, 'PAUSE')
 
@@ -1669,6 +1900,8 @@ function dismissStartCard(event) {
   // Guards against the keydown/mousedown listeners below and a gamepad
   // press both landing on the same frame and dismissing it twice.
   if (started) return
+  // Opening the hub (its button, or keys 6 / 7 / 9) or typing inside it isn't "start".
+  if (hub.isOpen() || event?.target?.closest?.('#hub-open-btn, #hub-root') || HUB_KEYS[event?.code]) return
   started = true
   if (event?.code === 'KeyB' || event?.target?.closest?.('#sandbox-btn')) startSandbox()
   else if (event?.code === 'KeyK' || event?.target?.closest?.('#labyrinth-btn')) {
@@ -1677,15 +1910,17 @@ function dismissStartCard(event) {
     disposeGame(game)
     game = createGame()
   }
+  if (!sandbox) applyLoadoutPets(game) // the loadout may have changed on the start card
   music.start()
   hideStartCard(hud)
   // The key/click that dismisses the card shouldn't also register as a
   // held attack button or key on gameplay's first frame.
   input.clear()
 }
-window.addEventListener('keydown', dismissStartCard, { once: true })
-window.addEventListener('mousedown', dismissStartCard, { once: true })
-window.addEventListener('pointerdown', dismissStartCard, { once: true }) // a finger tap
+// (Not `once`: opening the hub from the start card must not use the listener up.)
+window.addEventListener('keydown', dismissStartCard)
+window.addEventListener('mousedown', dismissStartCard)
+window.addEventListener('pointerdown', dismissStartCard) // a finger tap
 // iOS only lets audio start from a finished tap, not the pointerdown above:
 // keep nudging the (shared, idempotent) audio start on every touch release.
 window.addEventListener('touchend', () => {
@@ -1714,6 +1949,7 @@ function restartGame() {
   warp.reset()
   warpFields.length = 0
   meteors.splice(0).forEach(disposeMeteor)
+  bulwarkWalls.splice(0).forEach(removeBulwarkWall)
   pendingSummons.length = 0
   clearSwingTrail(swingTrail)
 }
@@ -1769,13 +2005,24 @@ function animate(timestamp) {
   warp.update(deltaSeconds, timer.getElapsed())
   const elapsedSeconds = timer.getElapsed()
 
+  // Downed But Determined: back up at half HP, once per revive the skill tree grants.
+  if (started && !sandbox && game.player.hp <= 0 && (game.revivesUsed ?? 0) < activeFx(game.inventory.equipped).revive) {
+    game.revivesUsed = (game.revivesUsed ?? 0) + 1
+    game.player.hp = Math.round(game.player.maxHp * 0.5)
+    game.player.invulnerableUntil = Math.max(game.player.invulnerableUntil, elapsedSeconds + 3)
+    burst(particleSystem, { x: game.player.position.x, y: 0.8, z: game.player.position.z }, 0xfff27a, 40, 4, 1)
+    spawnShockwave(shockwavePool, game.player.position.x, game.player.position.z, 5, 0xfff27a)
+    showLootToast(hud, { title: 'SKILL', name: 'Downed But Determined', blurb: 'You got back up!' })
+  }
   const gameState = game.labyrinth?.won ? 'won' : evaluateGameState({ playerHp: game.player.hp })
   winScreen.style.display = gameState === 'won' ? 'flex' : 'none'
   if (game.labyrinth) updateFloorChip(game)
 
   if (input.wasPressed('KeyM') || input.wasMutePressed()) music.toggleMuted()
-  music.setMuffled(gameState !== 'playing' || pauseMenu.isOpen())
-  music.setMode(game.waveState.phase === 'bossFight' && gameState === 'playing' ? 'boss' : 'normal')
+  // Paused (pause menu or the hub): a chill lo-fi loop instead of the fight music.
+  const chillOut = gameState === 'playing' && started && (pauseMenu.isOpen() || hub.isOpen())
+  music.setMuffled(gameState !== 'playing')
+  music.setMode(chillOut ? 'chill' : game.waveState.phase === 'bossFight' && gameState === 'playing' ? 'boss' : 'normal')
 
   // Recorded once, the frame the player dies: compares this run against
   // the saved high score, persists the new best, and freezes the stats
@@ -1819,7 +2066,7 @@ function animate(timestamp) {
   // is 0 for the frame(s) a freeze covers (or a fraction of deltaSeconds
   // the frame it ends partway through, so no time is lost overall).
   // The Tab power-up menu pauses the world (freeze the frame, still render).
-  if (loadoutOpen() || swapPanel.isOpen()) {
+  if (loadoutOpen() || swapPanel.isOpen() || hub.isOpen()) {
     composer.render()
     input.endFrame()
     return
@@ -1843,12 +2090,14 @@ function animate(timestamp) {
     : stepWaves(game.waveState, gameplayDelta, monsters.length, Math.random)
   game.waveState = nextWaveState
   spawns.forEach((type) => spawnMonster(game, type))
+  // The labyrinth's corridors swallow monsters: half the time a second one tags along.
+  if (game.labyrinth) spawns.forEach((type) => { if (Math.random() < 0.5) spawnMonster(game, type) })
   if (events.includes('waveCleared')) {
     const bonus = waveClearBonus(clearedWaveNumber)
     game.score += bonus
     showWaveClearedBanner(hud, bonus)
     sfx.play('waveCleared')
-    player.hp = Math.min(PLAYER_MAX_HP, player.hp + WAVE_CLEAR_HEAL)
+    player.hp = Math.min(player.maxHp, player.hp + WAVE_CLEAR_HEAL * activeFx(game.inventory.equipped).waveHeal)
   }
   if (events.includes('bossDefeated')) {
     const bonus = waveClearBonus(clearedWaveNumber) * 2
@@ -1869,7 +2118,7 @@ function animate(timestamp) {
       showWaveClearedBanner(hud, bonus, { lead: bossBeforeStep.name, text: `DEFEATED - NEXT STOP: ${nextLevel.name.toUpperCase()}` })
     }
     sfx.play('waveCleared')
-    player.hp = Math.min(PLAYER_MAX_HP, player.hp + WAVE_CLEAR_HEAL * BOSS_DEFEAT_HEAL_MULTIPLIER)
+    player.hp = Math.min(player.maxHp, player.hp + WAVE_CLEAR_HEAL * activeFx(game.inventory.equipped).waveHeal * BOSS_DEFEAT_HEAL_MULTIPLIER)
   }
   if (events.includes('waveCleared') || events.includes('bossDefeated')) attractAllCrystals(crystalSystem)
   if (events.includes('bossIntro')) startBossCutscene(game)
@@ -1908,7 +2157,19 @@ function animate(timestamp) {
       ? mouseAimAngle(player)
       : null
   const petFx = petEffects(game.inventory.pets)
-  const perk = powerupEffects(game.inventory.equipped)
+  const perk = activeFx(game.inventory.equipped)
+  // Skill-tree vitals: max HP (a raise heals by the same amount) and longer i-frames.
+  const wantMaxHp = Math.round(PLAYER_MAX_HP + perk.maxHp)
+  if (player.maxHp !== wantMaxHp) {
+    if (wantMaxHp > player.maxHp) player.hp += wantMaxHp - player.maxHp
+    player.maxHp = wantMaxHp
+    player.hp = Math.min(player.hp, wantMaxHp)
+  }
+  player.iframeScale = perk.iframes
+  // Every pet you find joins your collection (kept on this device) so it can go in a loadout.
+  if (!sandbox && game.inventory.pets.some((id) => !profile.collection.includes(id))) {
+    setProfile(addToCollection(profile, game.inventory.pets))
+  }
   player.speedMultiplier = petFx.speedMultiplier * perk.speed * (elapsedSeconds < player.sprintUntil ? SPRINT_SPEED_MULTIPLIER : 1)
   // The player keeps full speed through a hitstop freeze: only the world stops,
   // otherwise every landed hit stalls your movement for a moment.
@@ -1940,7 +2201,7 @@ function animate(timestamp) {
     pods,
     input,
     elapsedSeconds,
-    POD_HIDE_LIMIT,
+    hideLimit(),
   )
   if (!wasHidden && player.hidden) sfx.play('podIn', { x: player.position.x, z: player.position.z })
   if (vacatedPod) {
@@ -1957,7 +2218,7 @@ function animate(timestamp) {
 
   pods.forEach((pod) => {
     const remaining = pod.userData.occupied
-      ? hideTimeRemaining(hidingState.enteredAt, elapsedSeconds, POD_HIDE_LIMIT)
+      ? hideTimeRemaining(hidingState.enteredAt, elapsedSeconds, hideLimit())
       : null
     updatePod(pod, gameplayDelta, elapsedSeconds, { isNearestEnterable: pod === nearestPod, hideTimeRemaining: remaining })
   })
@@ -1996,7 +2257,7 @@ function animate(timestamp) {
     particleSystem,
     swingTrail,
     weaponId: selectedWeaponId(game.inventory),
-    damageMultiplier: elapsedDamageMultiplier(player, elapsedSeconds) * petFx.damageMultiplier * perk.damage,
+    damageMultiplier: elapsedDamageMultiplier(player, elapsedSeconds) * petFx.damageMultiplier * perk.damage * (Math.random() < perk.crit ? 2 : 1),
     cooldownMultiplier: petFx.cooldownMultiplier * perk.cooldown * (elapsedSeconds < player.frenzyUntil ? FRENZY_COOLDOWN_MULTIPLIER : 1),
     knockbackMultiplier: petFx.knockbackMultiplier * perk.knockback,
     bulletPool,
@@ -2110,6 +2371,8 @@ function animate(timestamp) {
     // A boss leaves a free chest where it fell (when it died on the platform).
     if (bossDeathPoint) {
       trySpawnChest(game, { at: clampToPlatform(bossDeathPoint, ARENA_RADIUS - CHEST_SPAWN_MARGIN), cost: 0 })
+      // ...and a power-up, a little off to the side so the two don't overlap.
+      trySpawnPerkPickup(game, clampToPlatform({ x: bossDeathPoint.x + 3, z: bossDeathPoint.z + 1 }, ARENA_RADIUS - CHEST_SPAWN_MARGIN))
     }
   }
 
@@ -2130,12 +2393,15 @@ function animate(timestamp) {
   updateShockwaves(shockwavePool, gameplayDelta)
   updateWarpFields(game, gameplayDelta, elapsedSeconds)
   updateMeteors(game, gameplayDelta)
+  updateBulwarkWalls(elapsedSeconds)
   updateBuffAuras(player, elapsedSeconds, gameplayDelta)
+  setGhostLook(player.mesh, elapsedSeconds < (player.ghostUntil ?? -Infinity) ? 0.28 : 1)
   // Ghost Form leaves a trail of pale wisps.
   if (elapsedSeconds < (player.ghostUntil ?? -Infinity)) {
     burst(particleSystem, { x: player.position.x, y: 0.5 + Math.random() * 1.2, z: player.position.z }, 0xdcd6ff, 2, 1.2, 0.8)
   }
   if (updateBullets(bulletPool, gameplayDelta, {
+    blockers: bulwarkBlockers(),
     monsters,
     obstacles,
     particleSystem,
@@ -2152,7 +2418,7 @@ function animate(timestamp) {
     sfx.play('hit', { x: player.position.x, z: player.position.z })
     input.rumble(RUMBLE_LIGHT_STRENGTH, RUMBLE_LIGHT_DURATION)
   }
-  const orbHurt = updateProjectiles(projectilePool, gameplayDelta, player, elapsedSeconds, ARENA_RADIUS)
+  const orbHurt = updateProjectiles(projectilePool, gameplayDelta, player, elapsedSeconds, ARENA_RADIUS, bulwarkBlockers())
   const poisonHurt = updatePoison(poisonPool, gameplayDelta, player, elapsedSeconds)
   if (orbHurt || poisonHurt) {
     triggerShake(shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
@@ -2170,13 +2436,33 @@ function animate(timestamp) {
     sandboxPanel.refresh({ inventory: game.inventory, levelIndex: game.levelIndex, god: godMode })
   }
   player.updateStatusEffects(elapsedSeconds)
-  if (perk.regen > 0 && player.hp > 0) player.hp = Math.min(PLAYER_MAX_HP, player.hp + perk.regen * gameplayDelta)
-  updatePets(game.pets, { dt: gameplayDelta, elapsed: elapsedSeconds, player, monsters: game.monsters, obstacles, particleSystem, hitstop: game.hitstop })
+  if (perk.regen > 0 && player.hp > 0) player.hp = Math.min(player.maxHp, player.hp + perk.regen * gameplayDelta)
+  updatePets(game.pets, { petDamage: perk.petDamage, dt: gameplayDelta, elapsed: elapsedSeconds, player, monsters: game.monsters, obstacles, particleSystem, hitstop: game.hitstop })
   const collected = updateCrystals(crystalSystem, gameplayDelta, elapsedSeconds, player.position.x, player.position.z, petFx.magnetRadius * perk.magnet)
   if (collected > 0) {
     game.inventory = addCrystals(game.inventory, Math.max(1, Math.round(collected * petFx.crystalMultiplier * perk.crystal)))
     sfx.play('crystal')
   }
+
+  const { state: nextPickupSpawner, spawnNow: pickupSpawnNow } = stepPodSpawner(
+    game.pickupSpawnerState,
+    elapsedSeconds,
+    game.pickups.length,
+    2,
+    [16, 28],
+    Math.random,
+  )
+  game.pickupSpawnerState = nextPickupSpawner
+  if (pickupSpawnNow && !sandbox) trySpawnPerkPickup(game)
+  game.pickups = game.pickups.filter((pickup) => {
+    updatePerkPickup(pickup, gameplayDelta)
+    if (player.hidden || Math.hypot(pickup.position.x - player.position.x, pickup.position.z - player.position.z) > PICKUP_RADIUS) return true
+    burst(particleSystem, { x: pickup.position.x, y: 1, z: pickup.position.z }, 0xffffff, 18, 3.5)
+    sfx.play('chestOpen', { x: pickup.position.x, z: pickup.position.z })
+    receiveLoot(game, { kind: 'powerup', id: pickup.userData.id })
+    disposeObject3D(pickup)
+    return false
+  })
 
   let nearestChest = null
   if (!player.hidden) {
@@ -2243,13 +2529,13 @@ function animate(timestamp) {
   const previousAnnouncement = hud.waveAnnouncement
   updateHud(hud, {
     hp: player.hp,
-    maxHp: PLAYER_MAX_HP,
+    maxHp: player.maxHp,
     score: game.score,
     wave: game.waveState.waveNumber,
     enemiesLeft,
     hidden: player.hidden,
-    hideTimeRemaining: player.hidden ? hideTimeRemaining(hidingState.enteredAt, elapsedSeconds, POD_HIDE_LIMIT) : null,
-    hideLimit: POD_HIDE_LIMIT,
+    hideTimeRemaining: player.hidden ? hideTimeRemaining(hidingState.enteredAt, elapsedSeconds, hideLimit()) : null,
+    hideLimit: hideLimit(),
     showHidePrompt: showPrompt,
     // Sandbox never steps the wave controller, so it would sit in
     // 'intermission' at 0s and the HUD would re-pick a PA line (and the

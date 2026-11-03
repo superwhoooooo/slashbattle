@@ -35,6 +35,16 @@ export const WEAPONS = {
   crossbow: { id: 'crossbow', name: 'Party Crossbow', short: 'Crossbow', icon: '🏹', gun: true, damage: 30, range: 22, arc: 0, cooldown: 0.8, swing: 0.15, knockback: 1.2, pellets: 1, spread: 0, bullet: { speed: 42, life: 0.6, radius: 0.24, pierce: 2, explode: 0, color: 0xc9ff5a }, blurb: 'Bolts that skewer two extra foes' },
   flamer: { id: 'flamer', name: 'Flame Thrower', short: 'Flamer', icon: '🔥', gun: true, damage: 5, range: 6, arc: 0, cooldown: 0.07, swing: 0.05, knockback: 0.1, pellets: 3, spread: 0.45, bullet: { speed: 14, life: 0.4, radius: 0.26, pierce: 1, explode: 0, color: 0xff6a2a }, blurb: 'A short, hot, continuous spray' },
   blaster: { id: 'blaster', name: 'Disco Blaster', short: 'Blaster', icon: '✨', gun: true, damage: 11, range: 14, arc: 0, cooldown: 0.45, swing: 0.12, knockback: 0.9, pellets: 5, spread: 0.35, bullet: { speed: 28, life: 0.55, radius: 0.2, pierce: 1, explode: 0, color: 0xd96bff }, blurb: 'A sparkly five-shot fan' },
+  // More melee (each borrows a base weapon's model, swing and effects: see WEAPON_BASE)
+  trident: { id: 'trident', name: 'Neon Trident', short: 'Trident', icon: '🔱', damage: 30, range: 2.7, arc: Math.PI / 4, cooldown: 0.5, swing: 0.2, knockback: 1.1, blurb: 'Spear with extra bite and reach' },
+  cleaver: { id: 'cleaver', name: 'Meat Cleaver', short: 'Cleaver', icon: '🔪', damage: 44, range: 1.5, arc: Math.PI * 0.6, cooldown: 0.8, swing: 0.26, knockback: 1.6, blurb: 'One heavy chop' },
+  mace: { id: 'mace', name: 'Star Mace', short: 'Mace', icon: '⭐', damage: 40, range: 1.7, arc: Math.PI * 0.8, cooldown: 0.7, swing: 0.3, knockback: 3.0, blurb: 'Faster than the hammer, still a wallop' },
+  glaive: { id: 'glaive', name: 'Moon Glaive', short: 'Glaive', icon: '🌜', damage: 24, range: 2.6, arc: Math.PI * 1.7, cooldown: 0.6, swing: 0.3, knockback: 1.4, blurb: 'A huge sweeping circle' },
+  // More firearms
+  minigun: { id: 'minigun', name: 'Party Minigun', short: 'Minigun', icon: '🎉', gun: true, damage: 4, range: 10, arc: 0, cooldown: 0.05, swing: 0.04, knockback: 0.15, pellets: 1, spread: 0.2, bullet: { speed: 26, life: 0.45, radius: 0.16, pierce: 0, explode: 0, color: 0xffb347 }, blurb: 'A blur of confetti rounds' },
+  sniper: { id: 'sniper', name: 'Sunbeam Sniper', short: 'Sniper', icon: '☀️', gun: true, damage: 75, range: 40, arc: 0, cooldown: 1.6, swing: 0.25, knockback: 2.2, pellets: 1, spread: 0, bullet: { speed: 80, life: 0.6, radius: 0.28, pierce: 3, explode: 0, color: 0xfff27a }, blurb: 'One huge piercing shot' },
+  grenade: { id: 'grenade', name: 'Pineapple Lobber', short: 'Lobber', icon: '🍍', gun: true, damage: 28, range: 14, arc: 0, cooldown: 1.0, swing: 0.2, knockback: 2.2, pellets: 1, spread: 0, bullet: { speed: 13, life: 1.1, radius: 0.34, pierce: 0, explode: 4.2, color: 0xa6e22e }, blurb: 'A big juicy blast' },
+  frostgun: { id: 'frostgun', name: 'Frost Blaster', short: 'Frost', icon: '❄️', gun: true, damage: 13, range: 12, arc: 0, cooldown: 0.35, swing: 0.1, knockback: 1.6, pellets: 3, spread: 0.3, bullet: { speed: 24, life: 0.5, radius: 0.22, pierce: 0, explode: 0, color: 0xbfe9ff }, blurb: 'Icy triple shot that shoves' },
   launcher: { id: 'launcher', name: 'Cannonball Launcher', short: 'Launcher', icon: '💣', gun: true, damage: 34, range: 16, arc: 0, cooldown: 1.1, swing: 0.2, knockback: 2.6, pellets: 1, spread: 0, bullet: { speed: 16, life: 1.0, radius: 0.32, pierce: 0, explode: 3.0, color: 0xff8a3a }, blurb: 'Explodes on impact' },
 }
 
@@ -58,6 +68,10 @@ export const ABILITIES = {
   vacuum: { id: 'vacuum', name: 'Warp Field', icon: '🕳️', cooldown: 14, duration: 4.5, radius: 5.5, damage: 9, range: 18, blurb: 'Warp space at your cursor: confuses and hurts, pulls in crystals' },
   quake: { id: 'quake', name: 'Earthquake', icon: '🌋', cooldown: 17, damage: 30, radius: 9, blurb: 'Shake everything in a wide ring' },
   fanblast: { id: 'fanblast', name: 'Fan Blast', icon: '🎇', cooldown: 8, damage: 22, blurb: 'Seven heavy shots ahead' },
+  dizzy: { id: 'dizzy', name: 'Dizzy Blast', icon: '💫', cooldown: 15, duration: 3.5, radius: 7, damage: 10, blurb: 'Nearby enemies stumble around, dazed' },
+  starfall: { id: 'starfall', name: 'Starfall', icon: '🌠', cooldown: 18, damage: 55, radius: 3.2, targets: 3, blurb: 'Meteors rain on the 3 nearest enemies' },
+  crossfire: { id: 'crossfire', name: 'Cross Fire', icon: '✖️', cooldown: 9, damage: 26, blurb: 'Piercing shots in four directions' },
+  bulwark: { id: 'bulwark', name: 'Bulwark', icon: '🏰', cooldown: 20, duration: 6, blocks: 7, spacing: 1.3, distance: 2.6, blurb: 'Raise a temporary wall in front of you' },
   refresh: { id: 'refresh', name: 'Second Wind', icon: '♻️', cooldown: 30, blurb: 'Reset other cooldowns' },
 }
 
@@ -95,14 +109,39 @@ export const PETS = {
   polly: { id: 'polly', name: 'Polly', icon: '🦜', color: 0xff4a4a, model: 'parrot', kind: 'zap', damage: 9, interval: 1, range: 10, blurb: 'A parrot that squawks damage at foes' },
   quackers: { id: 'quackers', name: 'Quackers', icon: '🦆', color: 0xfff1a8, model: 'duck', kind: 'heal', amount: 3, interval: 3.5, blurb: 'A duck that quacks you back to health' },
   shadow: { id: 'shadow', name: 'Shadow', icon: '🥷', color: 0x6b5b95, model: 'ninjacoon', kind: 'zap', damage: 5, interval: 0.35, range: 5, blurb: 'A ninja raccoon with a blur of stabs' },
+  mittens: { id: 'mittens', name: 'Mittens', icon: '🐱', color: 0xf0b27a, model: 'cat', kind: 'zap', damage: 7, interval: 0.75, range: 6, blurb: 'A cat with quick little swats' },
+  oink: { id: 'oink', name: 'Oinky', icon: '🐷', color: 0xffb3c1, model: 'pig', kind: 'magnet', radius: 13, blurb: 'A pig that roots out crystals from afar' },
+  koda: { id: 'koda', name: 'Koda', icon: '🐨', color: 0xb0b6c0, model: 'koala', kind: 'pulse', damage: 9, interval: 2, radius: 3.6, knockback: 1.5, blurb: 'A koala that thumps everything close' },
+  stripes: { id: 'stripes', name: 'Stripes', icon: '🐯', color: 0xff9a2e, model: 'tiger', kind: 'zap', damage: 20, interval: 2.2, range: 7, knockback: 2.5, blurb: 'A tiger with one big pounce' },
+  leo: { id: 'leo', name: 'Leo', icon: '🦁', color: 0xe8b04a, model: 'lion', kind: 'pulse', damage: 18, interval: 3, radius: 4, knockback: 2, blurb: 'A lion whose roar rattles everything near' },
+  waddles: { id: 'waddles', name: 'Waddles', icon: '🐧', color: 0x6fa8ff, model: 'penguin', kind: 'zap', damage: 10, interval: 1.1, range: 8, knockback: 1, blurb: 'A penguin that slides snowballs at foes' },
+  flame: { id: 'flame', name: 'Flame', icon: '🦩', color: 0xff7fa8, model: 'flamingo', kind: 'heal', amount: 4, interval: 4, blurb: 'A flamingo that fluffs you back to health' },
+  toco: { id: 'toco', name: 'Toco', icon: '🦜', color: 0xff8a00, model: 'toucan', kind: 'zap', damage: 12, interval: 1.3, range: 12, blurb: 'A toucan that pecks from way out' },
+  biscuit: { id: 'biscuit', name: 'Biscuit', icon: '🐶', color: 0xd9b88a, model: 'pug', kind: 'guard', reduction: 0.2, blurb: 'A loyal pug that takes 20% off every hit' },
+  mojo: { id: 'mojo', name: 'Mojo', icon: '🐵', color: 0xffe14a, saberColor: 0xffe14a, model: 'monkey', kind: 'throw', thrown: ['banana'], damage: 13, interval: 1.0, range: 11, knockback: 1, blurb: 'A monkey that lobs bananas at the nearest foe' },
+  sparkle: { id: 'sparkle', name: 'Sparkle', icon: '🦄', color: 0xff8ad8, model: 'unicorn', kind: 'heal', amount: 3, interval: 2.8, blurb: 'A unicorn with a steady glittery heal' },
   rascal: { id: 'rascal', name: 'Rascal', icon: '🦝', color: 0x9e9e9e, model: 'raccoon', kind: 'zap', damage: 7, interval: 0.9, range: 7, blurb: 'A raccoon that swipes the nearest enemy' },
 }
 
-export const ABILITY_KEYS = ['KeyQ', 'KeyZ', 'KeyX', 'KeyC', 'KeyV']
+// New weapons borrow an older one's model, swing animation and effects.
+export const WEAPON_BASE = { trident: 'spear', cleaver: 'axe', mace: 'hammer', glaive: 'scythe', minigun: 'smg', sniper: 'railgun', grenade: 'launcher', frostgun: 'blaster' }
+export const weaponBase = (id) => WEAPON_BASE[id] ?? id
+
+export const ABILITY_KEYS = ['KeyQ', 'KeyZ', 'KeyX', 'KeyC', 'KeyV', 'KeyG', 'KeyH'] // the last two only open up with the Bandolier skill
 export const HOTBAR_KEYS = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5']
 export const HOTBAR_SLOTS = HOTBAR_KEYS.length
-export const ABILITY_SLOTS = ABILITY_KEYS.length
+export const ABILITY_SLOTS = 5 // the starting number (the skill tree can add more, up to MAX_SLOTS)
 export const MAX_PETS = 5
+
+// How many power-ups / pets / abilities you can hold. The base counts grow with the
+// skill tree's slot skills (set by main.js through setSlotBonuses, saved per device).
+export const BASE_SLOTS = { powerups: 3, pets: 5, abilities: 5 }
+export const MAX_SLOTS = { powerups: 6, pets: 8, abilities: 7 }
+export const SLOT_LIMITS = { ...BASE_SLOTS }
+export function setSlotBonuses({ powerups = 0, pets = 0, abilities = 0 } = {}) {
+  const bonus = { powerups, pets, abilities }
+  for (const key of Object.keys(BASE_SLOTS)) SLOT_LIMITS[key] = Math.min(MAX_SLOTS[key], BASE_SLOTS[key] + Math.max(0, Math.floor(bonus[key])))
+}
 
 export const BASE_MAGNET_RADIUS = 3.2
 
@@ -143,25 +182,35 @@ export const POWERUPS = {
   leech: { id: 'leech', name: 'Second Helping', icon: '🍰', color: '#e86a9a', tag: 'HEALING', blurb: 'Heal 2 HP on every kill', killHeal: 2 },
   regen: { id: 'regen', name: 'Slow Burn', icon: '🌿', color: '#46d27a', tag: 'HEALING', blurb: 'Regain 1 HP every 2 seconds', regen: 0.5 },
   haste: { id: 'haste', name: 'Quick Study', icon: '⏳', color: '#8a6bff', tag: 'ABILITY', blurb: 'Abilities recharge 25% faster', haste: 0.75 },
+  glass: { id: 'glass', name: 'Glass Cannon', icon: '🔮', color: '#ff4fa3', tag: 'RISKY', blurb: '+50% damage, take 30% more', damage: 1.5, damageTaken: 1.3 },
+  iron: { id: 'iron', name: 'Iron Will', icon: '🛡️', color: '#8aa0b8', tag: 'DEFENSE', blurb: 'Take 35% less damage, move 10% slower', damageTaken: 0.65, speed: 0.9 },
+  thirst: { id: 'thirst', name: 'Bloodthirst', icon: '🩸', color: '#d12a4a', tag: 'HEALING', blurb: 'Heal 4 HP on every kill', killHeal: 4 },
+  turbo: { id: 'turbo', name: 'Hyperdrive', icon: '🚀', color: '#ff8a3b', tag: 'MOVE', blurb: 'Attack 30% faster, move 10% faster', cooldown: 0.7, speed: 1.1 },
+  jackpot: { id: 'jackpot', name: 'Jackpot', icon: '🎰', color: '#f5c518', tag: 'LOOT', blurb: '+80% crystals from pickups', crystal: 1.8 },
+  focus: { id: 'focus', name: 'Deep Focus', icon: '🧘', color: '#6fd3c8', tag: 'ABILITY', blurb: 'Abilities recharge 40% faster', haste: 0.6 },
   magnet: { id: 'magnet', name: 'Gem Magnet', icon: '🧲', color: '#7a8cff', tag: 'LOOT', blurb: 'Crystals fly to you from 60% farther', magnet: 1.6 },
 }
 
-// What the equipped power-ups add up to (multipliers start at 1).
-export function powerupEffects(ids = []) {
+// What the equipped power-ups add up to (multipliers start at 1). `levels` maps a
+// power-up id to its upgrade level (default 1): each level past 1 pushes a perk
+// 35% further from neutral (a +25% damage perk becomes +33.75% at level 2, ...).
+export function powerupEffects(ids = [], levels = {}) {
   const fx = { speed: 1, damage: 1, cooldown: 1, damageTaken: 1, crystal: 1, knockback: 1, killHeal: 0, regen: 0, haste: 1, magnet: 1 }
   for (const id of ids) {
     const perk = POWERUPS[id]
     if (!perk) continue
-    fx.speed *= perk.speed ?? 1
-    fx.damage *= perk.damage ?? 1
-    fx.cooldown *= perk.cooldown ?? 1
-    fx.damageTaken *= perk.damageTaken ?? 1
-    fx.crystal *= perk.crystal ?? 1
-    fx.knockback *= perk.knockback ?? 1
-    fx.killHeal += perk.killHeal ?? 0
-    fx.regen += perk.regen ?? 0
-    fx.haste *= perk.haste ?? 1
-    fx.magnet *= perk.magnet ?? 1
+    const amp = 1 + 0.35 * ((levels[id] ?? 1) - 1)
+    const mult = (key) => 1 + ((perk[key] ?? 1) - 1) * amp
+    fx.speed *= mult('speed')
+    fx.damage *= mult('damage')
+    fx.cooldown *= mult('cooldown')
+    fx.damageTaken *= mult('damageTaken')
+    fx.crystal *= mult('crystal')
+    fx.knockback *= mult('knockback')
+    fx.killHeal += (perk.killHeal ?? 0) * amp
+    fx.regen += (perk.regen ?? 0) * amp
+    fx.haste *= mult('haste')
+    fx.magnet *= mult('magnet')
   }
   return fx
 }

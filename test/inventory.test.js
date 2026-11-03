@@ -31,7 +31,7 @@ describe('catalogs', () => {
     expect(Object.keys(WEAPONS).length).toBeGreaterThan(HOTBAR_SLOTS)
     expect(Object.keys(ABILITIES).length).toBeGreaterThan(ABILITY_SLOTS)
     expect(Object.keys(PETS).length).toBeGreaterThan(MAX_PETS)
-    expect(Object.keys(PETS)).toHaveLength(27)
+    expect(Object.keys(PETS)).toHaveLength(38)
   })
 
   it('makes the staff a ranged starter whose orbs are magic, and the sword a chest find', () => {
@@ -185,10 +185,10 @@ describe('chest loot', () => {
     expect(loadouts.size).toBeGreaterThan(10)
   })
 
-  it('rolls across all four categories', () => {
+  it('rolls across the three chest categories (power-ups lie on the ground)', () => {
     const kinds = new Set()
     for (let seed = 0; seed < 60; seed++) kinds.add(rollChestLoot(createInventory(), createSeededRng(seed)).kind)
-    expect(kinds).toEqual(new Set(['weapon', 'ability', 'pet', 'powerup']))
+    expect(kinds).toEqual(new Set(['weapon', 'ability', 'pet']))
   })
 
   it('makes later chests cost more', () => {
@@ -257,7 +257,7 @@ describe('petEffects', () => {
       expect(typeof model.userData.fly).toBe('boolean')
       expect(() => model.userData.animate(1.3, true)).not.toThrow()
     }
-  })
+  }, 30000) // builds every pet's model (38 now): slow when the whole suite runs at once
 
   it('keeps the damage floor with several guard pets', () => {
     expect(petEffects(['shieldy', 'plated']).damageTakenMultiplier).toBeCloseTo(0.75 * 0.85)

@@ -177,7 +177,19 @@ export function wavesBeforeBoss(bossesDefeated) {
 // A boss's hp multiplier on the `bossesDefeated`-th fight: +20% per boss
 // already beaten, so a repeat visit (after all seven) is clearly tougher.
 export function bossHpScale(bossesDefeated) {
-  return 1 + 0.2 * bossesDefeated
+  return (1 + 0.2 * bossesDefeated) * bossEase(bossesDefeated).hp
+}
+
+// The first few boss fights of a run go easy: the opener has well under
+// half the hp and hits much softer, easing back to full strength by the
+// fourth boss. Returns multipliers for hp and damage.
+export function bossEase(bossesDefeated) {
+  const steps = [
+    { hp: 0.5, damage: 0.55 },
+    { hp: 0.7, damage: 0.7 },
+    { hp: 0.85, damage: 0.85 },
+  ]
+  return steps[bossesDefeated] ?? { hp: 1, damage: 1 }
 }
 
 // Special-move timer: counts `timer` down by dt and, when it reaches 0,

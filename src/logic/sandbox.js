@@ -2,7 +2,7 @@
 // sandbox menu equips it (swapping out another if that bucket is full) or,
 // if you already have it, takes it away. Every function returns a NEW
 // inventory, like logic/inventory.js.
-import { ABILITY_SLOTS, HOTBAR_SLOTS, MAX_PETS } from './items.js'
+import { HOTBAR_SLOTS, SLOT_LIMITS } from './items.js'
 import { toggleEquipPowerup } from './inventory.js'
 
 // The Wizard Staff is fixed in the first hotbar slot, so it never gets
@@ -39,7 +39,7 @@ export function sandboxToggleItem(inventory, { kind, id }) {
     const index = inventory.abilities.indexOf(id)
     if (index !== -1) {
       result.inventory = { ...inventory, abilities: inventory.abilities.filter((a) => a !== id) }
-    } else if (inventory.abilities.length < ABILITY_SLOTS) {
+    } else if (inventory.abilities.length < SLOT_LIMITS.abilities) {
       result.inventory = { ...inventory, abilities: [...inventory.abilities, id] }
     } else {
       const abilities = [...inventory.abilities.slice(0, -1), id]
@@ -53,7 +53,7 @@ export function sandboxToggleItem(inventory, { kind, id }) {
     if (index !== -1) {
       result.inventory = { ...inventory, pets: inventory.pets.filter((p) => p !== id) }
       result.petRemoved = index
-    } else if (inventory.pets.length < MAX_PETS) {
+    } else if (inventory.pets.length < SLOT_LIMITS.pets) {
       result.inventory = { ...inventory, pets: [...inventory.pets, id] }
       result.petAdded = id
     } else {

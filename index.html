@@ -435,6 +435,8 @@
         cursor: pointer;
       }
       #sandbox-btn:hover { background: var(--teal); color: #fff; }
+      #hub-open-btn { font: inherit; font-weight: 700; padding: 8px 18px; border-radius: 10px; border: 2px solid var(--butter); background: #fff; color: var(--ink); cursor: pointer; }
+      #hub-open-btn:hover { background: var(--butter); }
       .map-row { display: flex; gap: 12px; margin-top: 6px; flex-wrap: wrap; justify-content: center; }
       .map-btn {
         font: inherit;
@@ -1108,6 +1110,8 @@
           <div class="control-row"><kbd>F</kbd><span>open a chest (costs 💎)</span></div>
           <div class="control-row"><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd><kbd>5</kbd><span>pick a weapon</span></div>
           <div class="control-row"><kbd>Q</kbd><kbd>Z</kbd><kbd>X</kbd><kbd>C</kbd><kbd>V</kbd><span>use abilities</span></div>
+          <div class="control-row"><kbd>T</kbd><span>bank your crystals for upgrades</span></div>
+          <div class="control-row"><kbd>6</kbd><kbd>7</kbd><kbd>9</kbd><span>skill tree / power-ups / loadout</span></div>
         </div>
         <div class="gamepad-legend">
           <span>🎮</span>
@@ -1125,12 +1129,13 @@
           <button id="resort-btn" class="map-btn" type="button">Orbital Sundeck<small>Endless waves on a floating platform</small></button>
           <button id="labyrinth-btn" class="map-btn" type="button">Labyrinth <kbd>K</kbd><small>3 floors of walls &amp; spike traps. Beat 2 bosses per floor to open the gate.</small></button>
         </div>
+        <button id="hub-open-btn" type="button">Skills &amp; Loadout <kbd>6</kbd></button>
         <button id="sandbox-btn" type="button">Sandbox mode <kbd>B</kbd></button>
         <p>No waves: spawn anything, grab any gear, hop between levels.</p>
       </div>
     </div>
     <div id="floor-chip" class="panel"></div>
-    <div id="win-screen" class="overlay">
+    <div id="win-screen" class="overlay" style="display: none">
       <div class="card panel">
         <h1>ESCAPED!</h1>
         <p>You beat the Labyrinth.</p>
@@ -1138,7 +1143,7 @@
         <p class="hint">Press R to play again</p>
       </div>
     </div>
-    <div id="lose-screen" class="overlay">
+    <div id="lose-screen" class="overlay" style="display: none">
       <div class="card panel">
         <h1>GAME OVER</h1>
         <p>You got goofed.</p>

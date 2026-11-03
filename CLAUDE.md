@@ -270,8 +270,7 @@ one takes its turn once a slot frees up.
 
 ## Power-ups
 `logic/items.js`'s `POWERUPS` (Swift Boots, Heavy Hitter, Quick Hands, Thick Skin, Gem
-Greed, Big Shove, Second Helping) are passive perks found in chests (a fourth loot
-category; `inventory.powerups` owned, `inventory.equipped` on, up to `POWERUP_SLOTS` = 3,
+Greed, Big Shove, Second Helping) are passive perks found lying on the ground (`src/pickups.js`: a glowing icon you walk over; one at the start, a new one every ~16-28s up to 2 at once, and one beside a boss's chest; only perks you don't own; chests no longer roll them; `inventory.powerups` owned, `inventory.equipped` on, up to `POWERUP_SLOTS` = 3,
 a new one equips itself if there's room). Tab opens `src/loadout.js`'s menu to pick which
 are on (`toggleEquipPowerup`, a full set swaps out the oldest) and freezes the frame.
 `powerupEffects(equipped)` multiplies them; `main.js` folds it in next to `petEffects`.
@@ -563,3 +562,20 @@ Only once you own everything does a chest pay out score and a heal ("LOADOUT FUL
 `combat.js`'s `damageMonster` is the one place a monster takes a hit (sword,
 pet zap, shockwave all use it). The inventory HUD (crystal count, hotbar,
 ability bar, pet icons, chest prompt, loot toast) is in `hud.js`.
+
+## Recent tuning notes
+- Waves: 4 enemies on wave 1, +4 per wave, faster trickle (`waves.js`); in the labyrinth half of spawns bring a second monster.
+- Bosses: `bosses.js`'s `bossEase` makes the first three boss fights softer (hp and damage); `bossHpScale` folds it in.
+- Labyrinth walls block melee, bullets and pets (`monster.js`'s `hasWallLineOfSight` / `isInsideWall`).
+- Ghost Form fades the player (`main.js`'s `setGhostLook`) and counts as hidden for monster perception.
+- Pause menu has a "Main menu" button (reloads to the start card).
+- New weapons borrow a base weapon's model/swing/fx via `items.js`'s `WEAPON_BASE`/`weaponBase`.
+
+## Profile, hub, skill tree (per device)
+`src/logic/profile.js` (pure) + `src/profile.js` (localStorage `slashbattle:profile`, try/catch) hold what
+persists between runs: banked crystals, the pet collection (every pet ever found), 3 loadouts of up to
+`MAX_PETS` starting pets (`activeLoadoutPets`; applied by `main.js`'s `applyLoadoutPets` on every new run and
+when the start card is dismissed), and skill / power-up levels. T banks the run's crystals (`bankRunCrystals`).
+`src/hub.js` is one overlay with three pages: Skill Tree (6), Power-Ups (7), Loadout (9); the start card has a
+"Skills & Loadout" button. `logic/skills.js` has the ARC Raiders-style tree: Conditioning / Mobility / Survival, 16 ranked nodes each in six tiers (3 columns, nodes hang off the ones above via `needs`; a tier opens once `TIER_GATES` ranks are spent in that tree; tier 6 is a capstone; a rank costs `TIER_COSTS[tier]`; respec refunds everything). It upgrades max HP, damage, crits, regen, i-frames, hide time, pet damage, wave heal, chest prices, start crystals, revive and the SLOT counts (power-up / pet / ability slots via `items.js`'s `SLOT_LIMITS` / `setSlotBonuses`; abilities 6-7 use keys G and H). Saves from the first tree are refunded and the power-up upgrade rules (levels 1-5, `powerupEffects(ids, levels)`); `main.js`'s
+`activeFx` folds power-ups + skills into one effect set. The hub pauses the game.

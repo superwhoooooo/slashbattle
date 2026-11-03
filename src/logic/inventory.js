@@ -4,12 +4,10 @@
 // the wave controller.
 import {
   ABILITIES,
-  ABILITY_SLOTS,
   HOTBAR_SLOTS,
-  MAX_PETS,
   PETS,
   POWERUPS,
-  POWERUP_SLOTS,
+  SLOT_LIMITS,
   WEAPONS,
 } from './items.js'
 
@@ -22,7 +20,7 @@ export function createInventory() {
     abilityReadyAt: {}, // ability id -> game time it's ready again
     pets: [],
     powerups: [], // power-ups found (owned)
-    equipped: [], // the ones switched on in the Tab menu (up to POWERUP_SLOTS)
+    equipped: [], // the ones switched on in the Tab menu (up to SLOT_LIMITS.powerups)
     chestsOpened: 0,
   }
 }
@@ -55,16 +53,21 @@ export function availableLoot(inventory) {
   for (const id of Object.keys(WEAPONS)) if (!inventory.weapons.includes(id)) loot.push({ kind: 'weapon', id })
   for (const id of Object.keys(ABILITIES)) if (!inventory.abilities.includes(id)) loot.push({ kind: 'ability', id })
   for (const id of Object.keys(PETS)) if (!inventory.pets.includes(id)) loot.push({ kind: 'pet', id })
-  for (const id of Object.keys(POWERUPS)) if (!(inventory.powerups ?? []).includes(id)) loot.push({ kind: 'powerup', id })
   return loot
+}
+
+// Power-ups aren't in chests any more: they lie on the ground. These are the
+// ones you don't own yet, i.e. what a pickup can be.
+export function availablePowerups(inventory) {
+  return Object.keys(POWERUPS).filter((id) => !(inventory.powerups ?? []).includes(id))
 }
 
 // True when `loot` is a weapon / ability / pet whose slots are all taken, so
 // the player has to pick something to swap out (or pass on it).
 export function needsSwap(inventory, { kind }) {
   if (kind === 'weapon') return inventory.weapons.length >= HOTBAR_SLOTS
-  if (kind === 'ability') return inventory.abilities.length >= ABILITY_SLOTS
-  if (kind === 'pet') return inventory.pets.length >= MAX_PETS
+  if (kind === 'ability') return inventory.abilities.length >= SLOT_LIMITS.abilities
+  if (kind === 'pet') return inventory.pets.length >= SLOT_LIMITS.pets
   return false
 }
 
@@ -120,7 +123,7 @@ export function grantItem(inventory, { kind, id }) {
   }
   if (kind === 'powerup' && !inventory.powerups.includes(id)) {
     // A new power-up switches itself on if there's a free slot.
-    const equipped = inventory.equipped.length < POWERUP_SLOTS ? [...inventory.equipped, id] : inventory.equipped
+    const equipped = inventory.equipped.length < SLOT_LIMITS.powerups ? [...inventory.equipped, id] : inventory.equipped
     return { ...inventory, powerups: [...inventory.powerups, id], equipped }
   }
   return inventory
@@ -158,6 +161,6 @@ export function abilityCooldownFraction(inventory, id, now) {
 export function toggleEquipPowerup(inventory, id) {
   if (!inventory.powerups.includes(id)) return inventory
   if (inventory.equipped.includes(id)) return { ...inventory, equipped: inventory.equipped.filter((p) => p !== id) }
-  const equipped = inventory.equipped.length < POWERUP_SLOTS ? inventory.equipped : inventory.equipped.slice(1)
+  const equipped = inventory.equipped.length < SLOT_LIMITS.powerups ? inventory.equipped : inventory.equipped.slice(1)
   return { ...inventory, equipped: [...equipped, id] }
 }

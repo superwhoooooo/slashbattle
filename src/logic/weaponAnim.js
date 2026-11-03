@@ -6,6 +6,8 @@
 // [time, value] keys (eased between), or a function of the swing progress.
 // Progress runs 0..1 and the damage lands at 0.5.
 
+import { weaponBase } from './items.js'
+
 const R = 0.6 // PLAYER_BODY_RADIUS (kept literal so this file stays config-free; a test checks it)
 export const REST_MELEE = { yaw: Math.PI / 2, r: R + 0.1, h: R * 0.6, pitch: 0.15, roll: 0, face: 0 }
 const REST_GUN = { yaw: 0.35, r: 0.95, h: 0.8, pitch: 1.45, roll: 0, face: 0 }
@@ -75,14 +77,14 @@ export const SWINGS = {
 const GUNS = new Set(['pistol', 'shotgun', 'smg', 'railgun', 'launcher', 'crossbow', 'flamer', 'blaster'])
 
 export function restPose(id) {
-  return GUNS.has(id) ? REST_GUN : REST_MELEE
+  return GUNS.has(weaponBase(id)) ? REST_GUN : REST_MELEE
 }
 
 // The pose of weapon `id` at swing progress `t` (0..1), or at rest when t is
 // null. The start and end ease in and out of the rest pose.
 export function weaponPose(id, t) {
   const rest = restPose(id)
-  const swing = SWINGS[id]
+  const swing = SWINGS[weaponBase(id)]
   if (t === null || t === undefined || !swing) return { ...rest }
   const raw = {}
   for (const key of ['yaw', 'r', 'h', 'pitch', 'roll']) raw[key] = channel(swing[key], t)

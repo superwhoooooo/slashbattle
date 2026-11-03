@@ -5,17 +5,17 @@
 // it without WebGL; the Three-side driver lives in main.js.
 import { bossForFight, bossById, shuffleBossOrder, wavesBeforeBoss } from './bosses.js'
 
-export const WAVE_BASE_SIZE = 3
-export const WAVE_GROWTH = 3
+export const WAVE_BASE_SIZE = 4
+export const WAVE_GROWTH = 4
 
 // A strictly increasing enemy count for wave `n` (1-indexed).
 export function waveSize(n) {
   return WAVE_BASE_SIZE + WAVE_GROWTH * (n - 1)
 }
 
-export const WAVE_BASE_SPAWN_INTERVAL = 2.5 // seconds
-export const WAVE_SPAWN_INTERVAL_DECAY = 0.15 // seconds faster per wave
-export const WAVE_MIN_SPAWN_INTERVAL = 0.9 // seconds
+export const WAVE_BASE_SPAWN_INTERVAL = 1.9 // seconds
+export const WAVE_SPAWN_INTERVAL_DECAY = 0.12 // seconds faster per wave
+export const WAVE_MIN_SPAWN_INTERVAL = 0.65 // seconds
 
 // Seconds between enemies trickling in one at a time during wave `n`,
 // never faster than WAVE_MIN_SPAWN_INTERVAL.

@@ -160,8 +160,68 @@ export function bossEventsForStep(stepIndex) {
   return events
 }
 
+// ---- Chill track ----------------------------------------------------------
+// A slow lo-fi loop for the pause menu and hub: 76 BPM, a soft boom-bap kick
+// and rim, hazy hats, vinyl crackle, warm electric-piano chords
+// (Dm9-G13-Cmaj9-Am9, Fmaj7-Em7-Dm9-G13), a mellow sine bass and a sparse
+// bell melody in D minor pentatonic.
+export const CHILL_BPM = 76
+
+const CHILL_CHORDS = [
+  { root: 38, tones: [53, 57, 60, 64] }, // Dm9
+  { root: 43, tones: [53, 59, 62, 64] }, // G13
+  { root: 36, tones: [52, 55, 59, 62] }, // Cmaj9
+  { root: 33, tones: [55, 60, 64, 71] }, // Am9
+  { root: 41, tones: [57, 60, 64, 67] }, // Fmaj7
+  { root: 40, tones: [55, 59, 62, 67] }, // Em7
+  { root: 38, tones: [53, 57, 60, 64] }, // Dm9
+  { root: 43, tones: [53, 59, 62, 64] }, // G13 (turns back to Dm9)
+]
+
+// The bell melody, per bar: [step, midi note, length in steps].
+const CHILL_MELODY = [
+  [[2, 81, 3], [8, 77, 2], [12, 74, 4]],
+  [[0, 79, 3], [6, 81, 2], [10, 77, 3]],
+  [[2, 76, 3], [8, 79, 3], [12, 81, 2]],
+  [[0, 81, 4], [8, 76, 2], [12, 79, 2]],
+  [[2, 77, 3], [8, 81, 2], [12, 84, 4]],
+  [[0, 79, 3], [6, 76, 2], [10, 74, 4]],
+  [[2, 74, 2], [6, 77, 2], [10, 81, 4]],
+  [[0, 79, 3], [8, 76, 3], [12, 74, 4]],
+]
+
+export function chillEventsForStep(stepIndex) {
+  const loopStep = ((stepIndex % LOOP_STEPS) + LOOP_STEPS) % LOOP_STEPS
+  const bar = Math.floor(loopStep / STEPS_PER_BAR)
+  const step = loopStep % STEPS_PER_BAR
+  const chord = CHILL_CHORDS[bar]
+  const events = []
+
+  // Boom-bap: kick on 1 with a lazy ghost, soft rim on 2 and 4, hazy off-beat hats.
+  if (step === 0) events.push({ kind: 'kick', steps: 1, velocity: 0.8 })
+  if (step === 7 || (step === 10 && bar % 2 === 1)) events.push({ kind: 'kick', steps: 1, velocity: 0.45 })
+  if (step === 4 || step === 12) events.push({ kind: 'snare', steps: 1, velocity: 0.35 })
+  if (step % 2 === 0) events.push({ kind: 'hat', steps: 1, velocity: step % 4 === 2 ? 0.3 : 0.16 })
+  // Vinyl crackle: a deterministic scatter of tiny ticks.
+  if ((stepIndex * 7919) % 11 === 0) events.push({ kind: 'crackle', steps: 1, velocity: 0.5 })
+
+  // Warm electric-piano chords: a held one on the downbeat, a short comp later.
+  if (step === 0) for (const tone of chord.tones) events.push({ kind: 'keys', note: tone, steps: 12, velocity: 1 })
+  if (step === 10) for (const tone of chord.tones.slice(1)) events.push({ kind: 'keys', note: tone, steps: 4, velocity: 0.55 })
+
+  // Round sine bass.
+  if (step === 0) events.push({ kind: 'sub', note: chord.root, steps: 6, velocity: 1 })
+  if (step === 10) events.push({ kind: 'sub', note: chord.root + 7, steps: 4, velocity: 0.8 })
+
+  for (const [melodyStep, note, steps] of CHILL_MELODY[bar]) {
+    if (melodyStep === step) events.push({ kind: 'bell', note, steps, velocity: 1 })
+  }
+  return events
+}
+
 // The tracks the music player can switch between.
 export const MUSIC_TRACKS = {
+  chill: { bpm: CHILL_BPM, events: chillEventsForStep },
   normal: { bpm: MUSIC_BPM, events: eventsForStep },
   boss: { bpm: BOSS_BPM, events: bossEventsForStep },
 }

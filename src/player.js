@@ -35,6 +35,8 @@ export class Player {
     this.facing = 0 // yaw, radians
     this.hp = PLAYER_MAX_HP
     this.invulnerableUntil = -Infinity
+    this.iframeScale = 1 // the skill tree stretches the i-frames after a hit
+    this.maxHp = PLAYER_MAX_HP // the skill tree can raise it
     this.shieldUntil = -Infinity // the Bubble Shield ability: no damage at all until then
     this.rageUntil = -Infinity // the Rage ability: weapon damage multiplied until then
     this.damageTakenMultiplier = 1 // < 1 with a guard pet
@@ -82,7 +84,7 @@ export class Player {
     if (now < this.invulnerableUntil) return false
     if (now < this.shieldUntil) return false
     this.hp = applyDamage({ hp: this.hp }, amount * this.damageTakenMultiplier).hp
-    this.invulnerableUntil = now + PLAYER_IFRAME_DURATION
+    this.invulnerableUntil = now + PLAYER_IFRAME_DURATION * this.iframeScale
     this._hitFlashElapsed = 0
     jellyHit(this.mesh, JELLY_HIT_STRENGTH)
     this._damageSpark()
@@ -139,7 +141,7 @@ export class Player {
 
     const penalty = ejectPenalty(PLAYER_MAX_HP, POD_EJECT_PENALTY_FRACTION)
     this.hp = applyDamage({ hp: this.hp }, penalty).hp
-    this.invulnerableUntil = now + PLAYER_IFRAME_DURATION
+    this.invulnerableUntil = now + PLAYER_IFRAME_DURATION * this.iframeScale
     this._hitFlashElapsed = 0
     jellyHit(this.mesh, JELLY_HIT_STRENGTH)
     this._damageSpark()
@@ -167,7 +169,7 @@ export class Player {
     if (this.fallState.fallenY < FALL_DESPAWN_DEPTH) return false
 
     this.hp = applyDamage({ hp: this.hp }, FALL_DAMAGE).hp
-    this.invulnerableUntil = now + PLAYER_IFRAME_DURATION
+    this.invulnerableUntil = now + PLAYER_IFRAME_DURATION * this.iframeScale
     this._hitFlashElapsed = 0
     jellyHit(this.mesh, JELLY_HIT_STRENGTH)
     this._damageSpark()

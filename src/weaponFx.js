@@ -2,10 +2,20 @@
 // instead of the same spark puff -- a whip cracks with a refracting ripple, a
 // hammer slams the ground, a scythe leaves a crescent of sparks, a rail gun
 // draws a beam, a flail whirls the screen. Purely visual.
-import { burst, shardBurst } from './particles.js'
+import { burst as rawBurst, shardBurst as rawShardBurst } from './particles.js'
 import { spawnShockwave } from './shockwave.js'
+import { weaponBase } from './logic/items.js'
 
 const Y = 0.9
+
+// Swing effects are kept subtle (a few sparks, no screen-bending ripples): the
+// stacked additive sparks used to blow out into a big flash on every attack.
+// `level` is 1 for hit effects and lower while a swing effect plays.
+let level = 1
+const SWING_LEVEL = 0.35
+const burst = (ps, at, color, count, ...rest) => rawBurst(ps, at, color, Math.max(1, Math.round(count * level)), ...rest)
+const shardBurst = (ps, at, color, count, ...rest) => rawShardBurst(ps, at, color, Math.max(1, Math.round(count * level)), ...rest)
+const QUIET_WARP = { add() {} }
 
 function ahead(origin, angle, distance) {
   return { x: origin.x + Math.sin(angle) * distance, z: origin.z + Math.cos(angle) * distance }
@@ -137,9 +147,14 @@ const FX = {
 // Plays weapon `id`'s swing effect from `origin` (the player, {x, z}) toward
 // `angle`. ctx: { particleSystem, shockwavePool, warp, shake(amount) }.
 export function playWeaponFx(id, origin, angle, ctx) {
-  const fx = FX[id]
+  const fx = FX[weaponBase(id)]
   if (!fx) return
-  fx({ ps: ctx.particleSystem, shock: ctx.shockwavePool, warp: ctx.warp, shake: ctx.shake ?? (() => {}), o: origin, a: angle })
+  level = SWING_LEVEL
+  try {
+    fx({ ps: ctx.particleSystem, shock: ctx.shockwavePool, warp: QUIET_WARP, shake: ctx.shake ?? (() => {}), o: origin, a: angle })
+  } finally {
+    level = 1
+  }
 }
 
 export const WEAPON_FX_IDS = Object.keys(FX)
@@ -178,7 +193,7 @@ function p3(o) {
 }
 
 export function playHitFx(id, at, angle, ctx) {
-  const fx = HIT[id]
+  const fx = HIT[weaponBase(id)]
   if (!fx) return
   fx({ ps: ctx.particleSystem, shock: ctx.shockwavePool, warp: ctx.warp, shake: ctx.shake ?? (() => {}), o: at, a: angle })
 }
@@ -188,7 +203,7 @@ export function playHitFx(id, at, angle, ctx) {
 export function playBulletTrail(bullet, ctx) {
   const ps = ctx.particleSystem
   const here = { x: bullet.x, y: 0.7, z: bullet.z }
-  switch (bullet.weaponId) {
+  switch (weaponBase(bullet.weaponId)) {
     case 'staff':
       burst(ps, here, Math.random() < 0.3 ? 0xffffff : 0xb48cff, 1, 1.4, 0.4)
       break

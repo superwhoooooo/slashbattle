@@ -12,7 +12,7 @@ import {
   POD_HIDE_URGENT_THRESHOLD,
   WAVE_CLEARED_BANNER_DURATION,
 } from './config.js'
-import { ABILITIES, ABILITY_KEYS, ABILITY_SLOTS, HOTBAR_SLOTS, PETS, WEAPONS } from './logic/items.js'
+import { ABILITIES, ABILITY_KEYS, HOTBAR_SLOTS, MAX_SLOTS, PETS, SLOT_LIMITS, WEAPONS } from './logic/items.js'
 import { iconImg } from './icons.js'
 import { abilityCooldownFraction } from './logic/inventory.js'
 import { pickAnnouncement } from './logic/announcements.js'
@@ -53,7 +53,7 @@ function setSlotIcon(slot, kind, id) {
 export function createHud() {
   const hotbarSlots = Array.from({ length: HOTBAR_SLOTS }, (_, i) => createSlot(String(i + 1), '', true))
   document.getElementById('hotbar').append(...hotbarSlots.map((s) => s.element))
-  const abilitySlots = Array.from({ length: ABILITY_SLOTS }, (_, i) =>
+  const abilitySlots = Array.from({ length: MAX_SLOTS.abilities }, (_, i) =>
     createSlot(ABILITY_KEYS[i].replace('Key', ''), 'small'),
   )
   document.getElementById('ability-bar').append(...abilitySlots.map((s) => s.element))
@@ -194,6 +194,7 @@ export function updateInventoryHud(hud, inventory, now) {
   })
 
   hud.abilitySlots.forEach((slot, i) => {
+    slot.element.style.display = i < SLOT_LIMITS.abilities ? '' : 'none' // extra slots come from the skill tree
     const id = inventory.abilities[i]
     setIfChanged(hud, `ability${i}`, id ?? '', (v) => {
       setSlotIcon(slot, 'ability', v)

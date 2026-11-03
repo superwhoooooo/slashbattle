@@ -3,12 +3,12 @@
 // close, patch you up, or (via logic/items.js's petEffects, applied by
 // main.js) pull crystals in or soften hits. Pets can't be hurt.
 import * as THREE from 'three'
-import { PLAYER_MAX_HP } from './config.js'
 import { createPetModel, createSaber, createThrown } from './petModels.js'
 import { damageMonster } from './combat.js'
 import { PETS } from './logic/items.js'
 import { dampAngle } from './logic/smoothing.js'
 import { burst } from './particles.js'
+import { hasWallLineOfSight } from './monster.js'
 
 const ORBIT_RADIUS = 1.9
 const FOLLOW_RATE = 6
@@ -37,7 +37,8 @@ function nearestTarget(monsters, x, z, range) {
   for (const monster of monsters) {
     if (monster.userData.dying || monster.userData.spawning || monster.userData.falling) continue
     const distance = Math.hypot(monster.position.x - x, monster.position.z - z)
-    if (distance < bestDistance) {
+    // Pets only fight what is in view: nothing behind a labyrinth wall.
+    if (distance < bestDistance && hasWallLineOfSight({ x, z }, monster.position)) {
       best = monster
       bestDistance = distance
     }
@@ -80,7 +81,7 @@ function stepSabers(pet, dt, monsters, obstacles, particleSystem, hitstop) {
     const distance = Math.hypot(dx, dy, dz)
     if (distance <= SABER_HIT_DISTANCE) {
       burst(particleSystem, { x: target.position.x, y: target.position.y + 0.8, z: target.position.z }, pet.def.saberColor ?? pet.def.color, 8, 2)
-      damageMonster(target, pet.def.damage, {
+      damageMonster(target, pet.def.damage * (pet.damageMult ?? 1), {
         fromPos: { x: saber.mesh.position.x, z: saber.mesh.position.z },
         knockback: pet.def.knockback ?? 0,
         obstacles,
@@ -117,8 +118,9 @@ function disposeTree(object) {
 }
 
 // Moves every pet around the player and runs its behavior for one tick.
-export function updatePets(pets, { dt, elapsed, player, monsters, obstacles, particleSystem, hitstop }) {
+export function updatePets(pets, { petDamage = 1, dt, elapsed, player, monsters, obstacles, particleSystem, hitstop }) {
   const count = pets.length
+  for (const pet of pets) pet.damageMult = petDamage
   for (const pet of pets) stepSabers(pet, dt, monsters, obstacles, particleSystem, hitstop)
   pets.forEach((pet, index) => {
     const { def, mesh } = pet
@@ -161,7 +163,7 @@ export function updatePets(pets, { dt, elapsed, player, monsters, obstacles, par
         const point = { x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t, z: from.z + (to.z - from.z) * t }
         burst(particleSystem, point, def.color, 3, 1.2)
       }
-      damageMonster(target, def.damage, {
+      damageMonster(target, def.damage * (pet.damageMult ?? 1), {
         fromPos: { x: mesh.position.x, z: mesh.position.z },
         knockback: def.knockback ?? 0,
         obstacles,
@@ -184,13 +186,14 @@ export function updatePets(pets, { dt, elapsed, player, monsters, obstacles, par
           !monster.userData.dying &&
           !monster.userData.spawning &&
           !monster.userData.falling &&
-          Math.hypot(monster.position.x - mesh.position.x, monster.position.z - mesh.position.z) <= def.radius + (monster.userData.reachBonus ?? 0),
+          Math.hypot(monster.position.x - mesh.position.x, monster.position.z - mesh.position.z) <= def.radius + (monster.userData.reachBonus ?? 0) &&
+          hasWallLineOfSight(mesh.position, monster.position),
       )
       if (inReach.length === 0) return
       pet.timer = def.interval
       burst(particleSystem, { x: mesh.position.x, y: 0.5, z: mesh.position.z }, def.color, 14, def.radius * 1.3)
       for (const target of inReach) {
-        damageMonster(target, def.damage, {
+        damageMonster(target, def.damage * (pet.damageMult ?? 1), {
           fromPos: { x: mesh.position.x, z: mesh.position.z },
           knockback: def.knockback ?? 0,
           obstacles,
@@ -202,9 +205,9 @@ export function updatePets(pets, { dt, elapsed, player, monsters, obstacles, par
     } else if (def.kind === 'heal') {
       pet.timer -= dt
       if (pet.timer > 0) return
-      if (player.hp >= PLAYER_MAX_HP) return
+      if (player.hp >= player.maxHp) return
       pet.timer = def.interval
-      player.hp = Math.min(PLAYER_MAX_HP, player.hp + def.amount)
+      player.hp = Math.min(player.maxHp, player.hp + def.amount)
       burst(particleSystem, { x: player.position.x, y: 1, z: player.position.z }, HEAL_COLOR, 6, 1.5, 1)
     }
   })

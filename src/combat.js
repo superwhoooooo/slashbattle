@@ -35,6 +35,7 @@ import { WEAPONS } from './logic/items.js'
 import { makeBullets } from './logic/bullets.js'
 import { fireBullets } from './bullets.js'
 import { jellyHit } from './jelly.js'
+import { hasWallLineOfSight } from './monster.js'
 import { burst, shardBurst } from './particles.js'
 import { clearSwingTrail, updateSwingTrail } from './trail.js'
 
@@ -210,6 +211,7 @@ function resolveAttackHits(player, monsters, obstacles, now, particleSystem, wea
     if (!isInAttackArc(attackerPos, player.facing, targetPos, weapon.range + (monster.userData.reachBonus ?? 0), weapon.arc)) {
       continue
     }
+    if (!hasWallLineOfSight(attackerPos, targetPos)) continue // no hitting through labyrinth walls
 
     const damage = computeDamage(weapon.damage * damageMultiplier, { ambush })
     damageMonster(monster, damage, { fromPos: attackerPos, knockback: weapon.knockback * knockbackMultiplier, obstacles, particleSystem, cause: 'sword', ambush, hitstop })
