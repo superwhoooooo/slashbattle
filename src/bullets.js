@@ -16,7 +16,7 @@ const BULLET_HEIGHT = 0.7
 // True if the segment a -> b passes through any blocker circle ({ x, z, radius }),
 // e.g. a Bulwark wall block. Checks both ends and a few points between so a
 // fast shot can't hop over a block in one frame.
-const BULLET_BRIGHTNESS = isTouchDevice() ? 0.5 : 1.2 // phones are far more dazzled by it // shots are unlit, so this dims them (and keeps them under the bloom threshold)
+const BULLET_BRIGHTNESS = isTouchDevice() ? 0.5 : 0.8 // phones are far more dazzled by it // shots are unlit, so this dims them (and keeps them under the bloom threshold)
 
 export function segmentBlocked(a, b, blockers) {
   if (!blockers || blockers.length === 0) return false
