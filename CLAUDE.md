@@ -55,6 +55,7 @@ record.
 - F — open the nearest chest (costs crystals)
 - 1-5 — pick a weapon from the hotbar (melee or firearm)
 - Q / Z / X / C / V — use your abilities, in the order you found them
+- 0 — toggle first-person view (pointer-locked mouse look; W moves along the view, every weapon aims where you look; Esc or 0 exits)
 - Tab — open the power-up menu (pauses the game): click a power-up to equip / unequip it (in sandbox mode Tab opens the sandbox menu instead)
 
 A standard gamepad works too (`src/logic/gamepad.js` maps a snapshot to
@@ -579,3 +580,5 @@ when the start card is dismissed), and skill / power-up levels. T banks the run'
 `src/hub.js` is one overlay with three pages: Skill Tree (6), Power-Ups (7), Loadout (9); the start card has a
 "Skills & Loadout" button. `logic/skills.js` has the ARC Raiders-style tree: Conditioning / Mobility / Survival, 16 ranked nodes each in six tiers (3 columns, nodes hang off the ones above via `needs`; a tier opens once `TIER_GATES` ranks are spent in that tree; tier 6 is a capstone; a rank costs `TIER_COSTS[tier]`; respec refunds everything). It upgrades max HP, damage, crits, regen, i-frames, hide time, pet damage, wave heal, chest prices, start crystals, revive and the SLOT counts (power-up / pet / ability slots via `items.js`'s `SLOT_LIMITS` / `setSlotBonuses`; abilities 6-7 use keys G and H). Saves from the first tree are refunded and the power-up upgrade rules (levels 1-5, `powerupEffects(ids, levels)`); `main.js`'s
 `activeFx` folds power-ups + skills into one effect set. The hub pauses the game.
+
+Skill tree look: `src/skillIcons.js` draws each node as a monochrome SVG line icon chosen by the skill's first `per` field (the `icon` emoji in `logic/skills.js` is no longer shown), with rank pips instead of "0/5". The loadout bar (slots + starting pets) shows on every hub page, not just Loadout.
