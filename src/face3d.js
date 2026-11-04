@@ -290,8 +290,8 @@ function updateEyePupil(eye, dt, moveDirX, bulgeVelocity, hitVelocity) {
   eye.springX = springStep(eye.springX, targetX, FACE_PUPIL_SPRING_STIFFNESS, FACE_PUPIL_SPRING_DAMPING, dt)
   eye.springY = springStep(eye.springY, targetY, FACE_PUPIL_SPRING_STIFFNESS, FACE_PUPIL_SPRING_DAMPING, dt)
 
-  let ox = eye.springX.value + eye.crossBias
-  let oy = eye.springY.value
+  let ox = eye.springX.value + eye.crossBias + (eye.look ? eye.look.x * FACE_PUPIL_MAX_OFFSET_FACTOR : 0)
+  let oy = eye.springY.value + (eye.look ? eye.look.y * FACE_PUPIL_MAX_OFFSET_FACTOR : 0)
   const magnitude = Math.hypot(ox, oy)
   if (magnitude > FACE_PUPIL_MAX_OFFSET_FACTOR) {
     const scale = FACE_PUPIL_MAX_OFFSET_FACTOR / magnitude

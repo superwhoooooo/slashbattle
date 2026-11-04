@@ -41,6 +41,7 @@ import { sandboxToggleItem, sandboxTopUp } from './logic/sandbox.js'
 import { createAudio } from './audio.js'
 import { createMonsterMesh } from './characters.js'
 import { updateFace3D } from './face3d.js'
+import { animateAlive } from './alive.js'
 import { loadHighScore, saveHighScore } from './highScore.js'
 import { createMusic } from './music.js'
 import { createSfx } from './sfx.js'
@@ -239,7 +240,7 @@ const container = document.querySelector('#app')
 // Phones and tablets get touch controls and a lighter render (a lower pixel
 // ratio cap, no ambient occlusion pass) so the game stays smooth.
 const touchDevice = isTouchDevice()
-const PIXEL_RATIO_CAP = touchDevice ? Math.min(MAX_PIXEL_RATIO, 1.5) : MAX_PIXEL_RATIO
+const PIXEL_RATIO_CAP = touchDevice ? Math.min(MAX_PIXEL_RATIO, 2) : MAX_PIXEL_RATIO
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' })
 renderer.setSize(window.innerWidth, window.innerHeight)
 // Capped rather than the raw devicePixelRatio -- a 3x display would
@@ -295,7 +296,7 @@ const camera = new THREE.PerspectiveCamera(
 // own antialias setting -- an explicit multisampled (MSAA) render
 // target keeps edges clean through the post-processing passes instead.
 const renderTarget = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, {
-  samples: MSAA_SAMPLES,
+  samples: touchDevice ? Math.min(MSAA_SAMPLES, 2) : MSAA_SAMPLES,
 })
 const composer = new EffectComposer(renderer, renderTarget)
 // Handing the composer its own render target pins its pixel ratio to 1,
@@ -2458,6 +2459,7 @@ function animate(timestamp) {
     const hitPlayer = monsterHitPlayer || (specialEvents.length > 0 && applyBossEvents(game, mesh, specialEvents, elapsedSeconds))
     updateJelly(mesh, gameplayDelta, elapsedSeconds, { speed: mesh.userData.speed, moveDir: mesh.userData.moveDir })
     updateFace3D(mesh, gameplayDelta, elapsedSeconds)
+    animateAlive(mesh, player.position, gameplayDelta, elapsedSeconds)
     if (hitPlayer) {
       triggerShake(shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
       triggerDamageFlash(hud)

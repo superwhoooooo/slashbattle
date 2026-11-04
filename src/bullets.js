@@ -16,6 +16,11 @@ const BULLET_HEIGHT = 0.7
 // True if the segment a -> b passes through any blocker circle ({ x, z, radius }),
 // e.g. a Bulwark wall block. Checks both ends and a few points between so a
 // fast shot can't hop over a block in one frame.
+// A hex colour scaled by `k`, for the unlit/additive bursts a shot leaves behind.
+const scaleHex = (hex, k) => {
+  const ch = (v) => Math.min(255, Math.round(v * k))
+  return (ch((hex >> 16) & 255) << 16) | (ch((hex >> 8) & 255) << 8) | ch(hex & 255)
+}
 const BULLET_BRIGHTNESS = isTouchDevice() ? 0.5 : 0.8 // phones are far more dazzled by it // shots are unlit, so this dims them (and keeps them under the bloom threshold)
 
 export function segmentBlocked(a, b, blockers) {
@@ -81,7 +86,7 @@ export function updateBullets(pool, dt, { monsters, obstacles, particleSystem, h
     const { alive, hits } = stepBullet(bullet, dt, targets)
     if (isInsideWall(bullet.x, bullet.z) || segmentBlocked(from, bullet, blockers)) {
       // Spent against a labyrinth wall or a Bulwark wall: a puff, and no hits through it.
-      burst(particleSystem, { x: bullet.x, y: BULLET_HEIGHT, z: bullet.z }, bullet.color, 6, 2)
+      burst(particleSystem, { x: bullet.x, y: BULLET_HEIGHT, z: bullet.z }, scaleHex(bullet.color, BULLET_BRIGHTNESS), 6, 2)
       retire(slot)
       continue
     }
@@ -93,7 +98,7 @@ export function updateBullets(pool, dt, { monsters, obstacles, particleSystem, h
     }
     if (alive && onTrail) onTrail(bullet)
     if (hits.length > 0 && bullet.explode > 0) {
-      burst(particleSystem, { x: bullet.x, y: BULLET_HEIGHT, z: bullet.z }, bullet.color, 30, 4)
+      burst(particleSystem, { x: bullet.x, y: BULLET_HEIGHT, z: bullet.z }, scaleHex(bullet.color, BULLET_BRIGHTNESS), 30, 4)
       if (onExplode) onExplode(bullet.x, bullet.z, bullet.explode, bullet.color)
       for (const target of targets) {
         if (target.mesh.userData.dying || hits.some((h) => h.id === target.id)) continue

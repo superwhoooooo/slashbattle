@@ -216,7 +216,7 @@ export const GAS_GIANT_RING_TILT = Math.PI / 2.6 // radians, off the orbital pla
 // shadow map, ambient occlusion, pixel ratio and MSAA settings.
 export const QUALITY_PRESETS = {
   low: { maxPixelRatio: 1, msaaSamples: 0, gtao: false, shadowMapSize: 1024 },
-  medium: { maxPixelRatio: 1.25, msaaSamples: 0, gtao: false, shadowMapSize: 1024 },
+  medium: { maxPixelRatio: 2, msaaSamples: 4, gtao: false, shadowMapSize: 2048 },
   high: { maxPixelRatio: 2, msaaSamples: 4, gtao: true, shadowMapSize: 2048 },
 }
 const QUALITY_DEFAULT = 'medium'
