@@ -365,6 +365,19 @@ scene.add(bulletPool.group)
 // fixed world-space offset and eases toward its target each frame.
 let cameraYaw = 0
 
+// iOS Safari ignores maximum-scale: stop double-tap and pinch zoom explicitly.
+for (const type of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(type, (event) => event.preventDefault())
+let lastTouchEnd = 0
+document.addEventListener(
+  'touchend',
+  (event) => {
+    const now = Date.now()
+    if (now - lastTouchEnd < 350) event.preventDefault()
+    lastTouchEnd = now
+  },
+  { passive: false },
+)
+
 // First person (key 0): the camera sits at the player's head and the mouse (pointer
 // lock) turns the view; W moves along it and every weapon aims where you look.
 let firstPerson = false
