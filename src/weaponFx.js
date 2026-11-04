@@ -13,8 +13,11 @@ const Y = 0.9
 // `level` is 1 for hit effects and lower while a swing effect plays.
 let level = 1
 const SWING_LEVEL = 0.35
-const burst = (ps, at, color, count, ...rest) => rawBurst(ps, at, color, Math.max(1, Math.round(count * level)), ...rest)
-const shardBurst = (ps, at, color, count, ...rest) => rawShardBurst(ps, at, color, Math.max(1, Math.round(count * level)), ...rest)
+const FX_BRIGHTNESS = 1.6 // swing sparks are additive, so scale their colour down
+const ch = (v) => Math.min(255, Math.round(v * FX_BRIGHTNESS)) // clamped so values above 1 can't spill into the next channel
+const dim = (hex) => (ch((hex >> 16) & 255) << 16) | (ch((hex >> 8) & 255) << 8) | ch(hex & 255)
+const burst = (ps, at, color, count, ...rest) => rawBurst(ps, at, dim(color), Math.max(1, Math.round(count * level)), ...rest)
+const shardBurst = (ps, at, color, count, ...rest) => rawShardBurst(ps, at, dim(color), Math.max(1, Math.round(count * level)), ...rest)
 const QUIET_WARP = { add() {} }
 
 function ahead(origin, angle, distance) {

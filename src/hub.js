@@ -39,16 +39,16 @@ const CSS = `
 .hub-branch h2 small { margin-left: auto; font-size: 11px; font-weight: 600; color: var(--muted, #5b6b80); text-transform: none; letter-spacing: 0; }
 .hub-branch .sub { margin: 2px 0 12px; font-size: 11px; color: var(--muted, #5b6b80); }
 .hub-web { position: relative; display: grid; grid-template-columns: 22px repeat(3, 1fr); gap: 12px 8px; align-items: center; }
-.hub-web svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.hub-web > svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
 .hub-tier { font-size: 9px; font-weight: 600; letter-spacing: 1px; color: #9aa6b5; writing-mode: vertical-rl; transform: rotate(180deg); text-align: center; white-space: nowrap; }
 .hub-tier.open { color: var(--branch); }
-.hub-slot { position: relative; min-height: 70px; }
-.hub-node { position: relative; z-index: 1; width: 100%; height: 100%; min-height: 70px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font: inherit; color: #3d4a5c; padding: 7px 3px 6px; border-radius: 10px; border: 1px solid #d3dae3; background: #fff; cursor: pointer; transition: border-color .15s, box-shadow .15s, background .15s, transform .15s; }
+.hub-slot { position: relative; min-height: 84px; display: flex; }
+.hub-node { position: relative; z-index: 1; flex: 1; min-width: 0; min-height: 84px; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 4px; font: inherit; color: #3d4a5c; padding: 9px 3px 8px; border-radius: 10px; border: 1px solid #d3dae3; background: #fff; cursor: pointer; transition: border-color .15s, box-shadow .15s, background .15s, transform .15s; }
 .hub-node:hover { border-color: var(--branch); transform: translateY(-1px); }
-.hub-node .glyph { width: 22px; height: 22px; display: block; color: #6b778a; }
+.hub-node .glyph { position: relative; z-index: 0; flex: none; width: 22px; height: 22px; display: block; color: #6b778a; }
 .hub-node .glyph svg, .hub-detail .glyph svg { width: 100%; height: 100%; display: block; }
-.hub-node .nm { font-weight: 600; font-size: 9.5px; line-height: 1.15; text-align: center; letter-spacing: 0.1px; }
-.hub-node .pipbar { display: flex; gap: 3px; min-height: 4px; }
+.hub-node .nm { position: relative; z-index: 1; font-weight: 600; font-size: 9.5px; line-height: 1.15; text-align: center; letter-spacing: 0.1px; overflow-wrap: anywhere; hyphens: auto; }
+.hub-node .pipbar { display: flex; flex-wrap: wrap; justify-content: center; gap: 3px; margin-top: auto; padding-top: 2px; }
 .hub-node .pipbar i { width: 5px; height: 5px; border-radius: 50%; background: #dde3ea; }
 .hub-node .pipbar i.on { background: var(--branch); }
 .hub-node.locked { background: #f3f5f8; border-color: #e3e8ee; color: #9aa6b5; cursor: default; }
@@ -329,7 +329,8 @@ export function createHub({ getProfile, setProfile, getRun, onBank, onOpenChange
     return wrap
   }
 
-  function loadoutPage(profile) {
+  // The loadout slots + your starting team: shown on every page (the Loadout page adds the pet picker).
+  function loadoutStrip(profile) {
     const wrap = el('div')
     wrap.style.display = 'flex'
     wrap.style.flexDirection = 'column'
@@ -361,6 +362,12 @@ export function createHub({ getProfile, setProfile, getRun, onBank, onOpenChange
       team.appendChild(cell)
     }
     wrap.appendChild(team)
+    return wrap
+  }
+
+  function loadoutPage(profile) {
+    const wrap = loadoutStrip(profile)
+    const active = profile.loadouts[profile.activeLoadout]
     wrap.appendChild(el('p', 'hub-note', `These pets join you at the start of every run (changes apply from your next run). Collected ${profile.collection.length}/${Object.keys(PETS).length}: find new pets in chests.`))
 
     const grid = el('div', 'hub-pets')
@@ -382,6 +389,7 @@ export function createHub({ getProfile, setProfile, getRun, onBank, onOpenChange
     if (!open) return
     const profile = getProfile()
     card.replaceChildren(header(profile))
+    if (tab !== 'loadout') card.appendChild(loadoutStrip(profile))
     card.appendChild(tab === 'skills' ? skillsPage(profile) : tab === 'powerups' ? powerupsPage(profile) : loadoutPage(profile))
     card.appendChild(el('p', 'hub-status', status))
     card.appendChild(el('p', 'hub-note', '6 / 7 / 9: switch pages · Esc: close · T (in a run): bank crystals'))

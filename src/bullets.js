@@ -15,6 +15,8 @@ const BULLET_HEIGHT = 0.7
 // True if the segment a -> b passes through any blocker circle ({ x, z, radius }),
 // e.g. a Bulwark wall block. Checks both ends and a few points between so a
 // fast shot can't hop over a block in one frame.
+const BULLET_BRIGHTNESS = 1.2 // shots are unlit, so this dims them (and keeps them under the bloom threshold)
+
 export function segmentBlocked(a, b, blockers) {
   if (!blockers || blockers.length === 0) return false
   for (let i = 0; i <= 4; i++) {
@@ -48,7 +50,7 @@ export function fireBullets(pool, bullets) {
     if (!slot) return
     slot.active = true
     slot.data = bullet
-    slot.mesh.material.color.setHex(bullet.color)
+    slot.mesh.material.color.setHex(bullet.color).multiplyScalar(BULLET_BRIGHTNESS)
     slot.mesh.scale.setScalar(bullet.radius)
     slot.mesh.position.set(bullet.x, BULLET_HEIGHT, bullet.z)
     slot.mesh.visible = true

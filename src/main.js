@@ -363,7 +363,39 @@ scene.add(bulletPool.group)
 
 // The camera doesn't rotate yet, so it stays behind the player along a
 // fixed world-space offset and eases toward its target each frame.
-const cameraYaw = 0
+let cameraYaw = 0
+
+// First person (key 0): the camera sits at the player's head and the mouse (pointer
+// lock) turns the view; W moves along it and every weapon aims where you look.
+let firstPerson = false
+let fpYaw = 0 // same convention as player.facing: forward = (sin, cos)
+const fpCrosshair = document.createElement('div')
+fpCrosshair.style.cssText = 'position:fixed;left:50%;top:50%;width:14px;height:14px;margin:-7px 0 0 -7px;border:2px solid rgba(255,255,255,0.85);border-radius:50%;box-shadow:0 0 0 1px rgba(26,36,51,0.45);pointer-events:none;display:none;z-index:5'
+document.body.appendChild(fpCrosshair)
+function setFirstPerson(on) {
+  if (on === firstPerson) return
+  firstPerson = on
+  fpCrosshair.style.display = on ? 'block' : 'none'
+  if (on) {
+    fpYaw = game.player.facing
+    renderer.domElement.requestPointerLock?.()
+  } else {
+    cameraYaw = 0
+    game.player.mesh.visible = true
+    if (document.pointerLockElement) document.exitPointerLock()
+  }
+}
+document.addEventListener('pointerlockchange', () => {
+  if (!document.pointerLockElement && firstPerson) setFirstPerson(false)
+})
+window.addEventListener('mousemove', (event) => {
+  if (firstPerson && document.pointerLockElement) fpYaw -= event.movementX * 0.0025
+})
+window.addEventListener('keydown', (event) => {
+  if (event.repeat || (event.code !== 'Digit0' && event.code !== 'Numpad0')) return
+  if (!started || hub.isOpen() || pauseMenu.isOpen() || swapPanel.isOpen()) return
+  setFirstPerson(!firstPerson)
+})
 const cameraTarget = new THREE.Vector3()
 
 // Where the mouse points on the ground (y = 0.7, the bullets' height), as a
@@ -2151,7 +2183,9 @@ function animate(timestamp) {
   setAutoShoot(hud, autoShoot)
   // Touch: the aim stick aims any weapon (melee swings toward it too); the
   // mouse only aims ranged ones.
-  player.aimAngle = input.touchMode
+  player.aimAngle = firstPerson
+    ? fpYaw
+    : input.touchMode
     ? touchAimAngle(player)
     : WEAPONS[selectedWeaponId(game.inventory)].gun
       ? mouseAimAngle(player)
@@ -2173,6 +2207,7 @@ function animate(timestamp) {
   player.speedMultiplier = petFx.speedMultiplier * perk.speed * (elapsedSeconds < player.sprintUntil ? SPRINT_SPEED_MULTIPLIER : 1)
   // The player keeps full speed through a hitstop freeze: only the world stops,
   // otherwise every landed hit stalls your movement for a moment.
+  if (firstPerson) cameraYaw = fpYaw + Math.PI
   player.update(input, cameraYaw, deltaSeconds)
   if (!player.falling && !player.hidden && !isOnPlatform(player.position, ARENA_RADIUS)) {
     player.startFalling()
@@ -2563,6 +2598,11 @@ function animate(timestamp) {
   const lerpFactor = 1 - Math.exp(-CAMERA_LERP * deltaSeconds)
   camera.position.lerp(cameraTarget, lerpFactor)
   camera.lookAt(player.position.x, 1, player.position.z)
+  if (firstPerson) {
+    player.mesh.visible = false
+    camera.position.set(player.position.x, 1.5, player.position.z)
+    camera.lookAt(player.position.x + Math.sin(fpYaw) * 10, 1.35, player.position.z + Math.cos(fpYaw) * 10)
+  }
 
   const shakeOffset = updateShake(shake, deltaSeconds)
   camera.position.x += shakeOffset.x

@@ -48,7 +48,7 @@ export function createSwingTrail(color) {
   const material = new THREE.MeshBasicMaterial({
     vertexColors: true,
     transparent: true,
-    opacity: 0.55,
+    opacity: 0.7,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
     side: THREE.DoubleSide,
