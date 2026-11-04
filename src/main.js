@@ -220,7 +220,7 @@ import {
 } from './logic/waves.js'
 import { enemyScale, SPLITS } from './logic/enemies.js'
 import { createMonsterAIState, separateMonsters, setMonsterNavigator, updateMonster } from './monster.js'
-import { burst, createParticleSystem, resetParticles, shardBurst, updateParticles } from './particles.js'
+import { burst, createParticleSystem, resetParticles, setParticleViewScale, shardBurst, updateParticles } from './particles.js'
 import { createPet, disposePets, updatePets } from './pets.js'
 import { Player } from './player.js'
 import { createBulletPool, fireBullets, resetBullets, updateBullets } from './bullets.js'
@@ -251,6 +251,12 @@ renderer.toneMapping = THREE.NeutralToneMapping
 renderer.toneMappingExposure = TONE_MAPPING_EXPOSURE * loadBrightness()
 renderer.outputColorSpace = THREE.SRGBColorSpace
 container.appendChild(renderer.domElement)
+renderer.domElement.style.display = 'block'
+// Phones draw far fewer pixels, so keep sparks proportional to the screen there.
+function syncParticleScale() {
+  setParticleViewScale(touchDevice ? Math.min(1, renderer.domElement.height / 1800) : 1)
+}
+syncParticleScale()
 
 const scene = new THREE.Scene()
 // Gives physically lit materials (metalness/roughness, clearcoat)
@@ -449,7 +455,7 @@ function touchAimAngle(player) {
 
 let autoShoot = false // L toggles; holds the trigger for ranged weapons
 
-window.addEventListener('resize', () => {
+function handleResize() {
   camera.aspect = window.innerWidth / window.innerHeight
   camera.updateProjectionMatrix()
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, PIXEL_RATIO_CAP))
@@ -457,7 +463,12 @@ window.addEventListener('resize', () => {
   composer.setPixelRatio(renderer.getPixelRatio())
   composer.setSize(window.innerWidth, window.innerHeight)
   gtaoPass.setSize(window.innerWidth, window.innerHeight)
-})
+  syncParticleScale()
+}
+window.addEventListener('resize', handleResize)
+// iOS Safari's toolbars change the visible height without always firing 'resize'.
+window.addEventListener('orientationchange', () => setTimeout(handleResize, 250))
+window.visualViewport?.addEventListener('resize', handleResize)
 
 // Camera screen shake: a short decaying offset added on top of the
 // normal follow position. triggerShake restarts it (with a random phase

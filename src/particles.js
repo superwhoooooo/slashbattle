@@ -40,10 +40,18 @@ function createSparkTexture() {
 // can carry its own size and alpha -- PointsMaterial only exposes a
 // single size/opacity for the whole pool, which can't fade or shrink
 // individual particles independently.
+// Spark sizes are in drawing-buffer pixels, so on a small screen they'd cover far more of
+// the view than on a desktop. main.js sets this to bufferHeight / reference (capped at 1).
+const viewScale = { value: 1 }
+export function setParticleViewScale(scale) {
+  viewScale.value = scale
+}
+
 function createPointsMaterial() {
   return new THREE.ShaderMaterial({
-    uniforms: { map: { value: createSparkTexture() } },
+    uniforms: { map: { value: createSparkTexture() }, viewScale },
     vertexShader: `
+      uniform float viewScale;
       attribute float size;
       attribute float alpha;
       attribute vec3 particleColor;
@@ -53,7 +61,7 @@ function createPointsMaterial() {
         vAlpha = alpha;
         vColor = particleColor;
         vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-        gl_PointSize = size * (300.0 / max(-mvPosition.z, 0.001));
+        gl_PointSize = size * viewScale * (300.0 / max(-mvPosition.z, 0.001));
         gl_Position = projectionMatrix * mvPosition;
       }
     `,
