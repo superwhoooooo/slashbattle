@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { TRAIL_MAX_POINTS, TRAIL_WIDTH } from './config.js'
 import { pushTrailPoint, trailAlphaAt } from './logic/trail.js'
+import { isTouchDevice } from './touch.js'
 
 const UP = new THREE.Vector3(0, 1, 0)
 const scratchDir = new THREE.Vector3()
@@ -48,7 +49,7 @@ export function createSwingTrail(color) {
   const material = new THREE.MeshBasicMaterial({
     vertexColors: true,
     transparent: true,
-    opacity: 0.7,
+    opacity: isTouchDevice() ? 0.3 : 0.7,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
     side: THREE.DoubleSide,

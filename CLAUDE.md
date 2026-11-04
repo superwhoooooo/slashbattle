@@ -582,3 +582,6 @@ when the start card is dismissed), and skill / power-up levels. T banks the run'
 `activeFx` folds power-ups + skills into one effect set. The hub pauses the game.
 
 Skill tree look: `src/skillIcons.js` draws each node as a monochrome SVG line icon chosen by the skill's first `per` field (the `icon` emoji in `logic/skills.js` is no longer shown), with rank pips instead of "0/5". The loadout bar (slots + starting pets) shows on every hub page, not just Loadout.
+
+## Tutorial mode
+Press G (or the Tutorial button) on the start card: no waves, god mode, and a checklist card (`src/tutorial.js`) driven by `src/logic/tutorial.js`'s `TUTORIAL_STEPS` (move, swing, kill a practice Blobbo, hide in a suitcase, open a free chest). `main.js`'s `tutorialEvent` feeds events in (`scoreKill`, `openChestNow`, the swing start, `stepTutorial` for movement/hiding); `freePlay()` is `sandbox || tutorial` wherever waves are skipped.

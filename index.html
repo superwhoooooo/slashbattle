@@ -2,6 +2,9 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
     <title>SlashBattle</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='17' r='13' fill='%23FF6A4D'/><circle cx='11' cy='14' r='5' fill='%23fff'/><circle cx='21' cy='14' r='5' fill='%23fff'/><circle cx='12.5' cy='15' r='2.3' fill='%23222'/><circle cx='19.5' cy='13' r='2.3' fill='%23222'/></svg>" />
@@ -438,6 +441,17 @@
         cursor: pointer;
       }
       #sandbox-btn:hover { background: var(--teal); color: #fff; }
+      #tutorial-btn { font: inherit; font-weight: 700; margin-top: 4px; padding: 8px 18px; border-radius: 10px; border: 2px solid var(--coral); background: transparent; color: var(--coral); cursor: pointer; }
+      #tutorial-btn:hover { background: var(--coral); color: #fff; }
+      body.tutorial #wave-banner, body.tutorial #wave-counter { display: none !important; }
+      #tutorial-panel { position: fixed; top: 76px; left: 50%; transform: translateX(-50%); width: min(380px, calc(100vw - 32px)); padding: 12px 16px; display: none; z-index: 6; pointer-events: auto; font-size: 13px; }
+      #tutorial-panel h3 { margin: 0 0 4px; font-size: 14px; }
+      #tutorial-panel p { margin: 0 0 8px; color: var(--muted, #5b6b80); line-height: 1.35; }
+      #tutorial-panel ol { margin: 0 0 8px; padding-left: 20px; font-size: 12px; color: #9aa6b5; }
+      #tutorial-panel li.now { color: var(--ink); font-weight: 700; }
+      #tutorial-panel li.done { color: var(--teal); text-decoration: line-through; }
+      #tutorial-panel button { font: inherit; font-weight: 700; padding: 5px 12px; border-radius: 8px; border: 2px solid var(--teal); background: #fff; color: var(--teal); cursor: pointer; }
+      body.touch #tutorial-panel { top: 8px; width: min(300px, 50vw); font-size: 11px; padding: 8px 10px; }
       #hub-open-btn { font: inherit; font-weight: 700; padding: 8px 18px; border-radius: 10px; border: 2px solid var(--butter); background: #fff; color: var(--ink); cursor: pointer; }
       #hub-open-btn:hover { background: var(--butter); }
       .map-row { display: flex; gap: 12px; margin-top: 6px; flex-wrap: wrap; justify-content: center; }
@@ -542,7 +556,7 @@
       body.touch .panel { pointer-events: none; }
       body.touch .overlay .panel, body.touch #sandbox-panel, body.touch #loadout-panel, body.touch #swap-panel, body.touch .overlay button { pointer-events: auto; }
       body.touch .slot { pointer-events: auto; touch-action: none; }
-      body.touch .controls, body.touch .gamepad-legend, body.touch #sandbox-btn kbd { display: none; }
+      body.touch .controls, body.touch .gamepad-legend, body.touch #sandbox-btn kbd, body.touch #tutorial-btn kbd { display: none; }
       body.touch #hud, body.touch #hud-right, body.touch #crystal-card { zoom: 0.78; }
       body.touch #crystal-card { top: 124px; bottom: auto; left: 12px; right: auto; }
       body.touch #wave-banner { zoom: 0.55; top: 54px; }
@@ -1135,6 +1149,7 @@
           <button id="labyrinth-btn" class="map-btn" type="button">Labyrinth <kbd>K</kbd><small>3 floors of walls &amp; spike traps. Beat 2 bosses per floor to open the gate.</small></button>
         </div>
         <button id="hub-open-btn" type="button">Skills &amp; Loadout <kbd>6</kbd></button>
+        <button id="tutorial-btn" type="button">Tutorial <kbd>G</kbd></button>
         <button id="sandbox-btn" type="button">Sandbox mode <kbd>B</kbd></button>
         <p>No waves: spawn anything, grab any gear, hop between levels.</p>
       </div>

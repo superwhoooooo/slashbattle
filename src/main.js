@@ -34,6 +34,8 @@ import { createWarp } from './warp.js'
 import { playBulletTrail, playHitFx, playWeaponFx } from './weaponFx.js'
 import { clampTargetToRange, inCircle } from './logic/warp.js'
 import { createSandboxPanel } from './sandbox.js'
+import { createTutorialPanel } from './tutorial.js'
+import { advanceTutorial, createTutorial, tutorialDone } from './logic/tutorial.js'
 import { createTouchControls, isTouchDevice } from './touch.js'
 import { sandboxToggleItem, sandboxTopUp } from './logic/sandbox.js'
 import { createAudio } from './audio.js'
@@ -1246,6 +1248,7 @@ function activateAbility(game, slot, now) {
 // (equipped right away), an ability (bound to the next free key), or a
 // pet. Once your loadout is full it pays out score and a heal instead.
 function openChestNow(game, chest, now) {
+  tutorialEvent('chest')
   const { cost } = chest.userData
   const paid = spendCrystals(game.inventory, cost)
   if (!paid.ok) return
@@ -1533,6 +1536,7 @@ function trickToneForId(trickId) {
 // points (with the chain shown alongside once it's past 1x), and the
 // same trick/points on the big screen-space HUD sticker.
 function scoreKill(game, mesh, cause, position, now) {
+  tutorialEvent('kill')
   const trick = nameTrick({
     cause,
     inPool: isInPool(game.arena.pools, mesh.position.x, mesh.position.z),
@@ -1799,6 +1803,47 @@ let sandbox = false
 let godMode = true
 let sandboxPanel = null
 
+// Tutorial mode (start card: G or its button): no waves, god mode, and a checklist card
+// that walks through moving, attacking, killing, hiding and opening a chest.
+let tutorial = false
+let tutorialState = createTutorial()
+let tutorialPanel = null
+let tutorialLastPos = null
+let tutorialSetupStep = -1
+const freePlay = () => sandbox || tutorial
+
+function tutorialEvent(type, amount) {
+  if (!tutorial) return
+  const result = advanceTutorial(tutorialState, { type, amount })
+  tutorialState = result.state
+  if (result.completed) sfx.play('waveCleared')
+}
+
+function startTutorial() {
+  tutorial = true
+  document.body.classList.add('tutorial')
+  loadoutPanel.setOpen(false)
+  tutorialPanel = createTutorialPanel({ touch: touchDevice, onExit: () => window.location.reload() })
+  tutorialPanel.setVisible(true)
+}
+
+// Called every frame in tutorial mode: feeds movement / hiding in, and sets up each step's props once.
+function stepTutorial() {
+  const p = game.player
+  if (tutorialLastPos) tutorialEvent('move', Math.hypot(p.position.x - tutorialLastPos.x, p.position.z - tutorialLastPos.z))
+  tutorialLastPos = { x: p.position.x, z: p.position.z }
+  if (p.hidden) tutorialEvent('hide')
+  if (tutorialSetupStep !== tutorialState.step) {
+    tutorialSetupStep = tutorialState.step
+    if (tutorialState.step === 2) spawnMonster(game, 'blobbo', { facePlayer: true })
+    if (tutorialState.step === 3) trySpawnPod(game)
+    if (tutorialState.step === 4) trySpawnChest(game, { cost: 0 })
+  }
+  // Keep a practice target around until it is beaten.
+  if (tutorialState.step === 2 && !game.monsters.some((m) => !m.userData.dying)) spawnMonster(game, 'blobbo', { facePlayer: true })
+  tutorialPanel.render(tutorialState)
+}
+
 // Pops every monster (a boss too) the way a boss's death pops its minions.
 function clearAllMonsters(game) {
   for (const mesh of game.monsters) {
@@ -1952,6 +1997,22 @@ window.addEventListener('keydown', (event) => {
 })
 touchControls?.addMenuButton(togglePause, 'PAUSE')
 
+// Full screen (touch button). iPhone Safari has no Fullscreen API for pages, so there
+// the button explains Add to Home Screen, which the meta tags below make fullscreen.
+function toggleFullscreen() {
+  const root = document.documentElement
+  const enter = root.requestFullscreen ?? root.webkitRequestFullscreen
+  const exit = document.exitFullscreen ?? document.webkitExitFullscreen
+  const active = document.fullscreenElement ?? document.webkitFullscreenElement
+  if (!enter) {
+    if (!window.navigator.standalone) window.alert('To play full screen on iPhone: tap Share, then "Add to Home Screen", and open SlashBattle from your home screen.')
+    return
+  }
+  if (active) exit?.call(document)
+  else enter.call(root)?.catch?.(() => {})
+}
+touchControls?.addMenuButton(toggleFullscreen, 'FULLSCREEN')
+
 function dismissStartCard(event) {
   // Guards against the keydown/mousedown listeners below and a gamepad
   // press both landing on the same frame and dismissing it twice.
@@ -1960,13 +2021,14 @@ function dismissStartCard(event) {
   if (hub.isOpen() || event?.target?.closest?.('#hub-open-btn, #hub-root') || HUB_KEYS[event?.code]) return
   started = true
   if (event?.code === 'KeyB' || event?.target?.closest?.('#sandbox-btn')) startSandbox()
+  else if (event?.code === 'KeyG' || event?.target?.closest?.('#tutorial-btn')) startTutorial()
   else if (event?.code === 'KeyK' || event?.target?.closest?.('#labyrinth-btn')) {
     gameMode = 'labyrinth'
     // The sundeck world was already built behind the start card: swap it for the labyrinth.
     disposeGame(game)
     game = createGame()
   }
-  if (!sandbox) applyLoadoutPets(game) // the loadout may have changed on the start card
+  if (!sandbox && !tutorial) applyLoadoutPets(game) // the loadout may have changed on the start card
   music.start()
   hideStartCard(hud)
   // The key/click that dismisses the card shouldn't also register as a
@@ -2141,7 +2203,7 @@ function animate(timestamp) {
   const clearedWaveNumber = game.waveState.waveNumber
   const bossBeforeStep = currentBoss(game.waveState)
   // Sandbox mode has no waves: nothing spawns or clears on its own.
-  const { state: nextWaveState, spawns, events } = sandbox
+  const { state: nextWaveState, spawns, events } = freePlay()
     ? { state: game.waveState, spawns: [], events: [] }
     : stepWaves(game.waveState, gameplayDelta, monsters.length, Math.random)
   game.waveState = nextWaveState
@@ -2325,6 +2387,7 @@ function animate(timestamp) {
     onMeleeHit: (id, at, from) => playHitFx(id, at, Math.atan2(at.x - from.x, at.z - from.z), weaponFxContext()),
   })
   if (!hadSwing && attackState.swingElapsed !== null) {
+    tutorialEvent('attack')
     sfx.play('swing', { x: player.position.x, z: player.position.z })
     playWeaponFx(selectedWeaponId(game.inventory), player.position, player.facing, {
       particleSystem,
@@ -2489,7 +2552,8 @@ function animate(timestamp) {
 
   // Pets follow and help, crystals scatter/home/get collected, and chests
   // animate; F opens the nearest one in reach if you can afford it.
-  player.damageTakenMultiplier = sandbox && godMode ? 0 : Math.max(0.3, petFx.damageTakenMultiplier * perk.damageTaken)
+  player.damageTakenMultiplier = tutorial || (sandbox && godMode) ? 0 : Math.max(0.3, petFx.damageTakenMultiplier * perk.damageTaken)
+  if (tutorial) stepTutorial()
   if (sandbox) {
     game.inventory = sandboxTopUp(game.inventory)
     sandboxPanel.refresh({ inventory: game.inventory, levelIndex: game.levelIndex, god: godMode })
@@ -2512,7 +2576,7 @@ function animate(timestamp) {
     Math.random,
   )
   game.pickupSpawnerState = nextPickupSpawner
-  if (pickupSpawnNow && !sandbox) trySpawnPerkPickup(game)
+  if (pickupSpawnNow && !freePlay()) trySpawnPerkPickup(game)
   game.pickups = game.pickups.filter((pickup) => {
     updatePerkPickup(pickup, gameplayDelta)
     if (player.hidden || Math.hypot(pickup.position.x - player.position.x, pickup.position.z - player.position.z) > PICKUP_RADIUS) return true
@@ -2565,7 +2629,7 @@ function animate(timestamp) {
   updatePerkBar(game.inventory.equipped)
 
   const inBossFight = game.waveState.phase === 'bossFight'
-  const enemiesLeft = inBossFight || sandbox || game.labyrinth?.gateOpen
+  const enemiesLeft = inBossFight || freePlay() || game.labyrinth?.gateOpen
     ? game.monsters.length
     : waveSize(game.waveState.waveNumber) - game.waveState.spawnedCount + game.monsters.length
   const bossMesh = game.monsters.find((m) => m.userData.isBoss && !m.userData.dying)
@@ -2599,12 +2663,12 @@ function animate(timestamp) {
     // Sandbox never steps the wave controller, so it would sit in
     // 'intermission' at 0s and the HUD would re-pick a PA line (and the
     // announcement chime would fire) every single frame.
-    waveState: sandbox || game.labyrinth?.gateOpen ? { ...game.waveState, phase: 'clearing' } : game.waveState,
+    waveState: freePlay() || game.labyrinth?.gateOpen ? { ...game.waveState, phase: 'clearing' } : game.waveState,
     boss: bossHud,
     chain: liveChain,
     deltaSeconds,
   })
-  if (!sandbox && hud.waveAnnouncement !== previousAnnouncement) sfx.play('announcement')
+  if (!freePlay() && hud.waveAnnouncement !== previousAnnouncement) sfx.play('announcement')
 
   // A slight look-ahead in the player's current movement direction,
   // scaled by how close to full speed they're actually moving (so it
