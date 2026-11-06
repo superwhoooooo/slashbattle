@@ -656,6 +656,12 @@ function createGame() {
 // plus a particle flash. A no-op if nothing fit in the attempt budget,
 // per pickPodSpawnPoint's contract: this spawn attempt is just skipped,
 // not forced into a bad position.
+// Which container look (chests, suitcases) fits the current place.
+function containerStyle(game) {
+  if (game.labyrinth) return 'dungeon'
+  return levelAt(game.levelIndex ?? 0).props.style
+}
+
 function trySpawnPod(game) {
   const point = pickPodSpawnPoint(Math.random, {
     arenaRadius: game.spawnRadius,
@@ -672,7 +678,7 @@ function trySpawnPod(game) {
   })
   if (point === null) return
 
-  const pod = createPod(point)
+  const pod = createPod(point, containerStyle(game))
   const obstacle = { x: point.x, z: point.z, radius: POD_OBSTACLE_RADIUS }
   pod.userData.obstacle = obstacle
   scene.add(pod)
@@ -709,7 +715,7 @@ function trySpawnChest(game, { at = null, cost = null } = {}) {
     })
   if (point === null) return
 
-  const chest = createChest(point, cost ?? Math.max(1, Math.round(chestCost(game.inventory.chestsOpened) * activeFx(game.inventory.equipped).chestPrice)))
+  const chest = createChest(point, cost ?? Math.max(1, Math.round(chestCost(game.inventory.chestsOpened) * activeFx(game.inventory.equipped).chestPrice)), containerStyle(game))
   const obstacle = { x: point.x, z: point.z, radius: CHEST_OBSTACLE_RADIUS }
   chest.userData.obstacle = obstacle
   scene.add(chest)
@@ -1271,6 +1277,10 @@ function openChestNow(game, chest, now) {
     return
   }
 
+  // A pet you find is yours for good: it goes into your collection (and so the Loadout page)
+  // right away, even if you then decline to swap it in for the one you're carrying.
+  if (loot.kind === 'pet' && !sandbox) setProfile(addToCollection(profile, [loot.id]))
+
   // Slots full: ask which of your items to swap out (the game pauses).
   if (needsSwap(game.inventory, loot)) {
     pendingSwapLoot = loot
@@ -1656,7 +1666,37 @@ function changeLevel(game, levelIndex) {
   game.arena = arena
   game.props = arena.propObstacles
   game.levelIndex = levelIndex
+  reskinContainers(game)
   return level
+}
+
+// Chests and suitcases already standing around when the place changes are rebuilt in the new
+// place's look (same spot, same price). A suitcase someone is hiding in is left alone.
+function reskinContainers(game) {
+  const style = containerStyle(game)
+  game.chests = game.chests.map((old) => {
+    if (old.userData.opened) return old
+    const fresh = createChest(old.position, old.userData.cost, style)
+    fresh.userData.obstacle = old.userData.obstacle
+    fresh.userData.spawnElapsed = old.userData.spawnElapsed
+    fresh.scale.copy(old.scale)
+    scene.remove(old)
+    disposeObject3D(old)
+    scene.add(fresh)
+    return fresh
+  })
+  game.pods = game.pods.map((old) => {
+    if (old.userData.occupied || old.userData.dematerializing) return old
+    const fresh = createPod(old.position, style)
+    fresh.userData.obstacle = old.userData.obstacle
+    fresh.userData.materializing = old.userData.materializing
+    fresh.userData.materializeElapsed = old.userData.materializeElapsed
+    fresh.scale.copy(old.scale)
+    scene.remove(old)
+    disposeObject3D(old)
+    scene.add(fresh)
+    return fresh
+  })
 }
 
 // Spike traps hurt anyone standing on them while the spikes are up; the gate's
@@ -1908,9 +1948,12 @@ const swapPanel = createSwapPanel({
     if (loot) receiveLoot(game, loot, outId)
   },
   onKeep() {
+    const declined = pendingSwapLoot
     pendingSwapLoot = null
     swapPanel.hide()
-    showLootToast(hud, { title: 'KEPT YOUR LOADOUT', name: 'Swap declined', blurb: 'The chest is empty now' })
+    showLootToast(hud, declined?.kind === 'pet' && !sandbox
+      ? { title: 'PET SAVED TO LOADOUT', name: PETS[declined.id].name, blurb: 'Not equipped now. Pick it in the hub (9) any time' }
+      : { title: 'KEPT YOUR LOADOUT', name: 'Swap declined', blurb: 'The chest is empty now' })
   },
 })
 window.addEventListener('keydown', (event) => {

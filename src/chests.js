@@ -7,13 +7,8 @@
 // it vanishes.
 import * as THREE from 'three'
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js'
+import { containerSkin } from './logic/containerSkins.js'
 
-const BODY_COLOR = 0xf7eedc // cream cooler shell
-const LID_COLOR = 0x19b5a5 // teal lid
-const LATCH_COLOR = 0xff6a4d // coral latch clasp
-const STRIPE_COLOR = 0xffd15c // butter resort stripe around the base
-const HANDLE_COLOR = 0xd8d0bd // sandy molded side grips
-const GARNISH_COLOR = 0xcdf2ec // icy sparkle garnish bobbing above the lid
 
 const PILL_BG_AFFORDABLE = 'rgba(255, 255, 255, 0.92)'
 const PILL_BORDER_AFFORDABLE = '#19b5a5'
@@ -96,33 +91,36 @@ function labelTexture(cost, affordable) {
   return texture
 }
 
-function plastic(color, emissive = 0, intensity = 0) {
+function plastic(color, emissive = 0, intensity = 0, skin = null) {
   return new THREE.MeshStandardMaterial({
     color,
-    metalness: 0.05,
-    roughness: 0.55,
+    metalness: skin?.metal ?? 0.05,
+    roughness: skin?.rough ?? 0.55,
     emissive: new THREE.Color(emissive),
     emissiveIntensity: intensity,
   })
 }
 
-// Builds a chest at `point` ({x, z}) that costs `cost` crystals (0 = free).
-export function createChest(point, cost) {
+// Builds a chest at `point` ({x, z}) that costs `cost` crystals (0 = free), dressed for the
+// place it is in (`style` is a level's props.style, see logic/containerSkins.js).
+export function createChest(point, cost, style = 'resort') {
+  const skin = containerSkin(style).chest
   const group = new THREE.Group()
   group.position.set(point.x, 0, point.z)
+  const glowMat = (color) => plastic(color, color, skin.glow * 0.5, skin)
 
-  const body = new THREE.Mesh(new RoundedBoxGeometry(1.2, 0.6, 0.8, 4, 0.08), plastic(BODY_COLOR))
+  const body = new THREE.Mesh(new RoundedBoxGeometry(1.2, 0.6, 0.8, 4, 0.08), plastic(skin.body, 0, 0, skin))
   body.position.y = 0.3
   body.castShadow = true
   group.add(body)
 
-  const stripe = new THREE.Mesh(new THREE.BoxGeometry(1.24, 0.08, 0.84), plastic(STRIPE_COLOR))
+  const stripe = new THREE.Mesh(new THREE.BoxGeometry(1.24, 0.08, 0.84), skin.glow > 0.5 ? glowMat(skin.stripe) : plastic(skin.stripe, 0, 0, skin))
   stripe.position.y = 0.14
   group.add(stripe)
 
   const handleGeometry = new RoundedBoxGeometry(0.05, 0.22, 0.3, 2, 0.02)
   for (const side of [-1, 1]) {
-    const handle = new THREE.Mesh(handleGeometry, plastic(HANDLE_COLOR))
+    const handle = new THREE.Mesh(handleGeometry, plastic(skin.handle, 0, 0, skin))
     handle.position.set(side * 0.63, 0.3, 0)
     group.add(handle)
   }
@@ -131,22 +129,95 @@ export function createChest(point, cost) {
   // backward and down, same as a cooler lid flipping open.
   const lid = new THREE.Group()
   lid.position.set(0, 0.6, -0.4)
-  const lidMesh = new THREE.Mesh(new RoundedBoxGeometry(1.26, 0.26, 0.86, 4, 0.07), plastic(LID_COLOR))
+  const lidMesh = new THREE.Mesh(new RoundedBoxGeometry(1.26, 0.26, 0.86, 4, 0.07), plastic(skin.lid, 0, 0, skin))
   lidMesh.position.set(0, 0.13, 0.4)
   lidMesh.castShadow = true
   lid.add(lidMesh)
   group.add(lid)
+  // Lid-local helper: a mesh sitting on the lid, so it swings open with it.
+  const onLid = (mesh, x, y, z) => {
+    mesh.position.set(x, y, z + 0.4)
+    lid.add(mesh)
+    return mesh
+  }
 
   const latch = new THREE.Mesh(
     new RoundedBoxGeometry(0.22, 0.12, 0.08, 2, 0.03),
-    plastic(LATCH_COLOR, LATCH_COLOR, 0.15),
+    plastic(skin.latch, skin.latch, 0.15 + skin.glow * 0.1, skin),
   )
   latch.position.set(0, 0.3, 0.44)
   group.add(latch)
 
+  if (skin.extra === 'snow') {
+    // A snow cap on the lid and icicles hanging off the front edge.
+    const cap = onLid(new THREE.Mesh(new THREE.SphereGeometry(0.5, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), plastic(0xffffff, 0, 0, skin)), 0, 0.2, 0)
+    cap.scale.set(1.15, 0.3, 0.78)
+    const icicle = new THREE.ConeGeometry(0.045, 0.22, 6)
+    for (const x of [-0.45, -0.15, 0.2, 0.5]) {
+      const ice = new THREE.Mesh(icicle, new THREE.MeshStandardMaterial({ color: 0xd8f3ff, roughness: 0.05, transparent: true, opacity: 0.8 }))
+      ice.rotation.x = Math.PI
+      ice.position.set(x, 0.5 - (x % 0.2) * 0.2, 0.42)
+      group.add(ice)
+    }
+  } else if (skin.extra === 'cracks') {
+    // Glowing lava seams across the lid and down the front.
+    const seam = glowMat(0xff7a1a)
+    for (const [x, rz, w] of [[-0.3, 0.3, 0.5], [0.25, -0.4, 0.55]]) {
+      const crack = onLid(new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.02, w), seam), x, 0.265, 0)
+      crack.rotation.y = rz
+    }
+    for (const x of [-0.4, 0.4]) {
+      const vein = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.4, 0.02), seam)
+      vein.position.set(x, 0.32, 0.405)
+      group.add(vein)
+    }
+  } else if (skin.extra === 'speaker') {
+    // A flight-case look: neon edge strips and a round speaker cone on the front.
+    const strip = glowMat(skin.latch)
+    for (const x of [-0.6, 0.6]) {
+      const edge = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.6, 0.03), strip)
+      edge.position.set(x, 0.3, 0.4)
+      group.add(edge)
+    }
+    const cone = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.035, 8, 20), glowMat(skin.stripe))
+    cone.position.set(-0.3, 0.32, 0.405)
+    group.add(cone)
+    const dust = new THREE.Mesh(new THREE.CircleGeometry(0.1, 16), new THREE.MeshStandardMaterial({ color: 0x0a0818, roughness: 0.9 }))
+    dust.position.set(-0.3, 0.32, 0.407)
+    group.add(dust)
+  } else if (skin.extra === 'bow') {
+    // A gift-box ribbon around the chest and a bow on the lid.
+    const ribbon = plastic(skin.stripe, 0, 0, skin)
+    const band = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.62, 0.84), ribbon)
+    band.position.y = 0.3
+    group.add(band)
+    const lidBand = onLid(new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.27, 0.88), ribbon), 0, 0.13, 0)
+    lidBand.position.z = 0.4
+    for (const side of [-1, 1]) {
+      const loop = onLid(new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.035, 8, 16), ribbon), side * 0.11, 0.33, 0)
+      loop.rotation.y = Math.PI / 2
+      loop.rotation.z = side * 0.4
+    }
+  } else if (skin.extra === 'iron') {
+    // Iron straps and rivets, like an old dungeon strongbox.
+    const iron = plastic(skin.stripe, 0, 0, skin)
+    for (const x of [-0.42, 0.42]) {
+      const strap = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.62, 0.84), iron)
+      strap.position.set(x, 0.3, 0)
+      group.add(strap)
+      onLid(new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.27, 0.88), iron), x, 0.13, 0)
+    }
+    const rivet = new THREE.SphereGeometry(0.03, 6, 5)
+    for (const x of [-0.42, 0.42]) for (const y of [0.1, 0.5]) {
+      const r = new THREE.Mesh(rivet, plastic(skin.latch, 0, 0, skin))
+      r.position.set(x, y, 0.43)
+      group.add(r)
+    }
+  }
+
   const garnish = new THREE.Mesh(
     new THREE.OctahedronGeometry(0.1, 0),
-    new THREE.MeshStandardMaterial({ color: GARNISH_COLOR, transparent: true, opacity: 0.85, roughness: 0.2, flatShading: true }),
+    new THREE.MeshStandardMaterial({ color: skin.garnish, emissive: skin.garnish, emissiveIntensity: skin.glow * 0.3, transparent: true, opacity: 0.85, roughness: 0.2, flatShading: true }),
   )
   garnish.position.set(0, 0.95, 0)
   group.add(garnish)
@@ -155,7 +226,7 @@ export function createChest(point, cost) {
   // big platform without a neon beam glaring into the daylight sky.
   const marker = new THREE.Mesh(
     new THREE.RingGeometry(0.75, 0.9, 32),
-    new THREE.MeshBasicMaterial({ color: LID_COLOR, transparent: true, opacity: 0.25, side: THREE.DoubleSide, depthWrite: false }),
+    new THREE.MeshBasicMaterial({ color: skin.latch, transparent: true, opacity: 0.25, side: THREE.DoubleSide, depthWrite: false }),
   )
   marker.rotation.x = -Math.PI / 2
   marker.position.y = 0.02

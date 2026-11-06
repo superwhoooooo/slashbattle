@@ -12,7 +12,6 @@ import {
   POD_DEMATERIALIZE_DURATION,
   POD_EJECT_EXIT_MARGIN,
   POD_EXIT_MARGIN,
-  POD_HANDLE_COLOR,
   POD_HANDLE_RAISE,
   POD_HANDLE_SPAN,
   POD_HIDE_URGENT_THRESHOLD,
@@ -27,7 +26,6 @@ import {
   POD_SEAM_PULSE_AMOUNT,
   POD_SEAM_PULSE_SPEED,
   POD_SHELL_BEVEL,
-  POD_SHELL_COLOR,
   POD_SHELL_DEPTH,
   POD_SHELL_HEIGHT,
   POD_SHELL_WIDTH,
@@ -36,10 +34,8 @@ import {
   POD_TAG_SWAY_AMOUNT,
   POD_TAG_SWAY_SPEED,
   POD_TAG_TEXT,
-  POD_TRIM_COLOR,
   POD_URGENT_WIGGLE_SCALE,
   POD_URGENT_WIGGLE_SPEEDUP,
-  POD_WHEEL_COLOR,
   POD_WHEEL_RADIUS,
   POD_WHEEL_WIDTH,
   POD_WIGGLE_ANGLE,
@@ -48,6 +44,7 @@ import {
   POD_WIGGLE_MIN_INTERVAL,
   POD_WIGGLE_SCALE_PULSE,
 } from './config.js'
+import { containerSkin } from './logic/containerSkins.js'
 import { canEnterBox, findNearestBox, pickExitPoint, shouldEject } from './logic/hiding.js'
 
 // Draws a paper luggage tag: a manila card with a punched string hole
@@ -231,7 +228,8 @@ function createEyesPlane() {
 // by state, a zipper-gap window with a pair of googly eyes that peek
 // out when occupied, and a paper luggage tag swaying from the handle.
 // Unoccupied and not wiggling until the player hides in it.
-function createPodMesh() {
+function createPodMesh(style = 'resort') {
+  const skin = containerSkin(style).case
   const group = new THREE.Group()
 
   const bodyGroup = new THREE.Group()
@@ -244,7 +242,7 @@ function createPodMesh() {
   const halfWidth = POD_SHELL_WIDTH / 2
   const halfDepth = POD_SHELL_DEPTH / 2
 
-  const shellMaterial = new THREE.MeshStandardMaterial({ color: POD_SHELL_COLOR, metalness: 0.3, roughness: 0.25 })
+  const shellMaterial = new THREE.MeshStandardMaterial({ color: skin.shell, metalness: skin.metal, roughness: skin.rough })
   const shell = new THREE.Mesh(
     new RoundedBoxGeometry(POD_SHELL_WIDTH, POD_SHELL_HEIGHT, POD_SHELL_DEPTH, 4, POD_SHELL_BEVEL),
     shellMaterial,
@@ -253,7 +251,7 @@ function createPodMesh() {
   shell.castShadow = true
   bodyGroup.add(shell)
 
-  const trimMaterial = new THREE.MeshStandardMaterial({ color: POD_TRIM_COLOR, metalness: 0.4, roughness: 0.5 })
+  const trimMaterial = new THREE.MeshStandardMaterial({ color: skin.trim, metalness: 0.4, roughness: 0.5, emissive: skin.extra === 'cracks' || skin.extra === 'speaker' ? skin.trim : 0, emissiveIntensity: skin.extra === 'cracks' || skin.extra === 'speaker' ? 0.5 : 0 })
 
   const bumperGeometry = new THREE.SphereGeometry(POD_BUMPER_RADIUS, 10, 8)
   for (const x of [-halfWidth * 0.92, halfWidth * 0.92]) {
@@ -271,7 +269,7 @@ function createPodMesh() {
     bodyGroup.add(rib)
   }
 
-  const wheelMaterial = new THREE.MeshStandardMaterial({ color: POD_WHEEL_COLOR, metalness: 0.2, roughness: 0.8 })
+  const wheelMaterial = new THREE.MeshStandardMaterial({ color: skin.wheel, metalness: 0.2, roughness: 0.8 })
   const wheelGeometry = new THREE.CylinderGeometry(POD_WHEEL_RADIUS, POD_WHEEL_RADIUS, POD_WHEEL_WIDTH, 14)
   const wheelX = halfWidth - POD_WHEEL_WIDTH / 2 - 0.03
   for (const x of [-wheelX, wheelX]) {
@@ -281,7 +279,7 @@ function createPodMesh() {
     bodyGroup.add(wheel)
   }
 
-  const handleMaterial = new THREE.MeshStandardMaterial({ color: POD_HANDLE_COLOR, metalness: 0.8, roughness: 0.3 })
+  const handleMaterial = new THREE.MeshStandardMaterial({ color: skin.handle, metalness: 0.8, roughness: 0.3 })
   const legGeometry = new THREE.CylinderGeometry(0.025, 0.025, POD_HANDLE_RAISE, 8)
   for (const x of [-POD_HANDLE_SPAN / 2, POD_HANDLE_SPAN / 2]) {
     const leg = new THREE.Mesh(legGeometry, handleMaterial)
@@ -299,6 +297,36 @@ function createPodMesh() {
     const band = new THREE.Mesh(bandGeometry, seamMaterial)
     band.position.y = bodyBottomY + POD_SHELL_HEIGHT * t
     bodyGroup.add(band)
+  }
+
+  // Per-place dressing on the lid / sides.
+  if (skin.extra === 'snow') {
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.5, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 }))
+    cap.scale.set(0.95, 0.28, 0.6)
+    cap.position.y = bodyTopY - 0.02
+    bodyGroup.add(cap)
+  } else if (skin.extra === 'dots') {
+    const dot = new THREE.Mesh(new THREE.CircleGeometry(0.07, 14), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4 }))
+    for (const [x, t] of [[-0.25, 0.25], [0.2, 0.5], [-0.12, 0.8], [0.28, 0.85], [-0.3, 0.55]]) {
+      const d = dot.clone()
+      d.position.set(x, bodyBottomY + POD_SHELL_HEIGHT * t, halfDepth + 0.012)
+      bodyGroup.add(d)
+    }
+  } else if (skin.extra === 'iron') {
+    const strapMat = new THREE.MeshStandardMaterial({ color: skin.trim, metalness: 0.3, roughness: 0.8 })
+    for (const y of [0.2, 0.8]) {
+      const strap = new THREE.Mesh(new THREE.BoxGeometry(POD_SHELL_WIDTH * 1.03, 0.07, POD_SHELL_DEPTH * 1.03), strapMat)
+      strap.position.y = bodyBottomY + POD_SHELL_HEIGHT * y
+      bodyGroup.add(strap)
+    }
+  } else if (skin.extra === 'cracks' || skin.extra === 'speaker') {
+    const glow = new THREE.MeshBasicMaterial({ color: skin.extra === 'cracks' ? 0xff7a1a : 0x37f2ff })
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(0.04, POD_SHELL_HEIGHT * 0.55, 0.015), glow)
+    for (const x of [-halfWidth * 0.8, halfWidth * 0.8]) {
+      const b = bar.clone()
+      b.position.set(x, bodyCenterY, halfDepth + 0.01)
+      bodyGroup.add(b)
+    }
   }
 
   const eyesPlane = createEyesPlane()
@@ -339,8 +367,8 @@ function createPodMesh() {
 
 // Builds one pod mesh at `position` ({x, z}), starting its materialize
 // (grow-in) animation. The caller adds it to the scene and obstacles.
-export function createPod(position) {
-  const mesh = createPodMesh()
+export function createPod(position, style = 'resort') {
+  const mesh = createPodMesh(style)
   mesh.position.x = position.x
   mesh.position.z = position.z
   return mesh
