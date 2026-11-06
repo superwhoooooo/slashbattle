@@ -29,7 +29,11 @@ export function pickDeepType(rng = Math.random) {
 }
 
 // What a splitter leaves behind.
-export const SPLITS = { splitter: { into: 'splitling', count: 2 }, boss_splitter: { into: 'splitter', count: 2 } }
+export const SPLITS = {
+  splitter: { into: 'splitling', count: 2 },
+  boss_splitter: { into: 'splitter', count: 2 },
+  boss_conefather: { into: 'splitter', count: 2 }, // a cone, like the Splitter it's built from
+}
 
 // Where a target moving at `velocity` will be in `leadTime` seconds.
 export function predictPosition(position, velocity, leadTime) {

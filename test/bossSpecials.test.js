@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { MONSTER_TYPES } from '../src/config.js'
 import { BOSS_SPECIALS } from '../src/logic/bosses.js'
+import { RANGED_ATTACKS, SPLITS } from '../src/logic/enemies.js'
 import { createMonsterAIState, updateMonster } from '../src/monster.js'
 
 // A stand-in for the monster Three group: updateMonster only touches
@@ -55,7 +56,25 @@ function engage(boss, name, timer = 0.2) {
 describe('boss specials', () => {
   it('gives every boss timers for exactly its own specials', () => {
     const boss = fakeBoss('boss_zipzilla')
-    expect(Object.keys(boss.userData.specialTimers).sort()).toEqual(['barrage', 'blink', 'charge', 'summon'])
+    expect(Object.keys(boss.userData.specialTimers).sort()).toEqual(['barrage', 'blink', 'charge', 'spin', 'summon'])
+  })
+
+  it('lob: King Gloop tosses a poison glob like a Bloater, aimed at the player', () => {
+    const boss = fakeBoss('boss_gloop', 0, 0)
+    const player = fakePlayer(0, 8)
+    engage(boss, 'lob')
+    const lobs = run(boss, player, 2).filter((e) => e.type === 'lob')
+    expect(lobs.length).toBeGreaterThanOrEqual(1)
+    expect(lobs[0].tz).toBeGreaterThan(4)
+    expect(lobs[0].radius).toBe(RANGED_ATTACKS.boss_bloater.puddleRadius)
+  })
+
+  it('small-enemy traits carried onto the original bosses', () => {
+    expect(MONSTER_TYPES.boss_wobble.reflect).toBeTruthy() // the Mirror's guard
+    expect(SPLITS.boss_conefather.into).toBe('splitter') // the Splitter's burst
+    expect(MONSTER_TYPES.boss_zipzilla.specials).toContain('spin') // the Spinner's whirl
+    expect(MONSTER_TYPES.boss_bloater.attackRange).toBeGreaterThan(10) // the shooters keep their long range
+    expect(MONSTER_TYPES.boss_spinner.attackRange).toBeGreaterThan(10)
   })
 
   it('slam: winds up (showing its ring), then fires once with the right radius and damage', () => {

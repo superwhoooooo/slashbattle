@@ -32,6 +32,9 @@ export const BOSS_SPECIALS = {
   spin: { interval: 9, windup: 0.8, duration: 2.2, tickInterval: 0.45, radiusBonus: 2.4, damageMultiplier: 0.7 },
   //   leap - crouch, then jump onto the player's spot and land with a stomp (`range` is how far
   //          out it will jump from, `height` the arc's peak)
+  //   lob - toss a poison glob at where the player is heading (the Bloater's move); it lands as a
+  //         damaging puddle. Its flight/puddle numbers are RANGED_ATTACKS.boss_bloater's.
+  lob: { interval: 5.5, windup: 0.6, damageMultiplier: 0.5 },
   leap: { interval: 5, windup: 0.45, duration: 0.75, radius: 2.6, damageMultiplier: 1.1, range: 11, height: 3.2 },
 }
 
@@ -40,7 +43,7 @@ const BOSS_DEFS = [
     id: 'boss_gloop',
     name: 'KING GLOOP',
     title: 'Monarch of the Mildly Damp',
-    specials: ['slam', 'barrage', 'summon'],
+    specials: ['slam', 'barrage', 'summon', 'lob'], // + the Bloater's poison toss (sphere body)
     score: 1000,
     stats: { shape: 'sphere', size: 4.2, color: 0x2e8b57, edgeColor: 0xabd1bc, speed: 1.6, hp: 1140, damage: 18, radius: 1.9 },
     lines: [
@@ -53,7 +56,7 @@ const BOSS_DEFS = [
     id: 'boss_zipzilla',
     name: 'ZIPZILLA',
     title: 'Speed Limit: Yes',
-    specials: ['charge', 'blink', 'barrage', 'summon'],
+    specials: ['charge', 'blink', 'barrage', 'summon', 'spin'], // + the Spinner's whirl (tetrahedron body)
     score: 1100,
     stats: { shape: 'tetrahedron', size: 3.4, color: 0x7b2fd1, edgeColor: 0xcaaced, speed: 2.6, hp: 960, damage: 16, radius: 1.3 },
     lines: [
@@ -81,7 +84,7 @@ const BOSS_DEFS = [
     title: 'Surgeon of Silly Business',
     specials: ['summon', 'barrage', 'blink'],
     score: 1300,
-    stats: { shape: 'cylinder', size: 3.6, color: 0xc2217d, edgeColor: 0xe7a6cb, speed: 1.7, hp: 1020, damage: 14, radius: 1.6 },
+    stats: { shape: 'cylinder', size: 3.6, color: 0xc2217d, edgeColor: 0xe7a6cb, speed: 1.7, hp: 1020, damage: 14, radius: 1.6, reflect: { halfArc: 1.1 }, accessory: 'mirror' }, // the Mirror's guard (cylinder body)
     lines: [
       'Good evening! I am Doctor Wobble, and I have diagnosed you with LOSING.',
       'The only cure is a heavy dose of my friends!',
@@ -220,7 +223,8 @@ export const BOSSES = BOSS_DEFS.map((def) => ({
     ...def.stats,
     boss: true,
     specials: def.specials,
-    attackRange: def.stats.radius + BOSS_ATTACK_REACH,
+    // Shooter bosses (Duke Bloatsworth, Spinner Supreme) name a longer range of their own.
+    attackRange: def.stats.attackRange ?? def.stats.radius + BOSS_ATTACK_REACH,
     reachBonus: def.stats.radius, // added to the player's ATTACK_RANGE so a swing reaches the boss's far side
     knockbackScale: 0.2, // a boss barely budges from a sword hit (but can still be shoved off the edge)
     attackCooldown: 1.6,

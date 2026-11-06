@@ -28,7 +28,7 @@ import { predictPosition, RANGED_ATTACKS, smoothVelocity } from './logic/enemies
 import { dampAngle } from './logic/smoothing.js'
 
 const INDICATOR_DURATION = 0.6
-const MIRROR_TURN_SCALE = 0.3 // how much of its usual turning a mirror enemy manages
+const MIRROR_TURN_SCALE = 0.12// how much of its usual turning a mirror enemy manages
 
 // The AI/combat fields a monster needs on top of the type/hp/radius
 // already set at spawn time (src/main.js) and the hit-reaction fields
@@ -217,6 +217,11 @@ function fireSpecial(monster, ai, stats, player, obstacles, events) {
     events.push({ type: 'slam', x, z, radius: cfg.radius, damage })
   } else if (name === 'summon') {
     events.push({ type: 'summon', count: cfg.count, maxMinions: cfg.maxMinions })
+  } else if (name === 'lob') {
+    const lob = RANGED_ATTACKS.boss_bloater
+    const lead = predictPosition(player.position, ai.playerVel, lob.flight)
+    const target = clampToPlatform(lead, ARENA_RADIUS - 1)
+    events.push({ type: 'lob', x, z, tx: target.x, tz: target.z, flight: lob.flight, radius: lob.puddleRadius, life: lob.puddleLife, tick: lob.tick, damage })
   } else if (name === 'barrage') {
     events.push({
       type: 'barrage',
@@ -477,7 +482,7 @@ export function updateMonster(monster, player, obstacles, dt, now) {
   const events = []
 
   const ranged = RANGED_ATTACKS[ai.type]
-  if (ranged) {
+  if (ranged || stats.specials?.includes('lob')) {
     ai.playerVel = smoothVelocity(ai.playerVel, ai.prevPlayerPos, player.position, dt)
     ai.prevPlayerPos = { x: player.position.x, z: player.position.z }
   }
