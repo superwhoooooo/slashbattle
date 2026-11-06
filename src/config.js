@@ -48,7 +48,7 @@ export const MONSTER_TYPES = {
   // `specials`/`specialIntervals` reuse the boss move machinery (monster.js); `accessory` adds the
   // arms+legs / the mirror to the body (characters.js); `reflect` is the mirror's coverage.
   hopper: { shape: 'sphere', size: 1.7, color: 0x2ee6d6, edgeColor: 0xb6fff6, speed: 1.5, hp: 85, damage: 12, radius: 0.8, attackRange: 1.8, noMelee: true, accessory: 'limbs', specials: ['leap'], specialIntervals: { leap: 3 } },
-  mirror: { shape: 'cylinder', size: 1.5, color: 0x9fb4cc, edgeColor: 0xe6f0ff, speed: 1.7, hp: 100, damage: 10, radius: 0.7, accessory: 'mirror', reflect: { halfArc: 0.6 } },
+  mirror: { shape: 'cylinder', size: 1.5, color: 0x9fb4cc, edgeColor: 0xe6f0ff, speed: 1.2, hp: 100, damage: 10, radius: 0.7, accessory: 'mirror', reflect: { halfArc: 0.6, hits: 4 } },
   glimmer: { shape: 'octahedron', size: 1.0, color: 0xffd23f, edgeColor: 0xfff1a8, speed: 2.2, hp: 50, damage: 9, radius: 0.45, specials: ['blink'], specialIntervals: { blink: 3.4 } },
   // Deep dwellers (water rooms only, see logic/enemies.js DEEP_TYPES): they lurk under the surface, can't
   // be hit or hit you unless you're diving, so you have to go under to finish a wave.

@@ -18,3 +18,41 @@ export function reflectedDamage(bulletDamage) {
 
 // The thorns a mirror deals to a melee attacker who swings into its front.
 export const MELEE_REFLECT_DAMAGE = 4
+
+// The mirror's shield wears out. Every attack it bounces is a "hit" on the glass; after
+// `hits` of them it breaks and attacks go straight through. A boss's mirror (`regrow` > 0)
+// grows back that many seconds later; a regular enemy's stays broken.
+export function createShield(reflect) {
+  return { hits: reflect.hits ?? Infinity, taken: 0, broken: false, regrow: reflect.regrow ?? 0, regrowIn: 0 }
+}
+
+// Whether the mirror is up and bouncing things.
+export function shieldActive(shield) {
+  return !shield.broken
+}
+
+// Records one bounced attack. Returns true if that hit broke the shield.
+export function hitShield(shield) {
+  if (shield.broken) return false
+  shield.taken += 1
+  if (shield.taken < shield.hits) return false
+  shield.broken = true
+  shield.regrowIn = shield.regrow
+  return true
+}
+
+// Ticks the regrow timer. Returns true on the frame the shield comes back.
+export function stepShield(shield, dt) {
+  if (!shield.broken || shield.regrow <= 0) return false
+  shield.regrowIn -= dt
+  if (shield.regrowIn > 0) return false
+  shield.broken = false
+  shield.taken = 0
+  shield.regrowIn = 0
+  return true
+}
+
+// How cracked the glass looks, 0 (pristine) to 1 (about to break).
+export function crackFraction(shield) {
+  return shield.broken ? 1 : Math.min(1, shield.taken / shield.hits)
+}

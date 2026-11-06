@@ -30,7 +30,7 @@ import { createScope } from './scope.js'
 import { SCOPES, AMMO, rifleSetup as riflePicks, stepSteady, tuneRifle } from './logic/rifles.js'
 import { bulletDamage } from './logic/bullets.js'
 import { DEEP_SPAWN_CHANCE, pickDeepType } from './logic/enemies.js'
-import { MELEE_REFLECT_DAMAGE, reflectedDamage } from './logic/reflect.js'
+import { MELEE_REFLECT_DAMAGE, createShield, crackFraction, hitShield, reflectedDamage, stepShield } from './logic/reflect.js'
 import { WATER, stepBreath, stepDepth, waveHeight } from './logic/water.js'
 import { createWaterUi } from './waterUi.js'
 import { activeLoadoutPets, addToCollection, bankCrystals, setRifleOption, unlockAttachment } from './logic/profile.js'
@@ -1543,7 +1543,9 @@ function spawnMonster(game, type, { at = null, effectOptions, hpScale = 1, faceP
   mesh.userData.isBoss = stats.boss === true
   mesh.userData.reachBonus = stats.reachBonus ?? 0
   mesh.userData.deep = stats.deep === true // a deep dweller: only reachable by diving
-  mesh.userData.reflect = stats.reflect ?? null // a mirror bounces attacks that hit its front
+  mesh.userData.reflect = stats.reflect ?? null // a mirror bounces attacks that hit its front (null while its shield is broken)
+  mesh.userData.reflectCfg = stats.reflect ?? null
+  mesh.userData.shield = stats.reflect ? createShield(stats.reflect) : null // wears out after `hits` bounces
   mesh.userData.knockbackScale = stats.knockbackScale ?? 1
   mesh.userData.radius = stats.radius
   mesh.userData.falling = false
@@ -1646,6 +1648,16 @@ function reflectAttack(game, info) {
   const at = { x: mirror.position.x, y: 1.1, z: mirror.position.z }
   burst(particleSystem, at, 0xe6f4ff, 14, 3.5)
   sfx.play('hit', { x: mirror.position.x, z: mirror.position.z })
+  const shield = mirror.userData.shield
+  if (shield) {
+    const broke = hitShield(shield)
+    mirror.userData.setMirrorCracks?.(crackFraction(shield), shield.broken)
+    if (broke) {
+      mirror.userData.reflect = null // attacks go straight through now
+      burst(particleSystem, at, 0xcfe8ff, 40, 6)
+      showPopup(popupPool, mirror.position, 'SHIELD BROKEN!', '', POPUP_KILL_COLOR)
+    }
+  }
   if (info.kind === 'bullet') {
     const aim = Math.atan2(player.position.x - mirror.position.x, player.position.z - mirror.position.z)
     const damage = reflectedDamage(info.bullet.damage)
@@ -2761,6 +2773,12 @@ function animate(timestamp) {
       game.hitstop.remaining = triggerHitstop(game.hitstop, HITSTOP_PLAYER_HURT).remaining
     }
     updateMonsterHitReaction(mesh, gameplayDelta)
+    if (mesh.userData.shield && stepShield(mesh.userData.shield, gameplayDelta)) {
+      // A boss's mirror grows back.
+      mesh.userData.reflect = mesh.userData.reflectCfg
+      mesh.userData.setMirrorCracks?.(0, false)
+      burst(particleSystem, { x: mesh.position.x, y: 1.5, z: mesh.position.z }, 0xe6f4ff, 24, 4)
+    }
 
     if (room) {
       // Swimmers ride the waves (and leap on top of that); the wall holds them in.

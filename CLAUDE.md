@@ -613,7 +613,7 @@ crouch, then a ballistic jump onto your spot that lands as a `slam` event, `mons
 `air` phase, `leapY` is the height main.js adds to its y), **mirror** (wave 6: a mirror held in front,
 `accessory: 'mirror'`, `reflect: { halfArc }`; `logic/reflect.js`'s `isFrontHit` decides if a hit lands on
 the mirror: bullets (`bullets.js`) come back as an orb at you, a melee swing (`combat.js`) is blocked and
-bites you for `MELEE_REFLECT_DAMAGE`; it turns slowly (`MIRROR_TURN_SCALE`), so hit it from behind) and
+bites you for `MELEE_REFLECT_DAMAGE`; the shield wears out: `reflect.hits` bounces (4; Sir Reflectalot 6) break it, with a crack added to the glass per hit (`userData.setMirrorCracks`) and `userData.reflect` nulled while broken; Sir Reflectalot's regrows after `reflect.regrow` = 30s (`createShield`/`hitShield`/`stepShield` in `logic/reflect.js`); it turns slowly (`MIRROR_TURN_SCALE`), so hit it from behind) and
 **glimmer** (wave 8: blinks next to you, the boss `blink` special on a regular enemy). Regular enemies can
 use the boss special machinery through `specials` and `specialIntervals` (per-type cooldown overrides) and
 `noMelee`. Every regular enemy also has a boss version in `logic/bosses.js` (Mega Blobbo, Zippy Zoomer,

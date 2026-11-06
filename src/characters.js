@@ -561,11 +561,38 @@ function addMirror(group, stats, bodyCenterY) {
   const glint = new THREE.Mesh(new THREE.PlaneGeometry(s * 0.1, s * 0.7), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.55 }))
   glint.position.set(-s * 0.15, s * 0.05, 0.01)
   glint.rotation.z = 0.35
+  // Cracks: one more spreads across the glass for every hit the shield takes (see setMirrorCracks).
+  const hits = stats.reflect?.hits ?? 4
+  const crackMat = new THREE.MeshBasicMaterial({ color: 0x1b2a3d, side: THREE.DoubleSide })
+  const cracks = []
+  for (let i = 0; i < hits; i++) {
+    const angle = (i / hits) * Math.PI * 2 + 0.5
+    const crack = new THREE.Group()
+    const len = s * (0.3 + 0.08 * (i % 3))
+    const main = new THREE.Mesh(new THREE.PlaneGeometry(s * 0.025, len), crackMat)
+    main.position.y = len / 2
+    const branch = new THREE.Mesh(new THREE.PlaneGeometry(s * 0.018, len * 0.5), crackMat)
+    branch.position.set(s * 0.05, len * 0.65, 0)
+    branch.rotation.z = -0.7
+    crack.add(main, branch)
+    crack.rotation.z = angle
+    crack.position.set(Math.cos(angle + 1.1) * s * 0.06, Math.sin(angle + 1.1) * s * 0.08, 0.02)
+    crack.visible = false
+    mirror.add(crack)
+    cracks.push(crack)
+  }
   mirror.add(frame, glass, handle, glint)
   mirror.position.set(0, Math.max(s * 0.7, bodyCenterY + s * 0.25), s * 0.82)
   mirror.children.forEach((m) => { m.castShadow = true })
   group.add(mirror)
   group.userData.mirror = mirror
+  // fraction 0..1 of the shield worn away; a broken shield loses its glass (and glint) entirely.
+  group.userData.setMirrorCracks = (fraction, broken) => {
+    cracks.forEach((c, i) => { c.visible = !broken && i < Math.round(fraction * hits) })
+    glass.visible = !broken
+    glint.visible = !broken
+    glass.material.emissiveIntensity = 0.35 * (1 - 0.6 * fraction)
+  }
 }
 
 // The angler's glowing lure: a curved stalk over its head ending in a bright bulb.

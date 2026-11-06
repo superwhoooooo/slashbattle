@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { MONSTER_TYPES } from '../src/config.js'
 import { BOSSES, BOSS_SPECIALS } from '../src/logic/bosses.js'
 import { LEVELS } from '../src/logic/levels.js'
-import { MELEE_REFLECT_DAMAGE, isFrontHit, reflectedDamage } from '../src/logic/reflect.js'
+import { MELEE_REFLECT_DAMAGE, createShield, crackFraction, hitShield, isFrontHit, reflectedDamage, stepShield } from '../src/logic/reflect.js'
 import { WATER, stepBreath, stepDepth, stepSwim, waterBullet, waveHeight } from '../src/logic/water.js'
 import { SPLITS } from '../src/logic/enemies.js'
 import { scoreForKill } from '../src/logic/waves.js'
@@ -112,5 +112,27 @@ describe('deep dwellers', () => {
     setDeepShield(false)
     for (let t = 2; t < 3; t += 0.05) updateMonster(eel, player, [], 0.05, t)
     expect(['chase', 'attack']).toContain(eel.userData.state)
+  })
+})
+
+describe('mirror shield', () => {
+  it('the mirror enemy breaks after 4 hits and stays broken', () => {
+    const shield = createShield(MONSTER_TYPES.mirror.reflect)
+    expect([1, 2, 3].map(() => hitShield(shield))).toEqual([false, false, false])
+    expect(crackFraction(shield)).toBeCloseTo(0.75)
+    expect(hitShield(shield)).toBe(true)
+    expect(shield.broken).toBe(true)
+    expect(stepShield(shield, 1000)).toBe(false)
+    expect(shield.broken).toBe(true)
+  })
+  it('the boss mirror breaks after 6 hits and grows back after 30 seconds', () => {
+    const shield = createShield(MONSTER_TYPES.boss_mirror.reflect)
+    for (let i = 0; i < 5; i++) expect(hitShield(shield)).toBe(false)
+    expect(hitShield(shield)).toBe(true)
+    expect(stepShield(shield, 29)).toBe(false)
+    expect(shield.broken).toBe(true)
+    expect(stepShield(shield, 1.5)).toBe(true)
+    expect(shield.broken).toBe(false)
+    expect(crackFraction(shield)).toBe(0)
   })
 })

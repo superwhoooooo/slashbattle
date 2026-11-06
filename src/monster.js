@@ -537,7 +537,7 @@ export function updateMonster(monster, player, obstacles, dt, now) {
   }
 
   // A mirror is heavy to swing around: it turns slowly, so you can circle round to its unguarded back.
-  if (stats.reflect) {
+  if (monster.userData.shield ? monster.userData.reflect : stats.reflect) {
     const turned = monster.rotation.y - yawAtStart
     monster.rotation.y = yawAtStart + Math.atan2(Math.sin(turned), Math.cos(turned)) * MIRROR_TURN_SCALE
   }

@@ -191,7 +191,7 @@ const BOSS_DEFS = [
     title: 'Fairest of Them All',
     specials: ['barrage', 'blink', 'slam'],
     score: 1400,
-    stats: { shape: 'cylinder', size: 3.8, color: 0xaebfd8, edgeColor: 0xe6f0ff, speed: 1.8, hp: 1100, damage: 17, radius: 1.6, reflect: { halfArc: 1.1 }, accessory: 'mirror' },
+    stats: { shape: 'cylinder', size: 3.8, color: 0xaebfd8, edgeColor: 0xe6f0ff, speed: 1.3, hp: 1100, damage: 17, radius: 1.6, reflect: { halfArc: 1.1, hits: 6, regrow: 30 }, accessory: 'mirror' },
     lines: ['Mirror, mirror, in my hand... who will fall by my command?', 'Go on, hit me. Everything you throw, I throw back.', 'Hit me from behind? That is RUDE.'],
   },
   {
