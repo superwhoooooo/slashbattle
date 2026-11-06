@@ -270,7 +270,10 @@ function createRendererWithFallback() {
   const box = document.createElement('div')
   box.style.cssText = 'position:fixed;inset:0;z-index:100000;display:flex;align-items:center;justify-content:center;padding:24px;background:#1a2433;color:#fff;font:16px/1.5 system-ui,sans-serif;text-align:center'
   box.innerHTML = '<div style="max-width:520px"><h2 style="margin:0 0 12px">Your browser could not start 3D graphics (WebGL)</h2>' +
-    '<p>SlashBattle needs WebGL. Try: close other tabs and windows that use 3D or video, make sure "Use graphics acceleration when available" is on (Chrome: Settings, System), restart the browser, then reload this page. On a phone: close other tabs and apps, turn off Low Power / battery saver mode, and try Chrome or Safari.</p></div>'
+    '<p>SlashBattle needs WebGL. Try: close other tabs and windows that use 3D or video, make sure "Use graphics acceleration when available" is on (Chrome: Settings, System), restart the browser, then reload this page. On a phone: close other tabs and apps, turn off Low Power / battery saver mode, and try Chrome or Safari.</p>' +
+    '<p style="font:12px/1.4 monospace;opacity:.7;word-break:break-word"></p></div>'
+  box.querySelector('p:last-child').textContent = 'Details: ' + (lastError?.message ?? lastError ?? 'unknown')
+  console.error('WebGL renderer creation failed:', lastError)
   document.body.appendChild(box)
   throw lastError
 }
