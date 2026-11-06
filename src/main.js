@@ -248,7 +248,31 @@ const container = document.querySelector('#app')
 // ratio cap, no ambient occlusion pass) so the game stays smooth.
 const touchDevice = isTouchDevice()
 const PIXEL_RATIO_CAP = touchDevice ? Math.min(MAX_PIXEL_RATIO, 2) : MAX_PIXEL_RATIO
-const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' })
+// Some machines refuse a context with the fancy options (a busy or software-only GPU, too many
+// open WebGL tabs), so try progressively plainer ones before giving up with a readable message.
+function createRendererWithFallback() {
+  const attempts = [
+    { antialias: true, powerPreference: 'high-performance' },
+    { antialias: true },
+    { antialias: false },
+    { antialias: false, powerPreference: 'low-power' },
+  ]
+  let lastError = null
+  for (const options of attempts) {
+    try {
+      return new THREE.WebGLRenderer(options)
+    } catch (error) {
+      lastError = error
+    }
+  }
+  const box = document.createElement('div')
+  box.style.cssText = 'position:fixed;inset:0;z-index:100000;display:flex;align-items:center;justify-content:center;padding:24px;background:#1a2433;color:#fff;font:16px/1.5 system-ui,sans-serif;text-align:center'
+  box.innerHTML = '<div style="max-width:520px"><h2 style="margin:0 0 12px">Your browser could not start 3D graphics (WebGL)</h2>' +
+    '<p>SlashBattle needs WebGL. Try: close other tabs and windows that use 3D or video, make sure "Use graphics acceleration when available" is on (Chrome: Settings, System), restart the browser, then reload this page.</p></div>'
+  document.body.appendChild(box)
+  throw lastError
+}
+const renderer = createRendererWithFallback()
 renderer.setSize(window.innerWidth, window.innerHeight)
 // Capped rather than the raw devicePixelRatio -- a 3x display would
 // otherwise render (and composite) 9x the pixels for no visible gain.
@@ -266,6 +290,13 @@ renderer.domElement.style.display = 'block'
 // canvas goes blank/white: stop it from being permanently dead and reload to recover cleanly.
 renderer.domElement.addEventListener('webglcontextlost', (event) => {
   event.preventDefault()
+  // At most one automatic reload a minute, so a GPU that keeps dropping the context can't trap
+  // the page in a reload loop.
+  try {
+    const last = Number(sessionStorage.getItem('slashbattle:ctxReload') || 0)
+    if (Date.now() - last < 60000) return
+    sessionStorage.setItem('slashbattle:ctxReload', String(Date.now()))
+  } catch {}
   setTimeout(() => location.reload(), 800)
 })
 // Phones draw far fewer pixels, so keep sparks proportional to the screen there.
@@ -2230,17 +2261,28 @@ function dismissStartCard(event) {
   // Opening the hub (its button, or keys 6 / 7 / 9) or typing inside it isn't "start".
   if (hub.isOpen() || event?.target?.closest?.('#hub-open-btn, #hub-root') || HUB_KEYS[event?.code]) return
   started = true
-  if (event?.code === 'KeyB' || event?.target?.closest?.('#sandbox-btn')) startSandbox()
-  else if (event?.code === 'KeyG' || event?.target?.closest?.('#tutorial-btn')) startTutorial()
-  else if (event?.code === 'KeyK' || event?.target?.closest?.('#labyrinth-btn')) {
-    gameMode = 'labyrinth'
-    // The sundeck world was already built behind the start card: swap it for the labyrinth.
-    disposeGame(game)
-    game = createGame()
-  }
-  if (!sandbox && !tutorial) applyLoadoutPets(game) // the loadout may have changed on the start card
-  music.start()
+  // The card goes away first, and each step below is guarded: one failing (audio on an odd
+  // browser, a bad saved profile) must never leave the card up with every click ignored.
   hideStartCard(hud)
+  const guard = (label, fn) => {
+    try {
+      fn()
+    } catch (error) {
+      console.error(`start: ${label} failed`, error)
+    }
+  }
+  guard('mode', () => {
+    if (event?.code === 'KeyB' || event?.target?.closest?.('#sandbox-btn')) startSandbox()
+    else if (event?.code === 'KeyG' || event?.target?.closest?.('#tutorial-btn')) startTutorial()
+    else if (event?.code === 'KeyK' || event?.target?.closest?.('#labyrinth-btn')) {
+      gameMode = 'labyrinth'
+      // The sundeck world was already built behind the start card: swap it for the labyrinth.
+      disposeGame(game)
+      game = createGame()
+    }
+  })
+  if (!sandbox && !tutorial) guard('loadout pets', () => applyLoadoutPets(game)) // the loadout may have changed on the start card
+  guard('music', () => music.start())
   // The key/click that dismisses the card shouldn't also register as a
   // held attack button or key on gameplay's first frame.
   input.clear()

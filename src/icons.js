@@ -48,7 +48,16 @@ function scheduleRelease() {
 }
 
 // Renders `object` (centered and scaled to fit) and returns a data URL.
-function snapshot(object, { tilt = 0, yaw = 0, pitch = 0.35 } = {}) {
+function snapshot(object, options) {
+  try {
+    return renderSnapshot(object, options)
+  } catch (error) {
+    console.error('icon render failed', error)
+    return '' // no picture, but the HUD and game keep working
+  }
+}
+
+function renderSnapshot(object, { tilt = 0, yaw = 0, pitch = 0.35 } = {}) {
   ensureStage()
   const holder = new THREE.Group()
   holder.add(object)

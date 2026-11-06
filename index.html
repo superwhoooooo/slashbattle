@@ -869,7 +869,8 @@
         display: flex;
         flex-direction: column;
         align-items: center;
-        justify-content: center;
+        justify-content: safe center;
+        overflow-y: auto; /* a short window scrolls the card instead of cutting its buttons off */
         gap: 12px;
         background: rgba(26, 36, 51, 0.25);
         color: var(--ink);
@@ -1175,6 +1176,28 @@
       </div>
     </div>
 
+    <script>
+      // If the game script fails to start (no WebGL, a crash on load), say so on screen
+      // instead of leaving a start card that silently does nothing.
+      (function () {
+        function show(msg) {
+          var box = document.getElementById('boot-error')
+          if (!box) {
+            box = document.createElement('pre')
+            box.id = 'boot-error'
+            box.style.cssText = 'position:fixed;left:8px;right:8px;bottom:8px;max-height:40vh;overflow:auto;margin:0;padding:12px;z-index:99999;background:#7a1020;color:#fff;font:12px/1.4 monospace;white-space:pre-wrap;border-radius:8px;user-select:text'
+            document.body.appendChild(box)
+          }
+          box.textContent += msg + '\n'
+        }
+        window.addEventListener('error', function (e) {
+          show('Error: ' + (e.message || 'script failed to load') + (e.filename ? '\n  at ' + e.filename + ':' + e.lineno : ''))
+        })
+        window.addEventListener('unhandledrejection', function (e) {
+          show('Error: ' + (e.reason && (e.reason.stack || e.reason.message) || e.reason))
+        })
+      })()
+    </script>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
