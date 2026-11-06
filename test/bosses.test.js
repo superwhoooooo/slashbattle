@@ -8,6 +8,7 @@ import {
   bossForFight,
   bossEase,
   bossHpScale,
+  ORIGINAL_BOSS_COUNT,
   shuffleBossOrder,
   stepSpecialTimer,
   wavesBeforeBoss,
@@ -66,6 +67,12 @@ describe('shuffleBossOrder / bossForFight', () => {
     for (let seed = 0; seed < 20; seed++) {
       const order = shuffleBossOrder(createSeededRng(seed))
       expect([...order].sort((a, b) => a - b)).toEqual(Array.from({ length: BOSS_COUNT }, (_, i) => i))
+    }
+  })
+
+  it('always opens with one of the original seven', () => {
+    for (let seed = 0; seed < 200; seed++) {
+      expect(shuffleBossOrder(createSeededRng(seed))[0]).toBeLessThan(ORIGINAL_BOSS_COUNT)
     }
   })
 

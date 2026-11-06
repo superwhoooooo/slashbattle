@@ -619,7 +619,7 @@ use the boss special machinery through `specials` and `specialIntervals` (per-ty
 `noMelee`. Every regular enemy also has a boss version in `logic/bosses.js` (Mega Blobbo, Zippy Zoomer,
 Grumpus Maximus, Duke Bloatsworth, Spinner Supreme, Splitzilla, Sir Reflectalot, King Hopalot, The Blinkmaster;
 16 bosses now, all appear before any repeat); `RANGED_ATTACKS.boss_bloater/boss_spinner` and
-`SPLITS.boss_splitter` give them their enemy's signature trick. The original seven borrow the small enemy with the same body shape on top of their own moves: King Gloop (sphere) the Bloater's `lob` special, Zipzilla (tetrahedron) the Spinner's `spin`, Doctor Wobble (cylinder) the Mirror's `reflect` guard, the Cone Father (cone) the Splitter's burst (`SPLITS.boss_conefather`).
+`SPLITS.boss_splitter` give them their enemy's signature trick.
 
 ## Water rooms
 Three `LEVELS` carry a `water` block (Pool Room, Pacific Ocean, Glowing Reef Aquarium) and follow bosses like

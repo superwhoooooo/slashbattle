@@ -32,7 +32,6 @@ export function pickDeepType(rng = Math.random) {
 export const SPLITS = {
   splitter: { into: 'splitling', count: 2 },
   boss_splitter: { into: 'splitter', count: 2 },
-  boss_conefather: { into: 'splitter', count: 2 }, // a cone, like the Splitter it's built from
 }
 
 // Where a target moving at `velocity` will be in `leadTime` seconds.

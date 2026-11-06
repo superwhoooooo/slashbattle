@@ -43,7 +43,7 @@ const BOSS_DEFS = [
     id: 'boss_gloop',
     name: 'KING GLOOP',
     title: 'Monarch of the Mildly Damp',
-    specials: ['slam', 'barrage', 'summon', 'lob'], // + the Bloater's poison toss (sphere body)
+    specials: ['slam', 'barrage', 'summon'],
     score: 1000,
     stats: { shape: 'sphere', size: 4.2, color: 0x2e8b57, edgeColor: 0xabd1bc, speed: 1.6, hp: 1140, damage: 18, radius: 1.9 },
     lines: [
@@ -56,7 +56,7 @@ const BOSS_DEFS = [
     id: 'boss_zipzilla',
     name: 'ZIPZILLA',
     title: 'Speed Limit: Yes',
-    specials: ['charge', 'blink', 'barrage', 'summon', 'spin'], // + the Spinner's whirl (tetrahedron body)
+    specials: ['charge', 'blink', 'barrage', 'summon'],
     score: 1100,
     stats: { shape: 'tetrahedron', size: 3.4, color: 0x7b2fd1, edgeColor: 0xcaaced, speed: 2.6, hp: 960, damage: 16, radius: 1.3 },
     lines: [
@@ -84,7 +84,7 @@ const BOSS_DEFS = [
     title: 'Surgeon of Silly Business',
     specials: ['summon', 'barrage', 'blink'],
     score: 1300,
-    stats: { shape: 'cylinder', size: 3.6, color: 0xc2217d, edgeColor: 0xe7a6cb, speed: 1.7, hp: 1020, damage: 14, radius: 1.6, reflect: { halfArc: 1.1 }, accessory: 'mirror' }, // the Mirror's guard (cylinder body)
+    stats: { shape: 'cylinder', size: 3.6, color: 0xc2217d, edgeColor: 0xe7a6cb, speed: 1.7, hp: 1020, damage: 14, radius: 1.6 },
     lines: [
       'Good evening! I am Doctor Wobble, and I have diagnosed you with LOSING.',
       'The only cure is a heavy dose of my friends!',
@@ -240,13 +240,23 @@ export function bossById(id) {
   return BOSSES.find((boss) => boss.id === id) ?? null
 }
 
+// How many bosses are the originals (King Gloop ... Omega Jello): they are the
+// first seven in BOSS_DEFS, and only they can open a run.
+export const ORIGINAL_BOSS_COUNT = 7
+
 // A shuffled order of the bosses for one run (Fisher-Yates), so each run
-// meets all seven in a different order. rng is injectable for tests.
+// meets every boss in a different order. The first boss is always one of the
+// original seven. rng is injectable for tests.
 export function shuffleBossOrder(rng = Math.random) {
   const order = BOSSES.map((_, index) => index)
   for (let i = order.length - 1; i > 0; i--) {
     const j = Math.floor(rng() * (i + 1))
     ;[order[i], order[j]] = [order[j], order[i]]
+  }
+  // If a newer boss landed first, swap it with the first original in the list.
+  if (order[0] >= ORIGINAL_BOSS_COUNT) {
+    const k = order.findIndex((n) => n < ORIGINAL_BOSS_COUNT)
+    ;[order[0], order[k]] = [order[k], order[0]]
   }
   return order
 }
