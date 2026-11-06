@@ -230,6 +230,19 @@ export const QUALITY_PRESETS = {
   medium: { maxPixelRatio: 2, msaaSamples: 4, gtao: false, shadowMapSize: 2048 },
   high: { maxPixelRatio: 2, msaaSamples: 4, gtao: true, shadowMapSize: 2048 },
 }
+// Phones and tablets (a coarse pointer and no fine one) start on a lighter profile: a big
+// multisampled render target, 2048 shadow maps and a 2x pixel ratio are enough to make a
+// mobile browser refuse or lose its WebGL context.
+const MOBILE_PRESET = { maxPixelRatio: 1.5, msaaSamples: 0, gtao: false, shadowMapSize: 1024 }
+const IS_MOBILE =
+  typeof window !== 'undefined' &&
+  (() => {
+    try {
+      return window.location.hash === '#touch' || (window.matchMedia('(pointer: coarse)').matches && !window.matchMedia('(any-pointer: fine)').matches)
+    } catch {
+      return false
+    }
+  })()
 const QUALITY_DEFAULT = 'medium'
 // A `?quality=low|medium|high` URL parameter overrides the default (handy
 // for A/B testing frame rate without editing this file).
@@ -240,7 +253,7 @@ export const QUALITY = QUALITY_OVERRIDE in QUALITY_PRESETS ? QUALITY_OVERRIDE : 
 // ?pr=1.25&msaa=2&gtao=1&shadow=1024
 const urlParams = typeof location !== 'undefined' ? new URLSearchParams(location.search) : new URLSearchParams()
 const numParam = (key, fallback) => (urlParams.has(key) ? Number(urlParams.get(key)) : fallback)
-const base = QUALITY_PRESETS[QUALITY] ?? QUALITY_PRESETS.medium
+const base = QUALITY_OVERRIDE in QUALITY_PRESETS ? QUALITY_PRESETS[QUALITY] : IS_MOBILE ? MOBILE_PRESET : (QUALITY_PRESETS[QUALITY] ?? QUALITY_PRESETS.medium)
 const QUALITY_SETTINGS = {
   maxPixelRatio: numParam('pr', base.maxPixelRatio),
   msaaSamples: numParam('msaa', base.msaaSamples),

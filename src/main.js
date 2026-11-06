@@ -251,12 +251,14 @@ const PIXEL_RATIO_CAP = touchDevice ? Math.min(MAX_PIXEL_RATIO, 2) : MAX_PIXEL_R
 // Some machines refuse a context with the fancy options (a busy or software-only GPU, too many
 // open WebGL tabs), so try progressively plainer ones before giving up with a readable message.
 function createRendererWithFallback() {
-  const attempts = [
-    { antialias: true, powerPreference: 'high-performance' },
-    { antialias: true },
-    { antialias: false },
-    { antialias: false, powerPreference: 'low-power' },
-  ]
+  const attempts = isTouchDevice()
+    ? [{ antialias: false }, { antialias: false, powerPreference: 'low-power' }, { antialias: true }]
+    : [
+        { antialias: true, powerPreference: 'high-performance' },
+        { antialias: true },
+        { antialias: false },
+        { antialias: false, powerPreference: 'low-power' },
+      ]
   let lastError = null
   for (const options of attempts) {
     try {
@@ -268,7 +270,7 @@ function createRendererWithFallback() {
   const box = document.createElement('div')
   box.style.cssText = 'position:fixed;inset:0;z-index:100000;display:flex;align-items:center;justify-content:center;padding:24px;background:#1a2433;color:#fff;font:16px/1.5 system-ui,sans-serif;text-align:center'
   box.innerHTML = '<div style="max-width:520px"><h2 style="margin:0 0 12px">Your browser could not start 3D graphics (WebGL)</h2>' +
-    '<p>SlashBattle needs WebGL. Try: close other tabs and windows that use 3D or video, make sure "Use graphics acceleration when available" is on (Chrome: Settings, System), restart the browser, then reload this page.</p></div>'
+    '<p>SlashBattle needs WebGL. Try: close other tabs and windows that use 3D or video, make sure "Use graphics acceleration when available" is on (Chrome: Settings, System), restart the browser, then reload this page. On a phone: close other tabs and apps, turn off Low Power / battery saver mode, and try Chrome or Safari.</p></div>'
   document.body.appendChild(box)
   throw lastError
 }
