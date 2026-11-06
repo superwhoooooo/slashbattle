@@ -5,7 +5,7 @@
 import * as THREE from 'three'
 import { damageMonster } from './combat.js'
 import { isOnPlatform } from './logic/arena.js'
-import { stepBullet } from './logic/bullets.js'
+import { bulletDamage, stepBullet } from './logic/bullets.js'
 import { burst } from './particles.js'
 import { isTouchDevice } from './touch.js'
 import { hasWallLineOfSight, isInsideWall } from './monster.js'
@@ -93,7 +93,7 @@ export function updateBullets(pool, dt, { monsters, obstacles, particleSystem, h
     for (const { mesh } of hits) {
       if (!hasWallLineOfSight(from, mesh.position)) continue
       hitAny = true
-      damageMonster(mesh, bullet.damage, { fromPos: from, knockback: bullet.knockback, obstacles, particleSystem, cause: bullet.cause, ambush: bullet.ambush, hitstop })
+      damageMonster(mesh, bulletDamage(bullet).damage, { fromPos: from, knockback: bullet.knockback, obstacles, particleSystem, cause: bullet.cause, ambush: bullet.ambush, hitstop })
       if (onHit) onHit(bullet, mesh)
     }
     if (alive && onTrail) onTrail(bullet)
@@ -103,7 +103,7 @@ export function updateBullets(pool, dt, { monsters, obstacles, particleSystem, h
       for (const target of targets) {
         if (target.mesh.userData.dying || hits.some((h) => h.id === target.id)) continue
         if (Math.hypot(target.x - bullet.x, target.z - bullet.z) > bullet.explode + target.radius) continue
-        damageMonster(target.mesh, bullet.damage * 0.6, { fromPos: { x: bullet.x, z: bullet.z }, knockback: bullet.knockback, obstacles, particleSystem, cause: bullet.cause, ambush: bullet.ambush, hitstop })
+        damageMonster(target.mesh, bulletDamage(bullet).damage * 0.6, { fromPos: { x: bullet.x, z: bullet.z }, knockback: bullet.knockback, obstacles, particleSystem, cause: bullet.cause, ambush: bullet.ambush, hitstop })
       }
     }
     if (!alive || !isOnPlatform(bullet, arenaRadius + 6)) {

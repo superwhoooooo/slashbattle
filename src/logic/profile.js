@@ -3,7 +3,8 @@
 // ever found (the collection), three loadouts of starting pets, and the levels
 // bought with banked crystals (skill tree + power-up upgrades). Every function
 // returns a NEW profile. src/profile.js saves it in localStorage.
-import { MAX_SLOTS, PETS, PET_MAX_LEVEL, POWERUPS, SLOT_LIMITS, petLevel, petUpgradeCost } from './items.js'
+import { MAX_SLOTS, PETS, WEAPONS, PET_MAX_LEVEL, POWERUPS, SLOT_LIMITS, petLevel, petUpgradeCost } from './items.js'
+import { AMMO, AMMO_MAX_LEVEL, DEFAULT_AMMO, DEFAULT_SCOPE, RIFLE_MAX_LEVEL, SCOPES, ammoLevel, ammoUpgradeCost, cycleIn, isAmmoUnlocked, isScopeUnlocked, rifleLevel, rifleUpgradeCost, unlockedAmmo, unlockedScopes } from './rifles.js'
 import { POWERUP_MAX_LEVEL, SKILLS, powerupLevel, powerupUpgradeCost, skillLevel, skillState, skillsSpent } from './skills.js'
 
 // The first version of the skill tree (before the ARC Raiders-style one): its nodes' base cost,
@@ -31,6 +32,10 @@ export function createProfile() {
     skills: {}, // skill id -> level
     powerups: {}, // power-up id -> level (absent = 1)
     pets: {}, // pet id -> level (absent = 1)
+    unlocked: { scopes: [], ammo: [] }, // scope / ammo ids found in chests
+    rifleLevels: {}, // rifle id -> level (absent = 1)
+    ammoLevels: {}, // ammo id -> level (absent = 1)
+    rifles: {}, // rifle id -> { scope, ammo } (absent = iron sights, standard ammo)
   }
 }
 
@@ -64,6 +69,25 @@ export function normalizeProfile(raw) {
     const level = Math.min(count(raw.pets?.[id]), PET_MAX_LEVEL)
     if (level > 1) pets[id] = level
   }
+  // Rifle attachments: only non-default, known picks are kept.
+  const rifles = {}
+  for (const id of Object.keys(WEAPONS)) {
+    if (!WEAPONS[id].rifle) continue
+    const saved = raw.rifles?.[id]
+    const scope = SCOPES[saved?.scope] ? saved.scope : DEFAULT_SCOPE
+    const ammo = AMMO[saved?.ammo] ? saved.ammo : DEFAULT_AMMO
+    if (scope !== DEFAULT_SCOPE || ammo !== DEFAULT_AMMO) rifles[id] = { scope, ammo }
+  }
+  const rifleLevels = {}
+  for (const id of Object.keys(WEAPONS)) {
+    const level = Math.min(count(raw.rifleLevels?.[id]), RIFLE_MAX_LEVEL)
+    if (WEAPONS[id].rifle && level > 1) rifleLevels[id] = level
+  }
+  const ammoLevels = {}
+  for (const id of Object.keys(AMMO)) {
+    const level = Math.min(count(raw.ammoLevels?.[id]), AMMO_MAX_LEVEL)
+    if (level > 1) ammoLevels[id] = level
+  }
   return {
     version: PROFILE_VERSION,
     bank: count(raw.bank) + (oldTree ? legacyRefund(raw.skills) : 0),
@@ -73,6 +97,13 @@ export function normalizeProfile(raw) {
     skills,
     powerups,
     pets,
+    rifles,
+    unlocked: {
+      scopes: Array.isArray(raw.unlocked?.scopes) ? [...new Set(raw.unlocked.scopes.filter((id) => SCOPES[id] && id !== DEFAULT_SCOPE))] : [],
+      ammo: Array.isArray(raw.unlocked?.ammo) ? [...new Set(raw.unlocked.ammo.filter((id) => AMMO[id] && id !== DEFAULT_AMMO))] : [],
+    },
+    rifleLevels,
+    ammoLevels,
   }
 }
 
@@ -145,6 +176,46 @@ export function buyPetLevel(profile, id) {
   if (cost === null) return { profile, ok: false, reason: 'Maxed out' }
   if (profile.bank < cost) return { profile, ok: false, reason: 'Not enough banked crystals' }
   return { profile: { ...profile, bank: profile.bank - cost, pets: { ...profile.pets, [id]: level + 1 } }, ok: true, reason: null }
+}
+
+// Sets (or steps, with `value` = +1 / -1 and `step: true`) a rifle's scope or ammo. Only unlocked
+// ones can be picked; stepping cycles through the unlocked ones.
+export function setRifleOption(profile, rifleId, kind, value, step = false) {
+  if (!WEAPONS[rifleId]?.rifle || (kind !== 'scope' && kind !== 'ammo')) return profile
+  const current = profile.rifles?.[rifleId] ?? { scope: DEFAULT_SCOPE, ammo: DEFAULT_AMMO }
+  const ids = kind === 'scope' ? unlockedScopes(profile.unlocked) : unlockedAmmo(profile.unlocked)
+  const next = step ? cycleIn(ids, current[kind], value) : value
+  if (!ids.includes(next)) return profile
+  return { ...profile, rifles: { ...profile.rifles, [rifleId]: { ...current, [kind]: next } } }
+}
+
+// Adds a found scope / ammo to the unlocked set. `kind` is 'scope' or 'ammo'.
+export function unlockAttachment(profile, kind, id) {
+  const key = kind === 'scope' ? 'scopes' : 'ammo'
+  if (!(kind === 'scope' ? SCOPES : AMMO)[id]) return profile
+  if ((kind === 'scope' ? isScopeUnlocked : isAmmoUnlocked)(profile.unlocked, id)) return profile
+  return { ...profile, unlocked: { ...profile.unlocked, [key]: [...(profile.unlocked?.[key] ?? []), id] } }
+}
+
+// Buys the next level of a rifle: { profile, ok, reason }.
+export function buyRifleLevel(profile, id) {
+  if (!WEAPONS[id]?.rifle) return { profile, ok: false, reason: 'Unknown rifle' }
+  const level = rifleLevel(profile.rifleLevels, id)
+  const cost = rifleUpgradeCost(level)
+  if (cost === null) return { profile, ok: false, reason: 'Maxed out' }
+  if (profile.bank < cost) return { profile, ok: false, reason: 'Not enough banked crystals' }
+  return { profile: { ...profile, bank: profile.bank - cost, rifleLevels: { ...profile.rifleLevels, [id]: level + 1 } }, ok: true, reason: null }
+}
+
+// Buys the next level of an unlocked ammo type: { profile, ok, reason }.
+export function buyAmmoLevel(profile, id) {
+  if (!AMMO[id]) return { profile, ok: false, reason: 'Unknown ammo' }
+  if (!isAmmoUnlocked(profile.unlocked, id)) return { profile, ok: false, reason: 'Find this ammo in a chest first' }
+  const level = ammoLevel(profile.ammoLevels, id)
+  const cost = ammoUpgradeCost(level)
+  if (cost === null) return { profile, ok: false, reason: 'Maxed out' }
+  if (profile.bank < cost) return { profile, ok: false, reason: 'Not enough banked crystals' }
+  return { profile: { ...profile, bank: profile.bank - cost, ammoLevels: { ...profile.ammoLevels, [id]: level + 1 } }, ok: true, reason: null }
 }
 
 export { skillLevel }

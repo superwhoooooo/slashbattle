@@ -10,6 +10,7 @@ import {
   SLOT_LIMITS,
   WEAPONS,
 } from './items.js'
+import { AMMO_IDS, SCOPE_IDS, isAmmoUnlocked, isScopeUnlocked } from './rifles.js'
 
 export function createInventory() {
   return {
@@ -48,11 +49,16 @@ export function selectWeaponSlot(inventory, slot) {
 // Everything a chest could still hand out: every weapon, ability and pet
 // not yet owned. When that category is already full, the item is still
 // on offer -- you get to swap it in for something you have (see needsSwap).
-export function availableLoot(inventory) {
+export function availableLoot(inventory, unlocked = null) {
   const loot = []
   for (const id of Object.keys(WEAPONS)) if (!inventory.weapons.includes(id)) loot.push({ kind: 'weapon', id })
   for (const id of Object.keys(ABILITIES)) if (!inventory.abilities.includes(id)) loot.push({ kind: 'ability', id })
   for (const id of Object.keys(PETS)) if (!inventory.pets.includes(id)) loot.push({ kind: 'pet', id })
+  // Scopes and ammo only drop once you carry a rifle to put them on, and only ones you haven't found.
+  if (unlocked && inventory.weapons.some((id) => WEAPONS[id]?.rifle)) {
+    for (const id of SCOPE_IDS) if (!isScopeUnlocked(unlocked, id)) loot.push({ kind: 'scope', id })
+    for (const id of AMMO_IDS) if (!isAmmoUnlocked(unlocked, id)) loot.push({ kind: 'ammo', id })
+  }
   return loot
 }
 
@@ -99,12 +105,14 @@ export function swapItem(inventory, { kind, id }, outId) {
 // Rolls a chest's reward: first a category (weapon / ability / pet, equal
 // odds among the categories that still have something to give), then an
 // item within it. null once you own everything.
-export function rollChestLoot(inventory, rng = Math.random) {
-  const loot = availableLoot(inventory)
+export function rollChestLoot(inventory, rng = Math.random, unlocked = null) {
+  const loot = availableLoot(inventory, unlocked)
   if (loot.length === 0) return null
-  const kinds = [...new Set(loot.map((item) => item.kind))]
+  // Scopes and ammo share one "attachment" category so they don't crowd out weapons / abilities / pets.
+  const categoryOf = (item) => (item.kind === 'scope' || item.kind === 'ammo' ? 'attachment' : item.kind)
+  const kinds = [...new Set(loot.map(categoryOf))]
   const kind = kinds[Math.min(Math.floor(rng() * kinds.length), kinds.length - 1)]
-  const pool = loot.filter((item) => item.kind === kind)
+  const pool = loot.filter((item) => categoryOf(item) === kind)
   return pool[Math.min(Math.floor(rng() * pool.length), pool.length - 1)]
 }
 

@@ -53,6 +53,7 @@ record.
 - R — restart after losing
 - M — mute / unmute all sound, music and effects (remembered in `localStorage`)
 - F — open the nearest chest (costs crystals)
+- [ / ] — cycle the scope / ammo of the rifle in your hands (8 opens the Gunsmith)
 - 1-5 — pick a weapon from the hotbar (melee or firearm)
 - Q / Z / X / C / V — use your abilities, in the order you found them
 - 0 — toggle first-person view (pointer-locked mouse look; W moves along the view, every weapon aims where you look; Esc or 0 exits)
@@ -542,6 +543,21 @@ Only once you own everything does a chest pay out score and a heal ("LOADOUT FUL
   the pooled meshes (`updateBullets` hits through `damageMonster`, cause `gun`,
   trick "Last Call"). `combat.js`'s `updatePlayerAttack` takes the selected
   `weaponId` plus damage / cooldown / knockback multipliers and the bullet pool.
+- **Rifles** (`rifle: true` in `WEAPONS`: Hunter, Marksman DMR, Party Carbine, Lever Action, Bolt Action,
+  Battle Rifle, Anti-Material, Triple Burst, Arc Rifle, Scout, Gauss, Pearl Longshot): firearms that look and
+  drop like any other (chests, hotbar, base model via `WEAPON_BASE`) but take a swappable **scope** and **ammo**
+  (`logic/rifles.js`: `SCOPES`, `AMMO`, `tuneRifle` folds picks + levels into the weapon `combat.js` fires).
+  Scope advantages: `steady` (crit chance that charges while you stand still, `stepSteady`; the reticle ring
+  fills), `longShot` (damage grows with distance flown) and `closeShot` (bonus within `CLOSE_SHOT_RANGE`) via
+  `bulletDamage`/`distanceBonus`, plus range, spread, fire rate, camera `zoom`, a laser (`src/scope.js`). Ammo
+  changes the bullet (pierce, blast, speed, shove, size, color, pellets, crit). Each bullet rolls a crit in
+  `makeBullets` (`bullet.crit`, damage x `critMult`); crits / long / point-blank hits pop a popup.
+  Scopes and ammo are UNLOCKED from chests (`rollChestLoot(inv, rng, profile.unlocked)` offers them only once you
+  carry a rifle; they're kept in `profile.unlocked` and go onto the rifle in hand), picked per rifle in
+  `profile.rifles` (`setRifleOption`: only unlocked ones). Gun levels (1-5: +12% damage, +1.5% crit, 4% faster)
+  and ammo levels (1-5: effects 35% stronger) are bought with banked crystals (`buyRifleLevel`/`buyAmmoLevel`).
+  The hub's Gunsmith page (8) has picture chips for scopes / ammo (locked ones dashed) and the upgrade buttons;
+  `[` / `]` cycle the unlocked scope / ammo in a run.
 - **Abilities** (`ABILITIES`, keys Q Z X C V in pickup order, each on a
   cooldown shown on its slot): Blink, Shockwave, Heal Pulse, Bubble Shield,
   Rage, Lunge (dash + slash), Thunderstorm (lightning on the nearest 4), Gravity

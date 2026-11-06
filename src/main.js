@@ -26,7 +26,10 @@ import { PICKUP_RADIUS, createPerkPickup, updatePerkPickup } from './pickups.js'
 import { createLoadoutPanel } from './loadout.js'
 import { createHub } from './hub.js'
 import { loadProfile, saveProfile } from './profile.js'
-import { activeLoadoutPets, addToCollection, bankCrystals } from './logic/profile.js'
+import { createScope } from './scope.js'
+import { SCOPES, AMMO, rifleSetup as riflePicks, stepSteady, tuneRifle } from './logic/rifles.js'
+import { bulletDamage } from './logic/bullets.js'
+import { activeLoadoutPets, addToCollection, bankCrystals, setRifleOption, unlockAttachment } from './logic/profile.js'
 import { combineEffects, skillEffects } from './logic/skills.js'
 import { createPauseMenu, loadBrightness } from './pauseMenu.js'
 import { createSwapPanel } from './swap.js'
@@ -369,6 +372,9 @@ const shockwavePool = createShockwavePool()
 scene.add(shockwavePool.group)
 const bulletPool = createBulletPool()
 scene.add(bulletPool.group)
+const scope = createScope(scene)
+let steadyAim = 0 // 0..1, charges while the player stands still with a scoped rifle
+let scopeZoom = 1 // the rifle scope's camera pull-back, smoothed by scope.js
 
 // The camera doesn't rotate yet, so it stays behind the player along a
 // fixed world-space offset and eases toward its target each frame.
@@ -540,8 +546,11 @@ let gameMode = 'resort'
 // What persists on this device (banked crystals, pet collection, loadouts,
 // skill / power-up levels): see logic/profile.js. Always replace it via setProfile.
 let profile = loadProfile()
+// The sandbox has every scope and ammo unlocked (for testing); this is the profile as the rifle
+// code and the hub should see it. setProfile keeps the real unlocks so the sandbox never saves them.
+const sandboxProfile = () => (sandbox ? { ...profile, unlocked: { scopes: Object.keys(SCOPES), ammo: Object.keys(AMMO) } } : profile)
 function setProfile(next) {
-  profile = next
+  profile = sandbox ? { ...next, unlocked: profile.unlocked } : next // the sandbox's all-unlocked view never gets saved
   saveProfile(profile)
   applySlotBonuses()
 }
@@ -1269,7 +1278,7 @@ function openChestNow(game, chest, now) {
   burst(particleSystem, point, CHEST_FLASH_COLOR, 40, 4, 1)
   shardBurst(particleSystem, point, CHEST_FLASH_COLOR, 16, 3)
 
-  const loot = rollChestLoot(game.inventory)
+  const loot = rollChestLoot(game.inventory, Math.random, profile.unlocked)
   if (!loot) {
     game.score += CHEST_ALL_OWNED_SCORE
     game.player.hp = Math.min(game.player.maxHp, game.player.hp + CHEST_ALL_OWNED_HEAL)
@@ -1295,6 +1304,15 @@ let pendingSwapLoot = null
 // Hands over a rolled item (already swapped into the inventory if the slots
 // were full) and sets up its in-world side: the held weapon model, or the pet.
 function receiveLoot(game, loot, swappedOut = null) {
+  if (loot.kind === 'scope' || loot.kind === 'ammo') {
+    // Attachments are kept on the profile and go straight onto the rifle in your hands.
+    const table = loot.kind === 'scope' ? SCOPES : AMMO
+    setProfile(unlockAttachment(profile, loot.kind, loot.id))
+    const held = selectedWeaponId(game.inventory)
+    if (WEAPONS[held].rifle) setProfile(setRifleOption(profile, held, loot.kind, loot.id))
+    showLootToast(hud, { title: loot.kind === 'scope' ? 'NEW SCOPE' : 'NEW AMMO', name: table[loot.id].name, icon: { kind: 'weapon', id: WEAPONS[held].rifle ? held : game.inventory.weapons.find((w) => WEAPONS[w].rifle) }, blurb: `${table[loot.id].blurb}. [ ] to switch, 8 to upgrade` })
+    return
+  }
   if (swappedOut) game.inventory = swapItem(game.inventory, loot, swappedOut)
   else game.inventory = grantItem(game.inventory, loot)
   const verb = swappedOut ? 'SWAPPED IN' : 'NEW'
@@ -1992,12 +2010,12 @@ function bankRunCrystals() {
 }
 
 const hub = createHub({
-  getProfile: () => profile,
+  getProfile: () => sandboxProfile(),
   setProfile,
-  getRun: () => ({ inRun: started && !sandbox, crystals: game.inventory.crystals, owned: game.inventory.powerups, equipped: game.inventory.equipped }),
+  getRun: () => ({ sandbox, inRun: started && !sandbox, weapons: game.inventory.weapons, crystals: game.inventory.crystals, owned: game.inventory.powerups, equipped: game.inventory.equipped }),
   onBank: bankRunCrystals,
 })
-const HUB_KEYS = { Digit6: 'skills', Numpad6: 'skills', Digit7: 'powerups', Numpad7: 'powerups', Digit9: 'loadout', Numpad9: 'loadout' }
+const HUB_KEYS = { Digit6: 'skills', Numpad6: 'skills', Digit7: 'powerups', Numpad7: 'powerups', Digit8: 'gunsmith', Numpad8: 'gunsmith', Digit9: 'loadout', Numpad9: 'loadout' }
 function canOpenHub() {
   return !swapPanel.isOpen() && !pauseMenu.isOpen() && !(started && game.player.hp <= 0) && !(started && !sandbox && loadoutPanel.isOpen()) && !(started && sandbox && sandboxPanel?.isOpen?.())
 }
@@ -2408,6 +2426,24 @@ function animate(timestamp) {
     })
   }
 
+  // [ and ] cycle the scope / ammo (the ones you've unlocked) of the rifle in your hands.
+  const heldId = selectedWeaponId(game.inventory)
+  if (WEAPONS[heldId].rifle) {
+    for (const [code, kind] of [['BracketLeft', 'scope'], ['BracketRight', 'ammo']]) {
+      if (!input.wasPressed(code)) continue
+      setProfile(setRifleOption(sandboxProfile(), heldId, kind, input.isDown('ShiftLeft') ? -1 : 1, true))
+      const picks = riflePicks(sandboxProfile(), heldId)
+      const option = (kind === 'scope' ? SCOPES : AMMO)[picks[kind]]
+      showLootToast(hud, { title: kind === 'scope' ? 'SCOPE' : 'AMMO', name: option.name, icon: { kind: 'weapon', id: heldId }, blurb: option.blurb })
+      sfx.play('podIn')
+    }
+  }
+  // Standing still steadies a scoped rifle (crit chance, see logic/rifles.js); moving shakes it.
+  {
+    const rifle = WEAPONS[heldId].rifle ? tuneRifle(WEAPONS[heldId], riflePicks(sandboxProfile(), heldId)) : null
+    steadyAim = rifle && rifle.steady > 0 ? stepSteady(steadyAim, player.speed > 0.5, gameplayDelta, rifle.steadyRate) : 0
+  }
+
   // No swing in flight yet this frame -- used below to tell a swing that
   // just started (attackState.swingElapsed goes from null to 0) from one
   // already in progress, so the whoosh only plays once per swing.
@@ -2426,6 +2462,8 @@ function animate(timestamp) {
     cooldownMultiplier: petFx.cooldownMultiplier * perk.cooldown * (elapsedSeconds < player.frenzyUntil ? FRENZY_COOLDOWN_MULTIPLIER : 1),
     knockbackMultiplier: petFx.knockbackMultiplier * perk.knockback,
     bulletPool,
+    rifleSetup: riflePicks(sandboxProfile(), selectedWeaponId(game.inventory)),
+    steady: steadyAim,
     autoAttack: autoShoot,
     hitstop: game.hitstop,
     onMeleeHit: (id, at, from) => playHitFx(id, at, Math.atan2(at.x - from.x, at.z - from.z), weaponFxContext()),
@@ -2575,7 +2613,16 @@ function animate(timestamp) {
     hitstop: game.hitstop,
     arenaRadius: ARENA_RADIUS,
     onTrail: (bullet) => playBulletTrail(bullet, weaponFxContext()),
-    onHit: (bullet, mesh) => playHitFx(bullet.weaponId, mesh.position, Math.atan2(bullet.vx, bullet.vz), weaponFxContext()),
+    onHit: (bullet, mesh) => {
+      playHitFx(bullet.weaponId, mesh.position, Math.atan2(bullet.vx, bullet.vz), weaponFxContext())
+      const { damage, bonus } = bulletDamage(bullet)
+      if (bullet.crit || bonus >= 0.25) {
+        const crit = bullet.crit
+        showPopup(popupPool, mesh.position, crit ? 'CRIT!' : bullet.closeShot > 0 && bullet.traveled <= 5 ? 'POINT BLANK' : 'LONG SHOT', `${Math.round(damage)}`, POPUP_KILL_COLOR)
+        triggerShake(shake, SHAKE_HIT_MAGNITUDE * (crit ? 1.6 : 1.2), SHAKE_HIT_DURATION)
+        burst(particleSystem, { x: mesh.position.x, y: 1, z: mesh.position.z }, 0xffffff, crit ? 10 : 5, 3)
+      }
+    },
     onExplode: (x, z, radius, color) => {
       warp.add('ripple', x, z, radius * 1.5, 0.5)
       spawnShockwave(shockwavePool, x, z, radius, color)
@@ -2720,10 +2767,15 @@ function animate(timestamp) {
   // eases in/out along with the movement ramp rather than snapping).
   const lookAheadAmount = CAMERA_LOOKAHEAD * (player.speed / PLAYER_SPEED)
   const cameraOffset = player.hidden ? HIDDEN_CAMERA_OFFSET : CAMERA_OFFSET
+  // A rifle scope with a wide view pulls the camera back; the reticle follows the cursor.
+  const heldRifle = WEAPONS[selectedWeaponId(game.inventory)]
+  const heldTuned = started && game.player.hp > 0 && heldRifle.rifle ? tuneRifle(heldRifle, riflePicks(sandboxProfile(), heldRifle.id)) : null
+  scopeZoom = scope.update(heldTuned, { player, aimAngle: player.aimAngle ?? player.facing, mouse: input.mouse, showCursor: !input.touchMode && !firstPerson && input.mouse.moved, dt: deltaSeconds, steady: steadyAim })
+  const zoomK = player.hidden ? 1 : scopeZoom
   cameraTarget.set(
-    player.position.x + cameraOffset.x + player.moveDir.x * lookAheadAmount,
-    cameraOffset.y,
-    player.position.z + cameraOffset.z + player.moveDir.z * lookAheadAmount,
+    player.position.x + cameraOffset.x * zoomK + player.moveDir.x * lookAheadAmount,
+    cameraOffset.y * zoomK,
+    player.position.z + cameraOffset.z * zoomK + player.moveDir.z * lookAheadAmount,
   )
   // Frame-rate-independent exponential smoothing: 1 - exp(-lambda * dt)
   // is the same damp() uses elsewhere, just expressed as the single

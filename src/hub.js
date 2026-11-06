@@ -5,7 +5,8 @@
 import { iconImg } from './icons.js'
 import { skillIconSvg } from './skillIcons.js'
 import * as actions from './logic/profile.js'
-import { PETS, PET_MAX_LEVEL, POWERUPS, SLOT_LIMITS, petBoost, petLevel, petUpgradeCost, powerupEffects } from './logic/items.js'
+import { PETS, PET_MAX_LEVEL, POWERUPS, SLOT_LIMITS, WEAPONS, petBoost, petLevel, petUpgradeCost, powerupEffects } from './logic/items.js'
+import { AMMO, AMMO_MAX_LEVEL, RIFLE_MAX_LEVEL, SCOPES, ammoLevel, ammoUpgradeCost, isAmmoUnlocked, isScopeUnlocked, rifleLevel, rifleSetup, rifleUpgradeCost, tuneRifle } from './logic/rifles.js'
 import {
   POWERUP_MAX_LEVEL,
   SKILLS,
@@ -94,6 +95,19 @@ const CSS = `
 .hub-pet.in { border-color: var(--teal, #19b5a5); background: #e6faf7; }
 .hub-pet.locked { cursor: default; opacity: 0.55; }
 .hub-pet.locked img { filter: brightness(0) opacity(0.4); }
+.hub-gun { grid-template-columns: 56px 1fr; }
+.hub-gun .chips { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.hub-gun .chips > b { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: var(--muted, #5b6b80); width: 100%; }
+.hub-chip { font: inherit; display: flex; align-items: center; gap: 5px; padding: 3px 8px 3px 4px; border-radius: 999px; border: 2px solid color-mix(in srgb, var(--c) 45%, #d3dae3); background: #fff; color: var(--ink, #1a2433); font-size: 11px; font-weight: 700; cursor: pointer; transition: transform .12s, background .12s; }
+.hub-chip:hover:not(.locked) { transform: translateY(-1px); background: color-mix(in srgb, var(--c) 14%, #fff); }
+.hub-chip.on { background: var(--c); border-color: var(--c); color: #fff; text-shadow: 0 1px 1px rgba(0,0,0,0.35); box-shadow: 0 0 0 2px #fff inset; }
+.hub-chip.locked { opacity: 0.45; cursor: default; filter: grayscale(0.8); border-style: dashed; }
+.hub-chip svg { width: 20px; height: 20px; flex: none; }
+.hub-gun .upg { grid-column: 1 / -1; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; justify-content: space-between; font-size: 11px; font-weight: 700; }
+.hub-gun .upg .hub-btn { padding: 3px 9px; font-size: 11px; }
+.hub-gun .sel { grid-column: 1 / -1; display: grid; grid-template-columns: 52px 1fr; gap: 4px 8px; align-items: center; font-size: 11px; font-weight: 700; }
+.hub-gun select { font: inherit; font-size: 12px; padding: 4px 6px; border-radius: 8px; border: 1px solid #d3dae3; background: #fff; color: var(--ink, #1a2433); }
+.hub-gun .bl { grid-column: 1 / -1; font-size: 11px; color: var(--muted, #5b6b80); }
 @media (max-width: 860px) { .hub-tree { grid-template-columns: 1fr; } }
 `
 
@@ -108,6 +122,7 @@ const pips = (level, max) => '●'.repeat(level) + '○'.repeat(max - level)
 const TABS = [
   { id: 'skills', label: 'Skill Tree', key: '6' },
   { id: 'powerups', label: 'Power-Ups', key: '7' },
+  { id: 'gunsmith', label: 'Gunsmith', key: '8' },
   { id: 'loadout', label: 'Loadout', key: '9' },
 ]
 
@@ -300,6 +315,108 @@ export function createHub({ getProfile, setProfile, getRun, onBank, onOpenChange
     }
   }
 
+  // Little SVG pictures for the chips: a scope is its reticle, an ammo type is its bullet.
+  const hex = (n) => `#${n.toString(16).padStart(6, '0')}`
+  function scopeSvg(scope) {
+    const shapes = {
+      dot: '<circle cx="12" cy="12" r="3" fill="currentColor"/>',
+      ring: '<circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/>',
+      cross: '<circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12 1v7M12 16v7M1 12h7M16 12h7" stroke="currentColor" stroke-width="1.6"/>',
+    }
+    return `<svg viewBox="0 0 24 24" style="color:${scope.color}">${shapes[scope.reticle] ?? shapes.dot}${scope.laser ? '<path d="M2 22L22 2" stroke="#ff3030" stroke-width="1.5"/>' : ''}</svg>`
+  }
+  function ammoSvg(ammo) {
+    const c = hex(ammo.color)
+    const pellets = ammo.pellets ? `<circle cx="6" cy="7" r="2" fill="${c}"/><circle cx="6" cy="17" r="2" fill="${c}"/>` : ''
+    const blast = ammo.explode ? `<circle cx="17" cy="12" r="7" fill="none" stroke="${c}" stroke-width="1.5" stroke-dasharray="2 2"/>` : ''
+    const trail = ammo.pierce > 0 ? `<path d="M1 12h8" stroke="${c}" stroke-width="2" stroke-dasharray="2 2"/>` : ''
+    return `<svg viewBox="0 0 24 24">${pellets}${blast}${trail}<path d="M9 8h7a4 4 0 010 8H9z" fill="${c}" stroke="#1a2433" stroke-width="1.2"/><rect x="7" y="8" width="3" height="8" rx="1" fill="#b9873c" stroke="#1a2433" stroke-width="1"/></svg>`
+  }
+  function chip(option, { on, locked, svg, color, click }) {
+    const b = el('button', `hub-chip${on ? ' on' : ''}${locked ? ' locked' : ''}`)
+    b.type = 'button'
+    b.style.setProperty('--c', color)
+    b.title = locked ? `${option.name}: find it in a chest` : `${option.name}: ${option.blurb}`
+    b.innerHTML = `${svg}<span>${locked ? '🔒 ' : ''}${option.name}</span>`
+    if (!locked) b.addEventListener('click', click)
+    return b
+  }
+
+  // The Gunsmith: every rifle with picture chips for its scope and ammo (locked until a chest
+  // gives them), the stats they add up to, and crystal upgrades for the gun and each ammo type.
+  function gunsmithPage(profile) {
+    const wrap = el('div')
+    wrap.appendChild(el('p', 'hub-note', 'Scopes and ammo are found in chests once you carry a rifle, and are yours for good. Standing still steadies a scope (more crit), long scopes hit harder at range, red dots hit harder up close. In a run, [ cycles your scope and ] your ammo. Upgrades cost banked crystals.'))
+    const run = getRun()
+    const grid = el('div', 'hub-grid')
+    grid.style.gridTemplateColumns = 'repeat(auto-fill, minmax(340px, 1fr))'
+    for (const rifle of Object.values(WEAPONS).filter((w) => w.rifle)) {
+      const setup = rifleSetup(profile, rifle.id)
+      const tuned = tuneRifle(rifle, setup)
+      const card = el('div', 'hub-perk hub-gun')
+      card.style.setProperty('--branch', hex(rifle.bullet.color))
+      card.appendChild(iconImg('weapon', rifle.id))
+      const name = el('div', 'nm', rifle.name)
+      if (run.inRun && run.weapons?.includes(rifle.id)) name.appendChild(el('span', 'tag', 'IN HAND'))
+      card.appendChild(name)
+      card.appendChild(el('div', 'ef', `${Math.round(tuned.damage)} dmg · ${Math.round(tuned.critChance * 100)}% crit ×${tuned.critMult.toFixed(2).replace(/\.?0+$/, '')} · ${(1 / tuned.cooldown).toFixed(1)}/s`))
+      const extras = [
+        tuned.pellets > 1 && `${tuned.pellets} rounds`,
+        `pierce ${tuned.bullet.pierce}`,
+        tuned.bullet.explode > 0 && 'blast',
+        tuned.steady > 0 && `+${Math.round(tuned.steady * 100)}% crit still`,
+        tuned.longShot > 0 && `+${Math.round(tuned.longShot * 100)}% far`,
+        tuned.closeShot > 0 && `+${Math.round(tuned.closeShot * 100)}% close`,
+        tuned.zoom > 1 && 'wide view',
+        tuned.laser && 'laser',
+      ].filter(Boolean)
+      card.appendChild(el('div', 'nx', extras.join(' · ')))
+
+      const scopes = el('div', 'chips')
+      scopes.appendChild(el('b', '', 'Scope'))
+      for (const sc of Object.values(SCOPES)) {
+        scopes.appendChild(chip(sc, { on: sc.id === setup.scope, locked: !isScopeUnlocked(profile.unlocked, sc.id), svg: scopeSvg(sc), color: sc.color, click: () => act(api.setRifle(rifle.id, 'scope', sc.id)) }))
+      }
+      card.appendChild(scopes)
+      const ammos = el('div', 'chips')
+      ammos.appendChild(el('b', '', 'Ammo'))
+      for (const am of Object.values(AMMO)) {
+        const lv = ammoLevel(profile.ammoLevels, am.id)
+        const c = chip(am, { on: am.id === setup.ammo, locked: !isAmmoUnlocked(profile.unlocked, am.id), svg: ammoSvg(am), color: hex(am.color), click: () => act(api.setRifle(rifle.id, 'ammo', am.id)) })
+        if (lv > 1) c.querySelector('span').textContent += ` L${lv}`
+        ammos.appendChild(c)
+      }
+      card.appendChild(ammos)
+      card.appendChild(el('div', 'bl', `${SCOPES[setup.scope].blurb}  ·  ${AMMO[setup.ammo].blurb}`))
+
+      const upg = el('div', 'upg')
+      const gl = rifleLevel(profile.rifleLevels, rifle.id)
+      const gcost = rifleUpgradeCost(gl)
+      upg.appendChild(el('span', '', `Gun Lv ${gl}/${RIFLE_MAX_LEVEL}  ${pips(gl, RIFLE_MAX_LEVEL)}`))
+      const gb = el('button', 'hub-btn primary', gcost === null ? 'MAX' : `Upgrade gun ◆ ${gcost}`)
+      gb.type = 'button'
+      gb.disabled = gcost === null || profile.bank < gcost
+      gb.addEventListener('click', () => act(api.upgradeRifle(rifle.id)))
+      upg.appendChild(gb)
+      card.appendChild(upg)
+      const al = ammoLevel(profile.ammoLevels, setup.ammo)
+      const acost = ammoUpgradeCost(al)
+      if (setup.ammo !== 'standard') {
+        const aup = el('div', 'upg')
+        aup.appendChild(el('span', '', `${AMMO[setup.ammo].name} Lv ${al}/${AMMO_MAX_LEVEL}  ${pips(al, AMMO_MAX_LEVEL)}`))
+        const ab = el('button', 'hub-btn', acost === null ? 'MAX' : `Upgrade ammo ◆ ${acost}`)
+        ab.type = 'button'
+        ab.disabled = acost === null || profile.bank < acost
+        ab.addEventListener('click', () => act(api.upgradeAmmo(setup.ammo)))
+        aup.appendChild(ab)
+        card.appendChild(aup)
+      }
+      grid.appendChild(card)
+    }
+    wrap.appendChild(grid)
+    return wrap
+  }
+
   function powerupsPage(profile) {
     const wrap = el('div')
     wrap.appendChild(el('p', 'hub-note', 'Upgrades are permanent: a higher level makes a power-up stronger every time you find and equip it. Find power-ups lying around in a run.'))
@@ -405,22 +522,36 @@ export function createHub({ getProfile, setProfile, getRun, onBank, onOpenChange
     return wrap
   }
 
+  const free = () => getRun().sandbox === true
+  // Runs a profile purchase; in the sandbox it costs nothing (the real bank is kept).
+  const buy = (fn, id) => {
+    const real = getProfile()
+    if (!free()) return fn(real, id)
+    const result = fn({ ...real, bank: 1e9 }, id)
+    return result.ok ? { ...result, profile: { ...result.profile, bank: real.bank } } : result
+  }
+
   function render() {
     if (!open) return
-    const profile = getProfile()
-    card.replaceChildren(header(profile))
+    const real = getProfile()
+    // Sandbox upgrades are free: the pages see a bottomless bank (the header still shows the real one).
+    const profile = free() ? { ...real, bank: 1e9 } : real
+    card.replaceChildren(header(real))
     if (tab !== 'loadout') card.appendChild(loadoutStrip(profile))
-    card.appendChild(tab === 'skills' ? skillsPage(profile) : tab === 'powerups' ? powerupsPage(profile) : loadoutPage(profile))
+    card.appendChild(tab === 'skills' ? skillsPage(profile) : tab === 'powerups' ? powerupsPage(profile) : tab === 'gunsmith' ? gunsmithPage(profile) : loadoutPage(profile))
     card.appendChild(el('p', 'hub-status', status))
-    card.appendChild(el('p', 'hub-note', '6 / 7 / 9: switch pages · Esc: close · T (in a run): bank crystals'))
+    card.appendChild(el('p', 'hub-note', '6 / 7 / 8 / 9: switch pages · Esc: close · T (in a run): bank crystals'))
   }
 
   // The profile actions live here so the page code stays small; each returns { profile, ok, reason }.
   const api = {
-    buySkill: (id) => actions.buySkill(getProfile(), id),
+    buySkill: (id) => buy(actions.buySkill, id),
     respec: () => ({ profile: actions.respecSkills(getProfile()), ok: true }),
-    upgradePowerup: (id) => actions.buyPowerupLevel(getProfile(), id),
-    upgradePet: (id) => actions.buyPetLevel(getProfile(), id),
+    upgradePowerup: (id) => buy(actions.buyPowerupLevel, id),
+    setRifle: (id, kind, value) => ({ profile: actions.setRifleOption(getProfile(), id, kind, value), ok: true }),
+    upgradeRifle: (id) => buy(actions.buyRifleLevel, id),
+    upgradeAmmo: (id) => buy(actions.buyAmmoLevel, id),
+    upgradePet: (id) => buy(actions.buyPetLevel, id),
     togglePet: (id) => actions.toggleLoadoutPet(getProfile(), id),
     setActive: (i) => actions.setActiveLoadout(getProfile(), i),
     isOpen: () => open,

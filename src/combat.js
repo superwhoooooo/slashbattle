@@ -33,6 +33,7 @@ import { isAmbushActive } from './logic/hiding.js'
 import { triggerHitstop } from './logic/hitstop.js'
 import { WEAPONS } from './logic/items.js'
 import { makeBullets } from './logic/bullets.js'
+import { tuneRifle } from './logic/rifles.js'
 import { fireBullets } from './bullets.js'
 import { jellyHit } from './jelly.js'
 import { hasWallLineOfSight } from './monster.js'
@@ -69,9 +70,11 @@ export function createAttackState() {
 // hit landed, so the caller can trigger a (smaller) screen shake.
 export function updatePlayerAttack(
   attackState,
-  { player, monsters, obstacles, input, elapsedSeconds, deltaSeconds, particleSystem, swingTrail, weaponId = 'sword', damageMultiplier = 1, cooldownMultiplier = 1, knockbackMultiplier = 1, bulletPool = null, autoAttack = false, hitstop = null, onMeleeHit = null },
+  { player, monsters, obstacles, input, elapsedSeconds, deltaSeconds, particleSystem, swingTrail, weaponId = 'sword', damageMultiplier = 1, cooldownMultiplier = 1, knockbackMultiplier = 1, bulletPool = null, autoAttack = false, hitstop = null, onMeleeHit = null, rifleSetup = null, steady = 0 },
 ) {
-  const weapon = WEAPONS[weaponId]
+  // A rifle fires as its chosen scope + ammo tune it (logic/rifles.js).
+  const base = WEAPONS[weaponId]
+  const weapon = base.rifle ? tuneRifle(base, rifleSetup ?? {}) : base
   if (player.hidden) return { ambushHit: false, hitAny: false }
 
   const sword = player.mesh.userData.sword
@@ -116,6 +119,7 @@ export function updatePlayerAttack(
           damageMultiplier: computeDamage(damageMultiplier, { ambush }),
           knockbackMultiplier,
           ambush,
+          steady,
         }),
       )
     } else {
