@@ -169,3 +169,73 @@ describe('boss specials', () => {
     expect(run(boss, player, 3)).toEqual([])
   })
 })
+
+describe('the new enemies', () => {
+  it('a hopper leaps onto the player and lands with a stomp, then keeps still on the ground', () => {
+    const hopper = fakeBoss('hopper', 0, 0)
+    const player = fakePlayer(6, 0)
+    engage(hopper, 'leap')
+    let peak = 0
+    const events = []
+    for (let t = 0; t < 3; t += 0.05) {
+      const out = updateMonster(hopper, player, [], 0.05, t)
+      peak = Math.max(peak, hopper.userData.leapY)
+      events.push(...out.events)
+    }
+    expect(peak).toBeGreaterThan(1) // it went up
+    const stomp = events.find((e) => e.type === 'slam')
+    expect(stomp).toBeTruthy()
+    expect(Math.hypot(stomp.x - 6, stomp.z)).toBeLessThan(1.5) // came down on the player
+    expect(stomp.radius).toBe(BOSS_SPECIALS.leap.radius)
+    expect(stomp.damage).toBeGreaterThan(0)
+    expect(hopper.userData.leapY).toBe(0)
+  })
+  it('a hopper has no ordinary melee swing (its jump is its attack)', () => {
+    const hopper = fakeBoss('hopper', 0, 0)
+    const player = fakePlayer(1, 0)
+    hopper.userData.specialTimers.leap = 99
+    run(hopper, player, 3)
+    expect(player.hits).toEqual([])
+  })
+  it('a hopper out of reach waits instead of jumping', () => {
+    const hopper = fakeBoss('hopper', 0, 0)
+    const player = fakePlayer(30, 0)
+    engage(hopper, 'leap')
+    const events = run(hopper, player, 1)
+    expect(events.some((e) => e.type === 'slam')).toBe(false)
+  })
+  it('a glimmer blinks next to the player', () => {
+    const glimmer = fakeBoss('glimmer', 0, 0)
+    const player = fakePlayer(5, 0)
+    engage(glimmer, 'blink')
+    const events = run(glimmer, player, 2)
+    const blink = events.find((e) => e.type === 'blink')
+    expect(blink).toBeTruthy()
+    expect(Math.hypot(blink.to.x - 5, blink.to.z)).toBeLessThan(5)
+  })
+  it('a diving player is seen from only a short way off', () => {
+    const grumpus = fakeBoss('blobbo', 0, 0)
+    const player = fakePlayer(14, 0)
+    player.sightScale = 0.4
+    for (let t = 0; t < 1; t += 0.05) updateMonster(grumpus, player, [], 0.05, t)
+    expect(grumpus.userData.state).toBe('wander') // too far to notice a diver
+    const surfaced = fakePlayer(14, 0)
+    const other = fakeBoss('blobbo', 0, 0)
+    for (let t = 0; t < 1; t += 0.05) updateMonster(other, surfaced, [], 0.05, t)
+    expect(other.userData.state).toBe('chase')
+  })
+})
+
+describe('the mirror enemy', () => {
+  it('turns slowly toward the player, so its back can be reached', () => {
+    const slow = fakeBoss('mirror', 0, 0)
+    const quick = fakeBoss('blobbo', 0, 0)
+    const player = fakePlayer(-6, 0) // to the monster's left: needs a big turn
+    for (const m of [slow, quick]) {
+      m.userData.state = 'chase'
+      m.userData.stateEnteredAt = 0
+      updateMonster(m, player, [], 0.1, 0)
+    }
+    expect(Math.abs(slow.rotation.y)).toBeLessThan(Math.abs(quick.rotation.y))
+  })
+})

@@ -3,6 +3,9 @@
 //   bloater  (wave 4) - keeps its distance and lobs poison at where you're GOING
 //   spinner  (wave 5) - whirls in place and fires small orbs at you
 //   splitter (wave 6) - bursts into two fast splitlings when killed
+//   hopper   (wave 4) - turquoise with arms and legs: leaps onto you and stomps
+//   mirror   (wave 6) - a mirror in front bounces your attacks back (see logic/reflect.js)
+//   glimmer  (wave 8) - blinks next to you and strikes
 // plus `enemyScale(n)`: the hp / damage / speed multiplier wave `n` gives
 // every non-boss monster.
 
@@ -12,10 +15,21 @@
 export const RANGED_ATTACKS = {
   bloater: { kind: 'lob', interval: 3.4, flight: 1.0, puddleRadius: 2.1, puddleLife: 4.5, tick: 0.6, keepAway: 6, windup: 0.6 },
   spinner: { kind: 'shoot', interval: 2.1, count: 3, spread: 0.5, speed: 8.5, orbSize: 0.6, keepAway: 4, windup: 0.4, spins: true },
+  // The boss versions: the same trick, bigger.
+  boss_bloater: { kind: 'lob', interval: 3.0, flight: 1.0, puddleRadius: 3.2, puddleLife: 5.5, tick: 0.6, keepAway: 7, windup: 0.6 },
+  boss_spinner: { kind: 'shoot', interval: 1.8, count: 5, spread: 0.8, speed: 9, orbSize: 0.9, keepAway: 5, windup: 0.4, spins: true },
+}
+
+// The deep dwellers: only in the water rooms, and only reachable by diving. The wave
+// controller doesn't know about them; main.js swaps some of a water room's spawns for these.
+export const DEEP_TYPES = ['angler', 'urchin', 'eel']
+export const DEEP_SPAWN_CHANCE = 0.4
+export function pickDeepType(rng = Math.random) {
+  return DEEP_TYPES[Math.min(DEEP_TYPES.length - 1, Math.floor(rng() * DEEP_TYPES.length))]
 }
 
 // What a splitter leaves behind.
-export const SPLITS = { splitter: { into: 'splitling', count: 2 } }
+export const SPLITS = { splitter: { into: 'splitling', count: 2 }, boss_splitter: { into: 'splitter', count: 2 } }
 
 // Where a target moving at `velocity` will be in `leadTime` seconds.
 export function predictPosition(position, velocity, leadTime) {

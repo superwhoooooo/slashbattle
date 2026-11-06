@@ -44,6 +44,17 @@ export const MONSTER_TYPES = {
   bloater: { shape: 'sphere', size: 1.7, color: 0x9bd32a, edgeColor: 0xdff59a, speed: 1.3, hp: 90, damage: 6, radius: 0.8, attackRange: 11 },
   spinner: { shape: 'tetrahedron', size: 1.0, color: 0xff9f1c, edgeColor: 0xffd699, speed: 2.4, hp: 55, damage: 5, radius: 0.45, attackRange: 9 },
   splitter: { shape: 'cone', size: 1.5, color: 0xb06cff, edgeColor: 0xdcc2ff, speed: 2.2, hp: 80, damage: 11, radius: 0.6 },
+  // hopper (wave 4): leaps onto you; mirror (6): bounces attacks off its front; glimmer (8): blinks.
+  // `specials`/`specialIntervals` reuse the boss move machinery (monster.js); `accessory` adds the
+  // arms+legs / the mirror to the body (characters.js); `reflect` is the mirror's coverage.
+  hopper: { shape: 'sphere', size: 1.7, color: 0x2ee6d6, edgeColor: 0xb6fff6, speed: 1.5, hp: 85, damage: 12, radius: 0.8, attackRange: 1.8, noMelee: true, accessory: 'limbs', specials: ['leap'], specialIntervals: { leap: 3 } },
+  mirror: { shape: 'cylinder', size: 1.5, color: 0x9fb4cc, edgeColor: 0xe6f0ff, speed: 1.7, hp: 100, damage: 10, radius: 0.7, accessory: 'mirror', reflect: { halfArc: 0.95 } },
+  glimmer: { shape: 'octahedron', size: 1.0, color: 0xffd23f, edgeColor: 0xfff1a8, speed: 2.2, hp: 50, damage: 9, radius: 0.45, specials: ['blink'], specialIntervals: { blink: 3.4 } },
+  // Deep dwellers (water rooms only, see logic/enemies.js DEEP_TYPES): they lurk under the surface, can't
+  // be hit or hit you unless you're diving, so you have to go under to finish a wave.
+  angler: { shape: 'sphere', size: 1.6, color: 0x2b3a8f, edgeColor: 0x8fa0ff, speed: 1.4, hp: 130, damage: 14, radius: 0.75, deep: true, accessory: 'lure' },
+  urchin: { shape: 'dodecahedron', size: 1.3, color: 0x6a2bb8, edgeColor: 0xd0a6ff, speed: 1.6, hp: 90, damage: 9, radius: 0.65, deep: true, accessory: 'spikes', specials: ['spin'], specialIntervals: { spin: 4 } },
+  eel: { shape: 'cylinder', size: 1.0, color: 0x7cff3a, edgeColor: 0xeaffb0, speed: 3.0, hp: 45, damage: 9, radius: 0.4, deep: true, specials: ['charge'], specialIntervals: { charge: 3.5 } },
   splitling: { shape: 'cone', size: 0.6, color: 0xd7b0ff, edgeColor: 0xeedcff, speed: 4.6, hp: 18, damage: 5, radius: 0.28 },
   // The seven bosses (src/logic/bosses.js) share the same stat shape, plus
   // boss-only fields (attackRange, reachBonus, knockbackScale, special...).

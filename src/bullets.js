@@ -8,7 +8,8 @@ import { isOnPlatform } from './logic/arena.js'
 import { bulletDamage, stepBullet } from './logic/bullets.js'
 import { burst } from './particles.js'
 import { isTouchDevice } from './touch.js'
-import { hasWallLineOfSight, isInsideWall } from './monster.js'
+import { hasWallLineOfSight, isInsideWall, isUntouchable } from './monster.js'
+import { isFrontHit } from './logic/reflect.js'
 
 const POOL_SIZE = 80
 const BULLET_HEIGHT = 0.7
@@ -71,11 +72,11 @@ function retire(slot) {
 // Advances every bullet, damaging whatever it touches (and blasting the
 // surroundings for an exploding one). Returns whether anything was hit this
 // frame, for the caller's hit shake/sound.
-export function updateBullets(pool, dt, { monsters, obstacles, particleSystem, hitstop, arenaRadius, onExplode = null, onTrail = null, onHit = null, blockers = null }) {
+export function updateBullets(pool, dt, { monsters, obstacles, particleSystem, hitstop, arenaRadius, onExplode = null, onTrail = null, onHit = null, blockers = null, onReflect = null }) {
   let hitAny = false
   const targets = []
   for (const mesh of monsters) {
-    if (mesh.userData.dying || mesh.userData.spawning || mesh.userData.falling) continue
+    if (mesh.userData.dying || mesh.userData.spawning || mesh.userData.falling || isUntouchable(mesh)) continue
     targets.push({ id: mesh.uuid, x: mesh.position.x, z: mesh.position.z, radius: mesh.userData.radius, mesh })
   }
 
@@ -90,11 +91,22 @@ export function updateBullets(pool, dt, { monsters, obstacles, particleSystem, h
       retire(slot)
       continue
     }
+    let spent = false
     for (const { mesh } of hits) {
       if (!hasWallLineOfSight(from, mesh.position)) continue
+      // A mirror bounces a shot that hits its front back at the player instead of taking it.
+      if (mesh.userData.reflect && isFrontHit(mesh.rotation.y, mesh.position, from, mesh.userData.reflect.halfArc)) {
+        if (onReflect) onReflect({ kind: 'bullet', bullet, monster: mesh })
+        spent = true
+        continue
+      }
       hitAny = true
       damageMonster(mesh, bulletDamage(bullet).damage, { fromPos: from, knockback: bullet.knockback, obstacles, particleSystem, cause: bullet.cause, ambush: bullet.ambush, hitstop })
       if (onHit) onHit(bullet, mesh)
+    }
+    if (spent) {
+      retire(slot)
+      continue
     }
     if (alive && onTrail) onTrail(bullet)
     if (hits.length > 0 && bullet.explode > 0) {

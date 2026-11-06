@@ -1,4 +1,4 @@
-// Pure, Three-free boss data and rules: the seven bosses (looks, stats,
+// Pure, Three-free boss data and rules: the bosses (looks, stats,
 // special move, goofy cutscene dialogue), which one comes next, how
 // tough they get on later visits, and the tiny timer their specials use.
 // Kept free of Three.js (and of config.js, which imports THIS file to fold
@@ -30,6 +30,9 @@ export const BOSS_SPECIALS = {
   blink: { interval: 6.5, windup: 0.5, distance: 3.5 },
   barrage: { interval: 5, windup: 0.7, count: 5, spread: 0.9, speed: 9, damageMultiplier: 0.6 },
   spin: { interval: 9, windup: 0.8, duration: 2.2, tickInterval: 0.45, radiusBonus: 2.4, damageMultiplier: 0.7 },
+  //   leap - crouch, then jump onto the player's spot and land with a stomp (`range` is how far
+  //          out it will jump from, `height` the arc's peak)
+  leap: { interval: 5, windup: 0.45, duration: 0.75, radius: 2.6, damageMultiplier: 1.1, range: 11, height: 3.2 },
 }
 
 const BOSS_DEFS = [
@@ -123,6 +126,88 @@ const BOSS_DEFS = [
       "They said I'd never set. THEY WERE WRONG.",
       'Dessert is served... and YOU are the topping!',
     ],
+  },
+  // ---- Boss versions of every regular enemy ----
+  {
+    id: 'boss_blobbo',
+    name: 'MEGA BLOBBO',
+    title: 'Blobbo, But More',
+    specials: ['slam', 'summon', 'charge'],
+    score: 1050,
+    stats: { shape: 'dodecahedron', size: 4.0, color: 0x3fbf74, edgeColor: 0xbfeed2, speed: 1.7, hp: 1000, damage: 17, radius: 1.8 },
+    lines: ['Blobbo! BLOBBO! Blobbo blobbo BLOBBO!', '(Translation: I have been working out.)', 'Blobbo.'],
+  },
+  {
+    id: 'boss_zippy',
+    name: 'ZIPPY ZOOMER',
+    title: 'Faster Than This Intro',
+    specials: ['charge', 'blink', 'barrage'],
+    score: 1150,
+    stats: { shape: 'octahedron', size: 3.0, color: 0xff3d77, edgeColor: 0xffbed0, speed: 3.0, hp: 760, damage: 14, radius: 1.2 },
+    lines: ['Hi! Bye! Hi! Where did you go? Hi!', 'I grew. Nobody warned me about the zoomies.', 'Try to keep up. You will not.'],
+  },
+  {
+    id: 'boss_grumpus',
+    name: 'GRUMPUS MAXIMUS',
+    title: 'Emperor of Eye-Rolls',
+    specials: ['spin', 'slam', 'charge'],
+    score: 1250,
+    stats: { shape: 'box', size: 3.4, color: 0x3f6fe0, edgeColor: 0xbed1ff, speed: 2.1, hp: 1320, damage: 22, radius: 1.5 },
+    lines: ['Ugh. You again. Or someone like you.', 'I have been a Grumpus all my life and now I am a BIG one.', 'This is going to be so inconvenient for you.'],
+  },
+  {
+    id: 'boss_bloater',
+    name: 'DUKE BLOATSWORTH',
+    title: 'Lord of the Lobbed Goo',
+    specials: ['slam', 'barrage', 'spin'],
+    score: 1350,
+    stats: { shape: 'sphere', size: 4.0, color: 0x86c21f, edgeColor: 0xdff59a, speed: 1.3, hp: 1200, damage: 12, radius: 1.8, attackRange: 14 },
+    lines: ['Good day! I am the Duke of Bloatsworth, and I brought a casserole.', 'It is poison. Please do not stand in the casserole.', 'Splendid, you are standing in the casserole.'],
+  },
+  {
+    id: 'boss_spinner',
+    name: 'SPINNER SUPREME',
+    title: 'Dizzy With Power',
+    specials: ['spin', 'barrage', 'blink'],
+    score: 1300,
+    stats: { shape: 'tetrahedron', size: 3.2, color: 0xff8c00, edgeColor: 0xffd699, speed: 2.3, hp: 920, damage: 12, radius: 1.3, attackRange: 11 },
+    lines: ['Wheeeeee! Oh. Oh no. Wheeeeeee!', 'I cannot stop. I do not want to stop.', 'Stand still so I can spin AT you!'],
+  },
+  {
+    id: 'boss_splitter',
+    name: 'SPLITZILLA',
+    title: 'Two Problems, Then Four',
+    specials: ['charge', 'summon', 'spin'],
+    score: 1450,
+    stats: { shape: 'cone', size: 4.0, color: 0x9a4dff, edgeColor: 0xdcc2ff, speed: 2.0, hp: 1100, damage: 20, radius: 1.7 },
+    lines: ['Hit me once and I become two of me.', 'Hit me twice and, well, you know the rest.', 'I really need to see someone about this.'],
+  },
+  {
+    id: 'boss_mirror',
+    name: 'SIR REFLECTALOT',
+    title: 'Fairest of Them All',
+    specials: ['barrage', 'blink', 'slam'],
+    score: 1400,
+    stats: { shape: 'cylinder', size: 3.8, color: 0xaebfd8, edgeColor: 0xe6f0ff, speed: 1.8, hp: 1100, damage: 17, radius: 1.6, reflect: { halfArc: 1.1 }, accessory: 'mirror' },
+    lines: ['Mirror, mirror, in my hand... who will fall by my command?', 'Go on, hit me. Everything you throw, I throw back.', 'Hit me from behind? That is RUDE.'],
+  },
+  {
+    id: 'boss_hopper',
+    name: 'KING HOPALOT',
+    title: 'Look Out Below',
+    specials: ['leap', 'slam', 'summon'],
+    score: 1500,
+    stats: { shape: 'sphere', size: 4.0, color: 0x1fd1c3, edgeColor: 0xb6fff6, speed: 1.7, hp: 1240, damage: 18, radius: 1.8, accessory: 'limbs', specialIntervals: { leap: 4.5 } },
+    lines: ['Ribbit. Wait, no. That is a different monarch.', 'I have legs. I have ARMS. I have a crown and a plan.', 'The plan is: land on you.'],
+  },
+  {
+    id: 'boss_glimmer',
+    name: 'THE BLINKMASTER',
+    title: 'Now You See Him',
+    specials: ['blink', 'spin', 'slam', 'summon'],
+    score: 1550,
+    stats: { shape: 'octahedron', size: 3.4, color: 0xffc400, edgeColor: 0xfff1a8, speed: 2.4, hp: 980, damage: 16, radius: 1.4 },
+    lines: ['Boo! Behind you. No, the other behind you.', 'I do not walk. I simply arrive.', 'Blink and you will miss it. Do not blink.'],
   },
 ]
 

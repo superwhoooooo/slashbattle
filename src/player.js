@@ -24,6 +24,7 @@ import { ejectPenalty } from './logic/hiding.js'
 import { jellyHit } from './jelly.js'
 import { burst } from './particles.js'
 import { dampAngle, rampToward } from './logic/smoothing.js'
+import { WATER, stepSwim } from './logic/water.js'
 
 const HIT_FLASH_COLOR = new THREE.Color(1, 0, 0)
 
@@ -50,6 +51,9 @@ export class Player {
     this.falling = false
     this.fallState = { velocityY: 0, fallenY: 0 }
     this.speed = 0 // world units/second, for the jelly movement bulge
+    this.vel = { x: 0, z: 0 } // swimming momentum (water rooms)
+    this.diving = false // underwater (first person, limited breath)
+    this.sightScale = 1 // < 1 while diving: monsters see you from less far
     this.moveDir = { x: 0, z: 1 } // normalized horizontal movement direction, for the jelly movement bulge
 
     this.mesh = createPlayerMesh()
@@ -181,6 +185,17 @@ export class Player {
     return true
   }
 
+  // The breath ran out underwater: forced up with a gasp that costs a slice of max HP
+  // (bypasses i-frames; same flash/splat as any hit). Always returns true.
+  drown(now) {
+    this.hp = applyDamage({ hp: this.hp }, Math.round(this.maxHp * WATER.drownDamageFraction)).hp
+    this.invulnerableUntil = now + PLAYER_IFRAME_DURATION * this.iframeScale
+    this._hitFlashElapsed = 0
+    jellyHit(this.mesh, JELLY_HIT_STRENGTH)
+    this._damageSpark()
+    return true
+  }
+
   // Fades the red hit flash back to the body material's own baseline
   // emissive tint (not to black) over HIT_FLASH_DURATION. Runs every
   // frame via update() so it keeps progressing even while the player
@@ -207,7 +222,7 @@ export class Player {
   // the mesh's visual rotation separately damps toward the (instant)
   // facing direction via dampAngle, always turning the shortest way, so
   // turns look smooth without lagging input itself.
-  update(input, cameraYaw, deltaSeconds) {
+  update(input, cameraYaw, deltaSeconds, swim = null) {
     this._updateHitFlash(deltaSeconds)
     if (this.hidden || this.falling) return
 
@@ -239,6 +254,21 @@ export class Player {
     }
 
     if (this.aimAngle !== null) this.facing = this.aimAngle
+
+    if (swim) {
+      // Swimming has momentum: you ease up to speed, and coast when you let go.
+      const top = PLAYER_SPEED * this.speedMultiplier * (this.diving ? WATER.diveSpeedScale : WATER.surfaceSpeedScale)
+      this.vel = stepSwim(this.vel, hasInput ? { x: dirX * top, z: dirZ * top } : { x: 0, z: 0 }, deltaSeconds)
+      this.speed = Math.hypot(this.vel.x, this.vel.z)
+      if (this.speed > 0.25) this.moveDir = { x: this.vel.x / this.speed, z: this.vel.z / this.speed }
+      this.mesh.rotation.y = dampAngle(this.mesh.rotation.y, this.facing, PLAYER_FACING_DAMPING, deltaSeconds)
+      if (this.speed <= 1e-3) return
+      const swum = resolveArenaMove(this.position, { x: this.vel.x * deltaSeconds, z: this.vel.z * deltaSeconds }, PLAYER_RADIUS, this.obstacles)
+      this.position = swum
+      this.mesh.position.x = this.position.x
+      this.mesh.position.z = this.position.z
+      return
+    }
 
     const maxSpeed = PLAYER_SPEED * this.speedMultiplier
     const targetSpeed = hasInput ? maxSpeed : 0

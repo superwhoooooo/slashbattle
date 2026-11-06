@@ -32,6 +32,7 @@ import {
 } from './config.js'
 import { platformLayout } from './logic/arena.js'
 import { LEVELS } from './logic/levels.js'
+import { createWaterWorld } from './waterArena.js'
 import { PROP_STYLES } from './props.js'
 import { CENTER_CLEARANCE, resortLayout } from './logic/resortLayout.js'
 
@@ -417,26 +418,36 @@ export function createArena(level = LEVELS[0], { avoid = [] } = {}) {
   group.add(keyLight)
   group.add(keyLight.target) // needs to be in the graph for its moving position to take effect
 
-  const { group: platformGroup } = createPlatform(level)
-  group.add(platformGroup)
+  // A water room swaps the deck and its props for a swimmable surface (src/waterArena.js).
+  let water = null
+  let layout = { pools: [], umbrellas: [], loungers: [], signs: [] }
+  if (level.water) {
+    water = createWaterWorld(level)
+    group.add(water.group)
+  } else {
+    const { group: platformGroup } = createPlatform(level)
+    group.add(platformGroup)
 
-  const { topY } = platformLayout(ARENA_THICKNESS)
-  const layout = resortLayout({
-    radius: ARENA_RADIUS,
-    seed: level.seed ?? RESORT_LAYOUT_SEED,
-    avoid,
-    umbrellaColors: level.props.umbrellaColors,
-    signTexts: level.props.signTexts,
-  })
-  group.add(createProps(layout, topY, level))
+    const { topY } = platformLayout(ARENA_THICKNESS)
+    layout = resortLayout({
+      radius: ARENA_RADIUS,
+      seed: level.seed ?? RESORT_LAYOUT_SEED,
+      avoid,
+      umbrellaColors: level.props.umbrellaColors,
+      signTexts: level.props.signTexts,
+    })
+    group.add(createProps(layout, topY, level))
+  }
   const propObstacles = [...layout.umbrellas, ...layout.loungers, ...layout.signs]
 
-  group.add(createSkyDome(level.sky))
-  group.add(createGasGiant(level.planet))
+  const skyDome = createSkyDome(level.sky)
+  const gasGiant = createGasGiant(level.planet)
+  group.add(skyDome)
+  group.add(gasGiant)
 
   const fog = new THREE.Fog(level.fog, FOG_NEAR, FOG_FAR)
 
-  return { group, fog, backgroundColor: level.fog, level, keyLight, pools: layout.pools, propObstacles }
+  return { group, fog, backgroundColor: level.fog, level, keyLight, pools: layout.pools, propObstacles, water, skyObjects: [skyDome, gasGiant] }
 }
 
 // Builds scene.environment: a PMREM-baked reflection map from a small
@@ -489,7 +500,8 @@ function snapToTexel(value) {
 // so the shadow doesn't shimmer), so its small fixed shadow frustum
 // (KEY_LIGHT_SHADOW_EXTENT) stays over wherever play actually is on a
 // big arena.
-export function updateArena(arena, playerPos) {
+export function updateArena(arena, playerPos, time = 0) {
+  arena.water?.update(time)
   if (playerPos) {
     const snappedX = snapToTexel(playerPos.x)
     const snappedZ = snapToTexel(playerPos.z)

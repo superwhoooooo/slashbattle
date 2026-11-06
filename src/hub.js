@@ -122,7 +122,7 @@ const pips = (level, max) => '●'.repeat(level) + '○'.repeat(max - level)
 const TABS = [
   { id: 'skills', label: 'Skill Tree', key: '6' },
   { id: 'powerups', label: 'Power-Ups', key: '7' },
-  { id: 'gunsmith', label: 'Gunsmith', key: '8' },
+  { id: 'gunsmith', label: 'Gunsmith', key: 'J' },
   { id: 'loadout', label: 'Loadout', key: '9' },
 ]
 
@@ -540,7 +540,7 @@ export function createHub({ getProfile, setProfile, getRun, onBank, onOpenChange
     if (tab !== 'loadout') card.appendChild(loadoutStrip(profile))
     card.appendChild(tab === 'skills' ? skillsPage(profile) : tab === 'powerups' ? powerupsPage(profile) : tab === 'gunsmith' ? gunsmithPage(profile) : loadoutPage(profile))
     card.appendChild(el('p', 'hub-status', status))
-    card.appendChild(el('p', 'hub-note', '6 / 7 / 8 / 9: switch pages · Esc: close · T (in a run): bank crystals'))
+    card.appendChild(el('p', 'hub-note', '6 / 7 / 9 / J: switch pages · Esc: close · T (in a run): bank crystals'))
   }
 
   // The profile actions live here so the page code stays small; each returns { profile, ok, reason }.

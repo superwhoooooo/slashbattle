@@ -34,9 +34,11 @@ import { triggerHitstop } from './logic/hitstop.js'
 import { WEAPONS } from './logic/items.js'
 import { makeBullets } from './logic/bullets.js'
 import { tuneRifle } from './logic/rifles.js'
+import { isFrontHit } from './logic/reflect.js'
+import { waterBullet } from './logic/water.js'
 import { fireBullets } from './bullets.js'
 import { jellyHit } from './jelly.js'
-import { hasWallLineOfSight } from './monster.js'
+import { hasWallLineOfSight, isUntouchable } from './monster.js'
 import { burst, shardBurst } from './particles.js'
 import { clearSwingTrail, updateSwingTrail } from './trail.js'
 
@@ -70,11 +72,13 @@ export function createAttackState() {
 // hit landed, so the caller can trigger a (smaller) screen shake.
 export function updatePlayerAttack(
   attackState,
-  { player, monsters, obstacles, input, elapsedSeconds, deltaSeconds, particleSystem, swingTrail, weaponId = 'sword', damageMultiplier = 1, cooldownMultiplier = 1, knockbackMultiplier = 1, bulletPool = null, autoAttack = false, hitstop = null, onMeleeHit = null, rifleSetup = null, steady = 0 },
+  { player, monsters, obstacles, input, elapsedSeconds, deltaSeconds, particleSystem, swingTrail, weaponId = 'sword', damageMultiplier = 1, cooldownMultiplier = 1, knockbackMultiplier = 1, bulletPool = null, autoAttack = false, hitstop = null, onMeleeHit = null, rifleSetup = null, steady = 0, underwater = false, onReflect = null },
 ) {
   // A rifle fires as its chosen scope + ammo tune it (logic/rifles.js).
   const base = WEAPONS[weaponId]
-  const weapon = base.rifle ? tuneRifle(base, rifleSetup ?? {}) : base
+  const tuned = base.rifle ? tuneRifle(base, rifleSetup ?? {}) : base
+  // Shots fired underwater are slower and shorter.
+  const weapon = tuned.gun && underwater ? { ...tuned, bullet: waterBullet(tuned.bullet, true) } : tuned
   if (player.hidden) return { ambushHit: false, hitAny: false }
 
   const sword = player.mesh.userData.sword
@@ -123,7 +127,7 @@ export function updatePlayerAttack(
         }),
       )
     } else {
-      ;({ ambushHit, hitAny } = resolveAttackHits(player, monsters, obstacles, elapsedSeconds, particleSystem, weapon, damageMultiplier, knockbackMultiplier, hitstop, onMeleeHit))
+      ;({ ambushHit, hitAny } = resolveAttackHits(player, monsters, obstacles, elapsedSeconds, particleSystem, weapon, damageMultiplier, knockbackMultiplier, hitstop, onMeleeHit, onReflect))
     }
   }
 
@@ -151,7 +155,14 @@ export function updatePlayerAttack(
 // hit deserves: longest for a boss (taking the hit or dying), next for
 // any kill, shortest for a plain non-lethal hit -- except a pet's zap,
 // which only freezes on a kill, since it fires automatically and often.
+// How far hits shove monsters: 1 on land, more in water (set by main.js per room).
+let knockbackWorldScale = 1
+export function setKnockbackWorldScale(scale) {
+  knockbackWorldScale = scale
+}
+
 export function damageMonster(monster, damage, { fromPos, knockback = 0, obstacles = [], particleSystem, cause = 'sword', ambush = false, hitstop = null }) {
+  if (isUntouchable(monster)) return false // a deep dweller, out of reach until you dive
   // A summoner boss is immune while any minion it called in is still alive.
   const minions = monster.userData.minions
   if (minions && minions.some((m) => !m.userData.dying && !m.userData.falling)) {
@@ -173,7 +184,7 @@ export function damageMonster(monster, damage, { fromPos, knockback = 0, obstacl
 
   if (knockback > 0 && fromPos) {
     const targetPos = { x: monster.position.x, z: monster.position.z }
-    const push = knockbackVector(fromPos, targetPos, knockback * (monster.userData.knockbackScale ?? 1))
+    const push = knockbackVector(fromPos, targetPos, knockback * (monster.userData.knockbackScale ?? 1) * knockbackWorldScale)
     const resolved = resolveArenaMove(targetPos, push, monster.userData.radius, obstacles)
     monster.position.x = resolved.x
     monster.position.z = resolved.z
@@ -202,20 +213,25 @@ export function damageMonster(monster, damage, { fromPos, knockback = 0, obstacl
 // within the ambush window after popping out of hiding) and knockback.
 // A monster still materializing in (spawning) can't be hit. Returns
 // { ambushHit, hitAny } for the whole swing.
-function resolveAttackHits(player, monsters, obstacles, now, particleSystem, weapon, damageMultiplier, knockbackMultiplier, hitstop, onMeleeHit = null) {
+function resolveAttackHits(player, monsters, obstacles, now, particleSystem, weapon, damageMultiplier, knockbackMultiplier, hitstop, onMeleeHit = null, onReflect = null) {
   const attackerPos = player.position
   const ambush = isAmbushActive(now, player.exitedAt, AMBUSH_WINDOW)
   let ambushHit = false
   let hitAny = false
 
   for (const monster of monsters) {
-    if (monster.userData.dying || monster.userData.spawning) continue
+    if (monster.userData.dying || monster.userData.spawning || isUntouchable(monster)) continue
 
     const targetPos = { x: monster.position.x, z: monster.position.z }
     if (!isInAttackArc(attackerPos, player.facing, targetPos, weapon.range + (monster.userData.reachBonus ?? 0), weapon.arc)) {
       continue
     }
     if (!hasWallLineOfSight(attackerPos, targetPos)) continue // no hitting through labyrinth walls
+    // A mirror bounces a swing that lands on its front.
+    if (monster.userData.reflect && isFrontHit(monster.rotation.y, targetPos, attackerPos, monster.userData.reflect.halfArc)) {
+      if (onReflect) onReflect({ kind: 'melee', monster })
+      continue
+    }
 
     const damage = computeDamage(weapon.damage * damageMultiplier, { ambush })
     damageMonster(monster, damage, { fromPos: attackerPos, knockback: weapon.knockback * knockbackMultiplier, obstacles, particleSystem, cause: 'sword', ambush, hitstop })

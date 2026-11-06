@@ -23,10 +23,10 @@ function createSeededRng(seed) {
 }
 
 describe('BOSSES', () => {
-  it('has seven distinct bosses, each with a name, goofy lines, and sane stats', () => {
-    expect(BOSS_COUNT).toBe(7)
-    expect(new Set(BOSSES.map((b) => b.id)).size).toBe(7)
-    expect(new Set(BOSSES.map((b) => b.name)).size).toBe(7)
+  it('has distinct bosses, each with a name, goofy lines, and sane stats', () => {
+    expect(BOSS_COUNT).toBeGreaterThanOrEqual(16) // the original 7 plus a boss version of every enemy
+    expect(new Set(BOSSES.map((b) => b.id)).size).toBe(BOSS_COUNT)
+    expect(new Set(BOSSES.map((b) => b.name)).size).toBe(BOSS_COUNT)
     for (const boss of BOSSES) {
       expect(boss.lines.length).toBeGreaterThanOrEqual(2)
       expect(boss.specials.length).toBeGreaterThanOrEqual(1)
@@ -47,7 +47,7 @@ describe('BOSSES', () => {
 })
 
 describe('boss variety', () => {
-  it('gives every boss a different body shape', () => {
+  it('uses every body shape across the bosses', () => {
     expect(new Set(BOSSES.map((b) => b.stats.shape)).size).toBe(7)
   })
 
@@ -57,23 +57,23 @@ describe('boss variety', () => {
   })
 
   it('does not give two bosses the same set of abilities', () => {
-    expect(new Set(BOSSES.map((b) => [...b.specials].sort().join('+'))).size).toBe(7)
+    expect(new Set(BOSSES.map((b) => [...b.specials].sort().join('+'))).size).toBe(BOSS_COUNT)
   })
 })
 
 describe('shuffleBossOrder / bossForFight', () => {
-  it('is a permutation of all seven bosses, whatever the seed', () => {
+  it('is a permutation of all the bosses, whatever the seed', () => {
     for (let seed = 0; seed < 20; seed++) {
       const order = shuffleBossOrder(createSeededRng(seed))
-      expect([...order].sort()).toEqual([0, 1, 2, 3, 4, 5, 6])
+      expect([...order].sort((a, b) => a - b)).toEqual(Array.from({ length: BOSS_COUNT }, (_, i) => i))
     }
   })
 
-  it('meets all seven different bosses before any repeat, then cycles', () => {
+  it('meets every different boss before any repeat, then cycles', () => {
     const order = shuffleBossOrder(createSeededRng(3))
-    const firstCycle = Array.from({ length: 7 }, (_, n) => bossForFight(order, n).id)
-    expect(new Set(firstCycle).size).toBe(7)
-    expect(bossForFight(order, 7).id).toBe(firstCycle[0])
+    const firstCycle = Array.from({ length: BOSS_COUNT }, (_, n) => bossForFight(order, n).id)
+    expect(new Set(firstCycle).size).toBe(BOSS_COUNT)
+    expect(bossForFight(order, BOSS_COUNT).id).toBe(firstCycle[0])
   })
 })
 

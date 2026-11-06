@@ -11,6 +11,11 @@
 //   planet       - the big ringed planet on the horizon
 //   light        - key light, hemisphere fill and the env-map "sun" panel
 //   pool         - pool water/rim (`glow` > 0 makes the water self-lit)
+//   water        - (optional) makes it a WATER ROOM: no deck, a rolling water surface you swim on
+//                  (or dive under, in first person) over a floor `depth` below. `style` picks the
+//                  scenery ('pool' tiled basin, 'ocean' open sea, 'reef' glass aquarium); `surface`
+//                  is the water's color/opacity/wave height, `under` the murk when diving,
+//                  `floor` the colors of the bottom. See src/waterArena.js and logic/water.js.
 //   props        - `style` (which prop models src/props.js draws: resort,
 //                  frost, magma, neon, candy), umbrella canopy palette, lounger/sign colors, sign texts
 export const LEVELS = [
@@ -107,6 +112,84 @@ export const LEVELS = [
       signPanel: 0xff5fa8,
       signPost: 0xffffff,
       signTexts: ['SUGAR RUSH LANE', 'DO NOT LICK THE DECK', 'GUMDROP CROSSING', 'SPRINKLES OPTIONAL', 'THE POOL IS SODA'],
+    },
+  },
+  {
+    name: 'Pool Room',
+    seed: 5150,
+    sky: { top: '#2A6FE0', horizon: '#CDEBFF', ground: '#E8F6FF' },
+    fog: 0xbfe3ff,
+    hull: 0xe7f6f8,
+    deck: { plank: '#e9f7f8', seam: '#bfe3ea', border: '#19b5a5', pinstripe: '#ffffff' },
+    planet: { color: 0xf2b27a, ring: 0xffe9cf },
+    light: { key: 0xfff6e0, hemiSky: 0xcfe8ff, hemiGround: 0x9fd8e8, sun: 0xfff6e0 },
+    pool: { water: 0x2bc8e6, rim: 0xffffff, glow: 0 },
+    water: {
+      style: 'pool',
+      surface: { color: 0x35cfe8, opacity: 0.62, amp: 0.2 },
+      under: { fog: 0x1aa6c8, near: 1, far: 34 },
+      floor: { color: 0xdff6fa, accent: 0x19b5a5 },
+      wall: { color: 0xf4fbfc, trim: 0x19b5a5 },
+    },
+    props: {
+      style: 'resort',
+      umbrellaColors: [0xff6a4d, 0xffd15c, 0x19b5a5],
+      loungerColor: 0xf5f5f0,
+      signPanel: 0x19b5a5,
+      signPost: 0xffffff,
+      signTexts: ['NO RUNNING', 'DEEP END', 'WALK, DO NOT SPLASH', 'NO DIVING (SERIOUSLY)', 'LIFEGUARD ON BREAK'],
+    },
+  },
+  {
+    name: 'Pacific Ocean',
+    seed: 6060,
+    sky: { top: '#1d4f9f', horizon: '#ffc79a', ground: '#ffb27a' },
+    fog: 0xffc79a,
+    hull: 0x2a6f9a,
+    deck: { plank: '#2a8ab8', seam: '#1f6f98', border: '#ffffff', pinstripe: '#ffffff' },
+    planet: { color: 0xffe08a, ring: 0xfff3c4 },
+    light: { key: 0xffd9a8, hemiSky: 0xffd2a8, hemiGround: 0x2a6f9a, sun: 0xffc27a },
+    pool: { water: 0x1f8fc4, rim: 0xffffff, glow: 0 },
+    water: {
+      style: 'ocean',
+      surface: { color: 0x1f9be0, opacity: 0.88, amp: 0.34 },
+      under: { fog: 0x0a4f86, near: 1, far: 40 },
+      floor: { color: 0xe6cf98, accent: 0x5a7a4a },
+      wall: { color: 0xff5a3a, trim: 0xffffff },
+    },
+    props: {
+      style: 'resort',
+      umbrellaColors: [0xff6a4d, 0xffd15c, 0x19b5a5],
+      loungerColor: 0xf5f5f0,
+      signPanel: 0x1f6f98,
+      signPost: 0xffffff,
+      signTexts: ['HERE BE SHARKS (FRIENDLY)', 'NEXT LAND: A LONG WAY', 'TIDE: YES', 'PLEASE DO NOT FEED THE WHALE', 'X MARKS A SPOT'],
+    },
+  },
+  {
+    name: 'Glowing Reef Aquarium',
+    seed: 7007,
+    sky: { top: '#050a2a', horizon: '#1a3b8a', ground: '#0a1a4a' },
+    fog: 0x0e2a6a,
+    hull: 0x16306a,
+    deck: { plank: '#14306a', seam: '#0e2150', border: '#37f2ff', pinstripe: '#ff3fb4' },
+    planet: { color: 0x37f2ff, ring: 0xff3fb4 },
+    light: { key: 0xa8c8ff, hemiSky: 0x6a9aff, hemiGround: 0x1a2a6a, sun: 0xb8d0ff },
+    pool: { water: 0x37f2ff, rim: 0xff3fb4, glow: 0.7 },
+    water: {
+      style: 'reef',
+      surface: { color: 0x2a8fff, opacity: 0.5, amp: 0.16 },
+      under: { fog: 0x06164a, near: 1, far: 32 },
+      floor: { color: 0x10285a, accent: 0xff3fb4 },
+      wall: { color: 0x7fd8ff, trim: 0x37f2ff },
+    },
+    props: {
+      style: 'neon',
+      umbrellaColors: [0xff3fb4, 0x37f2ff, 0xb4ff3f],
+      loungerColor: 0x4b3f8a,
+      signPanel: 0x37f2ff,
+      signPost: 0xff3fb4,
+      signTexts: ['DO NOT TAP THE GLASS', 'FEEDING TIME: ALWAYS', 'JELLYFISH ARE FRIENDS', 'CORAL IS A LIVING THING', 'EXIT THROUGH THE GIFT SHOP'],
     },
   },
 ]

@@ -504,6 +504,101 @@ export function createPlayerMesh() {
 // above its head that the AI milestone flashes briefly on entering chase
 // or search. rng is injectable (default Math.random) so the face can be
 // seeded deterministically in tests.
+// A jelly-ish solid colour for the add-on bits (limbs, mirror frame).
+function accessoryMaterial(color, roughness = 0.5, metalness = 0.1) {
+  return new THREE.MeshStandardMaterial({ color, roughness, metalness })
+}
+
+// The hopper's arms and legs: stubby limbs poking out of the sides of its body. The arms
+// are returned so main.js can raise them while it leaps.
+function addLimbs(group, stats) {
+  const s = stats.size
+  const limbColor = new THREE.Color(stats.color).multiplyScalar(0.85)
+  const mat = accessoryMaterial(limbColor)
+  const handMat = accessoryMaterial(new THREE.Color(stats.color).lerp(new THREE.Color(0xffffff), 0.25))
+  const limbs = new THREE.Group()
+  const arms = []
+  for (const side of [-1, 1]) {
+    // Arm: a pivot at the shoulder, a capsule-ish cylinder angled outward and down, a round hand.
+    const pivot = new THREE.Group()
+    pivot.position.set(side * s * 0.5, s * 0.62, 0)
+    const arm = new THREE.Mesh(new THREE.CylinderGeometry(s * 0.07, s * 0.06, s * 0.5, 10), mat)
+    arm.position.y = -s * 0.25
+    const hand = new THREE.Mesh(new THREE.SphereGeometry(s * 0.12, 12, 8), handMat)
+    hand.position.y = -s * 0.52
+    pivot.add(arm, hand)
+    pivot.rotation.z = side * 0.55
+    limbs.add(pivot)
+    arms.push({ pivot, side })
+
+    // Leg: from the lower side of the body down to a flat foot on the ground.
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(s * 0.09, s * 0.075, s * 0.42, 10), mat)
+    leg.position.set(side * s * 0.3, s * 0.2, s * 0.05)
+    const foot = new THREE.Mesh(new THREE.BoxGeometry(s * 0.2, s * 0.07, s * 0.3), handMat)
+    foot.position.set(side * s * 0.3, s * 0.035, s * 0.12)
+    limbs.add(leg, foot)
+  }
+  for (const m of limbs.children) m.castShadow = true
+  group.add(limbs)
+  group.userData.arms = arms
+}
+
+// The mirror enemy's mirror: a tall oval of polished glass in a metal frame, held out in
+// front of its face (+z is forward). Anything that hits this side bounces.
+function addMirror(group, stats, bodyCenterY) {
+  const s = stats.size
+  const mirror = new THREE.Group()
+  const frame = new THREE.Mesh(new THREE.TorusGeometry(1, 0.1, 10, 36), accessoryMaterial(0xd9b24a, 0.3, 0.9))
+  frame.scale.set(s * 0.46, s * 0.62, s * 0.46)
+  const glass = new THREE.Mesh(
+    new THREE.CircleGeometry(1, 36),
+    new THREE.MeshStandardMaterial({ color: 0xf2f9ff, roughness: 0.04, metalness: 1, emissive: 0x6c8fb4, emissiveIntensity: 0.35, side: THREE.DoubleSide }),
+  )
+  glass.scale.set(s * 0.46, s * 0.62, 1)
+  const handle = new THREE.Mesh(new THREE.CylinderGeometry(s * 0.05, s * 0.05, s * 0.5, 8), accessoryMaterial(0xd9b24a, 0.3, 0.9))
+  handle.position.y = -s * 0.8
+  // A glint streak across the glass.
+  const glint = new THREE.Mesh(new THREE.PlaneGeometry(s * 0.1, s * 0.7), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.55 }))
+  glint.position.set(-s * 0.15, s * 0.05, 0.01)
+  glint.rotation.z = 0.35
+  mirror.add(frame, glass, handle, glint)
+  mirror.position.set(0, Math.max(s * 0.7, bodyCenterY + s * 0.25), s * 0.82)
+  mirror.children.forEach((m) => { m.castShadow = true })
+  group.add(mirror)
+  group.userData.mirror = mirror
+}
+
+// The angler's glowing lure: a curved stalk over its head ending in a bright bulb.
+function addLure(group, stats) {
+  const s = stats.size
+  const stalk = new THREE.Mesh(new THREE.TorusGeometry(s * 0.35, s * 0.03, 6, 14, Math.PI * 0.9), accessoryMaterial(0x1a1f4a))
+  stalk.position.set(0, s * 0.7, s * 0.05)
+  stalk.rotation.y = Math.PI / 2
+  const bulb = new THREE.Mesh(
+    new THREE.SphereGeometry(s * 0.14, 12, 8),
+    new THREE.MeshStandardMaterial({ color: 0xfff1a8, emissive: 0xffe066, emissiveIntensity: 1.6 }),
+  )
+  bulb.position.set(0, s * 0.72, s * 0.42)
+  const glow = new THREE.Mesh(new THREE.SphereGeometry(s * 0.34, 12, 8), new THREE.MeshBasicMaterial({ color: 0xffe066, transparent: true, opacity: 0.25, blending: THREE.AdditiveBlending, depthWrite: false }))
+  glow.position.copy(bulb.position)
+  group.add(stalk, bulb, glow)
+}
+
+// The urchin's spikes: cones poking out all round the body.
+function addSpikes(group, stats, bodyCenterY) {
+  const s = stats.size
+  const mat = accessoryMaterial(0x2a1250, 0.4)
+  for (let i = 0; i < 18; i++) {
+    const phi = Math.acos(1 - (2 * (i + 0.5)) / 18)
+    const theta = Math.PI * (1 + Math.sqrt(5)) * i
+    const dir = new THREE.Vector3(Math.sin(phi) * Math.cos(theta), Math.cos(phi), Math.sin(phi) * Math.sin(theta))
+    const spike = new THREE.Mesh(new THREE.ConeGeometry(s * 0.07, s * 0.4, 6), mat)
+    spike.position.copy(dir).multiplyScalar(s * 0.62).add(new THREE.Vector3(0, bodyCenterY, 0))
+    spike.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir)
+    group.add(spike)
+  }
+}
+
 export function createMonsterMesh(type, rng = Math.random) {
   const stats = MONSTER_TYPES[type]
   const geometry = GEOMETRY_BUILDERS[stats.shape](stats.size)
@@ -549,6 +644,11 @@ export function createMonsterMesh(type, rng = Math.random) {
     group.add(ring)
     group.userData.telegraph = ring
   }
+
+  if (stats.accessory === 'limbs') addLimbs(group, stats)
+  if (stats.accessory === 'mirror') addMirror(group, stats, bodyCenterY)
+  if (stats.accessory === 'lure') addLure(group, stats)
+  if (stats.accessory === 'spikes') addSpikes(group, stats, bodyCenterY)
 
   group.userData.body = body
   group.userData.type = type

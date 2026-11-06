@@ -29,6 +29,10 @@ import { loadProfile, saveProfile } from './profile.js'
 import { createScope } from './scope.js'
 import { SCOPES, AMMO, rifleSetup as riflePicks, stepSteady, tuneRifle } from './logic/rifles.js'
 import { bulletDamage } from './logic/bullets.js'
+import { DEEP_SPAWN_CHANCE, pickDeepType } from './logic/enemies.js'
+import { MELEE_REFLECT_DAMAGE, reflectedDamage } from './logic/reflect.js'
+import { WATER, stepBreath, stepDepth, waveHeight } from './logic/water.js'
+import { createWaterUi } from './waterUi.js'
 import { activeLoadoutPets, addToCollection, bankCrystals, setRifleOption, unlockAttachment } from './logic/profile.js'
 import { combineEffects, skillEffects } from './logic/skills.js'
 import { createPauseMenu, loadBrightness } from './pauseMenu.js'
@@ -165,7 +169,7 @@ import {
 import { createCarpet, updateCarpet } from './carpet.js'
 import { setPlayerWeapon } from './characters.js'
 import { createChest, openChest, updateChest } from './chests.js'
-import { createAttackState, damageMonster, updateMonsterHitReaction, updatePlayerAttack } from './combat.js'
+import { createAttackState, damageMonster, setKnockbackWorldScale, updateMonsterHitReaction, updatePlayerAttack } from './combat.js'
 import { attractAllCrystals, createCrystalSystem, dropCrystals, resetCrystals, updateCrystals } from './crystals.js'
 import { createHidingState, createPod, startPodDematerialize, updateHiding, updatePod } from './hiding.js'
 import {
@@ -225,7 +229,7 @@ import {
   waveSize,
 } from './logic/waves.js'
 import { enemyScale, SPLITS } from './logic/enemies.js'
-import { createMonsterAIState, separateMonsters, setMonsterNavigator, updateMonster } from './monster.js'
+import { createMonsterAIState, separateMonsters, setDeepShield, setMonsterNavigator, updateMonster } from './monster.js'
 import { burst, createParticleSystem, resetParticles, setParticleViewScale, shardBurst, updateParticles } from './particles.js'
 import { createPet, disposePets, updatePets } from './pets.js'
 import { Player } from './player.js'
@@ -406,7 +410,7 @@ function setFirstPerson(on) {
   fpCrosshair.style.display = on ? 'block' : 'none'
   if (on) {
     fpYaw = game.player.facing
-    renderer.domElement.requestPointerLock?.()
+    renderer.domElement.requestPointerLock?.()?.catch?.(() => {}) // denied locks just leave the view where it is
   } else {
     cameraYaw = 0
     game.player.mesh.visible = true
@@ -414,8 +418,107 @@ function setFirstPerson(on) {
   }
 }
 document.addEventListener('pointerlockchange', () => {
-  if (!document.pointerLockElement && firstPerson) setFirstPerson(false)
+  if (!document.pointerLockElement && firstPerson) {
+    setFirstPerson(false)
+    if (waterState.diving) setDiving(false) // Esc surfaces you
+  }
 })
+
+// ---- Water rooms (logic/levels.js entries with `water`): swim on the surface in third person,
+// dive under it in first person. See logic/water.js for the rules, src/waterArena.js for the scenery.
+const waterState = { diving: false, breath: WATER.breath, depthY: WATER.floatY, diveStartedAt: 0 }
+const waterUi = createWaterUi()
+let lastHidePrompt = false // whether E would have entered a pod last frame (so E can dive instead)
+const waterRoom = () => game?.arena?.level?.water ?? null
+// How high the water carries something at (x, z): the surface wave, plus how deep we are.
+const waterY = (x, z, time) => waterState.depthY + waveHeight(x, z, time, waterRoom()?.surface.amp ?? 0.2)
+
+function applyWaterFog(under) {
+  const room = waterRoom()
+  if (under && room) {
+    scene.fog = new THREE.Fog(room.under.fog, room.under.near, room.under.far)
+    scene.background = new THREE.Color(room.under.fog)
+  } else if (game?.arena) {
+    scene.fog = game.arena.fog
+    scene.background = new THREE.Color(game.arena.backgroundColor)
+  }
+  for (const object of game?.arena?.skyObjects ?? []) object.visible = !under
+}
+
+function setDiving(on, now = 0) {
+  if (on === waterState.diving) return
+  const { player } = game
+  waterState.diving = on
+  player.diving = on
+  player.sightScale = on ? WATER.diveSightScale : 1
+  applyWaterFog(on)
+  setFirstPerson(on)
+  const splash = { x: player.position.x, y: 0.1, z: player.position.z }
+  burst(particleSystem, splash, 0xbff6ff, 24, 3.5)
+  if (on) {
+    waterState.diveStartedAt = now
+  } else if (now - waterState.diveStartedAt >= WATER.minDiveForAmbush) {
+    player.exitedAt = now // bursting out of the water counts as an ambush, like popping out of a suitcase
+  }
+  sfx.play(on ? 'podIn' : 'podOut', { x: player.position.x, z: player.position.z })
+}
+
+// Resets everything to "on the surface" (a new run, or moving to another place).
+function resetWater() {
+  waterState.diving = false
+  waterState.breath = WATER.breath
+  waterState.depthY = WATER.floatY
+  if (game?.player) {
+    game.player.diving = false
+    game.player.sightScale = 1
+    game.player.vel = { x: 0, z: 0 }
+  }
+  setKnockbackWorldScale(waterRoom() ? WATER.knockbackScale : 1)
+}
+
+// Per-frame water-room logic: dive toggle, breath, depth, murk, screen furniture.
+function stepWater(now, dt) {
+  const room = waterRoom()
+  const { player } = game
+  setDeepShield(Boolean(room) && !waterState.diving)
+  if (!room) {
+    waterUi.update({ room: false, diving: false, fraction: 1 })
+    return
+  }
+  const toggle = input.wasPressed('ShiftLeft') || input.wasPressed('ShiftRight') || (input.wasHidePressed() && !player.hidden && (waterState.diving || !lastHidePrompt))
+  if (toggle && !player.hidden && !player.falling) setDiving(!waterState.diving, now)
+  const b = stepBreath(waterState.breath, waterState.diving, dt)
+  waterState.breath = b.breath
+  if (b.out) {
+    // Out of air: shoved to the surface with a gasp.
+    setDiving(false, now)
+    player.exitedAt = null
+    if (!godMode && player.drown(now)) {
+      triggerShake(shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
+      triggerDamageFlash(hud)
+      sfx.play('playerHurt', { x: player.position.x, z: player.position.z })
+    }
+  }
+  waterState.depthY = stepDepth(waterState.depthY, waterState.diving, dt)
+  // Bubbles trail a swimmer.
+  if (waterState.diving && Math.random() < 0.25) {
+    burst(particleSystem, { x: player.position.x, y: waterState.depthY + 1, z: player.position.z }, 0xcff8ff, 1, 0.7, 1.2)
+  } else if (!waterState.diving && player.speed > 2 && Math.random() < 0.3) {
+    burst(particleSystem, { x: player.position.x, y: 0.1, z: player.position.z }, 0xffffff, 1, 1.3, 0.6)
+  }
+  const lurking = game.monsters.some((m) => m.userData.deep && !m.userData.dying)
+  waterUi.update({ room: true, diving: waterState.diving, fraction: waterState.breath / WATER.breath, lurking })
+}
+
+// Keeps a swimmer inside the pool wall / buoy ring instead of letting it fall off.
+function clampToWater(position, radius) {
+  const limit = ARENA_RADIUS - radius - 0.8
+  const d = Math.hypot(position.x, position.z)
+  if (d <= limit) return false
+  position.x *= limit / d
+  position.z *= limit / d
+  return true
+}
 window.addEventListener('mousemove', (event) => {
   if (firstPerson && document.pointerLockElement) fpYaw -= event.movementX * 0.0025
 })
@@ -1310,7 +1413,7 @@ function receiveLoot(game, loot, swappedOut = null) {
     setProfile(unlockAttachment(profile, loot.kind, loot.id))
     const held = selectedWeaponId(game.inventory)
     if (WEAPONS[held].rifle) setProfile(setRifleOption(profile, held, loot.kind, loot.id))
-    showLootToast(hud, { title: loot.kind === 'scope' ? 'NEW SCOPE' : 'NEW AMMO', name: table[loot.id].name, icon: { kind: 'weapon', id: WEAPONS[held].rifle ? held : game.inventory.weapons.find((w) => WEAPONS[w].rifle) }, blurb: `${table[loot.id].blurb}. [ ] to switch, 8 to upgrade` })
+    showLootToast(hud, { title: loot.kind === 'scope' ? 'NEW SCOPE' : 'NEW AMMO', name: table[loot.id].name, icon: { kind: 'weapon', id: WEAPONS[held].rifle ? held : game.inventory.weapons.find((w) => WEAPONS[w].rifle) }, blurb: `${table[loot.id].blurb}. [ ] to switch, J to upgrade` })
     return
   }
   if (swappedOut) game.inventory = swapItem(game.inventory, loot, swappedOut)
@@ -1397,6 +1500,8 @@ function spawnMonster(game, type, { at = null, effectOptions, hpScale = 1, faceP
   mesh.userData.maxHp = mesh.userData.hp
   mesh.userData.isBoss = stats.boss === true
   mesh.userData.reachBonus = stats.reachBonus ?? 0
+  mesh.userData.deep = stats.deep === true // a deep dweller: only reachable by diving
+  mesh.userData.reflect = stats.reflect ?? null // a mirror bounces attacks that hit its front
   mesh.userData.knockbackScale = stats.knockbackScale ?? 1
   mesh.userData.radius = stats.radius
   mesh.userData.falling = false
@@ -1488,6 +1593,37 @@ function popMinions(game) {
     mesh.userData.dying = true
     mesh.userData.deathPopElapsed = 0
     jellyHit(mesh, JELLY_DEATH_INFLATE_STRENGTH)
+  }
+}
+
+// A mirror enemy bounced something: a shot comes back at you as an orb, a swing that hits its
+// front bites back with a little damage and a shove.
+function reflectAttack(game, info) {
+  const { player } = game
+  const mirror = info.monster
+  const at = { x: mirror.position.x, y: 1.1, z: mirror.position.z }
+  burst(particleSystem, at, 0xe6f4ff, 14, 3.5)
+  sfx.play('hit', { x: mirror.position.x, z: mirror.position.z })
+  if (info.kind === 'bullet') {
+    const aim = Math.atan2(player.position.x - mirror.position.x, player.position.z - mirror.position.z)
+    const damage = reflectedDamage(info.bullet.damage)
+    for (const { vx, vz } of fanVelocities(aim, 1, 0, 12)) {
+      fireProjectile(projectilePool, { x: mirror.position.x, z: mirror.position.z, vx, vz, damage, color: 0xcfe8ff, size: 0.55 })
+    }
+    showPopup(popupPool, mirror.position, 'REFLECTED!', '', POPUP_KILL_COLOR)
+  } else {
+    showPopup(popupPool, mirror.position, 'CLANG!', '', POPUP_KILL_COLOR)
+    const dx = player.position.x - mirror.position.x
+    const dz = player.position.z - mirror.position.z
+    const d = Math.hypot(dx, dz) || 1
+    const pushed = resolveArenaMove(player.position, { x: (dx / d) * 1.4, z: (dz / d) * 1.4 }, PLAYER_RADIUS, game.obstacles)
+    player.position = pushed
+    player.mesh.position.x = pushed.x
+    player.mesh.position.z = pushed.z
+    if (player.damagePlayer(MELEE_REFLECT_DAMAGE, timer.getElapsed())) {
+      triggerShake(game.shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
+      triggerDamageFlash(hud)
+    }
   }
 }
 
@@ -1624,7 +1760,7 @@ function runCutscene(game, advancePressed, deltaSeconds, elapsedSeconds) {
     updateFace3D(m, deltaSeconds, elapsedSeconds)
   })
   updateSpawnEffects(game, deltaSeconds)
-  updateArena(game.arena, player.position)
+  updateArena(game.arena, player.position, elapsedSeconds)
   updateParticles(particleSystem, deltaSeconds)
   updatePopups(popupPool, deltaSeconds)
 
@@ -1662,6 +1798,7 @@ function runCutscene(game, advancePressed, deltaSeconds, elapsedSeconds) {
 // re-bakes the sky reflections.
 function changeLevel(game, levelIndex) {
   const level = levelAt(levelIndex)
+  if (waterState.diving) setDiving(false) // surface before the room changes
   const occupied = [
     ...game.pods,
     ...game.chests,
@@ -1684,6 +1821,11 @@ function changeLevel(game, levelIndex) {
   game.arena = arena
   game.props = arena.propObstacles
   game.levelIndex = levelIndex
+  resetWater()
+  if (!level.water) {
+    game.player.mesh.position.y = 0
+    for (const m of game.monsters) if (!m.userData.falling) m.position.y = 0
+  }
   reskinContainers(game)
   return level
 }
@@ -2015,7 +2157,7 @@ const hub = createHub({
   getRun: () => ({ sandbox, inRun: started && !sandbox, weapons: game.inventory.weapons, crystals: game.inventory.crystals, owned: game.inventory.powerups, equipped: game.inventory.equipped }),
   onBank: bankRunCrystals,
 })
-const HUB_KEYS = { Digit6: 'skills', Numpad6: 'skills', Digit7: 'powerups', Numpad7: 'powerups', Digit8: 'gunsmith', Numpad8: 'gunsmith', Digit9: 'loadout', Numpad9: 'loadout' }
+const HUB_KEYS = { Digit6: 'skills', Numpad6: 'skills', Digit7: 'powerups', Numpad7: 'powerups', KeyJ: 'gunsmith', Digit9: 'loadout', Numpad9: 'loadout' }
 function canOpenHub() {
   return !swapPanel.isOpen() && !pauseMenu.isOpen() && !(started && game.player.hp <= 0) && !(started && !sandbox && loadoutPanel.isOpen()) && !(started && sandbox && sandboxPanel?.isOpen?.())
 }
@@ -2116,8 +2258,10 @@ const timer = new THREE.Timer()
 
 // Throws the current run away and starts a fresh one (same map).
 function restartGame() {
+  if (waterState.diving) setFirstPerson(false)
   disposeGame(game)
   game = createGame()
+  resetWater()
   resetParticles(particleSystem)
   resetPopups(popupPool)
   resetProjectiles(projectilePool)
@@ -2269,7 +2413,8 @@ function animate(timestamp) {
     ? { state: game.waveState, spawns: [], events: [] }
     : stepWaves(game.waveState, gameplayDelta, monsters.length, Math.random)
   game.waveState = nextWaveState
-  spawns.forEach((type) => spawnMonster(game, type))
+  // In a water room some arrivals are deep dwellers that can only be fought underwater.
+  spawns.forEach((type) => spawnMonster(game, waterRoom() && Math.random() < DEEP_SPAWN_CHANCE ? pickDeepType() : type))
   // The labyrinth's corridors swallow monsters: half the time a second one tags along.
   if (game.labyrinth) spawns.forEach((type) => { if (Math.random() < 0.5) spawnMonster(game, type) })
   if (events.includes('waveCleared')) {
@@ -2356,8 +2501,18 @@ function animate(timestamp) {
   // The player keeps full speed through a hitstop freeze: only the world stops,
   // otherwise every landed hit stalls your movement for a moment.
   if (firstPerson) cameraYaw = fpYaw + Math.PI
-  player.update(input, cameraYaw, deltaSeconds)
-  if (!player.falling && !player.hidden && !isOnPlatform(player.position, ARENA_RADIUS)) {
+  const room = waterRoom()
+  stepWater(elapsedSeconds, deltaSeconds)
+  player.update(input, cameraYaw, deltaSeconds, room ? true : null)
+  if (room) {
+    // No edge to fall off: the pool wall / buoys hold you in. You ride the waves.
+    if (!player.falling && !player.hidden && clampToWater(player.position, PLAYER_RADIUS)) {
+      player.mesh.position.x = player.position.x
+      player.mesh.position.z = player.position.z
+      player.vel = { x: 0, z: 0 }
+    }
+    if (!player.falling) player.mesh.position.y = waterY(player.position.x, player.position.z, elapsedSeconds)
+  } else if (!player.falling && !player.hidden && !isOnPlatform(player.position, ARENA_RADIUS)) {
     player.startFalling()
   }
   if (player.falling && player.updateFalling(gameplayDelta, elapsedSeconds)) {
@@ -2386,6 +2541,7 @@ function animate(timestamp) {
     elapsedSeconds,
     hideLimit(),
   )
+  lastHidePrompt = Boolean(showPrompt)
   if (!wasHidden && player.hidden) sfx.play('podIn', { x: player.position.x, z: player.position.z })
   if (vacatedPod) {
     sfx.play('podOut', { x: vacatedPod.position.x, z: vacatedPod.position.z })
@@ -2465,6 +2621,8 @@ function animate(timestamp) {
     rifleSetup: riflePicks(sandboxProfile(), selectedWeaponId(game.inventory)),
     steady: steadyAim,
     autoAttack: autoShoot,
+    underwater: waterState.diving,
+    onReflect: (info) => reflectAttack(game, info),
     hitstop: game.hitstop,
     onMeleeHit: (id, at, from) => playHitFx(id, at, Math.atan2(at.x - from.x, at.z - from.z), weaponFxContext()),
   })
@@ -2499,6 +2657,7 @@ function animate(timestamp) {
   let bossDeathPoint = null
   monsters = monsters.filter((mesh) => {
     if (mesh.userData.spawning) {
+      if (room) mesh.position.y = waterY(mesh.position.x, mesh.position.z, elapsedSeconds)
       updateJelly(mesh, gameplayDelta, elapsedSeconds, { speed: 0, moveDir: mesh.userData.moveDir })
       updateFace3D(mesh, gameplayDelta, elapsedSeconds)
       return true
@@ -2550,7 +2709,21 @@ function animate(timestamp) {
     }
     updateMonsterHitReaction(mesh, gameplayDelta)
 
-    if (!isOnPlatform({ x: mesh.position.x, z: mesh.position.z }, ARENA_RADIUS)) {
+    if (room) {
+      // Swimmers ride the waves (and leap on top of that); the wall holds them in.
+      clampToWater(mesh.position, mesh.userData.radius)
+      const floatY = waterY(mesh.position.x, mesh.position.z, elapsedSeconds)
+      // Deep dwellers lurk far down (a dim shape under the water) until you dive to meet them.
+      const sunk = mesh.userData.deep && !waterState.diving
+      mesh.userData.sinkY = (mesh.userData.sinkY ?? floatY) + ((sunk ? -WATER.depth * 0.45 : floatY) - (mesh.userData.sinkY ?? floatY)) * Math.min(1, deltaSeconds * 4)
+      mesh.position.y = mesh.userData.sinkY + (mesh.userData.leapY ?? 0)
+    } else {
+      mesh.position.y = mesh.userData.leapY ?? 0
+    }
+    if (mesh.userData.arms) {
+      for (const { pivot, side } of mesh.userData.arms) pivot.rotation.z = side * (0.55 + (mesh.userData.leapY ?? 0) * 0.5)
+    }
+    if (!room && !isOnPlatform({ x: mesh.position.x, z: mesh.position.z }, ARENA_RADIUS)) {
       mesh.userData.falling = true
       mesh.userData.fallState = { velocityY: 0, fallenY: 0 }
       const fallPoint = { x: mesh.position.x, y: mesh.userData.radius, z: mesh.position.z }
@@ -2612,6 +2785,7 @@ function animate(timestamp) {
     particleSystem,
     hitstop: game.hitstop,
     arenaRadius: ARENA_RADIUS,
+    onReflect: (info) => reflectAttack(game, info),
     onTrail: (bullet) => playBulletTrail(bullet, weaponFxContext()),
     onHit: (bullet, mesh) => {
       playHitFx(bullet.weaponId, mesh.position, Math.atan2(bullet.vx, bullet.vz), weaponFxContext())
@@ -2785,8 +2959,10 @@ function animate(timestamp) {
   camera.lookAt(player.position.x, 1, player.position.z)
   if (firstPerson) {
     player.mesh.visible = false
-    camera.position.set(player.position.x, 1.5, player.position.z)
-    camera.lookAt(player.position.x + Math.sin(fpYaw) * 10, 1.35, player.position.z + Math.cos(fpYaw) * 10)
+    // Underwater the eye sits just above the swimmer's depth; on land it's head height.
+    const eye = room ? waterState.depthY + 0.9 : 1.5
+    camera.position.set(player.position.x, eye, player.position.z)
+    camera.lookAt(player.position.x + Math.sin(fpYaw) * 10, eye - 0.15, player.position.z + Math.cos(fpYaw) * 10)
   }
 
   const shakeOffset = updateShake(shake, deltaSeconds)

@@ -28,6 +28,7 @@ import { predictPosition, RANGED_ATTACKS, smoothVelocity } from './logic/enemies
 import { dampAngle } from './logic/smoothing.js'
 
 const INDICATOR_DURATION = 0.6
+const MIRROR_TURN_SCALE = 0.3 // how much of its usual turning a mirror enemy manages
 
 // The AI/combat fields a monster needs on top of the type/hp/radius
 // already set at spawn time (src/main.js) and the hit-reaction fields
@@ -50,7 +51,8 @@ export function createMonsterAIState(stats = {}) {
         const cfg = BOSS_SPECIALS[name]
         // A special with a long cooldown (summon) can name a short first
         // delay, so it still shows up early in a fight.
-        return [name, cfg.firstDelay != null ? cfg.firstDelay + Math.random() * 3 : cfg.interval * (0.55 + Math.random() * 0.35)]
+        const interval = stats.specialIntervals?.[name] ?? cfg.interval
+        return [name, cfg.firstDelay != null ? cfg.firstDelay + Math.random() * 3 : interval * (0.55 + Math.random() * 0.35)]
       }),
     ),
     // Shooters (bloater, spinner): time to the next shot, plus a smoothed
@@ -62,6 +64,7 @@ export function createMonsterAIState(stats = {}) {
     damageScale: 1,
     special: null,
     chargeRemaining: 0,
+    leapY: 0, // height above its float/ground level while leaping
     windUpElapsed: null,
     indicatorElapsed: null,
     speed: 0, // world units/second, for the jelly movement bulge
@@ -81,6 +84,17 @@ export function createMonsterAIState(stats = {}) {
 // open sundeck. With one set, monsters route around walls and can't see or
 // hit through them.
 let navigator = null
+// True while the player is on a water room's surface: the deep dwellers are then out of reach
+// (and can't see or hurt you). main.js sets it every frame.
+let deepShield = false
+export function setDeepShield(on) {
+  deepShield = on
+}
+// Out of reach right now: a deep dweller while you're not diving.
+export function isUntouchable(monster) {
+  return deepShield && monster.userData.deep === true
+}
+
 export function setMonsterNavigator(nav) {
   navigator = nav
 }
@@ -173,7 +187,7 @@ function beginSpecial(monster, ai, stats, name) {
     ai.chargeRemaining = cfg.duration
     return
   }
-  const radius = name === 'slam' ? cfg.radius : stats.radius + (cfg.radiusBonus ?? 0)
+  const radius = name === 'slam' || name === 'leap' ? cfg.radius : stats.radius + (cfg.radiusBonus ?? 0)
   ai.special = { name, phase: 'windup', remaining: cfg.windup, radius, tick: 0 }
 }
 
@@ -189,6 +203,12 @@ function fireSpecial(monster, ai, stats, player, obstacles, events) {
 
   if (name === 'spin') {
     ai.special = { ...ai.special, phase: 'active', remaining: cfg.duration, tick: 0 }
+    return
+  }
+  if (name === 'leap') {
+    // Jump to where the player is standing now; the arc is flown in stepBossSpecials.
+    const to = clampToPlatform({ x: player.position.x, z: player.position.z }, ARENA_RADIUS - MONSTER_PLATFORM_MARGIN)
+    ai.special = { name: 'leap', phase: 'air', remaining: cfg.duration, total: cfg.duration, from: { x, z }, to, radius: cfg.radius, damage: Math.round(damage * (ai.damageScale ?? 1)) }
     return
   }
   ai.special = null
@@ -230,7 +250,7 @@ function fireSpecial(monster, ai, stats, player, obstacles, events) {
 function stepBossSpecials(monster, ai, stats, player, obstacles, dt, events) {
   let speed = stats.speed
   const engaged = ai.state === 'chase' || ai.state === 'attack'
-  if (ai.special && !engaged) ai.special = null // lost the player (they hid): fizzle
+  if (ai.special && !engaged && ai.special.phase !== 'air') ai.special = null // lost the player (they hid): fizzle
   if (!ai.special && !engaged) ai.chargeRemaining = 0
 
   if (ai.special) {
@@ -243,6 +263,21 @@ function stepBossSpecials(monster, ai, stats, player, obstacles, dt, events) {
       jellyHit(monster, -MONSTER_ATTACK_WINDUP_INFLATE_RATE * dt)
       if (special.remaining <= 0) fireSpecial(monster, ai, stats, player, obstacles, events)
       ai.speed = 0
+    } else if (special.phase === 'air') {
+      // Mid-leap: slides from the take-off spot to the landing spot along an arc, then stomps.
+      const cfgLeap = BOSS_SPECIALS.leap
+      const t = Math.min(1, 1 - Math.max(0, special.remaining) / special.total)
+      monster.position.x = special.from.x + (special.to.x - special.from.x) * t
+      monster.position.z = special.from.z + (special.to.z - special.from.z) * t
+      ai.leapY = cfgLeap.height * Math.sin(Math.PI * t)
+      monster.rotation.y = dampAngle(monster.rotation.y, Math.atan2(special.to.x - special.from.x, special.to.z - special.from.z), MONSTER_FACING_DAMPING, dt)
+      ai.speed = stats.speed * 2
+      if (special.remaining <= 0) {
+        ai.leapY = 0
+        events.push({ type: 'slam', x: monster.position.x, z: monster.position.z, radius: special.radius, damage: special.damage })
+        jellyHit(monster, 0.7) // a squash on landing
+        ai.special = null
+      }
     } else {
       // Spinning: whirl in place-ish, creeping toward the player, and
       // hitting everything in range every tickInterval.
@@ -281,8 +316,16 @@ function stepBossSpecials(monster, ai, stats, player, obstacles, dt, events) {
     for (const name of stats.specials) {
       // A charge only makes sense while closing in, not once in melee range.
       if (name === 'charge' && ai.state !== 'chase') continue
-      const tick = stepSpecialTimer(ai.specialTimers[name], dt, BOSS_SPECIALS[name].interval)
+      const tick = stepSpecialTimer(ai.specialTimers[name], dt, stats.specialIntervals?.[name] ?? BOSS_SPECIALS[name].interval)
       ai.specialTimers[name] = tick.timer
+      // A leap only goes off when the player is within its reach; otherwise try again shortly.
+      if (tick.fire && name === 'leap') {
+        const distance = Math.hypot(player.position.x - monster.position.x, player.position.z - monster.position.z)
+        if (distance > BOSS_SPECIALS.leap.range || player.hidden) {
+          ai.specialTimers[name] = 0.2
+          continue
+        }
+      }
       if (tick.fire) {
         beginSpecial(monster, ai, stats, name)
         break
@@ -370,18 +413,19 @@ export function updateMonster(monster, player, obstacles, dt, now) {
     return { hitPlayer: false, events: [] }
   }
 
+  const yawAtStart = monster.rotation.y
   const monsterPos = { x: monster.position.x, z: monster.position.z }
   const distanceToPlayer = Math.hypot(
     player.position.x - monsterPos.x,
     player.position.z - monsterPos.z,
   )
-  let canSeePlayer = distanceToPlayer <= SIGHT_RANGE
+  let canSeePlayer = distanceToPlayer <= SIGHT_RANGE * (player.sightScale ?? 1) // a diver hides in the murk
   let perceivedDistance = distanceToPlayer
   if (navigator) {
     // Walls hide you from sight, but monsters hunt by sound/scent: anyone within
     // a few corridors comes looking. They can only strike what they can see.
     const clear = navigator.hasLineOfSight(monsterPos, player.position)
-    canSeePlayer = clear ? distanceToPlayer <= SIGHT_RANGE : navigator.pathCells(monsterPos, player.position) <= 3
+    canSeePlayer = clear ? distanceToPlayer <= SIGHT_RANGE * (player.sightScale ?? 1) : navigator.pathCells(monsterPos, player.position) <= 3
     if (!clear) perceivedDistance = Math.max(distanceToPlayer, 99)
   }
 
@@ -390,7 +434,7 @@ export function updateMonster(monster, player, obstacles, dt, now) {
     distanceToPlayer: perceivedDistance,
     playerPos: player.position,
     // Hiding in a pod and Ghost Form both make you unseen.
-    playerHidden: player.hidden === true || now < (player.ghostUntil ?? -Infinity),
+    playerHidden: player.hidden === true || now < (player.ghostUntil ?? -Infinity) || (deepShield && ai.deep === true),
   }
 
   const next = nextMonsterState(
@@ -469,7 +513,7 @@ export function updateMonster(monster, player, obstacles, dt, now) {
     monster.rotation.y = dampAngle(monster.rotation.y, Math.atan2(dx, dz), MONSTER_FACING_DAMPING, dt)
     ai.speed = 0
 
-    if (ai.attackCooldown.ready(now)) {
+    if (!stats.noMelee && ai.attackCooldown.ready(now)) {
       ai.windUpElapsed = (ai.windUpElapsed ?? 0) + dt
       // Feeds the jelly hit spring a little inflate every frame of the
       // telegraph, so the body visibly puffs up as it charges the hit;
@@ -485,6 +529,12 @@ export function updateMonster(monster, player, obstacles, dt, now) {
     } else {
       ai.windUpElapsed = null
     }
+  }
+
+  // A mirror is heavy to swing around: it turns slowly, so you can circle round to its unguarded back.
+  if (stats.reflect) {
+    const turned = monster.rotation.y - yawAtStart
+    monster.rotation.y = yawAtStart + Math.atan2(Math.sin(turned), Math.cos(turned)) * MIRROR_TURN_SCALE
   }
 
   ai.moveDir = { x: Math.sin(monster.rotation.y), z: Math.cos(monster.rotation.y) }

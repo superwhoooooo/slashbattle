@@ -53,7 +53,8 @@ record.
 - R — restart after losing
 - M — mute / unmute all sound, music and effects (remembered in `localStorage`)
 - F — open the nearest chest (costs crystals)
-- [ / ] — cycle the scope / ammo of the rifle in your hands (8 opens the Gunsmith)
+- [ / ] — cycle the scope / ammo of the rifle in your hands (J opens the Gunsmith)
+- Shift (or E with no suitcase near) — in a water room: dive / surface
 - 1-5 — pick a weapon from the hotbar (melee or firearm)
 - Q / Z / X / C / V — use your abilities, in the order you found them
 - 0 — toggle first-person view (pointer-locked mouse look; W moves along the view, every weapon aims where you look; Esc or 0 exits)
@@ -556,7 +557,7 @@ Only once you own everything does a chest pay out score and a heal ("LOADOUT FUL
   carry a rifle; they're kept in `profile.unlocked` and go onto the rifle in hand), picked per rifle in
   `profile.rifles` (`setRifleOption`: only unlocked ones). Gun levels (1-5: +12% damage, +1.5% crit, 4% faster)
   and ammo levels (1-5: effects 35% stronger) are bought with banked crystals (`buyRifleLevel`/`buyAmmoLevel`).
-  The hub's Gunsmith page (8) has picture chips for scopes / ammo (locked ones dashed) and the upgrade buttons;
+  The hub's Gunsmith page (J) has picture chips for scopes / ammo (locked ones dashed) and the upgrade buttons;
   `[` / `]` cycle the unlocked scope / ammo in a run.
 - **Abilities** (`ABILITIES`, keys Q Z X C V in pickup order, each on a
   cooldown shown on its slot): Blink, Shockwave, Heal Pulse, Bubble Shield,
@@ -604,3 +605,39 @@ Press G (or the Tutorial button) on the start card: no waves, god mode, and a ch
 
 ## Pet limit and pet upgrades
 You carry one pet at a time (`MAX_PETS` and the pet slot limits are 1, so the skill tree's pet-slot skill has no effect). Pets level up (1-5) with banked crystals on the Loadout page's Upgrade buttons (`logic/profile.js`'s `buyPetLevel`, `profile.pets`, cost `PET_UPGRADE_COST` x level). `items.js`'s `petBoost` (+30% power per level: damage, healing, magnet reach, guard reduction) and `petRate` (+8% speed per level) are applied in `pets.js`'s `updatePets` and `petEffects(ids, levels)`.
+
+## New enemies and boss versions
+`config.js` adds three regular enemies (weights in `logic/waves.js`): **hopper** (wave 4: a turquoise,
+bloater-shaped body with arms and legs, `accessory: 'limbs'`; no melee, its attack is the `leap` special:
+crouch, then a ballistic jump onto your spot that lands as a `slam` event, `monster.js`'s `stepBossSpecials`
+`air` phase, `leapY` is the height main.js adds to its y), **mirror** (wave 6: a mirror held in front,
+`accessory: 'mirror'`, `reflect: { halfArc }`; `logic/reflect.js`'s `isFrontHit` decides if a hit lands on
+the mirror: bullets (`bullets.js`) come back as an orb at you, a melee swing (`combat.js`) is blocked and
+bites you for `MELEE_REFLECT_DAMAGE`; it turns slowly (`MIRROR_TURN_SCALE`), so hit it from behind) and
+**glimmer** (wave 8: blinks next to you, the boss `blink` special on a regular enemy). Regular enemies can
+use the boss special machinery through `specials` and `specialIntervals` (per-type cooldown overrides) and
+`noMelee`. Every regular enemy also has a boss version in `logic/bosses.js` (Mega Blobbo, Zippy Zoomer,
+Grumpus Maximus, Duke Bloatsworth, Spinner Supreme, Splitzilla, Sir Reflectalot, King Hopalot, The Blinkmaster;
+16 bosses now, all appear before any repeat); `RANGED_ATTACKS.boss_bloater/boss_spinner` and
+`SPLITS.boss_splitter` give them their enemy's signature trick.
+
+## Water rooms
+Three `LEVELS` carry a `water` block (Pool Room, Pacific Ocean, Glowing Reef Aquarium) and follow bosses like
+the other places (also in the sandbox level list). `arena.js` swaps the deck and props for
+`src/waterArena.js`'s world: a rolling surface (vertices ride `logic/water.js`'s `waveHeight`, updated through
+`updateArena(arena, pos, time)`), a floor `WATER.depth` below, and per-style scenery. There is no edge to fall off:
+main.js's `clampToWater` keeps the player and monsters inside the wall / buoy ring, and swimmers (player and
+monsters) ride the waves (`waterY`). Swimming has momentum (`stepSwim`, `Player.update`'s `swim` argument) and
+hits shove farther (`setKnockbackWorldScale`). Shift (or E with no pod near) dives (`setDiving`): you go
+first person (`setFirstPerson`, mouse look, every weapon aims where you look), the fog/background turn to the
+room's `under` murk and the sky hides, monsters see you only `WATER.diveSightScale` as far (`player.sightScale`),
+shots are slower, and a limited breath (`stepBreath`, `src/waterUi.js`'s BREATH bar) runs down; at zero you are
+pushed up with a gasp (`Player.drown`). Surfacing after a real dive starts the ambush window. Esc surfaces too.
+
+## Deep dwellers (water rooms only)
+`angler` (a glowing lure), `urchin` (spikes, whirls) and `eel` (fast, dashes) have `deep: true` in `config.js`.
+In a water room main.js swaps `DEEP_SPAWN_CHANCE` of each wave's arrivals for one (`logic/enemies.js`'s
+`pickDeepType`), and a wave only clears once they're dead. While the player is on the surface `monster.js`'s
+`setDeepShield(true)` makes them untouchable (`isUntouchable`: `damageMonster`, melee and bullets all skip them),
+blind to you (they count you as hidden) and sunk out of sight; dive and they rise to your depth and fight.
+The BREATH bar warns "SOMETHING LURKS BELOW" while any are alive. On dry rooms (e.g. the sandbox) they are normal enemies.
