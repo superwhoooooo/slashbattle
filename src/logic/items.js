@@ -131,12 +131,12 @@ export const ABILITY_KEYS = ['KeyQ', 'KeyZ', 'KeyX', 'KeyC', 'KeyV', 'KeyG', 'Ke
 export const HOTBAR_KEYS = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5']
 export const HOTBAR_SLOTS = HOTBAR_KEYS.length
 export const ABILITY_SLOTS = 5 // the starting number (the skill tree can add more, up to MAX_SLOTS)
-export const MAX_PETS = 5
+export const MAX_PETS = 1
 
 // How many power-ups / pets / abilities you can hold. The base counts grow with the
 // skill tree's slot skills (set by main.js through setSlotBonuses, saved per device).
-export const BASE_SLOTS = { powerups: 3, pets: 5, abilities: 5 }
-export const MAX_SLOTS = { powerups: 6, pets: 8, abilities: 7 }
+export const BASE_SLOTS = { powerups: 3, pets: 1, abilities: 5 }
+export const MAX_SLOTS = { powerups: 6, pets: 1, abilities: 7 }
 export const SLOT_LIMITS = { ...BASE_SLOTS }
 export function setSlotBonuses({ powerups = 0, pets = 0, abilities = 0 } = {}) {
   const bonus = { powerups, pets, abilities }

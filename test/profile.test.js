@@ -117,20 +117,20 @@ describe('skills', () => {
 describe('slot limits', () => {
   it('grow with the slot skills, capped, and reset', () => {
     setSlotBonuses({ powerups: 3, pets: 3, abilities: 2 })
-    expect(SLOT_LIMITS).toEqual({ powerups: 6, pets: 8, abilities: 7 })
+    expect(SLOT_LIMITS).toEqual({ powerups: 6, pets: 1, abilities: 7 })
     setSlotBonuses({ powerups: 99, pets: 99, abilities: 99 })
     expect(SLOT_LIMITS).toEqual(MAX_SLOTS)
     setSlotBonuses({})
     expect(SLOT_LIMITS).toEqual(BASE_SLOTS)
   })
 
-  it('lets a bigger loadout hold more pets', () => {
-    let p = addToCollection(createProfile(), ['sparky', 'ember', 'bolt', 'comet', 'whirl', 'zoom'])
-    setSlotBonuses({ pets: 1 })
-    for (const id of ['sparky', 'ember', 'bolt', 'comet', 'whirl', 'zoom']) p = toggleLoadoutPet(p, id).profile
-    expect(activeLoadoutPets(p)).toHaveLength(6)
+  it('holds at most one pet, whatever the slot bonus', () => {
+    let p = addToCollection(createProfile(), ['sparky', 'ember', 'bolt'])
+    setSlotBonuses({ pets: 5 })
+    for (const id of ['sparky', 'ember', 'bolt']) p = toggleLoadoutPet(p, id).profile
+    expect(activeLoadoutPets(p)).toHaveLength(1)
     setSlotBonuses({})
-    expect(activeLoadoutPets(p)).toHaveLength(MAX_PETS)
+    expect(MAX_PETS).toBe(1)
   })
 })
 
