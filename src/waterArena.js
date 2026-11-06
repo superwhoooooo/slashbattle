@@ -78,13 +78,15 @@ export function createWaterWorld(level) {
   }
   const surface = new THREE.Mesh(
     surfaceGeometry,
-    new THREE.MeshPhysicalMaterial({
+    // Rough, no clearcoat: a glossy flat-shaded sheet this big throws sun glints far above the
+    // bloom threshold as the waves move, and the bloom pass turns those into white screen flashes.
+    new THREE.MeshStandardMaterial({
       color: cfg.surface.color,
       transparent: true,
       opacity: cfg.surface.opacity,
-      roughness: 0.3,
-      metalness: 0.05,
-      clearcoat: 0.25,
+      roughness: 0.75,
+      metalness: 0,
+      envMapIntensity: 0.4,
       side: THREE.DoubleSide,
       flatShading: true,
       depthWrite: false,
@@ -111,7 +113,7 @@ export function createWaterWorld(level) {
     const wallMaterial =
       style === 'pool'
         ? new THREE.MeshStandardMaterial({ map: createTexture('pool', { floor: { color: cfg.wall.color } }, 40), roughness: 0.6, side: THREE.DoubleSide })
-        : new THREE.MeshPhysicalMaterial({ color: cfg.wall.color, transparent: true, opacity: 0.16, roughness: 0.05, side: THREE.DoubleSide, depthWrite: false })
+        : new THREE.MeshStandardMaterial({ color: cfg.wall.color, transparent: true, opacity: 0.16, roughness: 0.6, envMapIntensity: 0.3, side: THREE.DoubleSide, depthWrite: false })
     const wall = new THREE.Mesh(new THREE.CylinderGeometry(R + 0.6, R + 0.6, wallHeight, 72, 1, true), wallMaterial)
     wall.position.y = floorY + wallHeight / 2
     wall.renderOrder = style === 'reef' ? 3 : 0

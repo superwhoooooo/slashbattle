@@ -32,6 +32,21 @@ function ensureStage() {
   camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 50)
 }
 
+// The icon stage is a second WebGL context; browsers cap those and a lost one can blank the main
+// game, so give it back shortly after the last icon is drawn (the data URLs are cached).
+let releaseTimer = 0
+function scheduleRelease() {
+  clearTimeout(releaseTimer)
+  releaseTimer = setTimeout(() => {
+    if (!renderer) return
+    renderer.dispose()
+    renderer.forceContextLoss()
+    renderer = null
+    scene = null
+    camera = null
+  }, 1500)
+}
+
 // Renders `object` (centered and scaled to fit) and returns a data URL.
 function snapshot(object, { tilt = 0, yaw = 0, pitch = 0.35 } = {}) {
   ensureStage()
@@ -60,6 +75,7 @@ function snapshot(object, { tilt = 0, yaw = 0, pitch = 0.35 } = {}) {
   renderer.render(scene, camera)
   const url = renderer.domElement.toDataURL('image/png')
   scene.remove(frame)
+  scheduleRelease()
   return url
 }
 

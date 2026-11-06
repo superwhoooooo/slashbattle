@@ -262,6 +262,12 @@ renderer.toneMappingExposure = TONE_MAPPING_EXPOSURE * loadBrightness()
 renderer.outputColorSpace = THREE.SRGBColorSpace
 container.appendChild(renderer.domElement)
 renderer.domElement.style.display = 'block'
+// If the browser drops the GPU context (memory pressure, a second context, a driver reset) the
+// canvas goes blank/white: stop it from being permanently dead and reload to recover cleanly.
+renderer.domElement.addEventListener('webglcontextlost', (event) => {
+  event.preventDefault()
+  setTimeout(() => location.reload(), 800)
+})
 // Phones draw far fewer pixels, so keep sparks proportional to the screen there.
 function syncParticleScale() {
   setParticleViewScale(touchDevice ? Math.min(1, renderer.domElement.height / 1800) : 1)

@@ -107,6 +107,7 @@ export function createWarp(camera) {
         const cx = projected.x * 0.5 + 0.5
         const cy = projected.y * 0.5 + 0.5
         const edgeProjected = new THREE.Vector3(zone.x, 0.4, zone.z).addScaledVector(right, zone.radius).project(camera)
+        if (projected.z > 1) return // behind the camera (first person dive): the projection is garbage
         const screenRadius = Math.hypot((edgeProjected.x - projected.x) * 0.5 * aspect, (edgeProjected.y - projected.y) * 0.5)
         let radius = screenRadius
         let strength
@@ -117,6 +118,7 @@ export function createWarp(camera) {
         } else {
           strength = swirlStrength(zone.age, zone.life)
         }
+        if (![cx, cy, radius, strength].every(Number.isFinite)) return // a NaN here would bloom to white
         uZones.value[i].set(cx, cy, radius, strength)
         uKinds.value[i] = zone.kind === 'ripple' ? 2 : 1
       })
