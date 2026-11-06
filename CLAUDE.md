@@ -585,3 +585,6 @@ Skill tree look: `src/skillIcons.js` draws each node as a monochrome SVG line ic
 
 ## Tutorial mode
 Press G (or the Tutorial button) on the start card: no waves, god mode, and a checklist card (`src/tutorial.js`) driven by `src/logic/tutorial.js`'s `TUTORIAL_STEPS` (move, swing, kill a practice Blobbo, hide in a suitcase, open a free chest). `main.js`'s `tutorialEvent` feeds events in (`scoreKill`, `openChestNow`, the swing start, `stepTutorial` for movement/hiding); `freePlay()` is `sandbox || tutorial` wherever waves are skipped.
+
+## Pet limit and pet upgrades
+You carry one pet at a time (`MAX_PETS` and the pet slot limits are 1, so the skill tree's pet-slot skill has no effect). Pets level up (1-5) with banked crystals on the Loadout page's Upgrade buttons (`logic/profile.js`'s `buyPetLevel`, `profile.pets`, cost `PET_UPGRADE_COST` x level). `items.js`'s `petBoost` (+30% power per level: damage, healing, magnet reach, guard reduction) and `petRate` (+8% speed per level) are applied in `pets.js`'s `updatePets` and `petEffects(ids, levels)`.

@@ -3,7 +3,7 @@
 // ever found (the collection), three loadouts of starting pets, and the levels
 // bought with banked crystals (skill tree + power-up upgrades). Every function
 // returns a NEW profile. src/profile.js saves it in localStorage.
-import { MAX_SLOTS, PETS, POWERUPS, SLOT_LIMITS } from './items.js'
+import { MAX_SLOTS, PETS, PET_MAX_LEVEL, POWERUPS, SLOT_LIMITS, petLevel, petUpgradeCost } from './items.js'
 import { POWERUP_MAX_LEVEL, SKILLS, powerupLevel, powerupUpgradeCost, skillLevel, skillState, skillsSpent } from './skills.js'
 
 // The first version of the skill tree (before the ARC Raiders-style one): its nodes' base cost,
@@ -30,6 +30,7 @@ export function createProfile() {
     activeLoadout: 0,
     skills: {}, // skill id -> level
     powerups: {}, // power-up id -> level (absent = 1)
+    pets: {}, // pet id -> level (absent = 1)
   }
 }
 
@@ -58,6 +59,11 @@ export function normalizeProfile(raw) {
     const level = Math.min(count(raw.powerups?.[id]), POWERUP_MAX_LEVEL)
     if (level > 1) powerups[id] = level
   }
+  const pets = {}
+  for (const id of Object.keys(PETS)) {
+    const level = Math.min(count(raw.pets?.[id]), PET_MAX_LEVEL)
+    if (level > 1) pets[id] = level
+  }
   return {
     version: PROFILE_VERSION,
     bank: count(raw.bank) + (oldTree ? legacyRefund(raw.skills) : 0),
@@ -66,6 +72,7 @@ export function normalizeProfile(raw) {
     activeLoadout: Number.isInteger(raw.activeLoadout) && raw.activeLoadout >= 0 && raw.activeLoadout < LOADOUT_SLOTS ? raw.activeLoadout : 0,
     skills,
     powerups,
+    pets,
   }
 }
 
@@ -127,6 +134,17 @@ export function buyPowerupLevel(profile, id) {
   if (cost === null) return { profile, ok: false, reason: 'Maxed out' }
   if (profile.bank < cost) return { profile, ok: false, reason: 'Not enough banked crystals' }
   return { profile: { ...profile, bank: profile.bank - cost, powerups: { ...profile.powerups, [id]: level + 1 } }, ok: true, reason: null }
+}
+
+// Buys the next level of a collected pet: { profile, ok, reason }.
+export function buyPetLevel(profile, id) {
+  if (!PETS[id]) return { profile, ok: false, reason: 'Unknown pet' }
+  if (!profile.collection.includes(id)) return { profile, ok: false, reason: 'Find this pet first' }
+  const level = petLevel(profile.pets, id)
+  const cost = petUpgradeCost(level)
+  if (cost === null) return { profile, ok: false, reason: 'Maxed out' }
+  if (profile.bank < cost) return { profile, ok: false, reason: 'Not enough banked crystals' }
+  return { profile: { ...profile, bank: profile.bank - cost, pets: { ...profile.pets, [id]: level + 1 } }, ok: true, reason: null }
 }
 
 export { skillLevel }

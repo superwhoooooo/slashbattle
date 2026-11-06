@@ -5,7 +5,7 @@
 import * as THREE from 'three'
 import { createPetModel, createSaber, createThrown } from './petModels.js'
 import { damageMonster } from './combat.js'
-import { PETS } from './logic/items.js'
+import { PETS, petBoost, petLevel, petRate } from './logic/items.js'
 import { dampAngle } from './logic/smoothing.js'
 import { burst } from './particles.js'
 import { hasWallLineOfSight } from './monster.js'
@@ -118,9 +118,14 @@ function disposeTree(object) {
 }
 
 // Moves every pet around the player and runs its behavior for one tick.
-export function updatePets(pets, { petDamage = 1, dt, elapsed, player, monsters, obstacles, particleSystem, hitstop }) {
+export function updatePets(pets, { petDamage = 1, levels = {}, dt, elapsed, player, monsters, obstacles, particleSystem, hitstop }) {
   const count = pets.length
-  for (const pet of pets) pet.damageMult = petDamage
+  for (const pet of pets) {
+    const level = petLevel(levels, pet.def.id)
+    pet.boost = petBoost(level)
+    pet.rate = petRate(level)
+    pet.damageMult = petDamage * pet.boost
+  }
   for (const pet of pets) stepSabers(pet, dt, monsters, obstacles, particleSystem, hitstop)
   pets.forEach((pet, index) => {
     const { def, mesh } = pet
@@ -155,7 +160,7 @@ export function updatePets(pets, { petDamage = 1, dt, elapsed, player, monsters,
       if (pet.timer > 0) return
       const target = nearestTarget(monsters, mesh.position.x, mesh.position.z, def.range)
       if (!target) return
-      pet.timer = def.interval
+      pet.timer = def.interval / (pet.rate ?? 1)
       const from = { x: mesh.position.x, y: mesh.position.y + 0.3, z: mesh.position.z }
       const to = { x: target.position.x, y: target.position.y + 0.8, z: target.position.z }
       // A streak of sparks from the pet to the target reads as a zap.
@@ -176,7 +181,7 @@ export function updatePets(pets, { petDamage = 1, dt, elapsed, player, monsters,
       if (pet.timer > 0) return
       const target = nearestTarget(monsters, mesh.position.x, mesh.position.z, def.range)
       if (!target) return
-      pet.timer = def.interval
+      pet.timer = def.interval / (pet.rate ?? 1)
       throwSaber(pet, target)
     } else if (def.kind === 'pulse') {
       pet.timer -= dt
@@ -190,7 +195,7 @@ export function updatePets(pets, { petDamage = 1, dt, elapsed, player, monsters,
           hasWallLineOfSight(mesh.position, monster.position),
       )
       if (inReach.length === 0) return
-      pet.timer = def.interval
+      pet.timer = def.interval / (pet.rate ?? 1)
       burst(particleSystem, { x: mesh.position.x, y: 0.5, z: mesh.position.z }, def.color, 14, def.radius * 1.3)
       for (const target of inReach) {
         damageMonster(target, def.damage * (pet.damageMult ?? 1), {
@@ -206,8 +211,8 @@ export function updatePets(pets, { petDamage = 1, dt, elapsed, player, monsters,
       pet.timer -= dt
       if (pet.timer > 0) return
       if (player.hp >= player.maxHp) return
-      pet.timer = def.interval
-      player.hp = Math.min(player.maxHp, player.hp + def.amount)
+      pet.timer = def.interval / (pet.rate ?? 1)
+      player.hp = Math.min(player.maxHp, player.hp + def.amount * (pet.boost ?? 1))
       burst(particleSystem, { x: player.position.x, y: 1, z: player.position.z }, HEAL_COLOR, 6, 1.5, 1)
     }
   })

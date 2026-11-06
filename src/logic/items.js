@@ -148,13 +148,26 @@ export const BASE_MAGNET_RADIUS = 3.2
 // What the owned pets add up to: the crystal-pull radius (a magnet pet
 // widens it) and the multiplier on damage you take (guard pets, each
 // shaving off their share but never below a 40% floor).
-export function petEffects(petIds) {
+// Pet levels (bought with banked crystals in the hub, kept in the profile): each level past 1 adds
+// PET_LEVEL_BOOST to the pet's power (damage, healing, magnet reach, damage reduction) and
+// PET_LEVEL_RATE to how fast it acts.
+export const PET_MAX_LEVEL = 5
+export const PET_UPGRADE_COST = 30 // times the current level
+export const PET_LEVEL_BOOST = 0.3
+export const PET_LEVEL_RATE = 0.08
+export const petLevel = (levels, id) => Math.max(1, Math.min(PET_MAX_LEVEL, Math.floor(levels?.[id] ?? 1)))
+export const petBoost = (level) => 1 + PET_LEVEL_BOOST * (Math.max(1, level) - 1)
+export const petRate = (level) => 1 + PET_LEVEL_RATE * (Math.max(1, level) - 1)
+export const petUpgradeCost = (level) => (level >= PET_MAX_LEVEL ? null : PET_UPGRADE_COST * level)
+
+export function petEffects(petIds, levels = {}) {
   let magnetRadius = BASE_MAGNET_RADIUS
   let damageTakenMultiplier = 1
   for (const id of petIds) {
     const pet = PETS[id]
-    if (pet.kind === 'magnet') magnetRadius = Math.max(magnetRadius, pet.radius)
-    if (pet.kind === 'guard') damageTakenMultiplier *= 1 - pet.reduction
+    const boost = petBoost(petLevel(levels, id))
+    if (pet.kind === 'magnet') magnetRadius = Math.max(magnetRadius, pet.radius * boost)
+    if (pet.kind === 'guard') damageTakenMultiplier *= 1 - Math.min(0.6, pet.reduction * boost)
   }
   // Pets no longer buff the player's own stats (they fight instead), so the
   // weapon / speed / loot multipliers are always neutral.

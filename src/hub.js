@@ -5,7 +5,7 @@
 import { iconImg } from './icons.js'
 import { skillIconSvg } from './skillIcons.js'
 import * as actions from './logic/profile.js'
-import { PETS, POWERUPS, SLOT_LIMITS, powerupEffects } from './logic/items.js'
+import { PETS, PET_MAX_LEVEL, POWERUPS, SLOT_LIMITS, petBoost, petLevel, petUpgradeCost, powerupEffects } from './logic/items.js'
 import {
   POWERUP_MAX_LEVEL,
   SKILLS,
@@ -86,6 +86,11 @@ const CSS = `
 .hub-pet { font: inherit; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 4px; border-radius: 12px; border: 2px solid transparent; background: #fff; cursor: pointer; color: var(--ink, #1a2433); }
 .hub-pet img { width: 56px; height: 56px; }
 .hub-pet .nm { font-size: 11px; font-weight: 800; }
+.hub-petwrap { display: flex; flex-direction: column; gap: 4px; }
+.hub-pet .lv { font-size: 10px; font-weight: 700; color: var(--teal, #19b5a5); }
+.hub-petup { font: inherit; font-size: 10px; font-weight: 800; padding: 3px 4px; border-radius: 8px; border: 1px solid var(--teal, #19b5a5); background: #fff; color: var(--teal, #19b5a5); cursor: pointer; }
+.hub-petup:hover:not(:disabled) { background: var(--teal, #19b5a5); color: #fff; }
+.hub-petup:disabled { opacity: 0.45; cursor: default; }
 .hub-pet.in { border-color: var(--teal, #19b5a5); background: #e6faf7; }
 .hub-pet.locked { cursor: default; opacity: 0.55; }
 .hub-pet.locked img { filter: brightness(0) opacity(0.4); }
@@ -356,7 +361,7 @@ export function createHub({ getProfile, setProfile, getRun, onBank, onOpenChange
       const cell = el('div', `cell${id ? ' full' : ''}`)
       if (id) {
         cell.appendChild(iconImg('pet', id))
-        cell.title = `${PETS[id].name} (click to remove)`
+        cell.title = `${PETS[id].name} Lv ${petLevel(profile.pets, id)} (click to remove)`
         cell.addEventListener('click', () => act(api.togglePet(id)))
       } else cell.textContent = 'empty'
       team.appendChild(cell)
@@ -368,7 +373,7 @@ export function createHub({ getProfile, setProfile, getRun, onBank, onOpenChange
   function loadoutPage(profile) {
     const wrap = loadoutStrip(profile)
     const active = profile.loadouts[profile.activeLoadout]
-    wrap.appendChild(el('p', 'hub-note', `These pets join you at the start of every run (changes apply from your next run). Collected ${profile.collection.length}/${Object.keys(PETS).length}: find new pets in chests.`))
+    wrap.appendChild(el('p', 'hub-note', `This pet joins you at the start of every run (changes apply from your next run). Spend banked crystals on Upgrade to make a pet stronger and quicker for good. Collected ${profile.collection.length}/${Object.keys(PETS).length}: find new pets in chests.`))
 
     const grid = el('div', 'hub-pets')
     for (const pet of Object.values(PETS)) {
@@ -378,8 +383,23 @@ export function createHub({ getProfile, setProfile, getRun, onBank, onOpenChange
       b.title = have ? pet.blurb : 'Not found yet'
       b.appendChild(iconImg('pet', pet.id))
       b.appendChild(el('span', 'nm', have ? pet.name : '???'))
-      if (have) b.addEventListener('click', () => act(api.togglePet(pet.id)))
-      grid.appendChild(b)
+      const level = petLevel(profile.pets, pet.id)
+      if (have) {
+        b.appendChild(el('span', 'lv', level >= PET_MAX_LEVEL ? `Lv ${level} MAX` : `Lv ${level}`))
+        b.title = `${pet.blurb}\nLevel ${level}: ${Math.round((petBoost(level) - 1) * 100)}% stronger`
+        b.addEventListener('click', () => act(api.togglePet(pet.id)))
+      }
+      const cell = el('div', 'hub-petwrap')
+      cell.appendChild(b)
+      if (have) {
+        const cost = petUpgradeCost(level)
+        const up = el('button', 'hub-petup', cost === null ? 'MAX' : `Upgrade ${cost} ◆`)
+        up.type = 'button'
+        up.disabled = cost === null || profile.bank < cost
+        up.addEventListener('click', () => act(api.upgradePet(pet.id)))
+        cell.appendChild(up)
+      }
+      grid.appendChild(cell)
     }
     wrap.appendChild(grid)
     return wrap
@@ -400,6 +420,7 @@ export function createHub({ getProfile, setProfile, getRun, onBank, onOpenChange
     buySkill: (id) => actions.buySkill(getProfile(), id),
     respec: () => ({ profile: actions.respecSkills(getProfile()), ok: true }),
     upgradePowerup: (id) => actions.buyPowerupLevel(getProfile(), id),
+    upgradePet: (id) => actions.buyPetLevel(getProfile(), id),
     togglePet: (id) => actions.toggleLoadoutPet(getProfile(), id),
     setActive: (i) => actions.setActiveLoadout(getProfile(), i),
     isOpen: () => open,

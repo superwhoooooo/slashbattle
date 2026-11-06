@@ -2277,7 +2277,7 @@ function animate(timestamp) {
     : WEAPONS[selectedWeaponId(game.inventory)].gun
       ? mouseAimAngle(player)
       : null
-  const petFx = petEffects(game.inventory.pets)
+  const petFx = petEffects(game.inventory.pets, profile.pets)
   const perk = activeFx(game.inventory.equipped)
   // Skill-tree vitals: max HP (a raise heals by the same amount) and longer i-frames.
   const wantMaxHp = Math.round(PLAYER_MAX_HP + perk.maxHp)
@@ -2562,7 +2562,7 @@ function animate(timestamp) {
   }
   player.updateStatusEffects(elapsedSeconds)
   if (perk.regen > 0 && player.hp > 0) player.hp = Math.min(player.maxHp, player.hp + perk.regen * gameplayDelta)
-  updatePets(game.pets, { petDamage: perk.petDamage, dt: gameplayDelta, elapsed: elapsedSeconds, player, monsters: game.monsters, obstacles, particleSystem, hitstop: game.hitstop })
+  updatePets(game.pets, { petDamage: perk.petDamage, levels: profile.pets, dt: gameplayDelta, elapsed: elapsedSeconds, player, monsters: game.monsters, obstacles, particleSystem, hitstop: game.hitstop })
   const collected = updateCrystals(crystalSystem, gameplayDelta, elapsedSeconds, player.position.x, player.position.z, petFx.magnetRadius * perk.magnet)
   if (collected > 0) {
     game.inventory = addCrystals(game.inventory, Math.max(1, Math.round(collected * petFx.crystalMultiplier * perk.crystal)))
