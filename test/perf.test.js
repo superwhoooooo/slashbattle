@@ -1,18 +1,28 @@
 import { describe, expect, it } from 'vitest'
-import { adaptiveDecision, frameStats, menuFrameDue, nextPixelRatio, parseFpsCap, shouldRenderFrame, trimmedMean } from '../src/logic/perf.js'
+import { adaptiveDecision, frameStats, estimateDisplayInterval, framesPerRender, menuFrameDue, nextPixelRatio, parseFpsCap, trimmedMean } from '../src/logic/perf.js'
 import { QUALITY_PRESETS } from '../src/config.js'
 
-describe('shouldRenderFrame', () => {
-  it('renders the first frame and when uncapped', () => {
-    expect(shouldRenderFrame(10, null, 60)).toBe(true)
-    expect(shouldRenderFrame(10, 9, 0)).toBe(true)
+describe('framesPerRender', () => {
+  it('renders every display frame when the cap matches or exceeds the refresh rate, or is off', () => {
+    expect(framesPerRender(16.67, 60)).toBe(1)
+    expect(framesPerRender(16.67, 0)).toBe(1)
+    expect(framesPerRender(0, 60)).toBe(1) // no estimate yet
   })
-  it('skips a 120 Hz in-between frame and renders the next', () => {
-    expect(shouldRenderFrame(8.33, 0, 60)).toBe(false)
-    expect(shouldRenderFrame(16.67, 0, 60)).toBe(true)
+  it('renders every Nth frame on faster displays or lower caps', () => {
+    expect(framesPerRender(8.33, 60)).toBe(2) // 120 Hz
+    expect(framesPerRender(16.67, 30)).toBe(2)
+    expect(framesPerRender(8.33, 30)).toBe(4)
+    expect(framesPerRender(6.94, 60)).toBe(2) // 144 Hz -> 72 fps, closest whole divisor
   })
-  it('does not skip 60 Hz frames with jitter', () => {
-    expect(shouldRenderFrame(16.0, 0, 60)).toBe(true)
+})
+
+describe('estimateDisplayInterval', () => {
+  it('is the median of jittery 60 Hz deltas, ignoring stalls', () => {
+    const deltas = [16.6, 14.9, 18.4, 16.7, 15.1, 18.2, 16.6, 16.8, 400, 16.5]
+    expect(estimateDisplayInterval(deltas)).toBeCloseTo(16.6, 0)
+  })
+  it('needs a few samples first', () => {
+    expect(estimateDisplayInterval([16.7, 16.7])).toBe(0)
   })
 })
 

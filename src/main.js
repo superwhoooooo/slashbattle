@@ -242,7 +242,7 @@ import { createPopupPool, resetPopups, showPopup, updatePopups } from './popups.
 import { createSpawnEffect, updateSpawnEffect } from './spawner.js'
 import { clearSwingTrail, createSwingTrail } from './trail.js'
 
-import { ADAPTIVE_FPS_RETRY_MAX_SECONDS, ADAPTIVE_FPS_RETRY_SECONDS, ADAPTIVE_MIN_RATIO, ADAPTIVE_RETRY_SECONDS, ADAPTIVE_WINDOW_SECONDS, adaptiveDecision, menuFrameDue, parseFpsCap, shouldRenderFrame, trimmedMean } from './logic/perf.js'
+import { ADAPTIVE_FPS_RETRY_MAX_SECONDS, ADAPTIVE_FPS_RETRY_SECONDS, ADAPTIVE_MIN_RATIO, ADAPTIVE_RETRY_SECONDS, ADAPTIVE_WINDOW_SECONDS, adaptiveDecision, estimateDisplayInterval, framesPerRender, menuFrameDue, parseFpsCap, trimmedMean } from './logic/perf.js'
 import { createPerfOverlay } from './perf.js'
 
 const container = document.querySelector('#app')
@@ -2450,8 +2450,24 @@ let adaptiveSettleUntil = -Infinity
 // nothing about gameplay cost, so they're left out of the adaptive measurement.
 let menuFrame = false
 
+// Frame cap bookkeeping (see framesPerRender): recent raw rAF deltas give the display's refresh
+// interval; every Nth display frame is rendered.
+const rafDeltas = []
+let lastRafAt = null
+let displayFrameCount = 0
+
 function animate(timestamp) {
-  if (!shouldRenderFrame(timestamp, lastRenderedAt, fpsCap)) return
+  if (lastRafAt !== null) {
+    rafDeltas.push(timestamp - lastRafAt)
+    if (rafDeltas.length > 60) rafDeltas.shift()
+  }
+  lastRafAt = timestamp
+  const everyN = framesPerRender(estimateDisplayInterval(rafDeltas), fpsCap)
+  displayFrameCount++
+  // A long stall (hidden tab, breakpoint) restarts the count so the next frame renders at once.
+  if (lastRenderedAt !== null && timestamp - lastRenderedAt > 250) displayFrameCount = everyN
+  if (lastRenderedAt !== null && displayFrameCount < everyN) return
+  displayFrameCount = 0
   const interval = lastRenderedAt === null ? 0 : timestamp - lastRenderedAt
   lastRenderedAt = timestamp
   if (perf) {

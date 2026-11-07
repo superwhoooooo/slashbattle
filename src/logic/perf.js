@@ -2,9 +2,6 @@
 // and the adaptive pixel-ratio step. No Three.js / DOM so they can be unit tested.
 
 export const DEFAULT_FPS_CAP = 60
-// A frame is skipped when less than this fraction of the target interval has passed since the last
-// rendered one. Slightly under 1 so a 60 Hz display (16.6 ms +- jitter) never skips every other frame.
-const CAP_SLACK = 0.93
 
 // Parses ?fps=N: a positive number caps at N, 0 means uncapped, anything else falls back to 60.
 export function parseFpsCap(value, fallback = DEFAULT_FPS_CAP) {
@@ -14,10 +11,25 @@ export function parseFpsCap(value, fallback = DEFAULT_FPS_CAP) {
   return n
 }
 
-// True when this frame should be rendered. `fpsCap` 0 (or less) never skips.
-export function shouldRenderFrame(now, lastRenderedAt, fpsCap) {
-  if (!(fpsCap > 0) || lastRenderedAt === null || lastRenderedAt === undefined) return true
-  return now - lastRenderedAt >= (1000 / fpsCap) * CAP_SLACK
+// The frame cap counts display frames rather than comparing timestamps: rAF timestamps jitter by a
+// couple of ms, so a "skip if under ~15.5 ms" rule on a 60 Hz screen threw away real frames and
+// left 33 ms gaps (48-54 fps with stutter while rAF itself ran a steady 60). Instead, estimate the
+// display's refresh interval and render every Nth display frame.
+
+// Display frames per rendered frame for an fps cap: 60 cap on 60 Hz -> 1, on 120 Hz -> 2; 30 cap
+// on 60 Hz -> 2. `fpsCap` 0 (or less) means uncapped -> 1.
+export function framesPerRender(displayIntervalMs, fpsCap) {
+  if (!(fpsCap > 0) || !(displayIntervalMs > 0)) return 1
+  return Math.max(1, Math.round(1000 / fpsCap / displayIntervalMs))
+}
+
+// Refresh-interval estimate: the median of recent rAF deltas (robust to jitter and the odd long
+// frame). Returns 0 until there are enough samples.
+export function estimateDisplayInterval(deltas) {
+  const usable = deltas.filter((d) => d > 2 && d < 100)
+  if (usable.length < 8) return 0
+  const sorted = [...usable].sort((a, b) => a - b)
+  return sorted[sorted.length >> 1]
 }
 
 // Summary of an array of frame times in ms: { avg, p95, max }.
