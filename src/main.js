@@ -242,6 +242,9 @@ import { createPopupPool, resetPopups, showPopup, updatePopups } from './popups.
 import { createSpawnEffect, updateSpawnEffect } from './spawner.js'
 import { clearSwingTrail, createSwingTrail } from './trail.js'
 
+import { ADAPTIVE_FPS_RETRY_MAX_SECONDS, ADAPTIVE_FPS_RETRY_SECONDS, ADAPTIVE_MIN_RATIO, ADAPTIVE_RETRY_SECONDS, ADAPTIVE_WINDOW_SECONDS, adaptiveDecision, menuFrameDue, parseFpsCap, shouldRenderFrame, trimmedMean } from './logic/perf.js'
+import { createPerfOverlay } from './perf.js'
+
 const container = document.querySelector('#app')
 
 // Phones and tablets get touch controls and a lighter render (a lower pixel
@@ -251,11 +254,15 @@ const PIXEL_RATIO_CAP = touchDevice ? Math.min(MAX_PIXEL_RATIO, 2) : MAX_PIXEL_R
 // Some machines refuse a context with the fancy options (a busy or software-only GPU, too many
 // open WebGL tabs), so try progressively plainer ones before giving up with a readable message.
 function createRendererWithFallback() {
+  // The canvas itself needs no antialiasing: everything is drawn through the composer's own
+  // multisampled target, so a multisampled default framebuffer is pure extra fill and resolve.
+  // ?gpu=low|high picks the GPU on dual-GPU laptops (A/B switch for heat vs speed).
+  const gpuParam = new URLSearchParams(location.search).get('gpu')
+  const preferred = gpuParam === 'low' ? 'low-power' : 'high-performance'
   const attempts = isTouchDevice()
     ? [{ antialias: false }, { antialias: false, powerPreference: 'low-power' }, { antialias: true }]
     : [
-        { antialias: true, powerPreference: 'high-performance' },
-        { antialias: true },
+        { antialias: false, powerPreference: preferred },
         { antialias: false },
         { antialias: false, powerPreference: 'low-power' },
       ]
@@ -281,8 +288,12 @@ const renderer = createRendererWithFallback()
 renderer.setSize(window.innerWidth, window.innerHeight)
 // Capped rather than the raw devicePixelRatio -- a 3x display would
 // otherwise render (and composite) 9x the pixels for no visible gain.
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, PIXEL_RATIO_CAP))
-renderer.shadowMap.enabled = true
+// Adaptive quality (see animate) can lower this below PIXEL_RATIO_CAP when frames run slow.
+let adaptiveRatioCap = Infinity
+const effectivePixelRatio = () => Math.min(window.devicePixelRatio, PIXEL_RATIO_CAP, adaptiveRatioCap)
+renderer.setPixelRatio(effectivePixelRatio())
+// ?shadows=0 turns shadow mapping off entirely (diagnostic A/B switch).
+renderer.shadowMap.enabled = new URLSearchParams(location.search).get('shadows') !== '0'
 renderer.shadowMap.type = THREE.PCFShadowMap
 // NeutralToneMapping keeps the sunlit scene's pastel colors true,
 // without a filmic curve crushing its highlights and shadows.
@@ -381,8 +392,16 @@ const gtaoPass = new SpriteSafeGTAOPass(scene, camera, window.innerWidth, window
 gtaoPass.blendIntensity = GTAO_INTENSITY
 gtaoPass.enabled = GTAO_ENABLED && !touchDevice
 composer.addPass(gtaoPass)
-const bloomPass = new UnrealBloomPass(
-  new THREE.Vector2(window.innerWidth, window.innerHeight),
+// UnrealBloomPass already works at half the size it is given; this halves that again (quarter of the
+// scene's pixels). Bloom here is faint (strength 0.15, high threshold), so the softer glow is not
+// noticeable but its blur passes get ~4x cheaper. Both the constructor and setSize get the halved size.
+class HalfResBloomPass extends UnrealBloomPass {
+  setSize(width, height) {
+    super.setSize(Math.max(1, width >> 1), Math.max(1, height >> 1))
+  }
+}
+const bloomPass = new HalfResBloomPass(
+  new THREE.Vector2(window.innerWidth >> 1, window.innerHeight >> 1),
   BLOOM_STRENGTH,
   BLOOM_RADIUS,
   BLOOM_THRESHOLD,
@@ -613,7 +632,7 @@ let autoShoot = false // L toggles; holds the trigger for ranged weapons
 function handleResize() {
   camera.aspect = window.innerWidth / window.innerHeight
   camera.updateProjectionMatrix()
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, PIXEL_RATIO_CAP))
+  renderer.setPixelRatio(effectivePixelRatio())
   renderer.setSize(window.innerWidth, window.innerHeight)
   composer.setPixelRatio(renderer.getPixelRatio())
   composer.setSize(window.innerWidth, window.innerHeight)
@@ -673,7 +692,7 @@ function disposeObject3D(object) {
     if (child.material) {
       const materials = Array.isArray(child.material) ? child.material : [child.material]
       materials.forEach((material) => {
-        if (material.map) material.map.dispose()
+        if (material.map && !material.map.userData.shared) material.map.dispose() // shared = cached textures other objects reuse
         material.dispose()
       })
     }
@@ -2375,7 +2394,131 @@ function updateFloorChip(game) {
   }
 }
 
+// Frame cap (?fps=N, default 60, 0 = uncapped), the ?perf=1 overlay and adaptive pixel ratio all live
+// in this thin wrapper around gameFrame(). Skipped frames never touch the timer, so the next rendered
+// frame's delta covers the whole elapsed time and simulation speed is unchanged.
+const FPS_CAP = parseFpsCap(new URLSearchParams(location.search).get('fps'))
+// ?post=0 bypasses the whole post-processing chain (MSAA target, GTAO, bloom, warp, output pass)
+// and renders straight to the canvas -- a diagnostic switch for isolating GPU fill cost.
+if (new URLSearchParams(location.search).get('post') === '0') {
+  composer.render = () => renderer.render(scene, camera)
+}
+const perf = createPerfOverlay(renderer, () => renderer.getPixelRatio(), () => fpsCap)
+if (perf) {
+  renderer.info.autoReset = false // composer renders several passes per frame; count the whole frame
+  const renderComposer = composer.render.bind(composer)
+  composer.render = (...args) => {
+    perf.begin('render')
+    renderComposer(...args)
+    perf.end('render')
+  }
+}
+const adaptiveEnabled = !new URLSearchParams(location.search).has('pr') && new URLSearchParams(location.search).get('adaptive') !== '0'
+// With no explicit ?fps=, adaptive quality may drop the cap to ADAPTIVE_LOW_FPS before giving up
+// any sharpness -- halving GPU work (and heat) per second at the same picture quality.
+const autoFps = adaptiveEnabled && !new URLSearchParams(location.search).has('fps') && FPS_CAP > 0
+let fpsCap = FPS_CAP
+let fpsRetryAt = -Infinity
+let fpsRetryDelay = ADAPTIVE_FPS_RETRY_SECONDS
+let lastFpsUpAt = -Infinity
+let lastRenderedAt = null
+// Behind a menu the 3D scene is either frozen (pause, loadout, swap, hub) or just idling (title
+// card, game over), so redraw it at a trickle instead of every display frame: same look, a
+// fraction of the GPU work and heat while the player reads a menu.
+const MENU_IDLE_FPS = 15
+const MENU_FROZEN_FPS = 5
+let lastMenuRenderAt = -Infinity
+let wasMenuFrame = false
+function renderMenuBackdrop(timestamp, fps) {
+  menuFrame = true
+  // Always draw the first frame after a menu opens so it never shows a stale picture.
+  if (!wasMenuFrame || menuFrameDue(timestamp, lastMenuRenderAt, fps)) {
+    lastMenuRenderAt = timestamp
+    composer.render()
+  }
+}
+let adaptiveCeiling = Infinity
+let adaptiveCeilingSetAt = -Infinity
+let adaptiveIntervals = []
+let adaptiveWindowStart = null
+// Frames before this timestamp aren't measured: the first moments after a menu closes, a game
+// starts or a quality change lands are full of one-off hitches (spawns, shader compiles, resizes).
+const ADAPTIVE_SETTLE_MS = 2000
+let adaptiveSettleUntil = -Infinity
+// Set by gameFrame when it only drew (or skipped drawing) a menu backdrop: those frames say
+// nothing about gameplay cost, so they're left out of the adaptive measurement.
+let menuFrame = false
+
 function animate(timestamp) {
+  if (!shouldRenderFrame(timestamp, lastRenderedAt, fpsCap)) return
+  const interval = lastRenderedAt === null ? 0 : timestamp - lastRenderedAt
+  lastRenderedAt = timestamp
+  if (perf) {
+    renderer.info.reset()
+    perf.begin('total')
+  }
+  menuFrame = false
+  gameFrame(timestamp)
+  wasMenuFrame = menuFrame
+  if (perf) {
+    perf.end('total')
+    perf.frame(timestamp)
+  }
+
+  if (adaptiveEnabled && !document.hidden && !menuFrame) {
+    if (adaptiveWindowStart === null) {
+      adaptiveWindowStart = timestamp + ADAPTIVE_SETTLE_MS
+      adaptiveSettleUntil = adaptiveWindowStart
+    }
+    if (timestamp >= adaptiveSettleUntil && interval > 0 && interval < 250) adaptiveIntervals.push(interval)
+    if (timestamp - adaptiveWindowStart >= ADAPTIVE_WINDOW_SECONDS * 1000) {
+      const current = renderer.getPixelRatio()
+      // Step back up toward full sharpness when frames are holding the cap, but not to a ratio
+      // that was too slow within the last ADAPTIVE_RETRY_SECONDS (avoids see-sawing).
+      if (timestamp - adaptiveCeilingSetAt > ADAPTIVE_RETRY_SECONDS * 1000) adaptiveCeiling = Infinity
+      const maxRatio = Math.min(window.devicePixelRatio, PIXEL_RATIO_CAP, adaptiveCeiling)
+      const avg = trimmedMean(adaptiveIntervals)
+      const decision =
+        adaptiveIntervals.length > 10
+          ? adaptiveDecision({ ratio: current, fpsCap, avgFrameMs: avg, maxRatio, autoFps, fullFps: FPS_CAP, fpsRetryDue: timestamp >= fpsRetryAt })
+          : { ratio: current, fpsCap, change: null }
+      if (decision.change === 'fpsDown') {
+        // Came straight back down after a retry? Wait longer before the next one.
+        if (timestamp - lastFpsUpAt < ADAPTIVE_WINDOW_SECONDS * 3000) {
+          fpsRetryDelay = Math.min(fpsRetryDelay * 2, ADAPTIVE_FPS_RETRY_MAX_SECONDS)
+        }
+        fpsRetryAt = timestamp + fpsRetryDelay * 1000
+      }
+      if (decision.change === 'fpsDown' || decision.change === 'fpsUp') {
+        console.info(`[adaptive] trimmed avg frame ${avg.toFixed(1)}ms: fps cap ${fpsCap} -> ${decision.fpsCap}` + (decision.change === 'fpsDown' ? ` (retry full rate in ${fpsRetryDelay}s)` : ''))
+        if (decision.change === 'fpsUp') lastFpsUpAt = timestamp
+        fpsCap = decision.fpsCap
+      }
+      const next = decision.ratio
+      if (next !== current) {
+        console.info(`[adaptive] avg frame ${avg.toFixed(1)}ms: pixel ratio ${current} -> ${next} (floor ${ADAPTIVE_MIN_RATIO})`)
+        if (next < current) {
+          adaptiveCeiling = next
+          adaptiveCeilingSetAt = timestamp
+        }
+        adaptiveRatioCap = next
+        handleResize()
+      }
+      adaptiveIntervals = []
+      adaptiveWindowStart = timestamp
+      if (decision.change) {
+        // Let the change land before judging it.
+        adaptiveSettleUntil = timestamp + ADAPTIVE_SETTLE_MS / 2
+        adaptiveWindowStart = adaptiveSettleUntil
+      }
+    }
+  } else {
+    adaptiveWindowStart = null
+    adaptiveIntervals = []
+  }
+}
+
+function gameFrame(timestamp) {
   // Updates the timer's internal delta/elapsed state from this frame's
   // rAF timestamp, so the getDelta()/getElapsed() calls below return a
   // stable value no matter how many times they're read this frame.
@@ -2431,13 +2574,13 @@ function animate(timestamp) {
 
   if (!started || gameState !== 'playing') {
     if (started && gameState !== 'playing' && (input.wasPressed('KeyR') || input.wasRestartPressed())) restartGame()
-    composer.render()
+    renderMenuBackdrop(timestamp, MENU_IDLE_FPS)
     input.endFrame()
     return
   }
 
   if (pauseMenu.isOpen()) {
-    composer.render()
+    renderMenuBackdrop(timestamp, MENU_FROZEN_FPS)
     input.endFrame()
     return
   }
@@ -2457,7 +2600,7 @@ function animate(timestamp) {
   // the frame it ends partway through, so no time is lost overall).
   // The Tab power-up menu pauses the world (freeze the frame, still render).
   if (loadoutOpen() || swapPanel.isOpen() || hub.isOpen()) {
-    composer.render()
+    renderMenuBackdrop(timestamp, MENU_FROZEN_FPS)
     input.endFrame()
     return
   }
@@ -2743,7 +2886,7 @@ function animate(timestamp) {
       if (finishedDying) {
         scoreKill(game, mesh, mesh.userData.lastHitBy ?? 'sword', mesh.position, elapsedSeconds)
         dropCrystals(crystalSystem, mesh.position.x, mesh.position.z, crystalDrops(mesh.userData.type, mesh.userData.isBoss))
-        scene.remove(mesh)
+        disposeObject3D(mesh) // per-monster geometry, materials and indicator textures; also removes it from the scene
         if (SPLITS[mesh.userData.type] && mesh.userData.lastHitBy) pendingSplits.push({ type: mesh.userData.type, x: mesh.position.x, z: mesh.position.z })
         if (mesh.userData.isBoss) {
           bossGone = true
@@ -2761,7 +2904,7 @@ function animate(timestamp) {
       mesh.rotation.z += gameplayDelta * MONSTER_FALL_TUMBLE_SPEED * 0.6
       if (mesh.userData.fallState.fallenY >= FALL_DESPAWN_DEPTH) {
         scoreKill(game, mesh, 'fall', { x: mesh.position.x, y: 0, z: mesh.position.z }, elapsedSeconds)
-        scene.remove(mesh)
+        disposeObject3D(mesh)
         if (mesh.userData.isBoss) bossGone = true
         return false
       }
@@ -2995,6 +3138,7 @@ function animate(timestamp) {
   // announcement for the wave banner (hud.waveAnnouncement changes
   // identity), not on every frame that banner stays on screen.
   const previousAnnouncement = hud.waveAnnouncement
+  perf?.begin('hud')
   updateHud(hud, {
     hp: player.hp,
     maxHp: player.maxHp,
@@ -3013,6 +3157,7 @@ function animate(timestamp) {
     chain: liveChain,
     deltaSeconds,
   })
+  perf?.end('hud')
   if (!freePlay() && hud.waveAnnouncement !== previousAnnouncement) sfx.play('announcement')
 
   // A slight look-ahead in the player's current movement direction,

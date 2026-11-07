@@ -227,7 +227,8 @@ export const GAS_GIANT_RING_TILT = Math.PI / 2.6 // radians, off the orbital pla
 // shadow map, ambient occlusion, pixel ratio and MSAA settings.
 export const QUALITY_PRESETS = {
   low: { maxPixelRatio: 1, msaaSamples: 0, gtao: false, shadowMapSize: 1024 },
-  medium: { maxPixelRatio: 2, msaaSamples: 4, gtao: false, shadowMapSize: 2048 },
+  // Medium is the default: capped at 1.5x with 2x MSAA and 1024 shadows -- 'high' is the opt-in pretty mode.
+  medium: { maxPixelRatio: 1.5, msaaSamples: 2, gtao: false, shadowMapSize: 1024 },
   high: { maxPixelRatio: 2, msaaSamples: 4, gtao: true, shadowMapSize: 2048 },
 }
 // Phones and tablets (a coarse pointer and no fine one) start on a lighter profile: a big

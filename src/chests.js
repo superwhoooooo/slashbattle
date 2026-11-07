@@ -82,6 +82,7 @@ function labelTexture(cost, affordable) {
   if (cached) return cached
   const texture = new THREE.CanvasTexture(drawLabel(cost, affordable))
   texture.colorSpace = THREE.SRGBColorSpace // canvas colors are sRGB, not linear
+  texture.userData.shared = true // cached per cost+state and reused by every chest: never dispose it with one
   texture.needsUpdate = true
   labelTextures.set(key, texture)
   soraLoaded.then(() => {

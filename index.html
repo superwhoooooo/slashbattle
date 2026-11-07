@@ -12,7 +12,7 @@
       :root {
         --ink: #1a2433;
         --muted: #5b6b80;
-        --card: rgba(255, 255, 255, 0.72);
+        --card: rgba(255, 255, 255, 0.86);
         --card-border: rgba(255, 255, 255, 0.9);
         --coral: #ff6a4d;
         --butter: #ffd15c;
@@ -37,12 +37,12 @@
         height: 100%;
       }
 
-      /* Frosted white resort-card look, shared by every HUD panel, slot,
-         and overlay card. */
+      /* White resort-card look, shared by every HUD panel, slot, and
+         overlay card. No backdrop-filter: blurring the live WebGL canvas
+         behind each panel every frame pinned Chrome's GPU process (measured
+         ~95% with it, far lower without), so the card is just more opaque. */
       .panel {
         background: var(--card);
-        backdrop-filter: blur(14px) saturate(1.4);
-        -webkit-backdrop-filter: blur(14px) saturate(1.4);
         border: 1px solid var(--card-border);
         border-radius: 16px;
         box-shadow: 0 4px 16px rgba(26, 36, 51, 0.18);
@@ -854,14 +854,18 @@
         inset: 0;
         pointer-events: none;
         opacity: 0;
+        /* Hidden (not just transparent) while idle: a full-screen blend-mode layer
+           otherwise makes Chrome blend the whole screen every frame. */
+        visibility: hidden;
         background: radial-gradient(ellipse at center, rgba(255, 20, 50, 0.05) 40%, rgba(255, 20, 50, 0.45) 100%);
         mix-blend-mode: screen;
-        transition: opacity 0.15s ease-out;
+        transition: opacity 0.15s ease-out, visibility 0s linear 0.15s;
         z-index: 6;
       }
       #damage-flash.active {
         opacity: 1;
-        transition: opacity 0s;
+        visibility: visible;
+        transition: opacity 0s, visibility 0s;
       }
 
       .overlay {
