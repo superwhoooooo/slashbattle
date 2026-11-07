@@ -9,13 +9,13 @@ import * as THREE from 'three'
 import { createPetModel, createSaber, createThrown } from './petModels.js'
 import { damageMonster } from './combat.js'
 import { PETS, petBoost, petLevel, petRate } from './logic/items.js'
-import { dampAngle } from './logic/smoothing.js'
+import { damp, dampAngle, wrapAngle } from './logic/smoothing.js'
 import { burst } from './particles.js'
 import { hasWallLineOfSight, isInsideWall } from './monster.js'
 import { spawnShockwave } from './shockwave.js'
 import { ARENA_RADIUS } from './config.js'
 import { clampToPlatform } from './logic/arena.js'
-import { STRIKES, SNAP_DISTANCE, canEngage, dist, engageGoal, homeSpot, isFighter, returnSpeed, stepToward, strikeReach } from './logic/petAI.js'
+import { SOAR_RADIUS, SOAR_TURN_RATE, STRIKES, SNAP_DISTANCE, canEngage, dist, engageGoal, homeSpot, isFighter, returnSpeed, stepToward, strikeReach } from './logic/petAI.js'
 
 const ORBIT_RADIUS = 1.9
 const FOLLOW_RATE = 6
@@ -29,6 +29,8 @@ const SABER_MAX_LIFE = 1.2
 const STRIKE_TIME = 0.28 // how long a lunge hit's pitch / roll animation lasts
 const STUCK_TIME = 1.2 // blocked this long (a labyrinth wall in the way) and the pet pops back to you
 const PET_EDGE_MARGIN = 1.5
+const DIVE_FLOOR = 0.35 // a diving bird's height when it reaches an enemy (its body rides ~0.5 above this)
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v))
 
 // Projectile pets: speed, arc height and look of each `projectile`.
 const SHOTS = {
@@ -43,8 +45,9 @@ export function createPet(id, scene, player) {
   const mesh = createPetModel(def)
   mesh.position.set(player.position.x + 1, 0, player.position.z + 1)
   mesh.scale.setScalar(0.01)
+  mesh.rotation.order = 'YXZ' // yaw first, so pitch and bank (soaring birds, strike tilts) are about the pet's own axes
   scene.add(mesh)
-  return { def, mesh, scene, sabers: [], shots: [], strikeT: 0, stuck: 0, age: 0, timer: def.interval ?? 0, lastX: mesh.position.x, lastZ: mesh.position.z }
+  return { def, mesh, scene, alt: 0.4, lastAlt: 0.4, bank: 0, pitch: 0, sabers: [], shots: [], strikeT: 0, stuck: 0, age: 0, timer: def.interval ?? 0, lastX: mesh.position.x, lastZ: mesh.position.z }
 }
 
 const targetable = (monster) => !monster.userData.dying && !monster.userData.spawning && !monster.userData.falling
@@ -306,7 +309,8 @@ export function updatePets(pets, { petDamage = 1, levels = {}, dt, elapsed, play
     pet.timer -= dt
     pet.strikeT = Math.max(0, pet.strikeT - dt)
     const ready = pet.timer <= 0
-    const home = homeSpot(player.position, index, count, elapsed)
+    const soar = mesh.userData.soar
+    const home = homeSpot(player.position, index, count, elapsed, soar ? { radius: SOAR_RADIUS, turnRate: SOAR_TURN_RATE } : undefined)
 
     if (dist(mesh.position, player.position) > SNAP_DISTANCE) recallPet(pet, home)
 
@@ -337,6 +341,7 @@ export function updatePets(pets, { petDamage = 1, levels = {}, dt, elapsed, play
     const moveZ = mesh.position.z - pet.lastZ
     const travelled = Math.hypot(moveX, moveZ) / Math.max(dt, 1e-4)
     const moving = travelled > 0.3
+    const prevYaw = mesh.rotation.y
     if (target && (holding || !moving || def.kind === 'zap' || def.kind === 'shot' || def.kind === 'throw')) {
       mesh.rotation.y = dampAngle(mesh.rotation.y, Math.atan2(target.position.x - mesh.position.x, target.position.z - mesh.position.z), 12, dt)
     } else if (moving) {
@@ -345,18 +350,37 @@ export function updatePets(pets, { petDamage = 1, levels = {}, dt, elapsed, play
     pet.lastX = mesh.position.x
     pet.lastZ = mesh.position.z
 
-    // Flyers hover and bob; walkers sit on the ground and hop while moving. A strike
-    // pitches (or rolls) the model into the hit.
-    mesh.position.y = mesh.userData.fly
-      ? HOVER_HEIGHT + Math.sin(elapsed * 3 + index * 1.7) * 0.12
-      : moving
-        ? Math.abs(Math.sin(elapsed * (travelled > 6 ? 14 : 9) + index)) * (travelled > 6 ? 0.22 : 0.14)
-        : 0
-    mesh.rotation.x = 0
-    mesh.rotation.z = 0
+    // Soaring birds glide on a wide loop high over the player, bank into turns, and dive on
+    // an enemy they are about to hit; other flyers hover and bob and walkers sit on the ground
+    // and hop while moving. A strike pitches (or rolls) the model into the hit.
+    let basePitch = 0
+    let baseBank = 0
+    if (soar) {
+      let want = soar.cruise + Math.sin(elapsed * 1.3 + index * 1.7) * 0.12
+      const diving = target && def.kind === 'lunge' && ready
+      if (diving) want = DIVE_FLOOR + clamp((dist(mesh.position, target.position) - 1) / 7, 0, 1) * (soar.cruise - DIVE_FLOOR)
+      pet.lastAlt = pet.alt
+      pet.alt = damp(pet.alt, want, diving ? 6 : 3, dt)
+      mesh.position.y = pet.alt
+      const climb = (pet.alt - pet.lastAlt) / Math.max(dt, 1e-4)
+      const yawRate = wrapAngle(mesh.rotation.y - prevYaw) / Math.max(dt, 1e-4)
+      pet.bank = damp(pet.bank, clamp(-yawRate * 0.35, -0.65, 0.65), 7, dt)
+      pet.pitch = damp(pet.pitch, clamp(-climb * 0.09, -0.5, 0.5), 7, dt)
+      basePitch = pet.pitch
+      baseBank = pet.bank
+      mesh.userData.effort = clamp(0.15 + travelled / 16 + Math.max(0, climb) * 0.15, 0, 1) // flap harder when fast or climbing
+    } else {
+      mesh.position.y = mesh.userData.fly
+        ? HOVER_HEIGHT + Math.sin(elapsed * 3 + index * 1.7) * 0.12
+        : moving
+          ? Math.abs(Math.sin(elapsed * (travelled > 6 ? 14 : 9) + index)) * (travelled > 6 ? 0.22 : 0.14)
+          : 0
+    }
+    mesh.rotation.x = basePitch
+    mesh.rotation.z = baseBank
     if (pet.strikeT > 0 && def.strike) {
       const [axis, amount] = (STRIKES[def.strike] ?? STRIKES.bite).tilt
-      mesh.rotation[axis] = Math.sin(Math.PI * (1 - pet.strikeT / STRIKE_TIME)) * amount
+      mesh.rotation[axis] += Math.sin(Math.PI * (1 - pet.strikeT / STRIKE_TIME)) * amount
     }
     mesh.userData.animate(elapsed + index * 0.7, moving)
 

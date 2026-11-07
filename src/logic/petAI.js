@@ -44,10 +44,14 @@ export const leashOf = (def) => def.leash ?? LEASH
 export const canEngage = (def, petPos, playerPos, monsterPos) =>
   isFighter(def) && dist(petPos, monsterPos) <= sightOf(def) && dist(playerPos, monsterPos) <= leashOf(def)
 
-// The idle spot for pet `index` of `count` orbiting the player.
-export function homeSpot(playerPos, index, count, elapsed) {
-  const angle = elapsed * 0.7 + (index / Math.max(1, count)) * Math.PI * 2
-  return { x: playerPos.x + Math.cos(angle) * HOME_RADIUS, z: playerPos.z + Math.sin(angle) * HOME_RADIUS }
+export const SOAR_RADIUS = 3.1 // birds circle wider than ground pets...
+export const SOAR_TURN_RATE = 1.0 // ...and faster (radians/second)
+
+// The idle spot for pet `index` of `count` orbiting the player (a soaring bird circles on a
+// wide loop overhead, everyone else idles close by).
+export function homeSpot(playerPos, index, count, elapsed, { radius = HOME_RADIUS, turnRate = 0.7 } = {}) {
+  const angle = elapsed * turnRate + (index / Math.max(1, count)) * Math.PI * 2
+  return { x: playerPos.x + Math.cos(angle) * radius, z: playerPos.z + Math.sin(angle) * radius }
 }
 
 // Pulls a point back inside `radius` of `center`.

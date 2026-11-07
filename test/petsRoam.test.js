@@ -42,7 +42,7 @@ describe('pets roam and fight', () => {
     expect(w.pet.mesh.position.x).toBeGreaterThan(5)
     w.monsters.length = 0
     w.tick(3)
-    expect(Math.hypot(w.pet.mesh.position.x, w.pet.mesh.position.z)).toBeLessThan(2.6)
+    expect(Math.hypot(w.pet.mesh.position.x, w.pet.mesh.position.z)).toBeLessThan(3.6) // back circling overhead
   })
 
   it('ignores enemies beyond sight and stays by the player', () => {
@@ -83,5 +83,48 @@ describe('pets roam and fight', () => {
     w.tick(3)
     expect(Math.hypot(w.pet.mesh.position.x, w.pet.mesh.position.z)).toBeLessThan(2.6)
     expect(w.player.hp).toBeGreaterThan(5)
+  })
+
+  it('birds soar high over the player and dive on an enemy', () => {
+    const w = world('toco', null)
+    w.pet.age = 5
+    w.tick(3)
+    expect(w.pet.mesh.userData.soar).toBeTruthy()
+    const cruise = w.pet.mesh.position.y
+    expect(cruise).toBeGreaterThan(0.9) // up in the air, not hovering at hip height
+    expect(Math.hypot(w.pet.mesh.position.x, w.pet.mesh.position.z)).toBeGreaterThan(2) // on a wide loop, not on top of you
+    w.monsters.push(Object.assign(new THREE.Object3D(), { userData: { hp: 100 } }))
+    w.monsters[0].position.set(9, 0, 0)
+    let lowest = cruise
+    for (let t = 0; t < 2; t += 1 / 60) {
+      w.tick(1 / 60)
+      lowest = Math.min(lowest, w.pet.mesh.position.y)
+    }
+    expect(lowest).toBeLessThan(cruise - 0.4) // it came down to the enemy
+    disposePets(w.pets, w.scene)
+  })
+
+  it('banks into its turns while circling', () => {
+    const w = world('bolt', null)
+    w.pet.age = 5
+    w.tick(2)
+    expect(Math.abs(w.pet.mesh.rotation.z)).toBeGreaterThan(0.05)
+  })
+})
+
+describe('bird models', () => {
+  it('flying birds spread wings and soar; the penguin walks', async () => {
+    const { createPetModel } = await import('../src/petModels.js')
+    const { PETS } = await import('../src/logic/items.js')
+    for (const id of ['sparky', 'bolt', 'polly', 'toco', 'flame', 'vortex', 'quackers']) {
+      const model = createPetModel(PETS[id])
+      expect(model.userData.fly, id).toBe(true)
+      expect(model.userData.soar.cruise, id).toBeGreaterThan(0.5)
+      const box = new THREE.Box3().setFromObject(model)
+      expect(box.max.x - box.min.x, `${id} wingspan`).toBeGreaterThan(box.max.y - box.min.y) // wider than tall: wings out
+      model.userData.effort = 1
+      model.userData.animate(1.3, true)
+    }
+    expect(createPetModel(PETS.waddles).userData.fly).toBe(false)
   })
 })
