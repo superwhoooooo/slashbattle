@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { mergeStaticMeshes } from './mergeStatic.js'
 import {
   ARENA_CENTER_RING_PINSTRIPE_WIDTH,
   ARENA_CENTER_RING_WIDTH,
@@ -425,8 +426,10 @@ export function createArena(level = LEVELS[0], { avoid = [] } = {}) {
     water = createWaterWorld(level)
     group.add(water.group)
   } else {
+    // Deck and props never move once built, so they're merged into a few meshes (see mergeStatic.js).
+    const staticGroup = new THREE.Group()
     const { group: platformGroup } = createPlatform(level)
-    group.add(platformGroup)
+    staticGroup.add(platformGroup)
 
     const { topY } = platformLayout(ARENA_THICKNESS)
     layout = resortLayout({
@@ -436,7 +439,9 @@ export function createArena(level = LEVELS[0], { avoid = [] } = {}) {
       umbrellaColors: level.props.umbrellaColors,
       signTexts: level.props.signTexts,
     })
-    group.add(createProps(layout, topY, level))
+    staticGroup.add(createProps(layout, topY, level))
+    mergeStaticMeshes(staticGroup)
+    group.add(staticGroup)
   }
   const propObstacles = [...layout.umbrellas, ...layout.loungers, ...layout.signs]
 
