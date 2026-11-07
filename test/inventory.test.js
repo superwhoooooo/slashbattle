@@ -60,6 +60,9 @@ describe('catalogs', () => {
   it('gives every pet a known kind with the numbers that kind needs', () => {
     const needs = {
       zap: ['damage', 'interval', 'range'],
+      lunge: ['damage', 'interval', 'strike'],
+      explode: ['damage', 'interval', 'blast'],
+      shot: ['damage', 'interval', 'range', 'projectile'],
       throw: ['damage', 'interval', 'range', 'saberColor'],
       pulse: ['damage', 'interval', 'radius'],
       heal: ['amount', 'interval'],
@@ -235,9 +238,9 @@ describe('petEffects', () => {
 
   it('makes every pet that is not a healer, magnet or guard an attacker', () => {
     for (const pet of Object.values(PETS)) {
-      expect(['zap', 'pulse', 'throw', 'heal', 'magnet', 'guard']).toContain(pet.kind)
+      expect(['lunge', 'explode', 'zap', 'shot', 'pulse', 'throw', 'heal', 'magnet', 'guard']).toContain(pet.kind)
     }
-    const fighters = Object.values(PETS).filter((pet) => pet.kind === 'zap' || pet.kind === 'pulse')
+    const fighters = Object.values(PETS).filter((pet) => pet.kind !== 'heal' && pet.kind !== 'magnet' && pet.kind !== 'guard')
     expect(fighters.length).toBeGreaterThanOrEqual(12)
     const fx = petEffects(Object.keys(PETS))
     expect(fx.damageMultiplier).toBe(1)

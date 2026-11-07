@@ -89,52 +89,59 @@ export const ABILITIES = {
   refresh: { id: 'refresh', name: 'Second Wind', icon: '♻️', cooldown: 30, blurb: 'Reset other cooldowns' },
 }
 
-// kind: 'zap' (hits the nearest enemy in range), 'pulse' (hits every enemy
-// within `radius` of the pet), 'heal' (patches you up), 'magnet' (pulls
-// crystals in from afar), 'guard' (shrugs off part of every hit), 'throw'
-// (hurls a spinning lightsaber at the nearest enemy; `saberColor`). Every
-// pet but the healers, magnets and guards fights. `model` picks the real
-// animal / object it looks like (src/petModels.js); `color` is the accent
+// What a pet does (all fighters run out to enemies they can see, and come back to you when
+// none are in sight; src/logic/petAI.js and src/pets.js):
+//   'lunge'   runs up to the nearest enemy and hits it in person (`strike` names the move:
+//             peck, bite, swat, sting, headbutt...); `dash` is its charge speed.
+//   'explode' runs up to the nearest enemy and blows up (`blast` radius), then reforms by you.
+//   'pulse'   runs close to enemies and hits everything within `radius` of itself.
+//   'zap'     stands off and zaps the nearest enemy in `range` with a beam.
+//   'shot'    stands off and fires a `projectile` (snowball, droplet, squawk) at the nearest enemy.
+//   'throw'   stands off and hurls a spinning lightsaber (`saberColor`) or `thrown` items.
+//   'heal' patches you up, 'magnet' pulls crystals in from afar, 'guard' shrugs off part of
+//   every hit; those three stay by your side.
+// `sight` / `leash` widen how far a pet notices and chases (defaults in petAI.js). `model`
+// picks the real animal / object it looks like (src/petModels.js); `color` is the accent
 // used for its icon and attack particles.
 export const PETS = {
   sparky: { id: 'sparky', name: 'Sparky', icon: '🐥', color: 0xffe14a, model: 'chick', kind: 'zap', damage: 8, interval: 1.1, range: 7, blurb: 'A chick that zaps nearby enemies' },
-  blasty: { id: 'blasty', name: 'Blasty', icon: '💣', color: 0xb4e61d, model: 'bomb', kind: 'zap', damage: 26, interval: 2.8, range: 11, knockback: 1.6, blurb: 'A bomb with slow, heavy blasts' },
+  blasty: { id: 'blasty', name: 'Blasty', icon: '💣', color: 0xb4e61d, model: 'bomb', kind: 'explode', blast: 3.4, dash: 11, damage: 26, interval: 2.8, knockback: 1.6, blurb: 'A bomb that rolls up to an enemy and blows up, then reforms' },
   healbit: { id: 'healbit', name: 'Healbit', icon: '💗', color: 0xff6fa5, model: 'heart', kind: 'heal', amount: 2, interval: 2.5, blurb: 'A heart that heals you over time' },
   magneto: { id: 'magneto', name: 'Magneto', icon: '🧲', color: 0x7a8cff, model: 'magnet', kind: 'magnet', radius: 10, blurb: 'A magnet that vacuums up crystals' },
   shieldy: { id: 'shieldy', name: 'Shieldy', icon: '🐢', color: 0x4de0c0, model: 'turtle', kind: 'guard', reduction: 0.25, blurb: 'A turtle that takes 25% off every hit' },
-  ember: { id: 'ember', name: 'Ember', icon: '🦊', color: 0xff7a2e, model: 'fox', kind: 'zap', damage: 4, interval: 0.55, range: 5, blurb: 'A fox with rapid little burns' },
+  ember: { id: 'ember', name: 'Ember', icon: '🦊', color: 0xff7a2e, model: 'fox', kind: 'lunge', strike: 'burn', damage: 4, interval: 0.55, blurb: 'A fox that darts in and bites with fiery little burns' },
   bolt: { id: 'bolt', name: 'Bolt', icon: '🦉', color: 0x8fd0ff, model: 'owl', kind: 'zap', damage: 14, interval: 1.8, range: 16, blurb: 'An owl that zaps from far away' },
-  comet: { id: 'comet', name: 'Comet', icon: '🚀', color: 0xc07aff, model: 'rocket', kind: 'zap', damage: 12, interval: 2.2, range: 9, knockback: 3.5, blurb: 'A rocket that shoves enemies back' },
-  spike: { id: 'spike', name: 'Spike', icon: '🌵', color: 0x58c24a, model: 'cactus', kind: 'pulse', damage: 7, interval: 1.6, radius: 3, blurb: 'A cactus that prickles everything close' },
-  boomer: { id: 'boomer', name: 'Boomer', icon: '🧨', color: 0xff5a5a, model: 'tnt', kind: 'pulse', damage: 22, interval: 4.5, radius: 4.5, knockback: 2.5, blurb: 'Dynamite: a big slow blast around you' },
+  comet: { id: 'comet', name: 'Comet', icon: '🚀', color: 0xc07aff, model: 'rocket', kind: 'lunge', strike: 'ram', damage: 12, interval: 2.2, knockback: 3.5, blurb: 'A rocket that slams into enemies and shoves them back' },
+  spike: { id: 'spike', name: 'Spike', icon: '🌵', color: 0x58c24a, model: 'cactus', kind: 'pulse', damage: 7, interval: 1.6, radius: 3, blurb: 'A cactus that rushes in and prickles everything close' },
+  boomer: { id: 'boomer', name: 'Boomer', icon: '🧨', color: 0xff5a5a, model: 'tnt', kind: 'pulse', damage: 22, interval: 4.5, radius: 4.5, knockback: 2.5, blurb: 'Dynamite that runs at enemies and goes off in a big slow blast' },
   mender: { id: 'mender', name: 'Mender', icon: '🧰', color: 0xffd1dc, model: 'medkit', kind: 'heal', amount: 6, interval: 6, blurb: 'A medkit: big heal, now and then' },
   sprout: { id: 'sprout', name: 'Sprout', icon: '🌱', color: 0x9be37a, model: 'sprout', kind: 'heal', amount: 1, interval: 1, blurb: 'A potted sprout with a constant trickle heal' },
-  grumble: { id: 'grumble', name: 'Grumble', icon: '🐻', color: 0xd9534f, model: 'bear', kind: 'pulse', damage: 14, interval: 2.2, radius: 3.2, knockback: 2, blurb: 'A grumpy bear that swipes everything close' },
-  whirl: { id: 'whirl', name: 'Whirl', icon: '🐝', color: 0x7fe0e8, model: 'bee', kind: 'zap', damage: 6, interval: 0.7, range: 6, blurb: 'A bee that stings the nearest enemy, fast' },
-  zoom: { id: 'zoom', name: 'Zoom', icon: '🐰', color: 0xffb347, model: 'rabbit', kind: 'zap', damage: 9, interval: 1.2, range: 8, knockback: 2, blurb: 'A rabbit that boings enemies away' },
-  goldie: { id: 'goldie', name: 'Goldie', icon: '🐠', color: 0xffd23f, model: 'goldfish', kind: 'zap', damage: 10, interval: 1.5, range: 8, blurb: 'A goldfish that splashes the nearest enemy' },
-  bumper: { id: 'bumper', name: 'Bumper', icon: '🐏', color: 0xff6f91, model: 'ram', kind: 'zap', damage: 12, interval: 2.4, range: 5, knockback: 4.5, blurb: 'A ram that headbutts enemies off the edge' },
+  grumble: { id: 'grumble', name: 'Grumble', icon: '🐻', color: 0xd9534f, model: 'bear', kind: 'pulse', damage: 14, interval: 2.2, radius: 3.2, knockback: 2, blurb: 'A grumpy bear that lumbers up and swipes everything close' },
+  whirl: { id: 'whirl', name: 'Whirl', icon: '🐝', color: 0x7fe0e8, model: 'bee', kind: 'lunge', strike: 'sting', damage: 6, interval: 0.7, blurb: 'A bee that flies up to enemies and stings, fast' },
+  zoom: { id: 'zoom', name: 'Zoom', icon: '🐰', color: 0xffb347, model: 'rabbit', kind: 'lunge', strike: 'boing', damage: 9, interval: 1.2, knockback: 2, blurb: 'A rabbit that hops at enemies and boings them away' },
+  goldie: { id: 'goldie', name: 'Goldie', icon: '🐠', color: 0xffd23f, model: 'goldfish', kind: 'shot', projectile: 'droplet', damage: 10, interval: 1.5, range: 8, blurb: 'A goldfish that spits splashes of water at the nearest enemy' },
+  bumper: { id: 'bumper', name: 'Bumper', icon: '🐏', color: 0xff6f91, model: 'ram', kind: 'lunge', strike: 'headbutt', damage: 12, interval: 2.4, knockback: 4.5, blurb: 'A ram that charges enemies and headbutts them off the edge' },
   plated: { id: 'plated', name: 'Plated', icon: '🛡️', color: 0xb0bec5, model: 'shield', kind: 'guard', reduction: 0.15, blurb: 'A shield that takes 15% off every hit' },
   vortex: { id: 'vortex', name: 'Vortex', icon: '🐦‍⬛', color: 0x4d6bff, model: 'magpie', kind: 'magnet', radius: 16, blurb: 'A magpie with a huge crystal pull' },
   matthias: { id: 'matthias', name: 'Matthias', icon: '🧑', color: 0x58ff6a, saberColor: 0x58ff6a, model: 'matthias', kind: 'throw', damage: 18, interval: 1.3, range: 13, knockback: 2, blurb: 'Throws lightsabers at the nearest enemy' },
   remybenji: { id: 'remybenji', name: 'Remy & Benji', icon: '👦', color: 0xffd84a, saberColor: 0xffd84a, model: 'remybenji', kind: 'throw', thrown: ['junk', 'banana'], damage: 16, interval: 0.9, range: 12, knockback: 1.5, blurb: 'Remy chucks junk, Benji lobs bananas, at the nearest enemy' },
-  frosty: { id: 'frosty', name: 'Frosty', icon: '🐺', color: 0xbfe9ff, model: 'wolf', kind: 'zap', damage: 11, interval: 1.4, range: 8, knockback: 1, blurb: 'An arctic wolf with icy bites' },
-  pandy: { id: 'pandy', name: 'Pandy', icon: '🐼', color: 0xeeeeee, model: 'panda', kind: 'pulse', damage: 10, interval: 1.8, radius: 3.4, knockback: 1.2, blurb: 'A panda that bonks everything close' },
-  polly: { id: 'polly', name: 'Polly', icon: '🦜', color: 0xff4a4a, model: 'parrot', kind: 'zap', damage: 9, interval: 1, range: 10, blurb: 'A parrot that squawks damage at foes' },
+  frosty: { id: 'frosty', name: 'Frosty', icon: '🐺', color: 0xbfe9ff, model: 'wolf', kind: 'lunge', strike: 'bite', damage: 11, interval: 1.4, knockback: 1, blurb: 'An arctic wolf that runs down enemies and gives icy bites' },
+  pandy: { id: 'pandy', name: 'Pandy', icon: '🐼', color: 0xeeeeee, model: 'panda', kind: 'pulse', damage: 10, interval: 1.8, radius: 3.4, knockback: 1.2, blurb: 'A panda that rolls up and bonks everything close' },
+  polly: { id: 'polly', name: 'Polly', icon: '🦜', color: 0xff4a4a, model: 'parrot', kind: 'shot', projectile: 'squawk', damage: 9, interval: 1, range: 10, blurb: 'A parrot that squawks sound waves at foes' },
   quackers: { id: 'quackers', name: 'Quackers', icon: '🦆', color: 0xfff1a8, model: 'duck', kind: 'heal', amount: 3, interval: 3.5, blurb: 'A duck that quacks you back to health' },
-  shadow: { id: 'shadow', name: 'Shadow', icon: '🥷', color: 0x6b5b95, model: 'ninjacoon', kind: 'zap', damage: 5, interval: 0.35, range: 5, blurb: 'A ninja raccoon with a blur of stabs' },
-  mittens: { id: 'mittens', name: 'Mittens', icon: '🐱', color: 0xf0b27a, model: 'cat', kind: 'zap', damage: 7, interval: 0.75, range: 6, blurb: 'A cat with quick little swats' },
+  shadow: { id: 'shadow', name: 'Shadow', icon: '🥷', color: 0x6b5b95, model: 'ninjacoon', kind: 'lunge', strike: 'stab', damage: 5, interval: 0.35, blurb: 'A ninja raccoon that blurs up to enemies and stabs, fast' },
+  mittens: { id: 'mittens', name: 'Mittens', icon: '🐱', color: 0xf0b27a, model: 'cat', kind: 'lunge', strike: 'swat', damage: 7, interval: 0.75, blurb: 'A cat that pounces on enemies with quick little swats' },
   oink: { id: 'oink', name: 'Oinky', icon: '🐷', color: 0xffb3c1, model: 'pig', kind: 'magnet', radius: 13, blurb: 'A pig that roots out crystals from afar' },
-  koda: { id: 'koda', name: 'Koda', icon: '🐨', color: 0xb0b6c0, model: 'koala', kind: 'pulse', damage: 9, interval: 2, radius: 3.6, knockback: 1.5, blurb: 'A koala that thumps everything close' },
-  stripes: { id: 'stripes', name: 'Stripes', icon: '🐯', color: 0xff9a2e, model: 'tiger', kind: 'zap', damage: 20, interval: 2.2, range: 7, knockback: 2.5, blurb: 'A tiger with one big pounce' },
-  leo: { id: 'leo', name: 'Leo', icon: '🦁', color: 0xe8b04a, model: 'lion', kind: 'pulse', damage: 18, interval: 3, radius: 4, knockback: 2, blurb: 'A lion whose roar rattles everything near' },
-  waddles: { id: 'waddles', name: 'Waddles', icon: '🐧', color: 0x6fa8ff, model: 'penguin', kind: 'zap', damage: 10, interval: 1.1, range: 8, knockback: 1, blurb: 'A penguin that slides snowballs at foes' },
+  koda: { id: 'koda', name: 'Koda', icon: '🐨', color: 0xb0b6c0, model: 'koala', kind: 'pulse', damage: 9, interval: 2, radius: 3.6, knockback: 1.5, blurb: 'A koala that climbs up to enemies and thumps everything close' },
+  stripes: { id: 'stripes', name: 'Stripes', icon: '🐯', color: 0xff9a2e, model: 'tiger', kind: 'lunge', strike: 'pounce', damage: 20, interval: 2.2, knockback: 2.5, blurb: 'A tiger that leaps at an enemy with one big pounce' },
+  leo: { id: 'leo', name: 'Leo', icon: '🦁', color: 0xe8b04a, model: 'lion', kind: 'pulse', damage: 18, interval: 3, radius: 4, knockback: 2, blurb: 'A lion that stalks enemies and roars, rattling everything near' },
+  waddles: { id: 'waddles', name: 'Waddles', icon: '🐧', color: 0x6fa8ff, model: 'penguin', kind: 'shot', projectile: 'snowball', damage: 10, interval: 1.1, range: 8, knockback: 1, blurb: 'A penguin that slides snowballs at foes' },
   flame: { id: 'flame', name: 'Flame', icon: '🦩', color: 0xff7fa8, model: 'flamingo', kind: 'heal', amount: 4, interval: 4, blurb: 'A flamingo that fluffs you back to health' },
-  toco: { id: 'toco', name: 'Toco', icon: '🦜', color: 0xff8a00, model: 'toucan', kind: 'zap', damage: 12, interval: 1.3, range: 12, blurb: 'A toucan that pecks from way out' },
+  toco: { id: 'toco', name: 'Toco', icon: '🦜', color: 0xff8a00, model: 'toucan', kind: 'lunge', strike: 'peck', sight: 22, leash: 20, dash: 15, damage: 12, interval: 1.3, blurb: 'A toucan that swoops in from way out and pecks enemies' },
   biscuit: { id: 'biscuit', name: 'Biscuit', icon: '🐶', color: 0xd9b88a, model: 'pug', kind: 'guard', reduction: 0.2, blurb: 'A loyal pug that takes 20% off every hit' },
   mojo: { id: 'mojo', name: 'Mojo', icon: '🐵', color: 0xffe14a, saberColor: 0xffe14a, model: 'monkey', kind: 'throw', thrown: ['banana'], damage: 13, interval: 1.0, range: 11, knockback: 1, blurb: 'A monkey that lobs bananas at the nearest foe' },
   sparkle: { id: 'sparkle', name: 'Sparkle', icon: '🦄', color: 0xff8ad8, model: 'unicorn', kind: 'heal', amount: 3, interval: 2.8, blurb: 'A unicorn with a steady glittery heal' },
-  rascal: { id: 'rascal', name: 'Rascal', icon: '🦝', color: 0x9e9e9e, model: 'raccoon', kind: 'zap', damage: 7, interval: 0.9, range: 7, blurb: 'A raccoon that swipes the nearest enemy' },
+  rascal: { id: 'rascal', name: 'Rascal', icon: '🦝', color: 0x9e9e9e, model: 'raccoon', kind: 'lunge', strike: 'swipe', damage: 7, interval: 0.9, blurb: 'A raccoon that scurries up to enemies and swipes them' },
 }
 
 // New weapons borrow an older one's model, swing animation and effects.

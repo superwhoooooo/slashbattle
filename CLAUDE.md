@@ -94,7 +94,8 @@ slashbattle/
     spawner.js         # the spawn-in effect: portal ring + beam, monster materialize animation
     crystals.js        # the dropped-crystal pool (InstancedMesh); scatter/pull/collect
     chests.js          # treasure chests with a crystal price over them
-    pets.js            # pets that orbit the player and fight/heal
+    pets.js            # pets that roam out to enemies, fight them their own way, and return to the player
+    logic/petAI.js     # pure pet roaming: sight/leash, where each attack style wants to stand, strike looks
     petModels.js       # the pets' real animal / object models (fox, bee, bomb, medkit...)
     projectiles.js     # pooled boss-barrage orbs
     shockwave.js       # expanding ground rings (boss slam, player Shockwave)
@@ -565,17 +566,19 @@ Only once you own everything does a chest pay out score and a heal ("LOADOUT FUL
   Well (drag enemies in), Bullet Ring (16 shots), Life Drain (damage + heal),
   Frenzy (attack twice as fast), Sprint (1.6x speed), Second Wind (resets the
   other cooldowns). Effects live in `main.js`'s `activateAbility`.
-- **Pets** (`PETS`, kinds in logic/items.js): `zap` (Sparky the chick, Blasty the
-  bomb, Ember the fox, Bolt the owl, Comet the rocket, Whirl the bee, Zoom the
-  rabbit, Goldie the goldfish, Bumper the ram, Rascal the raccoon), `pulse` (Spike
-  the cactus, Boomer the dynamite, Grumble the bear: hit everything near the pet),
-  `throw` (Matthias, a stylized low-poly kid in a "VACAY FOREVER" tee who hurls
-  spinning lightsabers that home on the nearest enemy), Remy & Benji are one `throw` pet (two stylized low-poly kids, `petModels.js`'s `kid()`) who alternate chucking junk and bananas; `heal` (Healbit the heart, Mender the medkit, Sprout), `magnet` (Magneto, Vortex
-  the magpie) and `guard` (Shieldy the turtle, Plated the shield). No pet buffs
-  the player's own stats any more -- they all fight, heal, pull or soften hits
-  (`petEffects` only folds magnet radius and damage taken). Each is a real
-  animal / object model from `src/petModels.js` (`def.model`), not a jelly. They
-  orbit you and can't be hurt (`src/pets.js`).
+- **Pets** (`PETS`, kinds in logic/items.js): every attacker does what its blurb says, and fighters **roam**
+  (`logic/petAI.js` decides where to be, `pets.js` moves/hits): with an enemy in sight (`SIGHT` 16 from the pet, within
+  `LEASH` 15 of the player, not behind a labyrinth wall; `sight`/`leash` per pet) they run out to it, and with none in sight
+  they run back to their spot beside you. Kinds: `lunge` (runs up and hits in person, `strike` = peck / bite / swat /
+  swipe / stab / sting / boing / headbutt / pounce / ram / burn; fast ones stay glued for a flurry, slow ones hit and back
+  off; Ember, Frosty, Mittens, Rascal, Shadow, Whirl, Zoom, Bumper, Stripes, Comet, Toco), `explode` (Blasty rolls up,
+  blows up in `blast` radius, reforms by you), `pulse` (runs close, hits everything within `radius` with a ring: Spike,
+  Boomer, Grumble, Pandy, Koda, Leo), `zap` (stands off, spark beam: Sparky, Bolt), `shot` (stands off, fires a
+  `projectile`: Waddles' snowball, Goldie's lobbed water droplet, Polly's squawk rings), `throw` (stands off, hurls
+  lightsabers / junk / bananas: Matthias, Remy & Benji, Mojo), and `heal`, `magnet`, `guard` which stay by your side.
+  No pet buffs the player's own stats (`petEffects` only folds magnet radius and damage taken). Each is a real
+  animal / object model from `src/petModels.js` (`def.model`). Pets can't be hurt; they stay on the platform, slide
+  along labyrinth walls, and pop back beside you if stuck or farther than `SNAP_DISTANCE`.
 
 `combat.js`'s `damageMonster` is the one place a monster takes a hit (sword,
 pet zap, shockwave all use it). The inventory HUD (crystal count, hotbar,
