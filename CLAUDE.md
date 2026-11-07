@@ -192,7 +192,7 @@ pods, chests and monsters don't spawn inside one. Pools are walkable;
 Magma Marina, Neon Nightclub, Candy Cove), each a palette + layout seed + sign
 text: sky, fog, hull/deck/border colors, planet, lights, pool water, umbrella
 palette. Defeating a boss moves the run to the next one (`levelIndexAfterBosses`,
-wrapping), via `main.js`'s `changeLevel`: it builds `createArena(level, { avoid })`
+wrapping; the visiting order is `LEVEL_ORDER`: Resort, Frostbite Spa, then water rooms and dry places alternate, water first), via `main.js`'s `changeLevel`: it builds `createArena(level, { avoid })`
 (props steer clear of pods, chests, monsters and the player), swaps the prop
 obstacles in `game.obstacles`, and re-bakes the environment map. Each level's
 `props.style` picks its own prop models from `src/props.js`'s `PROP_STYLES`

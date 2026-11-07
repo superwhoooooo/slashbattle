@@ -194,11 +194,28 @@ export const LEVELS = [
   },
 ]
 
+// The order a run visits the places in (indices into LEVELS): Orbital Resort and Frostbite Spa
+// first, then the water rooms and the remaining dry places take turns, water first
+// (Pool Room, Magma Marina, Pacific Ocean, Neon Nightclub, Glowing Reef, Candy Cove).
+// If one kind runs out, the rest of the other follows.
+export const LEVEL_ORDER = (() => {
+  const water = []
+  const dry = []
+  LEVELS.forEach((level, index) => (level.water ? water : dry).push(index))
+  const order = dry.slice(0, 2)
+  const restDry = dry.slice(2)
+  while (water.length || restDry.length) {
+    if (water.length) order.push(water.shift())
+    if (restDry.length) order.push(restDry.shift())
+  }
+  return order
+})()
+
 // Which level the player is on after `bossesDefeated` boss kills; wraps
 // around once every place has been visited.
 export function levelIndexAfterBosses(bossesDefeated) {
   const count = Math.max(0, Math.floor(bossesDefeated))
-  return count % LEVELS.length
+  return LEVEL_ORDER[count % LEVEL_ORDER.length]
 }
 
 export function levelAt(index) {

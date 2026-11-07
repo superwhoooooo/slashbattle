@@ -1,14 +1,22 @@
 import { describe, expect, it } from 'vitest'
-import { LEVELS, levelAt, levelIndexAfterBosses } from '../src/logic/levels.js'
+import { LEVELS, LEVEL_ORDER, levelAt, levelIndexAfterBosses } from '../src/logic/levels.js'
 import { resortLayout } from '../src/logic/resortLayout.js'
 
 describe('levels', () => {
   it('advances one level per boss and wraps around', () => {
     expect(levelIndexAfterBosses(0)).toBe(0)
-    expect(levelIndexAfterBosses(1)).toBe(1)
+    expect(levelIndexAfterBosses(1)).toBe(LEVELS.findIndex((l) => l.name === 'Frostbite Spa'))
     expect(levelIndexAfterBosses(LEVELS.length)).toBe(0)
     expect(levelAt(LEVELS.length + 2)).toBe(LEVELS[2])
     expect(levelAt(-1)).toBe(LEVELS[LEVELS.length - 1])
+  })
+
+  it('visits every level once per cycle, with water rooms every other map after Frostbite Spa', () => {
+    expect([...LEVEL_ORDER].sort((a, b) => a - b)).toEqual(LEVELS.map((_, i) => i))
+    const names = LEVEL_ORDER.map((i) => LEVELS[i].name)
+    expect(names.slice(0, 2)).toEqual(['Orbital Resort', 'Frostbite Spa'])
+    const after = LEVEL_ORDER.slice(2).map((i) => Boolean(LEVELS[i].water))
+    expect(after).toEqual([true, false, true, false, true, false])
   })
 
   it('gives every level a unique name and seed and a full theme', () => {
