@@ -2,6 +2,7 @@
 // Every access is wrapped in try/catch (private browsing, storage
 // quotas, or disabled storage should never crash the game) with a
 // { bestScore: 0, bestWave: 0 } fallback.
+import { noteSaved } from './saveSync.js'
 const STORAGE_KEY = 'slashbattle:highscore'
 
 // Loads the saved high score, or the zero fallback if nothing's saved
@@ -25,6 +26,7 @@ export function loadHighScore() {
 export function saveHighScore(highScore) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(highScore))
+    noteSaved()
   } catch {
     // Storage may be unavailable (private browsing, quota, disabled);
     // losing the high score is better than crashing the game over it.

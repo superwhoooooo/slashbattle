@@ -128,6 +128,7 @@ slashbattle/
     logic/gamepad.js   # gamepad deadzone, button edges, button -> action mapping
     logic/sfx.js       # sound-effect rate limiting and trick -> voice mapping
     highScore.js       # load/save the best score/wave in localStorage (try/catch, zero fallback)
+    saveSync.js        # one save per device: syncs the save keys with ~/.slashbattle/save.json via the dev server (vite.config.js plugin; logic/saveData.js rules), plus pause-menu Export/Import save; savers call noteSaved()
     particles.js       # pooled spark (Points) and tumbling-shard (InstancedMesh) bursts
     trail.js           # the sword's fading swing-trail ribbon (tip position history)
     popups.js          # floating "+100" / "RING OUT!" score popups (a sprite pool)

@@ -4,6 +4,7 @@
 // audio until one), with a single master gain both route through -- so
 // the M key mutes everything together -- on its way to a compressor that
 // keeps the mix from clipping when several voices land at once.
+import { noteSaved } from './saveSync.js'
 const MUTE_KEY = 'slashbattle:music-muted'
 const MASTER_VOLUME = 1
 
@@ -18,6 +19,7 @@ function loadMuted() {
 function saveMuted(muted) {
   try {
     localStorage.setItem(MUTE_KEY, muted ? '1' : '0')
+    noteSaved()
   } catch {
     // Storage may be unavailable; the preference just won't persist.
   }

@@ -1,3 +1,4 @@
+import './saveSync.js' // first: loads the device save file into localStorage before anything reads it
 import '@fontsource/sora/400.css'
 import '@fontsource/sora/600.css'
 import '@fontsource/sora/800.css'

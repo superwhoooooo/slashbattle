@@ -1,6 +1,7 @@
 // The in-game pause menu (press 8, or Esc, or the PAUSE button on a phone):
 // freezes the game and offers Resume, Restart, sound on/off and a brightness
 // slider (remembered in localStorage). Pure DOM; main.js hands in callbacks.
+import { exportSave, importSave, noteSaved } from './saveSync.js'
 const BRIGHTNESS_KEY = 'slashbattle:brightness'
 export const BRIGHTNESS_MIN = 0.5
 export const BRIGHTNESS_MAX = 1.3
@@ -18,6 +19,7 @@ export function loadBrightness() {
 function saveBrightness(v) {
   try {
     localStorage.setItem(BRIGHTNESS_KEY, String(v))
+    noteSaved()
   } catch {
     // ignore
   }
@@ -65,7 +67,42 @@ export function createPauseMenu({ getMuted, onToggleMute, onBrightness, onRestar
   })
   brightRow.append(brightLabel, slider, readout)
 
-  card.append(resume, restart, mainMenu, sound, brightRow)
+  // Export / Import the whole save as a file, to carry it to another browser (src/saveSync.js).
+  const saveRow = el('div', 'pause-save-row')
+  const exportBtn = el('button', 'pause-btn', 'Export save')
+  const importBtn = el('button', 'pause-btn', 'Import save')
+  exportBtn.type = 'button'
+  importBtn.type = 'button'
+  const filePicker = el('input')
+  filePicker.type = 'file'
+  filePicker.accept = '.json,application/json'
+  filePicker.style.display = 'none'
+  const saveStatus = el('p', 'pause-save-status', '')
+  exportBtn.addEventListener('click', () => {
+    try {
+      exportSave()
+      saveStatus.textContent = 'Save downloaded. Use Import save in another browser to load it.'
+    } catch (error) {
+      saveStatus.textContent = error.message
+    }
+  })
+  importBtn.addEventListener('click', () => filePicker.click())
+  filePicker.addEventListener('change', async () => {
+    const file = filePicker.files?.[0]
+    filePicker.value = ''
+    if (!file) return
+    if (!window.confirm('Replace the progress in this browser with this save file?')) return
+    try {
+      await importSave(file)
+      saveStatus.textContent = 'Save loaded. Restarting...'
+      setTimeout(() => location.reload(), 300)
+    } catch (error) {
+      saveStatus.textContent = error.message
+    }
+  })
+  saveRow.append(exportBtn, importBtn, filePicker)
+
+  card.append(resume, restart, mainMenu, sound, brightRow, saveRow, saveStatus)
   card.appendChild(el('p', 'hint', '8 / Esc: resume'))
   root.appendChild(card)
   document.body.appendChild(root)
