@@ -66,4 +66,20 @@ describe('level prop styles', () => {
       expect(seat.position.z).toBe(4)
     }
   })
+
+  // A transmissive material makes three.js re-render the whole scene every frame (see props.js).
+  it('uses no transmissive materials in any style', async () => {
+    const { PROP_STYLES } = await import('../src/props.js')
+    for (const level of LEVELS) {
+      const style = PROP_STYLES[level.props.style]
+      for (const object of [
+        style.feature({ x: 0, z: 0, radius: 1.1, color: level.props.umbrellaColors[0] }, 0, level),
+        style.seat({ x: 0, z: 0, radius: 0.5, rotation: 0 }, 0, level),
+      ]) {
+        object.traverse((o) => {
+          for (const m of [o.material].flat().filter(Boolean)) expect(m.transmission ?? 0).toBe(0)
+        })
+      }
+    }
+  })
 })

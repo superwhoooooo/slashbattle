@@ -2405,7 +2405,8 @@ if (new URLSearchParams(location.search).get('post') === '0') {
 }
 const perf = createPerfOverlay(renderer, () => renderer.getPixelRatio(), () => fpsCap)
 if (perf) {
-  window.__slash = { scene, renderer, camera } // console/devtools inspection under ?perf=1 only
+  // Console/devtools inspection under ?perf=1 only; changeLevel(i) jumps to LEVELS[i] for profiling.
+  window.__slash = { scene, renderer, camera, changeLevel: (index) => changeLevel(game, index) }
   renderer.info.autoReset = false // composer renders several passes per frame; count the whole frame
   const renderComposer = composer.render.bind(composer)
   composer.render = (...args) => {

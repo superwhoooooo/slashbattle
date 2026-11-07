@@ -71,11 +71,14 @@ function resortSeat(prop, topY, level) {
 function frostFeature(prop, topY) {
   const group = new THREE.Group()
   group.position.set(prop.x, topY, prop.z)
+  // No `transmission`: any transmissive material makes three.js re-render the whole opaque scene
+  // every frame into a full-res, 4x multisampled target and mip it -- on this level that was
+  // +55-110 draw calls and +20k triangles a frame for a barely visible effect. Plain
+  // transparency keeps the see-through ice look.
   const material = new THREE.MeshPhysicalMaterial({
     color: prop.color,
     roughness: 0.12,
     metalness: 0,
-    transmission: 0.2,
     transparent: true,
     opacity: 0.85,
     flatShading: true,
