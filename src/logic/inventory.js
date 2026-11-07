@@ -102,16 +102,28 @@ export function swapItem(inventory, { kind, id }, outId) {
   return { ...inventory, pets: inventory.pets.map((p) => (p === outId ? id : p)) }
 }
 
-// Rolls a chest's reward: first a category (weapon / ability / pet, equal
-// odds among the categories that still have something to give), then an
-// item within it. null once you own everything.
+// How likely each chest category is, relative to the others. Scopes and ammo share one
+// "attachment" category and are weighted well down: they never need a free slot, so late in a
+// run -- with the pet slot, hotbar and ability slots full and everything else asking for a swap --
+// they were the one thing a chest just handed over, a quarter of all chests. At 0.35 they're about
+// 1 chest in 9 while weapons, abilities and pets are all still on offer.
+export const CHEST_CATEGORY_WEIGHTS = { weapon: 1, ability: 1, pet: 1, attachment: 0.35 }
+
+// Rolls a chest's reward: first a category (weighted by CHEST_CATEGORY_WEIGHTS among the
+// categories that still have something to give), then an item within it. null once you own
+// everything.
 export function rollChestLoot(inventory, rng = Math.random, unlocked = null) {
   const loot = availableLoot(inventory, unlocked)
   if (loot.length === 0) return null
-  // Scopes and ammo share one "attachment" category so they don't crowd out weapons / abilities / pets.
   const categoryOf = (item) => (item.kind === 'scope' || item.kind === 'ammo' ? 'attachment' : item.kind)
   const kinds = [...new Set(loot.map(categoryOf))]
-  const kind = kinds[Math.min(Math.floor(rng() * kinds.length), kinds.length - 1)]
+  const weights = kinds.map((k) => CHEST_CATEGORY_WEIGHTS[k] ?? 1)
+  let pick = rng() * weights.reduce((a, b) => a + b, 0)
+  let kind = kinds[kinds.length - 1]
+  for (let i = 0; i < kinds.length; i++) {
+    if (pick < weights[i]) { kind = kinds[i]; break }
+    pick -= weights[i]
+  }
   const pool = loot.filter((item) => categoryOf(item) === kind)
   return pool[Math.min(Math.floor(rng() * pool.length), pool.length - 1)]
 }

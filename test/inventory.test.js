@@ -194,6 +194,22 @@ describe('chest loot', () => {
     expect(kinds).toEqual(new Set(['weapon', 'ability', 'pet']))
   })
 
+  it('keeps scopes and ammo to a small share of chests once you carry a rifle', () => {
+    const rifle = Object.keys(WEAPONS).find((id) => WEAPONS[id].rifle)
+    const inv = grantItem(createInventory(), { kind: 'weapon', id: rifle })
+    const unlocked = { scopes: [], ammo: [] }
+    const rng = createSeededRng(7)
+    let attachments = 0
+    const rolls = 4000
+    for (let i = 0; i < rolls; i++) {
+      const { kind } = rollChestLoot(inv, rng, unlocked)
+      if (kind === 'scope' || kind === 'ammo') attachments++
+    }
+    // weight 0.35 against three categories of weight 1 -> about 10.4%
+    expect(attachments / rolls).toBeGreaterThan(0.07)
+    expect(attachments / rolls).toBeLessThan(0.14)
+  })
+
   it('makes later chests cost more', () => {
     expect(chestCost(3, () => 0)).toBeGreaterThan(chestCost(0, () => 0.99))
     expect(chestCost(0, () => 0)).toBeGreaterThan(0)
