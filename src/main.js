@@ -393,16 +393,10 @@ const gtaoPass = new SpriteSafeGTAOPass(scene, camera, window.innerWidth, window
 gtaoPass.blendIntensity = GTAO_INTENSITY
 gtaoPass.enabled = GTAO_ENABLED && !touchDevice
 composer.addPass(gtaoPass)
-// UnrealBloomPass already works at half the size it is given; this halves that again (quarter of the
-// scene's pixels). Bloom here is faint (strength 0.15, high threshold), so the softer glow is not
-// noticeable but its blur passes get ~4x cheaper. Both the constructor and setSize get the halved size.
-class HalfResBloomPass extends UnrealBloomPass {
-  setSize(width, height) {
-    super.setSize(Math.max(1, width >> 1), Math.max(1, height >> 1))
-  }
-}
-const bloomPass = new HalfResBloomPass(
-  new THREE.Vector2(window.innerWidth >> 1, window.innerHeight >> 1),
+// Full-size bloom input: a quarter-res bloom spread the glow twice as wide, which made the sword,
+// attack and hit effects look noticeably brighter than they were tuned for.
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight),
   BLOOM_STRENGTH,
   BLOOM_RADIUS,
   BLOOM_THRESHOLD,
