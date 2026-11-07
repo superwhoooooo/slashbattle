@@ -13,7 +13,7 @@ const CSS = `
 @media (prefers-reduced-motion: reduce) { #water-breath.low { animation: none; } }
 `
 
-export function createWaterUi() {
+export function createWaterUi({ touch = false } = {}) {
   const style = document.createElement('style')
   style.textContent = CSS
   document.head.appendChild(style)
@@ -34,7 +34,7 @@ export function createWaterUi() {
       const hint = room && !diving
       breath.style.display = room ? 'flex' : 'none'
       if (!room) return
-      label.textContent = diving ? 'BREATH' : fraction < 0.999 ? 'CATCHING BREATH' : lurking ? 'SOMETHING LURKS BELOW: DIVE (SHIFT / E)' : 'SHIFT / E: DIVE'
+      label.textContent = diving ? 'BREATH' : fraction < 0.999 ? 'CATCHING BREATH' : lurking ? (touch ? 'SOMETHING LURKS BELOW: TAP DIVE' : 'SOMETHING LURKS BELOW: DIVE (SHIFT / E)') : touch ? 'TAP DIVE' : 'SHIFT / E: DIVE'
       fill.style.width = `${Math.round(Math.max(0, Math.min(1, fraction)) * 100)}%`
       breath.classList.toggle('low', diving && fraction < 0.3)
       breath.style.opacity = show || hint ? '1' : '0'

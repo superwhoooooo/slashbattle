@@ -442,6 +442,7 @@ document.addEventListener(
 // First person (key 0): the camera sits at the player's head and the mouse (pointer
 // lock) turns the view; W moves along it and every weapon aims where you look.
 let firstPerson = false
+const TOUCH_LOOK_SPEED = 2.6 // rad/s at full stick, when turning the first-person view by touch
 let fpYaw = 0 // same convention as player.facing: forward = (sin, cos)
 const fpCrosshair = document.createElement('div')
 fpCrosshair.style.cssText = 'position:fixed;left:50%;top:50%;width:14px;height:14px;margin:-7px 0 0 -7px;border:2px solid rgba(255,255,255,0.85);border-radius:50%;box-shadow:0 0 0 1px rgba(26,36,51,0.45);pointer-events:none;display:none;z-index:5'
@@ -452,7 +453,7 @@ function setFirstPerson(on) {
   fpCrosshair.style.display = on ? 'block' : 'none'
   if (on) {
     fpYaw = game.player.facing
-    renderer.domElement.requestPointerLock?.()?.catch?.(() => {}) // denied locks just leave the view where it is
+    if (!input.touchMode) renderer.domElement.requestPointerLock?.()?.catch?.(() => {}) // denied locks just leave the view where it is
   } else {
     cameraYaw = 0
     game.player.mesh.visible = true
@@ -469,7 +470,7 @@ document.addEventListener('pointerlockchange', () => {
 // ---- Water rooms (logic/levels.js entries with `water`): swim on the surface in third person,
 // dive under it in first person. See logic/water.js for the rules, src/waterArena.js for the scenery.
 const waterState = { diving: false, breath: WATER.breath, depthY: WATER.floatY, diveStartedAt: 0 }
-const waterUi = createWaterUi()
+const waterUi = createWaterUi({ touch: touchDevice })
 let lastHidePrompt = false // whether E would have entered a pod last frame (so E can dive instead)
 const waterRoom = () => game?.arena?.level?.water ?? null
 // How high the water carries something at (x, z): the surface wave, plus how deep we are.
@@ -2567,6 +2568,13 @@ function animate(timestamp) {
   // otherwise every landed hit stalls your movement for a moment.
   if (firstPerson) cameraYaw = fpYaw + Math.PI
   const room = waterRoom()
+  if (input.touchMode) {
+    // Touch: the 1ST button toggles first person (while diving, DIVE/SURFACE decides it), and the
+    // aim stick turns the view like the mouse does.
+    if (input.wasPressed('Digit0') && !waterState.diving) setFirstPerson(!firstPerson)
+    if (firstPerson && input.touchAim.aiming) fpYaw -= input.touchAim.dx * TOUCH_LOOK_SPEED * deltaSeconds
+    touchControls?.setWater(Boolean(room), waterState.diving)
+  }
   stepWater(elapsedSeconds, deltaSeconds)
   player.update(input, cameraYaw, deltaSeconds, room ? true : null)
   if (room) {
