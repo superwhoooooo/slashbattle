@@ -74,8 +74,8 @@ describe('skills', () => {
     p = buySkill(p, 'heavy').profile
     p = buySkill(p, 'heavy').profile
     p = buySkill(p, 'hardy').profile
-    expect(skillEffects(p.skills).damage).toBeCloseTo(1.06)
-    expect(skillEffects(p.skills).maxHp).toBe(6)
+    expect(skillEffects(p.skills).damage).toBeCloseTo(1.024)
+    expect(skillEffects(p.skills).maxHp).toBe(3)
     const spent = skillsSpent(p.skills)
     expect(spent).toBe(SKILLS.heavy.cost * 2 + SKILLS.hardy.cost)
     const refunded = respecSkills(p)
@@ -105,8 +105,8 @@ describe('skills', () => {
 
   it('upgrades more than the old stats: hp, crits, hiding, pets, slots, revives', () => {
     const fx = skillEffects({ hardy: 5, sharp: 5, hunker: 5, beastmaster: 5, mule: 3, bandolier: 2, friend: 3, determined: 1 })
-    expect(fx.maxHp).toBe(30)
-    expect(fx.crit).toBeCloseTo(0.1)
+    expect(fx.maxHp).toBe(15)
+    expect(fx.crit).toBeCloseTo(0.04)
     expect(fx.hideTime).toBe(5)
     expect(fx.petDamage).toBeCloseTo(1.5)
     expect([fx.slotsPowerups, fx.slotsAbilities, fx.slotsPets]).toEqual([3, 2, 3])

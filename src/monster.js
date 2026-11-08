@@ -130,6 +130,7 @@ export function setWaterRoom(on) {
 const shieldedFrom = (ai) => !ai.reachAll && ((deepShield && ai.deep === true) || (surfaceShield && ai.deep !== true))
 // Out of reach right now: a deep dweller, or a submerged water boss, while you're not diving.
 export function isUntouchable(monster) {
+  if (monster.userData.immune === true) return true // a boss's immunity phase
   return deepShield && (monster.userData.deep === true || monster.userData.submerged === true)
 }
 
@@ -324,7 +325,7 @@ function stepBossSpecials(monster, ai, stats, player, obstacles, dt, events) {
       if (special.remaining <= 0) {
         if (special.name === 'signature') {
           const aim = Math.atan2(player.position.x - monster.position.x, player.position.z - monster.position.z)
-          events.push({ type: 'signature', attack: special.attack, x: monster.position.x, z: monster.position.z, aim, damage: Math.max(1, Math.round(stats.damage * (special.attack.damageMultiplier ?? 0.6) * (ai.damageScale ?? 1))), boss: stats.boss === true })
+          events.push({ type: 'signature', attack: special.attack, x: monster.position.x, z: monster.position.z, aim, damage: Math.max(1, Math.round(stats.damage * (special.attack.damageMultiplier ?? (stats.boss ? 1 : 0.6)) * (ai.damageScale ?? 1))), boss: stats.boss === true, onHit: stats.onHit, trueFraction: stats.trueFraction ?? 0 })
           ai.special = null
         } else fireSpecial(monster, ai, stats, player, obstacles, events)
       }
@@ -660,7 +661,8 @@ export function updateMonster(monster, player, obstacles, dt, now) {
       jellyHit(monster, -MONSTER_ATTACK_WINDUP_INFLATE_RATE * dt)
 
       if (ai.windUpElapsed >= MONSTER_ATTACK_WINDUP_DURATION) {
-        hitPlayer = !shieldedFrom(ai) && player.damagePlayer(Math.round(stats.damage * ai.damageScale), now)
+        hitPlayer = !shieldedFrom(ai) && player.damagePlayer(Math.round(stats.damage * ai.damageScale), now, stats.trueFraction ?? 0)
+        if (hitPlayer && stats.onHit) events.push({ type: 'status', onHit: stats.onHit })
         ai.attackCooldown.trigger(now)
         ai.windUpElapsed = null
       }

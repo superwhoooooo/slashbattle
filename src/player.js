@@ -44,6 +44,13 @@ export class Player {
     this.aimAngle = null // yaw toward the mouse while a ranged weapon is out; overrides the movement facing
     this.speedMultiplier = 1 // > 1 with a speed pet or Sprint
     this.frenzyUntil = -Infinity // the Frenzy ability: attack cooldown scaled down until then
+    // Status effects the new enemies inflict (see applyStatus): poison ticks true damage, slow / stun cut your speed,
+    // weaken cuts your damage. They ignore armour on purpose, so a maxed skill tree still feels them.
+    this.slowUntil = -Infinity
+    this.slowFactor = 1
+    this.weakUntil = -Infinity
+    this.poisonUntil = -Infinity
+    this.poisonNext = 0
     this.sprintUntil = -Infinity // the Sprint ability: speedMultiplier boosted until then
     this._hitFlashElapsed = null // null means not currently flashing
     this.hidden = false
@@ -83,16 +90,55 @@ export class Player {
   // clock the attack cooldown uses). Returns whether the damage was
   // actually applied, so callers can trigger a screen shake only on a
   // real hit.
-  damagePlayer(amount, now) {
+  // `trueFraction` (0-1): the share of this hit that armour (damage-taken reductions) can't touch.
+  damagePlayer(amount, now, trueFraction = 0) {
     if (this.hidden) return false
     if (now < this.invulnerableUntil) return false
     if (now < this.shieldUntil) return false
-    this.hp = applyDamage({ hp: this.hp }, amount * this.damageTakenMultiplier).hp
+    const armour = this.damageTakenMultiplier
+    const effective = armour === 0 ? 0 : armour + (1 - armour) * trueFraction
+    this.hp = applyDamage({ hp: this.hp }, amount * effective).hp
     this.invulnerableUntil = now + PLAYER_IFRAME_DURATION * this.iframeScale
     this._hitFlashElapsed = 0
     jellyHit(this.mesh, JELLY_HIT_STRENGTH)
     this._damageSpark()
     return true
+  }
+
+  // Puts a status on the player: 'poison' (true damage every half second), 'slow', 'stun' (nearly rooted) or 'weaken'.
+  applyStatus(kind, now, { seconds = 3, factor = 0.6 } = {}) {
+    if (this.hidden || this.damageTakenMultiplier === 0) return
+    if (kind === 'poison') this.poisonUntil = Math.max(this.poisonUntil, now + seconds)
+    else if (kind === 'slow') {
+      this.slowUntil = Math.max(this.slowUntil, now + seconds)
+      this.slowFactor = Math.min(this.slowFactor, factor)
+    } else if (kind === 'stun') {
+      this.slowUntil = Math.max(this.slowUntil, now + 0.5)
+      this.slowFactor = 0.12
+    } else if (kind === 'weaken') this.weakUntil = Math.max(this.weakUntil, now + seconds)
+  }
+
+  // Multipliers from the statuses above.
+  speedFactor(now) {
+    return now < this.slowUntil ? this.slowFactor : 1
+  }
+
+  weakFactor(now) {
+    return now < this.weakUntil ? 0.65 : 1
+  }
+
+  // Poison: 1 true damage every half second while it lasts (can't kill outright: leaves 1 hp). Returns true on a tick.
+  stepStatus(now) {
+    if (now >= this.slowUntil) this.slowFactor = 1
+    if (now < this.poisonUntil && now >= this.poisonNext && !this.hidden) {
+      this.poisonNext = now + 0.5
+      if (this.hp > 1) {
+        this.hp = Math.max(1, this.hp - 1)
+        this._damageSpark()
+        return true
+      }
+    }
+    return false
   }
 
   // A small red spark burst at roughly chest height, for any damage the

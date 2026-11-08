@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   BOSSES,
+  BOSS_BASE,
   BOSS_COUNT,
   BOSS_SPECIALS,
   BOSS_MONSTER_TYPES,
@@ -93,25 +94,26 @@ describe('wavesBeforeBoss / bossHpScale', () => {
   })
 
   it('gives full strength from the very first boss fight', () => {
-    for (const n of [0, 1, 2, 3]) expect(bossEase(n)).toEqual({ hp: 1, damage: 1 })
+    for (const n of [0, 1, 2, 3]) expect(bossEase(n)).toEqual(BOSS_BASE)
+    expect(BOSS_BASE.hp).toBeGreaterThan(1.3)
   })
 
   it('makes later boss fights tougher', () => {
-    expect(bossHpScale(0)).toBe(1) // the opener is a real fight
-    expect(bossHpScale(3)).toBeCloseTo(1.25 ** 3)
+    expect(bossHpScale(0)).toBe(BOSS_BASE.hp) // the opener is a real fight
+    expect(bossHpScale(3)).toBeCloseTo(1.25 ** 3 * BOSS_BASE.hp)
     expect(bossHpScale(4) / bossHpScale(3)).toBeCloseTo(1.25) // +25% every fight once the easing ends
     expect(bossHpScale(7)).toBeGreaterThan(bossHpScale(3))
   })
 
   it('hits harder every fight', () => {
-    expect(bossDamageScale(3)).toBeCloseTo(1.15 ** 3)
+    expect(bossDamageScale(3)).toBeCloseTo(1.15 ** 3 * BOSS_BASE.damage)
     expect(bossDamageScale(5)).toBeGreaterThan(bossDamageScale(4))
   })
 
   it('attacks more often every fight, down to a floor', () => {
     expect(bossCooldownScale(0)).toBe(1)
-    expect(bossCooldownScale(2)).toBeCloseTo(0.81)
-    expect(bossCooldownScale(50)).toBe(0.4)
+    expect(bossCooldownScale(2)).toBeCloseTo(0.88 ** 2)
+    expect(bossCooldownScale(50)).toBe(0.3)
   })
 
   it('learns one new special per fight won, never a duplicate', () => {
@@ -157,5 +159,37 @@ describe('signature attacks', () => {
     for (const [id, stats] of Object.entries(CRAZY_TYPES)) {
       expect(stats.signature, id).toBeTruthy()
     }
+  })
+})
+
+describe('immunity phases', () => {
+  it('triggers once at each health threshold, in order', async () => {
+    const { immunityPhaseReached, BOSS_IMMUNITY_THRESHOLDS } = await import('../src/logic/bosses.js')
+    expect(BOSS_IMMUNITY_THRESHOLDS).toEqual([0.75, 0.5, 0.25])
+    expect(immunityPhaseReached(1000, 1000, 0)).toBe(null)
+    expect(immunityPhaseReached(750, 1000, 0)).toBe(0)
+    expect(immunityPhaseReached(600, 1000, 1)).toBe(null)
+    expect(immunityPhaseReached(500, 1000, 1)).toBe(1)
+    expect(immunityPhaseReached(100, 1000, 3)).toBe(null)
+  })
+})
+
+describe('the new enemies stay annoying against a maxed build', () => {
+  it('gives every one a status on hit and a share of damage armour cannot stop', async () => {
+    const { CRAZY_TYPES } = await import('../src/logic/crazyEnemies.js')
+    for (const [id, stats] of Object.entries(CRAZY_TYPES)) {
+      expect(stats.trueFraction, id).toBeGreaterThanOrEqual(0.4)
+      if (id !== 'kablooma') expect(['poison', 'slow', 'weaken', 'drain', 'stun']).toContain(stats.onHit.status)
+    }
+  })
+
+  it('has a conditioning tree that gives only small gains, even maxed', async () => {
+    const { skillEffects, SKILLS } = await import('../src/logic/skills.js')
+    const all = Object.fromEntries(Object.values(SKILLS).filter((n) => n.branch === 'conditioning').map((n) => [n.id, n.max]))
+    const fx = skillEffects(all)
+    expect(fx.damage).toBeLessThan(1.35)
+    expect(fx.damageTaken).toBeGreaterThan(0.85)
+    expect(fx.maxHp).toBeLessThan(45)
+    expect(fx.regen).toBeLessThan(0.45)
   })
 })

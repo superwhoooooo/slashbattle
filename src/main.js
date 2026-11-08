@@ -199,7 +199,7 @@ import {
   updateInventoryHud,
 } from './hud.js'
 import { Input } from './input.js'
-import { BOSS_HEAD_START, bossById, bossCooldownScale, bossDamageScale, bossHpScale, bossSpecialsFor } from './logic/bosses.js'
+import { BOSS_HEAD_START, BOSS_IMMUNITY_MINIONS, BOSS_IMMUNITY_SECONDS, BOSS_IMMUNITY_THRESHOLDS, bossById, immunityPhaseReached, bossCooldownScale, bossDamageScale, bossHpScale, bossSpecialsFor } from './logic/bosses.js'
 import { fanVelocities } from './logic/projectiles.js'
 import { clampToPlatform, isOnPlatform, resolveArenaMove, spawnPointNearPlayer } from './logic/arena.js'
 import { crystalDrops } from './logic/crystals.js'
@@ -251,6 +251,7 @@ import { makeBullets } from './logic/bullets.js'
 import { createPoisonPool, lobPoison, resetPoison, updatePoison } from './hazards.js'
 import { createProjectilePool, fireProjectile, resetProjectiles, updateProjectiles } from './projectiles.js'
 import { inRingBand, onBeam, puddleTargets, rainZones, ringAngles, wallOrbs } from './logic/signatures.js'
+import { CRAZY_TYPE_IDS } from './logic/crazyEnemies.js'
 import { createShockwavePool, resetShockwaves, spawnShockwave, updateShockwaves } from './shockwave.js'
 import { createPopupPool, resetPopups, showPopup, updatePopups } from './popups.js'
 import { createSpawnEffect, updateSpawnEffect } from './spawner.js'
@@ -1056,7 +1057,7 @@ function selectWeapon(game, slot) {
 
 // Rage's damage multiplier right now (the Bullet Ring ability scales with it).
 function elapsedDamageMultiplier(player, now) {
-  return now < player.rageUntil ? RAGE_DAMAGE_MULTIPLIER : 1
+  return (now < player.rageUntil ? RAGE_DAMAGE_MULTIPLIER : 1) * player.weakFactor(now)
 }
 
 // What the weapon effects draw with (see src/weaponFx.js).
@@ -2045,6 +2046,7 @@ function spawnMonster(game, type, { at = null, effectOptions, hpScale = 1, faceP
   )
 
   const mesh = createMonsterMesh(type)
+  mesh.userData.onHit = stats.onHit
   mesh.position.x = spawn.x
   mesh.position.z = spawn.z
   mesh.rotation.y = facePlayer
@@ -2070,6 +2072,12 @@ function spawnMonster(game, type, { at = null, effectOptions, hpScale = 1, faceP
     mesh.userData.hp = mesh.userData.maxHp = Math.round(stats.hp * scale.hp * hpScale)
     mesh.userData.speedScale = scale.speed
     mesh.userData.damageScale = scale.damage
+    // The new enemies toughen up with the player's own power (damage, attack speed skills and power-ups), so a maxed build
+    // doesn't just melt them.
+    if (CRAZY_TYPE_IDS.includes(type)) {
+      const fx = activeFx(game.inventory.equipped)
+      mesh.userData.hp = mesh.userData.maxHp = Math.round(mesh.userData.maxHp * Math.min(2.2, Math.max(1, fx.damage / Math.max(0.55, fx.cooldown)) * 1.15))
+    }
   }
   scene.add(mesh)
   game.monsters.push(mesh)
@@ -2125,6 +2133,49 @@ function startBossCutscene(game) {
 // True if a spot in the labyrinth is open floor (not inside a wall or the gate).
 function labSpotClear(game, at) {
   return !game.obstacles.some((o) => Math.hypot(o.x - at.x, o.z - at.z) < o.radius + 0.4)
+}
+
+// A boss's immunity phase: a glowing bubble, a burst of minions, and no damage until they are beaten or the timer runs out.
+function startImmunity(game, mesh, phase) {
+  const ud = mesh.userData
+  ud.immunityDone = phase + 1
+  ud.hp = Math.max(ud.hp, Math.ceil(ud.maxHp * BOSS_IMMUNITY_THRESHOLDS[phase])) // the blow that crossed the line doesn't carry on through
+  ud.immune = true
+  ud.immuneLeft = BOSS_IMMUNITY_SECONDS
+  ud.immuneGrace = 1.5
+  if (!ud.bubble) {
+    const r = Math.max(ud.radius * 1.6, 2.2)
+    ud.bubble = new THREE.Mesh(
+      new THREE.SphereGeometry(r, 24, 16),
+      new THREE.MeshBasicMaterial({ color: 0x7fe8ff, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }),
+    )
+    ud.bubble.position.y = r * 0.7
+    mesh.add(ud.bubble)
+  }
+  ud.bubble.visible = true
+  pendingSummons.push({ bossMesh: mesh, count: BOSS_IMMUNITY_MINIONS, maxMinions: BOSS_IMMUNITY_MINIONS + 4 })
+  spawnShockwave(shockwavePool, mesh.position.x, mesh.position.z, 8, 0x7fe8ff)
+  burst(particleSystem, { x: mesh.position.x, y: 1.5, z: mesh.position.z }, 0x7fe8ff, 40, 5)
+  sfx.play('bossSlam', { x: mesh.position.x, z: mesh.position.z })
+  questUi.showToast(`${bossById(ud.type)?.name ?? 'BOSS'} IS SHIELDED! BEAT ITS MINIONS`)
+}
+function stepImmunity(game, mesh, dt, now) {
+  const ud = mesh.userData
+  ud.immuneLeft -= dt
+  ud.immuneGrace -= dt
+  if (ud.bubble) {
+    ud.bubble.material.opacity = 0.22 + Math.sin(now * 6) * 0.08
+    ud.bubble.scale.setScalar(1 + Math.sin(now * 4) * 0.03)
+  }
+  const minionsAlive = (ud.minions ?? []).some((m) => game.monsters.includes(m) && !m.userData.dying)
+  if (ud.immuneLeft <= 0 || (ud.immuneGrace <= 0 && !minionsAlive)) {
+    ud.immune = false
+    if (ud.bubble) ud.bubble.visible = false
+    spawnShockwave(shockwavePool, mesh.position.x, mesh.position.z, 10, 0xffffff)
+    burst(particleSystem, { x: mesh.position.x, y: 1.5, z: mesh.position.z }, 0xffffff, 40, 5)
+    sfx.play('bossSlam', { x: mesh.position.x, z: mesh.position.z })
+    questUi.showToast('SHIELD DOWN! HIT IT NOW')
+  }
 }
 
 function summonMinions(game, bossMesh, count, maxMinions) {
@@ -2244,6 +2295,23 @@ function updateSigJobs(dt, now) {
     }
   }
 }
+// What a new enemy's hit does besides damage (monster stats' `onHit`): poison, slow, weaken, stun, or steal crystals.
+const STATUS_COLORS = { poison: 0x8dff4a, slow: 0x9fe8ff, weaken: 0xff9ad0, stun: 0xfff1a8, drain: 0xffd15c }
+function applyOnHit(game, onHit, now) {
+  if (!onHit) return
+  const { player } = game
+  if (onHit.status === 'drain') {
+    const taken = Math.min(game.inventory.crystals, onHit.amount ?? 4)
+    if (taken > 0) {
+      game.inventory = { ...game.inventory, crystals: game.inventory.crystals - taken }
+      burst(particleSystem, { x: player.position.x, y: 1.2, z: player.position.z }, STATUS_COLORS.drain, 14, 3)
+      questUi.showToast(`-${taken} CRYSTALS STOLEN`)
+    }
+    return
+  }
+  player.applyStatus(onHit.status, now, onHit)
+  burst(particleSystem, { x: player.position.x, y: 1.2, z: player.position.z }, STATUS_COLORS[onHit.status] ?? 0xffffff, 12, 2.5)
+}
 function sigHurt(game) {
   triggerShake(game.shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
   triggerDamageFlash(hud)
@@ -2259,7 +2327,10 @@ function runSignature(game, bossMesh, event) {
   const size = a.size ?? 1
   const alive = () => game.monsters.includes(bossMesh) && !bossMesh.userData.dying && !bossMesh.userData.falling
   const hurt = (dmg, now) => {
-    if (!player.hidden && player.damagePlayer(dmg, now)) sigHurt(game)
+    if (!player.hidden && player.damagePlayer(dmg, now, event.trueFraction ?? 0)) {
+      sigHurt(game)
+      applyOnHit(game, event.onHit, now)
+    }
   }
   const orb = (x, z, vx, vz) => fireProjectile(projectilePool, { x, z, vx, vz, damage: event.damage, color, size })
   const here = () => ({ x: bossMesh.position.x, z: bossMesh.position.z })
@@ -2452,6 +2523,8 @@ function applyBossEvents(game, bossMesh, events, now) {
         player.mesh.position.z = player.position.z
         if (Math.random() < 0.4) burst(particleSystem, { x: player.position.x, y: 0.6 - fxDepthOffset(), z: player.position.z }, 0xfff1a8, 1, 1)
       }
+    } else if (event.type === 'status') {
+      applyOnHit(game, event.onHit, now)
     } else if (event.type === 'sigWarn') {
       burst(particleSystem, { x: event.x, y: 1.4, z: event.z }, event.attack.color, 16, 3)
       sfx.play('podIn', { x: event.x, z: event.z })
@@ -3472,7 +3545,8 @@ function gameFrame(timestamp) {
   if (!sandbox && game.inventory.pets.some((id) => !profile.collection.includes(id))) {
     setProfile(addToCollection(profile, game.inventory.pets))
   }
-  player.speedMultiplier = petFx.speedMultiplier * perk.speed * (elapsedSeconds < player.sprintUntil ? SPRINT_SPEED_MULTIPLIER : 1)
+  player.speedMultiplier = petFx.speedMultiplier * perk.speed * (elapsedSeconds < player.sprintUntil ? SPRINT_SPEED_MULTIPLIER : 1) * player.speedFactor(elapsedSeconds)
+  if (player.stepStatus(elapsedSeconds)) burst(particleSystem, { x: player.position.x, y: 1.1, z: player.position.z }, STATUS_COLORS.poison, 3, 1.5)
   if (game.world) {
     const jump = game.world.jump
     if (isGliding(jump)) player.speedMultiplier *= GLIDE_SPEED_MULTIPLIER // the paraglider carries you along
@@ -3701,6 +3775,29 @@ function gameFrame(timestamp) {
       return true
     }
 
+    // Immunity phases: at 75 / 50 / 25% health a boss throws up a shield, calls minions, and can't be hurt until they are beaten.
+    if (mesh.userData.isBoss && !mesh.userData.spawning && !mesh.userData.immune) {
+      const phase = immunityPhaseReached(mesh.userData.hp, mesh.userData.maxHp, mesh.userData.immunityDone ?? 0)
+      if (phase !== null) startImmunity(game, mesh, phase)
+    }
+    if (mesh.userData.immune) stepImmunity(game, mesh, gameplayDelta, elapsedSeconds)
+    // Phase two: at half health a boss ENRAGES: faster, its moves come round sooner, and it fires its signature at once.
+    if (mesh.userData.isBoss && !mesh.userData.phase2 && !mesh.userData.spawning && mesh.userData.hp <= mesh.userData.maxHp * 0.5) {
+      mesh.userData.phase2 = true
+      mesh.userData.speedScale = (mesh.userData.speedScale ?? 1) * 1.3
+      mesh.userData.specialIntervalScale = (mesh.userData.specialIntervalScale ?? 1) * 0.65
+      mesh.userData.damageScale = (mesh.userData.damageScale ?? 1) * 1.2
+      mesh.userData.signatureTimer = Math.min(mesh.userData.signatureTimer ?? 0, 0.6)
+      const material = mesh.userData.jelly?.body?.material
+      if (material?.emissive) {
+        material.emissive.setHex(0xff2244)
+        material.emissiveIntensity = 0.5
+      }
+      spawnShockwave(shockwavePool, mesh.position.x, mesh.position.z, 9, 0xff2244)
+      burst(particleSystem, { x: mesh.position.x, y: 1.5, z: mesh.position.z }, 0xff4466, 50, 6)
+      sfx.play('bossSlam', { x: mesh.position.x, z: mesh.position.z })
+      questUi.showToast(`${bossById(mesh.userData.type)?.name ?? 'BOSS'} IS ENRAGED!`)
+    }
     const { hitPlayer: monsterHitPlayer, events: specialEvents } = updateMonster(mesh, player, obstacles, gameplayDelta, elapsedSeconds)
     const hitPlayer = monsterHitPlayer || (specialEvents.length > 0 && applyBossEvents(game, mesh, specialEvents, elapsedSeconds))
     updateJelly(mesh, gameplayDelta, elapsedSeconds, { speed: mesh.userData.speed, moveDir: mesh.userData.moveDir })

@@ -521,8 +521,8 @@ fields are `attackRange`/`reachBonus` (so big bodies can still hit and be hit),
 `faceLayout.js`'s `bodySurfaceDistance`, so faces sit right on them, and a
 body's resting height comes off its bounding box. A run shuffles the seven
 (`shuffleBossOrder`), so all appear before any repeats. Every boss fight makes
-the next one tougher (there is no warm-up: `bossEase` is 1 from the first fight, so even Orbital Resort's boss is full
-strength, and `BOSS_HEAD_START` (2) gives every boss two fights' worth of extra moves and faster cooldowns from the start): hp compounds
+the next one tougher (there is no warm-up: `bossEase` is `BOSS_BASE` (1.6x hp, 1.3x damage) from the first fight, so even Orbital Resort's boss is brutal,
+and `BOSS_HEAD_START` (3) gives every boss three fights' worth of extra moves and faster cooldowns from the start): hp compounds
 +25% per fight won (`bossHpScale`), damage +15% (`bossDamageScale`, applied to
 melee and specials alike), each fight teaches the boss one more special it
 lacks from `BOSS_EXTRA_SPECIALS` (`bossSpecialsFor`), and special cooldowns
@@ -698,6 +698,23 @@ move, its boss form four or five (the existing `BOSS_SPECIALS`, so each boss's s
 wave (3-8): `crazyWeights(n)` folds them into `pickMonsterType` (Orbital Resort and every other place), `world.js`'s biome
 tables carry them in the Wilds, and the boss forms join `BOSSES` (also the Wilds' temple guardians). Their add-ons
 (`characters.js`: wings, claws, cap, halo, fuse, icicles, flame, horn, rings) animate through `userData.animateAcc(time)`.
+
+## Boss immunity phases
+Each time a boss's health first falls to 75%, 50% and 25% (`BOSS_IMMUNITY_THRESHOLDS`, `immunityPhaseReached`) it throws up a glowing
+shield bubble (`userData.immune`, honoured by `isUntouchable`, so swings, bullets, pets and abilities all bounce off), calls
+`BOSS_IMMUNITY_MINIONS` minions and keeps fighting. The shield drops when they are all beaten or after `BOSS_IMMUNITY_SECONDS`
+(16); a toast says "SHIELD DOWN! HIT IT NOW". `main.js`'s `startImmunity` / `stepImmunity`.
+
+## Boss phase two
+At half health a boss ENRAGES once (`main.js`, `userData.phase2`): +30% speed, its moves come round 35% sooner, +20% damage, a red
+glow and shockwave, and its signature attack fires almost at once.
+
+## New enemies vs a maxed build
+The Conditioning tree was cut hard (roughly 40% of the old per-rank values: e.g. +1.2% damage, +3 max HP, 0.8% less damage taken).
+The ten new enemies counter strong builds: every hit (melee or signature) carries a status from `crazyEnemies.js`'s `ON_HIT`
+(`Player.applyStatus`: poison ticks true damage, slow / stun cut speed, weaken cuts your damage, drain steals crystals), `trueFraction`
+(40%, Kablooma 60%) of their damage ignores damage-taken reductions (`Player.damagePlayer`'s third argument), and each spawns with
+hp scaled by your damage and attack-speed skills (up to 2.2x).
 
 ## Signature attacks
 Every boss has one attack nobody else has, and each of the ten new regular enemies a smaller one (`src/logic/signatures.js`, pure

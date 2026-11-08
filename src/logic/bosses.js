@@ -362,9 +362,21 @@ export function wavesBeforeBoss(bossesDefeated) {
 // move it didn't have, and its special cooldowns shrink 10% per fight (floored at 40%).
 export const BOSS_HP_GROWTH = 1.25
 export const BOSS_DAMAGE_GROWTH = 1.15
-export const BOSS_COOLDOWN_SHRINK = 0.9
-export const BOSS_HEAD_START = 2 // a boss's first fight already counts as this many won, for its moves and cooldowns
-export const BOSS_MIN_COOLDOWN_SCALE = 0.4
+// Immunity phases: each time a boss's health first falls to one of these fractions it throws up a shield and can't be
+// hurt until its minions are beaten (or `BOSS_IMMUNITY_SECONDS` run out).
+export const BOSS_IMMUNITY_THRESHOLDS = [0.75, 0.5, 0.25]
+export const BOSS_IMMUNITY_SECONDS = 16
+export const BOSS_IMMUNITY_MINIONS = 4
+// Which immunity phase (0-based) a boss with `hp` of `maxHp` has just reached, or null. `done` is how many it has had.
+export function immunityPhaseReached(hp, maxHp, done) {
+  if (done >= BOSS_IMMUNITY_THRESHOLDS.length) return null
+  return hp <= maxHp * BOSS_IMMUNITY_THRESHOLDS[done] ? done : null
+}
+
+export const BOSS_BASE = { hp: 1.6, damage: 1.3 } // every boss starts this much tougher than its listed stats
+export const BOSS_COOLDOWN_SHRINK = 0.88
+export const BOSS_HEAD_START = 3 // a boss's first fight already counts as this many won, for its moves and cooldowns
+export const BOSS_MIN_COOLDOWN_SCALE = 0.3
 // Moves a boss can pick up on later fights, in the order it learns them (skipping ones it has).
 // `lob` is left out: it needs the Bloater's ranged-attack tuning.
 export const BOSS_EXTRA_SPECIALS = ['barrage', 'charge', 'slam', 'blink', 'spin', 'leap', 'summon']
@@ -392,9 +404,9 @@ export function bossSpecialsFor(specials, bossesDefeated) {
 // half the hp and hits much softer, easing back to full strength by the
 // fourth boss. Returns multipliers for hp and damage.
 export function bossEase(bossesDefeated) {
-  // No warm-up any more: even the opening fight (Orbital Resort) is full strength, and it starts with BOSS_HEAD_START
+  // No warm-up any more: even the opening fight (Orbital Resort) is BOSS_BASE tougher, and it starts with BOSS_HEAD_START
   // fights' worth of extra moves and faster cooldowns.
-  return { hp: 1, damage: 1 }
+  return BOSS_BASE
 }
 
 // Special-move timer: counts `timer` down by dt and, when it reaches 0,
