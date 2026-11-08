@@ -19,7 +19,7 @@ export function createProjectilePool() {
   for (let i = 0; i < POOL_SIZE; i++) {
     const mesh = new THREE.Mesh(
       geometry,
-      new THREE.MeshBasicMaterial({ color: 0xff5a7a, transparent: true, opacity: 0.95 }),
+      new THREE.MeshBasicMaterial({ color: 0xff5a7a, transparent: true, opacity: 0.95, fog: false }),
     )
     mesh.visible = false
     group.add(mesh)

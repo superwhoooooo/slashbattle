@@ -611,6 +611,58 @@ function addLure(group, stats) {
   group.add(stalk, bulb, glow)
 }
 
+// The eel's long body: the jelly sphere is its head (face forward, +z) and a chain of tapering
+// segments trails out behind it, each hung off the one before so main.js's swishEelTail can ripple
+// an S-wave down the whole length. A frilly fin runs along the back and flares into a tail fin;
+// a pale belly stripe and two side fins finish it off.
+function addEelBody(group, stats, bodyCenterY) {
+  const s = stats.size
+  const bodyMat = accessoryMaterial(new THREE.Color(stats.color).multiplyScalar(0.8), 0.35, 0.15)
+  const bellyMat = accessoryMaterial(new THREE.Color(stats.color).lerp(new THREE.Color(0xffffff), 0.55), 0.4)
+  const finMat = new THREE.MeshStandardMaterial({ color: stats.edgeColor, roughness: 0.4, transparent: true, opacity: 0.85, side: THREE.DoubleSide })
+  const SEGMENTS = 8
+  const segLen = s * 0.42
+  const segment = new THREE.SphereGeometry(1, 14, 10)
+  const pivots = []
+  let parent = new THREE.Group()
+  parent.position.set(0, bodyCenterY - s * 0.05, -s * 0.3)
+  group.add(parent)
+  for (let i = 0; i < SEGMENTS; i++) {
+    const pivot = new THREE.Group()
+    if (i > 0) pivot.position.z = -segLen
+    const taper = 1 - i / (SEGMENTS + 1)
+    const r = s * 0.34 * taper
+    const body = new THREE.Mesh(segment, bodyMat)
+    body.scale.set(r, r * 0.95, segLen * 0.75)
+    body.position.z = -segLen * 0.5
+    const belly = new THREE.Mesh(segment, bellyMat)
+    belly.scale.set(r * 0.8, r * 0.45, segLen * 0.7)
+    belly.position.set(0, -r * 0.5, -segLen * 0.5)
+    const fin = new THREE.Mesh(new THREE.PlaneGeometry(segLen * 1.05, s * 0.2 * taper + s * 0.04), finMat)
+    fin.rotation.y = Math.PI / 2
+    fin.position.set(0, r + s * 0.06 * taper, -segLen * 0.5)
+    pivot.add(body, belly, fin)
+    for (const m of [body, belly]) m.castShadow = true
+    parent.add(pivot)
+    pivots.push(pivot)
+    parent = pivot
+  }
+  // Tail fin: a flat diamond at the very end.
+  const tailFin = new THREE.Mesh(new THREE.CircleGeometry(s * 0.32, 4), finMat)
+  tailFin.rotation.y = Math.PI / 2
+  tailFin.scale.set(1.3, 0.8, 1)
+  tailFin.position.z = -segLen * 1.1
+  parent.add(tailFin)
+  // Little side fins just behind the head.
+  for (const side of [-1, 1]) {
+    const pec = new THREE.Mesh(new THREE.CircleGeometry(s * 0.16, 3), finMat)
+    pec.position.set(side * s * 0.36, bodyCenterY - s * 0.15, -s * 0.25)
+    pec.rotation.set(-Math.PI / 2, 0, side * 0.6)
+    group.add(pec)
+  }
+  group.userData.eelTail = pivots
+}
+
 // The urchin's spikes: cones poking out all round the body.
 function addSpikes(group, stats, bodyCenterY) {
   const s = stats.size
@@ -676,6 +728,7 @@ export function createMonsterMesh(type, rng = Math.random) {
   if (stats.accessory === 'mirror') addMirror(group, stats, bodyCenterY)
   if (stats.accessory === 'lure') addLure(group, stats)
   if (stats.accessory === 'spikes') addSpikes(group, stats, bodyCenterY)
+  if (stats.accessory === 'eelBody') addEelBody(group, stats, bodyCenterY)
 
   group.userData.body = body
   group.userData.type = type

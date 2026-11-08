@@ -41,7 +41,7 @@ export function createBulletPool() {
   const geometry = new THREE.IcosahedronGeometry(1, 1)
   const slots = []
   for (let i = 0; i < POOL_SIZE; i++) {
-    const mesh = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ color: 0xffffff }))
+    const mesh = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false /* shots stay readable in the underwater murk */ }))
     mesh.visible = false
     group.add(mesh)
     slots.push({ mesh, active: false, data: null })

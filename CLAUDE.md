@@ -650,4 +650,9 @@ In a water room main.js swaps `DEEP_SPAWN_CHANCE` of each wave's arrivals for on
 `pickDeepType`), and a wave only clears once they're dead. While the player is on the surface `monster.js`'s
 `setDeepShield(true)` makes them untouchable (`isUntouchable`: `damageMonster`, melee and bullets all skip them),
 blind to you (they count you as hidden) and sunk out of sight; dive and they rise to your depth and fight.
+Only deep dwellers ever go under: every other monster stays floating on the surface while you dive
+(main.js's `monsterSwimY`). The eel is a jelly-sphere head with a long segmented body, back fin and tail
+fin (`characters.js`'s `addEelBody`, `accessory: 'eelBody'`) that ripples in an S-wave (`swishEelTail`).
+While you dive, the particle, bullet, enemy-orb and shockwave layers are shifted down with you
+(`fxDepthOffset`, x`DIVE_FX_DROP` so shots fly below the first-person eye), and shots/orbs ignore fog.
 The BREATH bar warns "SOMETHING LURKS BELOW" while any are alive. On dry rooms (e.g. the sandbox) they are normal enemies.

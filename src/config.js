@@ -54,7 +54,7 @@ export const MONSTER_TYPES = {
   // be hit or hit you unless you're diving, so you have to go under to finish a wave.
   angler: { shape: 'sphere', size: 1.6, color: 0x2b3a8f, edgeColor: 0x8fa0ff, speed: 1.4, hp: 130, damage: 14, radius: 0.75, deep: true, accessory: 'lure' },
   urchin: { shape: 'dodecahedron', size: 1.3, color: 0x6a2bb8, edgeColor: 0xd0a6ff, speed: 1.6, hp: 90, damage: 9, radius: 0.65, deep: true, accessory: 'spikes', specials: ['spin'], specialIntervals: { spin: 4 } },
-  eel: { shape: 'cylinder', size: 1.0, color: 0x7cff3a, edgeColor: 0xeaffb0, speed: 3.0, hp: 45, damage: 9, radius: 0.4, deep: true, specials: ['charge'], specialIntervals: { charge: 3.5 } },
+  eel: { shape: 'sphere', size: 0.8, accessory: 'eelBody', color: 0x7cff3a, edgeColor: 0xeaffb0, speed: 3.0, hp: 45, damage: 9, radius: 0.4, deep: true, specials: ['charge'], specialIntervals: { charge: 3.5 } },
   splitling: { shape: 'cone', size: 0.6, color: 0xd7b0ff, edgeColor: 0xeedcff, speed: 4.6, hp: 18, damage: 5, radius: 0.28 },
   // The seven bosses (src/logic/bosses.js) share the same stat shape, plus
   // boss-only fields (attackRange, reachBonus, knockbackScale, special...).

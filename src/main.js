@@ -488,7 +488,37 @@ const waterUi = createWaterUi({ touch: touchDevice })
 let lastHidePrompt = false // whether E would have entered a pod last frame (so E can dive instead)
 const waterRoom = () => game?.arena?.level?.water ?? null
 // How high the water carries something at (x, z): the surface wave, plus how deep we are.
+// The player's swim height (eases between floating and diving depth with the dive).
 const waterY = (x, z, time) => waterState.depthY + waveHeight(x, z, time, waterRoom()?.surface.amp ?? 0.2)
+// Where a monster swims: only deep dwellers (eels, anglers, urchins) follow you under; everyone else
+// stays floating on the surface. While you're up top the deep ones lurk far below, out of sight.
+const DEEP_LURK_Y = -WATER.depth * 0.45
+function monsterSwimY(mesh, time) {
+  const { x, z } = mesh.position
+  if (!mesh.userData.deep) return WATER.floatY + waveHeight(x, z, time, waterRoom()?.surface.amp ?? 0.2)
+  return waterState.diving ? waterY(x, z, time) : DEEP_LURK_Y
+}
+// Shots, sparks, enemy orbs and shock rings are drawn at fixed heights tuned for the surface, so
+// while you dive their layers are shifted down with you (0 on the surface and on dry land). The
+// shift is a bit more than the dive itself: the diver's first-person eye sits only 0.9 above their
+// feet (1.5 on land), and a shot at plain feet-relative height would fly out right at eye level,
+// covering the view. x1.6 keeps shots ~0.8 below the eye underwater, like first person on land.
+const DIVE_FX_DROP = 1.6
+const fxDepthOffset = () => (waterRoom() ? (waterState.depthY - WATER.floatY) * DIVE_FX_DROP : 0)
+// An eel's body ripples in an S-wave running down from head to tail: a lazy sway when idle,
+// a fast, wide wriggle when it's swimming hard (charging).
+function swishEelTail(mesh, time) {
+  const speed = mesh.userData.speed ?? 0
+  const amp = 0.18 + Math.min(0.32, speed * 0.06)
+  const freq = 3 + Math.min(7, speed * 1.4)
+  mesh.userData.eelTail.forEach((pivot, i) => {
+    pivot.rotation.y = amp * Math.sin(time * freq - i * 0.9)
+  })
+}
+function applyFxDepth() {
+  const y = fxDepthOffset()
+  for (const group of [particleSystem.group, projectilePool.group, shockwavePool.group, bulletPool.group]) group.position.y = y
+}
 
 function applyWaterFog(under) {
   const room = waterRoom()
@@ -510,7 +540,7 @@ function setDiving(on, now = 0) {
   player.sightScale = on ? WATER.diveSightScale : 1
   applyWaterFog(on)
   setFirstPerson(on)
-  const splash = { x: player.position.x, y: 0.1, z: player.position.z }
+  const splash = { x: player.position.x, y: 0.1 - fxDepthOffset(), z: player.position.z }
   burst(particleSystem, splash, 0xbff6ff, 24, 3.5)
   if (on) {
     waterState.diveStartedAt = now
@@ -538,6 +568,7 @@ function stepWater(now, dt) {
   const room = waterRoom()
   const { player } = game
   setDeepShield(Boolean(room) && !waterState.diving)
+  applyFxDepth()
   if (!room) {
     waterUi.update({ room: false, diving: false, fraction: 1 })
     return
@@ -559,9 +590,9 @@ function stepWater(now, dt) {
   waterState.depthY = stepDepth(waterState.depthY, waterState.diving, dt)
   // Bubbles trail a swimmer.
   if (waterState.diving && Math.random() < 0.25) {
-    burst(particleSystem, { x: player.position.x, y: waterState.depthY + 1, z: player.position.z }, 0xcff8ff, 1, 0.7, 1.2)
+    burst(particleSystem, { x: player.position.x, y: waterState.depthY + 1 - fxDepthOffset(), z: player.position.z }, 0xcff8ff, 1, 0.7, 1.2) // undo the particle layer's dive shift
   } else if (!waterState.diving && player.speed > 2 && Math.random() < 0.3) {
-    burst(particleSystem, { x: player.position.x, y: 0.1, z: player.position.z }, 0xffffff, 1, 1.3, 0.6)
+    burst(particleSystem, { x: player.position.x, y: 0.1 - fxDepthOffset(), z: player.position.z }, 0xffffff, 1, 1.3, 0.6)
   }
   const lurking = game.monsters.some((m) => m.userData.deep && !m.userData.dying)
   waterUi.update({ room: true, diving: waterState.diving, fraction: waterState.breath / WATER.breath, lurking })
@@ -2889,7 +2920,7 @@ function gameFrame(timestamp) {
   let bossDeathPoint = null
   monsters = monsters.filter((mesh) => {
     if (mesh.userData.spawning) {
-      if (room) mesh.position.y = waterY(mesh.position.x, mesh.position.z, elapsedSeconds)
+      if (room) mesh.position.y = monsterSwimY(mesh, elapsedSeconds)
       updateJelly(mesh, gameplayDelta, elapsedSeconds, { speed: 0, moveDir: mesh.userData.moveDir })
       updateFace3D(mesh, gameplayDelta, elapsedSeconds)
       return true
@@ -2950,10 +2981,9 @@ function gameFrame(timestamp) {
     if (room) {
       // Swimmers ride the waves (and leap on top of that); the wall holds them in.
       clampToWater(mesh.position, mesh.userData.radius)
-      const floatY = waterY(mesh.position.x, mesh.position.z, elapsedSeconds)
-      // Deep dwellers lurk far down (a dim shape under the water) until you dive to meet them.
-      const sunk = mesh.userData.deep && !waterState.diving
-      mesh.userData.sinkY = (mesh.userData.sinkY ?? floatY) + ((sunk ? -WATER.depth * 0.45 : floatY) - (mesh.userData.sinkY ?? floatY)) * Math.min(1, deltaSeconds * 4)
+      // Eased toward its swim height, so deep dwellers glide up to meet a diver and sink away again.
+      const targetY = monsterSwimY(mesh, elapsedSeconds)
+      mesh.userData.sinkY = (mesh.userData.sinkY ?? targetY) + (targetY - (mesh.userData.sinkY ?? targetY)) * Math.min(1, deltaSeconds * 4)
       mesh.position.y = mesh.userData.sinkY + (mesh.userData.leapY ?? 0)
     } else {
       mesh.position.y = mesh.userData.leapY ?? 0
@@ -2961,6 +2991,7 @@ function gameFrame(timestamp) {
     if (mesh.userData.arms) {
       for (const { pivot, side } of mesh.userData.arms) pivot.rotation.z = side * (0.55 + (mesh.userData.leapY ?? 0) * 0.5)
     }
+    if (mesh.userData.eelTail) swishEelTail(mesh, elapsedSeconds)
     if (!room && !isOnPlatform({ x: mesh.position.x, z: mesh.position.z }, ARENA_RADIUS)) {
       mesh.userData.falling = true
       mesh.userData.fallState = { velocityY: 0, fallenY: 0 }
