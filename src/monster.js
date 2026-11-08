@@ -72,6 +72,22 @@ export function createMonsterAIState(stats = {}) {
   }
 }
 
+// Gives one boss its per-fight upgrades (see bossSpecialsFor / bossCooldownScale in
+// logic/bosses.js): its full move list for this fight and a multiplier on every special's
+// cooldown. Newly learned moves get a starting timer like the boss's own moves do.
+export function upgradeBossSpecials(ai, specials, intervalScale) {
+  ai.specials = specials
+  ai.specialIntervalScale = intervalScale
+  for (const name of specials) {
+    if (ai.specialTimers[name] != null) {
+      ai.specialTimers[name] *= intervalScale
+      continue
+    }
+    const cfg = BOSS_SPECIALS[name]
+    ai.specialTimers[name] = cfg.firstDelay != null ? cfg.firstDelay + Math.random() * 3 : cfg.interval * intervalScale * (0.55 + Math.random() * 0.35)
+  }
+}
+
 // Moves `monster` a step toward targetPos at `speed`, resolved against
 // obstacles (sliding along their edges). targetPos is first clamped to
 // stay on the platform (MONSTER_PLATFORM_MARGIN in from the edge), so a
@@ -199,7 +215,7 @@ function fireSpecial(monster, ai, stats, player, obstacles, events) {
   const cfg = BOSS_SPECIALS[name]
   const x = monster.position.x
   const z = monster.position.z
-  const damage = Math.round(stats.damage * (cfg.damageMultiplier ?? 1))
+  const damage = Math.round(stats.damage * (cfg.damageMultiplier ?? 1) * (ai.damageScale ?? 1))
 
   if (name === 'spin') {
     ai.special = { ...ai.special, phase: 'active', remaining: cfg.duration, tick: 0 }
@@ -208,7 +224,7 @@ function fireSpecial(monster, ai, stats, player, obstacles, events) {
   if (name === 'leap') {
     // Jump to where the player is standing now; the arc is flown in stepBossSpecials.
     const to = clampToPlatform({ x: player.position.x, z: player.position.z }, ARENA_RADIUS - MONSTER_PLATFORM_MARGIN)
-    ai.special = { name: 'leap', phase: 'air', remaining: cfg.duration, total: cfg.duration, from: { x, z }, to, radius: cfg.radius, damage: Math.round(damage * (ai.damageScale ?? 1)) }
+    ai.special = { name: 'leap', phase: 'air', remaining: cfg.duration, total: cfg.duration, from: { x, z }, to, radius: cfg.radius, damage }
     return
   }
   ai.special = null
@@ -306,7 +322,7 @@ function stepBossSpecials(monster, ai, stats, player, obstacles, dt, events) {
           x: monster.position.x,
           z: monster.position.z,
           radius: special.radius,
-          damage: Math.round(stats.damage * cfg.damageMultiplier),
+          damage: Math.round(stats.damage * cfg.damageMultiplier * (ai.damageScale ?? 1)),
         })
       }
       if (special.remaining <= 0) ai.special = null
@@ -318,10 +334,11 @@ function stepBossSpecials(monster, ai, stats, player, obstacles, dt, events) {
     ai.chargeRemaining -= dt
     speed = stats.speed * BOSS_SPECIALS.charge.speedMultiplier
   } else if (engaged) {
-    for (const name of stats.specials) {
+    for (const name of ai.specials ?? stats.specials) {
       // A charge only makes sense while closing in, not once in melee range.
       if (name === 'charge' && ai.state !== 'chase') continue
-      const tick = stepSpecialTimer(ai.specialTimers[name], dt, stats.specialIntervals?.[name] ?? BOSS_SPECIALS[name].interval)
+      const interval = (stats.specialIntervals?.[name] ?? BOSS_SPECIALS[name].interval) * (ai.specialIntervalScale ?? 1)
+      const tick = stepSpecialTimer(ai.specialTimers[name], dt, interval)
       ai.specialTimers[name] = tick.timer
       // A leap only goes off when the player is within its reach; otherwise try again shortly.
       if (tick.fire && name === 'leap') {
@@ -489,7 +506,7 @@ export function updateMonster(monster, player, obstacles, dt, now) {
 
   let speed = stats.speed * ai.speedScale
   let busy = false
-  if (stats.specials) {
+  if (ai.specials ?? stats.specials) {
     ;({ speed, busy } = stepBossSpecials(monster, ai, stats, player, obstacles, dt, events))
   }
   updateTelegraph(monster, ai)

@@ -469,8 +469,14 @@ fields are `attackRange`/`reachBonus` (so big bodies can still hit and be hit),
 (`sphere`/`tetrahedron`/`cylinder`/`cone`) have exact surface math in
 `faceLayout.js`'s `bodySurfaceDistance`, so faces sit right on them, and a
 body's resting height comes off its bounding box. A run shuffles the seven
-(`shuffleBossOrder`), so all appear before any repeats; later visits have more
-hp (`bossHpScale`).
+(`shuffleBossOrder`), so all appear before any repeats. Every boss fight makes
+the next one tougher (after the first three's `bossEase` warm-up): hp compounds
++25% per fight won (`bossHpScale`), damage +15% (`bossDamageScale`, applied to
+melee and specials alike), each fight teaches the boss one more special it
+lacks from `BOSS_EXTRA_SPECIALS` (`bossSpecialsFor`), and special cooldowns
+shrink 10% per fight down to 40% (`bossCooldownScale`). `main.js` applies these
+at spawn via `monster.js`'s `upgradeBossSpecials` (per-boss `ai.specials` /
+`ai.specialIntervalScale`).
 
 Every boss has `barrage` (shoots a fan of orbs) and `summon` (calls minions every ~22s, up to 4 alive) on top of its own moves.
 

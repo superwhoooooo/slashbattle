@@ -273,10 +273,34 @@ export function wavesBeforeBoss(bossesDefeated) {
   return bossesDefeated + 1
 }
 
-// A boss's hp multiplier on the `bossesDefeated`-th fight: +20% per boss
-// already beaten, so a repeat visit (after all seven) is clearly tougher.
+// Bosses get tougher with every boss fight in a run (`bossesDefeated` = fights already won):
+// hp compounds +25% per fight, damage +15% per fight, every fight teaches it one more special
+// move it didn't have, and its special cooldowns shrink 10% per fight (floored at 40%).
+export const BOSS_HP_GROWTH = 1.25
+export const BOSS_DAMAGE_GROWTH = 1.15
+export const BOSS_COOLDOWN_SHRINK = 0.9
+export const BOSS_MIN_COOLDOWN_SCALE = 0.4
+// Moves a boss can pick up on later fights, in the order it learns them (skipping ones it has).
+// `lob` is left out: it needs the Bloater's ranged-attack tuning.
+export const BOSS_EXTRA_SPECIALS = ['barrage', 'charge', 'slam', 'blink', 'spin', 'leap', 'summon']
+
 export function bossHpScale(bossesDefeated) {
-  return (1 + 0.2 * bossesDefeated) * bossEase(bossesDefeated).hp
+  return BOSS_HP_GROWTH ** bossesDefeated * bossEase(bossesDefeated).hp
+}
+
+export function bossDamageScale(bossesDefeated) {
+  return BOSS_DAMAGE_GROWTH ** bossesDefeated * bossEase(bossesDefeated).damage
+}
+
+// Multiplier on every special's cooldown for this fight: lower = attacks more often.
+export function bossCooldownScale(bossesDefeated) {
+  return Math.max(BOSS_MIN_COOLDOWN_SCALE, BOSS_COOLDOWN_SHRINK ** bossesDefeated)
+}
+
+// The boss's own specials plus one extra learned move per fight already won.
+export function bossSpecialsFor(specials, bossesDefeated) {
+  const extras = BOSS_EXTRA_SPECIALS.filter((name) => !specials.includes(name)).slice(0, Math.max(0, bossesDefeated))
+  return [...specials, ...extras]
 }
 
 // The first few boss fights of a run go easy: the opener has well under

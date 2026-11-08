@@ -189,7 +189,7 @@ import {
   updateInventoryHud,
 } from './hud.js'
 import { Input } from './input.js'
-import { bossById, bossEase, bossHpScale } from './logic/bosses.js'
+import { bossById, bossCooldownScale, bossDamageScale, bossHpScale, bossSpecialsFor } from './logic/bosses.js'
 import { fanVelocities } from './logic/projectiles.js'
 import { clampToPlatform, isOnPlatform, resolveArenaMove, spawnPointNearPlayer } from './logic/arena.js'
 import { crystalDrops } from './logic/crystals.js'
@@ -230,7 +230,7 @@ import {
   waveSize,
 } from './logic/waves.js'
 import { enemyScale, SPLITS } from './logic/enemies.js'
-import { createMonsterAIState, separateMonsters, setDeepShield, setMonsterNavigator, updateMonster } from './monster.js'
+import { createMonsterAIState, separateMonsters, setDeepShield, setMonsterNavigator, updateMonster, upgradeBossSpecials } from './monster.js'
 import { burst, createParticleSystem, resetParticles, setParticleViewScale, shardBurst, updateParticles } from './particles.js'
 import { createPet, disposePets, updatePets } from './pets.js'
 import { Player } from './player.js'
@@ -1604,7 +1604,10 @@ function startBossCutscene(game) {
     hpScale: bossHpScale(game.waveState.bossesDefeated),
     facePlayer: true,
   })
-  mesh.userData.damageScale = bossEase(game.waveState.bossesDefeated).damage
+  // Every boss fight makes the next one tougher: more hp (above), harder hits, extra moves, shorter cooldowns.
+  const fights = game.waveState.bossesDefeated
+  mesh.userData.damageScale = bossDamageScale(fights)
+  upgradeBossSpecials(mesh.userData, bossSpecialsFor(boss.stats.specials, fights), bossCooldownScale(fights))
   const dx = player.position.x - at.x
   const dz = player.position.z - at.z
   const length = Math.hypot(dx, dz) || 1

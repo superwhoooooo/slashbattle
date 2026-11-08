@@ -8,6 +8,9 @@ import {
   bossForFight,
   bossEase,
   bossHpScale,
+  bossDamageScale,
+  bossCooldownScale,
+  bossSpecialsFor,
   ORIGINAL_BOSS_COUNT,
   shuffleBossOrder,
   stepSpecialTimer,
@@ -97,8 +100,29 @@ describe('wavesBeforeBoss / bossHpScale', () => {
 
   it('makes later boss fights tougher', () => {
     expect(bossHpScale(0)).toBeLessThan(0.6) // the opener goes easy
-    expect(bossHpScale(3)).toBeCloseTo(1.6)
+    expect(bossHpScale(3)).toBeCloseTo(1.25 ** 3)
+    expect(bossHpScale(4) / bossHpScale(3)).toBeCloseTo(1.25) // +25% every fight once the easing ends
     expect(bossHpScale(7)).toBeGreaterThan(bossHpScale(3))
+  })
+
+  it('hits harder every fight', () => {
+    expect(bossDamageScale(3)).toBeCloseTo(1.15 ** 3)
+    expect(bossDamageScale(5)).toBeGreaterThan(bossDamageScale(4))
+  })
+
+  it('attacks more often every fight, down to a floor', () => {
+    expect(bossCooldownScale(0)).toBe(1)
+    expect(bossCooldownScale(2)).toBeCloseTo(0.81)
+    expect(bossCooldownScale(50)).toBe(0.4)
+  })
+
+  it('learns one new special per fight won, never a duplicate', () => {
+    expect(bossSpecialsFor(['slam', 'summon'], 0)).toEqual(['slam', 'summon'])
+    const later = bossSpecialsFor(['slam', 'summon'], 3)
+    expect(later).toEqual(['slam', 'summon', 'barrage', 'charge', 'blink'])
+    const all = bossSpecialsFor(['slam'], 99)
+    expect(new Set(all).size).toBe(all.length)
+    expect(all).not.toContain('lob')
   })
 })
 
