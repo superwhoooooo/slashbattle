@@ -9,6 +9,8 @@ import * as THREE from 'three'
 import { createPetModel, createSaber, createThrown } from './petModels.js'
 import { damageMonster } from './combat.js'
 import { PETS, petBoost, petLevel, petRate } from './logic/items.js'
+import { disposeSpecials, startSpecial, stepSpecials } from './dragonSpecials.js'
+import { breathVictims, isDragon, tuneDragon } from './logic/dragons.js'
 import { damp, dampAngle, wrapAngle } from './logic/smoothing.js'
 import { burst } from './particles.js'
 import { hasWallLineOfSight, isInsideWall } from './monster.js'
@@ -42,8 +44,9 @@ const SHOTS = {
 // Creates the pet `id` right next to the player, growing in. A pet with `split` parts (Remy &
 // Benji) comes out as one pet per part: the first is the pet, the rest ride along as its
 // `buddies` and move, aim and throw on their own (they share the pet's id, level and slot).
-export function createPet(id, scene, player) {
-  const def = PETS[id]
+export function createPet(id, scene, player, dragonSetup = null) {
+  const base = PETS[id]
+  const def = isDragon(base) ? tuneDragon(base, dragonSetup ?? {}) : base
   if (!def.split) return makePet(def, scene, player, 1)
   const [first, ...rest] = def.split.map((part, i) => makePet(splitDef(def, part), scene, player, i % 2 ? -1 : 1))
   first.buddies = rest
@@ -195,6 +198,60 @@ function fireShot(pet, target) {
   pet.shots.push({ mesh: group, kind, spec, from, target, t: 0, duration: Math.max(0.12, distance / spec.speed) })
 }
 
+// Dragons: a glowing bolt of the dragon's breath leaves its mouth (a fan of them for venom) and
+// lands in stepShots -> landBreath, where the breath's splash blast and chain arcs apply.
+function fireBreath(pet, target) {
+  const { def, mesh } = pet
+  const breath = def.breath
+  const yaw = mesh.rotation.y
+  const from = { x: mesh.position.x + Math.sin(yaw) * 1.0, y: mesh.position.y + 0.65, z: mesh.position.z + Math.cos(yaw) * 1.0 }
+  const bolts = def.bolts ?? 1
+  const big = breath.id === 'void' ? 1.5 : breath.id === 'flame' ? 1.15 : 1
+  mesh.userData.breathe = 1
+  for (let i = 0; i < bolts; i++) {
+    const group = new THREE.Group()
+    const additive = (color, opacity) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false })
+    if (breath.id === 'solar') {
+      group.add(new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 1.6, 8), additive(breath.core, 0.95)).rotateX(Math.PI / 2))
+      group.add(new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 1.7, 10), additive(0xffd36b, 0.4)).rotateX(Math.PI / 2))
+    } else if (breath.id === 'frost') {
+      const shard = new THREE.Mesh(new THREE.OctahedronGeometry(0.24), new THREE.MeshBasicMaterial({ color: breath.core }))
+      shard.scale.set(0.6, 0.6, 1.7)
+      group.add(shard)
+      group.add(new THREE.Mesh(new THREE.SphereGeometry(0.42, 10, 8), additive(breath.color, 0.35)))
+    } else {
+      group.add(new THREE.Mesh(new THREE.SphereGeometry(0.2 * big, 12, 10), new THREE.MeshBasicMaterial({ color: breath.core })))
+      group.add(new THREE.Mesh(new THREE.SphereGeometry(0.42 * big, 12, 10), additive(breath.color, 0.55)))
+    }
+    group.position.set(from.x, from.y, from.z)
+    pet.scene.add(group)
+    const spec = { speed: breath.id === 'solar' ? 34 : breath.id === 'void' ? 15 : 22, arc: 0, height: 0.65, color: breath.color, hit: 14, splash: 0 }
+    const distance = dist(from, target.position)
+    const lane = bolts > 1 ? (i - (bolts - 1) / 2) * 1.3 : 0
+    pet.shots.push({ mesh: group, kind: 'breath', spec, from, target, lane, t: 0, duration: Math.max(0.12, distance / spec.speed) })
+  }
+}
+
+function landBreath(pet, shot, at, ctx) {
+  const { def } = pet
+  const { target } = shot
+  const breath = def.breath
+  const damage = def.damage * (pet.damageMult ?? 1)
+  burst(ctx.particleSystem, at, breath.color, 18, 3.4)
+  burst(ctx.particleSystem, at, breath.core, 8, 2)
+  hitMonster(pet, target, damage, { x: shot.from.x, z: shot.from.z }, ctx)
+  if (def.splash > 0 && ctx.shockwavePool) spawnShockwave(ctx.shockwavePool, at.x, at.z, def.splash, breath.color)
+  const candidates = ctx.monsters.filter((m) => m !== target && targetable(m)).map((m) => ({ x: m.position.x, z: m.position.z, ref: m }))
+  for (const { ref, share } of breathVictims(def, at, target, candidates)) {
+    if (def.chain > 0 && share === def.chainShare) {
+      // A lightning arc: a line of sparks from the impact to the next enemy.
+      for (const t of [0.2, 0.4, 0.6, 0.8]) burst(ctx.particleSystem, { x: at.x + (ref.position.x - at.x) * t, y: at.y, z: at.z + (ref.position.z - at.z) * t }, breath.color, 2, 1)
+    }
+    burst(ctx.particleSystem, { x: ref.position.x, y: ref.position.y + 0.8, z: ref.position.z }, breath.color, 8, 2)
+    hitMonster(pet, ref, damage * share, at, ctx)
+  }
+}
+
 function stepShots(pet, dt, monsters, ctx) {
   pet.shots = pet.shots.filter((shot) => {
     const { target, spec } = shot
@@ -214,6 +271,21 @@ function stepShots(pet, dt, monsters, ctx) {
       shot.mesh.scale.setScalar(0.7 + t * 1.2) // the wave spreads as it travels
     } else if (shot.kind === 'snowball') {
       shot.mesh.rotation.x -= 12 * dt // rolls along the ground
+    }
+    if (shot.kind === 'breath') {
+      // Fan lanes bow out sideways, then pinch in on the target; every bolt faces where it is going and leaves embers.
+      const len = Math.hypot(target.position.x - shot.from.x, target.position.z - shot.from.z) || 1
+      const bow = (shot.lane ?? 0) * Math.sin(Math.PI * t)
+      shot.mesh.position.set(x + (-(target.position.z - shot.from.z) / len) * bow, y, z + ((target.position.x - shot.from.x) / len) * bow)
+      shot.mesh.lookAt(target.position.x, aimY, target.position.z)
+      burst(ctx.particleSystem, shot.mesh.position, pet.def.breath.color, 1, 0.6)
+      if (shot.t >= 1) {
+        landBreath(pet, shot, { x, y: aimY, z }, ctx)
+        pet.scene.remove(shot.mesh)
+        disposeTree(shot.mesh)
+        return false
+      }
+      return true
     }
     shot.mesh.position.set(x, y, z)
     if (shot.t < 1) return true
@@ -317,7 +389,11 @@ function zap(pet, target, ctx) {
 // Moves every pet for one tick: out to the nearest enemy in sight and into its attack, or
 // back to its spot beside the player when there is none.
 export function updatePets(pets, { petDamage = 1, levels = {}, dt, elapsed, player, monsters, obstacles, particleSystem, hitstop, shockwavePool, onScratch = null }) {
-  const ctx = { monsters, obstacles, particleSystem, hitstop, shockwavePool, onScratch }
+  const ctx = {
+    monsters, obstacles, particleSystem, hitstop, shockwavePool, onScratch, player,
+    // A special ability's hit: like any pet hit but with its own knockback.
+    hit: (pet, target, damage, fromPos, knockback) => damageMonster(target, damage, { fromPos, knockback, obstacles, particleSystem, cause: 'pet', hitstop }),
+  }
   // Split pets' partners (Remy & Benji): each unit knows the others of its pair.
   for (const pet of pets) {
     const team = [pet, ...(pet.buddies ?? [])]
@@ -332,6 +408,8 @@ export function updatePets(pets, { petDamage = 1, levels = {}, dt, elapsed, play
     pet.damageMult = petDamage * pet.boost
     stepSabers(pet, dt, monsters, obstacles, particleSystem, hitstop)
     stepShots(pet, dt, monsters, ctx)
+    stepSpecials(pet, dt, ctx)
+    if (pet.def.specialInfo) pet.specialTimer = (pet.specialTimer ?? pet.def.specialInfo.interval * 0.4) - dt * pet.rate
   }
   pets.forEach((pet, index) => {
     const { def, mesh } = pet
@@ -374,7 +452,7 @@ export function updatePets(pets, { petDamage = 1, levels = {}, dt, elapsed, play
     const travelled = Math.hypot(moveX, moveZ) / Math.max(dt, 1e-4)
     const moving = travelled > 0.3
     const prevYaw = mesh.rotation.y
-    if (target && (holding || !moving || def.kind === 'zap' || def.kind === 'shot' || def.kind === 'throw')) {
+    if (target && (holding || !moving || def.kind === 'zap' || def.kind === 'shot' || def.kind === 'throw' || def.kind === 'breath')) {
       mesh.rotation.y = dampAngle(mesh.rotation.y, Math.atan2(target.position.x - mesh.position.x, target.position.z - mesh.position.z), 12, dt)
     } else if (moving) {
       mesh.rotation.y = dampAngle(mesh.rotation.y, Math.atan2(moveX, moveZ), 10, dt)
@@ -436,11 +514,18 @@ export function updatePets(pets, { petDamage = 1, levels = {}, dt, elapsed, play
       if (def.kind === 'lunge') strikeTarget(pet, target, ctx)
       else explode(pet, ctx, home)
     } else if (gap <= def.range) {
+      if (def.specialInfo && pet.specialTimer <= 0 && def.kind === 'breath') {
+        pet.specialTimer = def.specialInfo.interval
+        pet.timer = Math.max(pet.timer, 0.8) // the normal breath pauses a moment while it winds up
+        startSpecial(pet, target, ctx)
+        return
+      }
       if (def.kind === 'zap') {
         zap(pet, target, ctx)
       } else {
         pet.timer = def.interval / (pet.rate ?? 1)
         if (def.kind === 'throw') throwSaber(pet, target)
+        else if (def.kind === 'breath') fireBreath(pet, target)
         else if (def.kind === 'shot') fireShot(pet, target)
       }
     }
@@ -449,6 +534,7 @@ export function updatePets(pets, { petDamage = 1, levels = {}, dt, elapsed, play
 
 export function disposePets(pets, scene) {
   for (const pet of unitsOf(pets)) {
+    disposeSpecials(pet)
     for (const thrown of [...(pet.sabers ?? []), ...(pet.shots ?? [])]) {
       scene.remove(thrown.mesh)
       disposeTree(thrown.mesh)

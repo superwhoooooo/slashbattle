@@ -58,6 +58,7 @@ record.
 - 1-5 — pick a weapon from the hotbar (melee or firearm)
 - Q / Z / X / C / V — use your abilities, in the order you found them
 - 0 — toggle first-person view (pointer-locked mouse look; W moves along the view, every weapon aims where you look; Esc or 0 exits)
+- N — open the Dragon Den (customize your dragons' scale and breath)
 - Tab — open the power-up menu (pauses the game): click a power-up to equip / unequip it (in sandbox mode Tab opens the sandbox menu instead)
 
 A standard gamepad works too (`src/logic/gamepad.js` maps a snapshot to
@@ -662,3 +663,16 @@ fin (`characters.js`'s `addEelBody`, `accessory: 'eelBody'`) that ripples in an 
 While you dive, the particle, bullet, enemy-orb and shockwave layers are shifted down with you
 (`fxDepthOffset`, x`DIVE_FX_DROP` so shots fly below the first-person eye), and shots/orbs ignore fog while you're under (`setShotFog`).
 The BREATH bar warns "SOMETHING LURKS BELOW" while any are alive. On dry rooms (e.g. the sandbox) they are normal enemies.
+
+## Dragons and the Dragon Den
+Six dragon pets (`kind: 'breath'` in `logic/items.js`: Cinderwing, Glacier, Stormcaller, Nightshade, Aurelia, Voidmaw) fly
+`CRUISE` (3.6) high over the player (`src/dragonModel.js`: horned head, fanged jaw, neck and tail chains, glowing chest
+gem, membrane wings that beat harder when moving, orbiting motes) and breathe bolts at enemies from the air. Like a rifle's
+scope and ammo, each takes a **scale** (8 mystical colour schemes) and a **breath** (flame splash, frost shove, storm chain,
+venom triple-spit, void heavy hit, solar beam), all pure data in `logic/dragons.js` (`tuneDragon` folds the picks into the def,
+`breathVictims` finds splash/chain targets). Picks live in `profile.dragons` (`setDragonOption`); the hub's Dragon Den page (N)
+edits them, and closing the hub re-dresses dragons already out (`main.js`'s `refreshDragons`). Pet levels apply as usual.
+Each dragon species also has its own **special ability** (`SPECIALS` in `logic/dragons.js`, effects in `src/dragonSpecials.js`),
+fired on a cooldown once an enemy is in range: Cinderwing's Meteor Rain, Glacier's Blizzard, Stormcaller's Thunderstorm,
+Nightshade's Toxic Cloud, Aurelia's Aurora Nova (hurts enemies, heals you) and Voidmaw's Void Beam (a charged, huge line of
+energy). The special's colour follows the dragon's scale.

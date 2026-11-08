@@ -2,7 +2,8 @@
 // page (key 7) and the Loadout (key 9; also openable from the start card). Banked
 // crystals buy skill levels and power-up upgrades; the loadout picks the pets
 // you start every run with. Pure DOM; main.js hands in the profile and callbacks.
-import { iconImg } from './icons.js'
+import { dragonIconUrl, iconImg } from './icons.js'
+import { BREATHS, SCALES, describeDragon, dragonSetup, isDragon, tuneDragon } from './logic/dragons.js'
 import { skillIconSvg } from './skillIcons.js'
 import * as actions from './logic/profile.js'
 import { PETS, PET_MAX_LEVEL, POWERUPS, SLOT_LIMITS, WEAPONS, petBoost, petLevel, petUpgradeCost, powerupEffects } from './logic/items.js'
@@ -123,6 +124,7 @@ const TABS = [
   { id: 'skills', label: 'Skill Tree', key: '6' },
   { id: 'powerups', label: 'Power-Ups', key: '7' },
   { id: 'gunsmith', label: 'Gunsmith', key: 'J' },
+  { id: 'dragons', label: 'Dragon Den', key: 'N' },
   { id: 'loadout', label: 'Loadout', key: '9' },
 ]
 
@@ -417,6 +419,61 @@ export function createHub({ getProfile, setProfile, getRun, onBank, onOpenChange
     return wrap
   }
 
+  // The Dragon Den: every dragon you have found, rendered in its chosen scale, with chips to pick
+  // its scale (colour scheme) and its breath, and the stats those add up to.
+  function dragonSvgScale(scale) {
+    const c = (n) => hex(n)
+    return `<svg viewBox="0 0 24 24"><path d="M12 2C6 8 4 14 12 22c8-8 6-14 0-20z" fill="${c(scale.body)}" stroke="#1a2433" stroke-width="1.2"/><path d="M12 9c-2.5 3-2.5 6 0 10 2.5-4 2.5-7 0-10z" fill="${c(scale.belly)}"/><circle cx="12" cy="8" r="1.8" fill="${c(scale.glow)}"/></svg>`
+  }
+  function breathSvg(breath) {
+    const c = hex(breath.color)
+    return `<svg viewBox="0 0 24 24"><path d="M3 12c4-6 9-6 18 0-9 6-14 6-18 0z" fill="${c}" opacity="0.35"/><circle cx="14" cy="12" r="5" fill="${c}"/><circle cx="14" cy="12" r="2.4" fill="${hex(breath.core)}"/></svg>`
+  }
+  function dragonsPage(profile) {
+    const wrap = el('div')
+    wrap.appendChild(el('p', 'hub-note', 'Dragons circle high above you and breathe on enemies from the air. Find them in chests, then dress each one in any mystical scale and give it any breath. Changes apply the moment you close this page. Pet upgrades are on the Loadout page.'))
+    const grid = el('div', 'hub-grid')
+    grid.style.gridTemplateColumns = 'repeat(auto-fill, minmax(340px, 1fr))'
+    const active = profile.loadouts[profile.activeLoadout].pets
+    for (const base of Object.values(PETS).filter(isDragon)) {
+      const have = profile.collection.includes(base.id)
+      const setup = dragonSetup(profile, base)
+      const tuned = tuneDragon(base, setup)
+      const card = el('div', `hub-perk hub-gun${have ? '' : ' locked'}`)
+      card.style.setProperty('--branch', hex(tuned.scale.glow))
+      const img = document.createElement('img')
+      img.className = 'item-icon'
+      img.alt = ''
+      img.draggable = false
+      img.src = dragonIconUrl(tuned)
+      if (!have) img.style.filter = 'brightness(0) opacity(0.35)'
+      card.appendChild(img)
+      const name = el('div', 'nm', have ? base.name : '???')
+      if (have && active.includes(base.id)) name.appendChild(el('span', 'tag', 'STARTS WITH YOU'))
+      card.appendChild(name)
+      card.appendChild(el('div', 'ef', have ? describeDragon(tuned).join(' · ') : 'Not found yet: open chests to find dragons'))
+      card.appendChild(el('div', 'nx', have ? `${tuned.scale.name} · ${tuned.breath.name} · Lv ${petLevel(profile.pets, base.id)}` : base.blurb))
+      if (have) {
+        const scales = el('div', 'chips')
+        scales.appendChild(el('b', '', 'Scales'))
+        for (const sc of Object.values(SCALES)) {
+          scales.appendChild(chip({ name: sc.name, blurb: sc.blurb }, { on: sc.id === setup.scale, locked: false, svg: dragonSvgScale(sc), color: hex(sc.glow), click: () => act(api.setDragon(base.id, 'scale', sc.id)) }))
+        }
+        card.appendChild(scales)
+        const breaths = el('div', 'chips')
+        breaths.appendChild(el('b', '', 'Breath'))
+        for (const br of Object.values(BREATHS)) {
+          breaths.appendChild(chip(br, { on: br.id === setup.breath, locked: false, svg: breathSvg(br), color: hex(br.color), click: () => act(api.setDragon(base.id, 'breath', br.id)) }))
+        }
+        card.appendChild(breaths)
+        card.appendChild(el('div', 'bl', `${tuned.scale.blurb}  ·  ${tuned.breath.blurb}`))
+      }
+      grid.appendChild(card)
+    }
+    wrap.appendChild(grid)
+    return wrap
+  }
+
   function powerupsPage(profile) {
     const wrap = el('div')
     wrap.appendChild(el('p', 'hub-note', 'Upgrades are permanent: a higher level makes a power-up stronger every time you find and equip it. Find power-ups lying around in a run.'))
@@ -498,7 +555,9 @@ export function createHub({ getProfile, setProfile, getRun, onBank, onOpenChange
       const b = el('button', `hub-pet${active.pets.includes(pet.id) ? ' in' : ''}${have ? '' : ' locked'}`)
       b.type = 'button'
       b.title = have ? pet.blurb : 'Not found yet'
-      b.appendChild(iconImg('pet', pet.id))
+      const petImg = iconImg('pet', pet.id)
+      if (isDragon(pet)) petImg.src = dragonIconUrl(tuneDragon(pet, dragonSetup(profile, pet)))
+      b.appendChild(petImg)
       b.appendChild(el('span', 'nm', have ? pet.name : '???'))
       const level = petLevel(profile.pets, pet.id)
       if (have) {
@@ -538,9 +597,9 @@ export function createHub({ getProfile, setProfile, getRun, onBank, onOpenChange
     const profile = free() ? { ...real, bank: 1e9 } : real
     card.replaceChildren(header(real))
     if (tab !== 'loadout') card.appendChild(loadoutStrip(profile))
-    card.appendChild(tab === 'skills' ? skillsPage(profile) : tab === 'powerups' ? powerupsPage(profile) : tab === 'gunsmith' ? gunsmithPage(profile) : loadoutPage(profile))
+    card.appendChild(tab === 'skills' ? skillsPage(profile) : tab === 'powerups' ? powerupsPage(profile) : tab === 'gunsmith' ? gunsmithPage(profile) : tab === 'dragons' ? dragonsPage(profile) : loadoutPage(profile))
     card.appendChild(el('p', 'hub-status', status))
-    card.appendChild(el('p', 'hub-note', '6 / 7 / 9 / J: switch pages · Esc: close · T (in a run): bank crystals'))
+    card.appendChild(el('p', 'hub-note', '6 / 7 / 9 / J / N: switch pages · Esc: close · T (in a run): bank crystals'))
   }
 
   // The profile actions live here so the page code stays small; each returns { profile, ok, reason }.
@@ -549,6 +608,7 @@ export function createHub({ getProfile, setProfile, getRun, onBank, onOpenChange
     respec: () => ({ profile: actions.respecSkills(getProfile()), ok: true }),
     upgradePowerup: (id) => buy(actions.buyPowerupLevel, id),
     setRifle: (id, kind, value) => ({ profile: actions.setRifleOption(getProfile(), id, kind, value), ok: true }),
+    setDragon: (id, kind, value) => ({ profile: actions.setDragonOption(getProfile(), id, kind, value), ok: true }),
     upgradeRifle: (id) => buy(actions.buyRifleLevel, id),
     upgradeAmmo: (id) => buy(actions.buyAmmoLevel, id),
     upgradePet: (id) => buy(actions.buyPetLevel, id),

@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { createDragonModel } from './dragonModel.js'
 import { ANIMAL_BUILDERS } from './petAnimals.js'
 
 // Pet models: little real animals and real things (a fox, a bee, a bomb, a
@@ -757,11 +758,11 @@ const BUILDERS = {
 
 // Builds the model for pet `def` (by def.model), with shadows on.
 export function createPetModel(def) {
-  const model = (BUILDERS[def.model] ?? BUILDERS.chick)()
+  const model = def.model === 'dragon' ? createDragonModel(def) : (BUILDERS[def.model] ?? BUILDERS.chick)()
   model.traverse((child) => {
     if (child.isMesh) child.castShadow = true
   })
   return model
 }
 
-export const PET_MODELS = Object.keys(BUILDERS)
+export const PET_MODELS = [...Object.keys(BUILDERS), 'dragon']

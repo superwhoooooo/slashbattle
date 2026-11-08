@@ -541,6 +541,22 @@ function pictogram(kind, id) {
   return canvas.toDataURL('image/png')
 }
 
+// A dragon rendered in its chosen scale (cached per dragon + scale), for the Dragon Den and loadout.
+export function dragonIconUrl(tuned) {
+  const key = `dragon:${tuned.id}:${tuned.scale.id}`
+  let url = cache.get(key)
+  if (!url) {
+    try {
+      url = snapshot(createPetModel(tuned), { yaw: -0.6, pitch: 0.3 })
+    } catch (error) {
+      console.warn('dragon icon failed', key, error)
+      url = iconUrl('pet', tuned.id)
+    }
+    cache.set(key, url)
+  }
+  return url
+}
+
 // The icon for an item as a data URL (cached). `kind`: weapon | ability | pet | powerup.
 export function iconUrl(kind, id) {
   const key = `${kind}:${id}`

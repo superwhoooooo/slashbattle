@@ -30,7 +30,7 @@ export const STRIKES = {
 }
 
 export const LUNGE_KINDS = ['lunge', 'explode']
-export const RANGED_KINDS = ['zap', 'throw', 'shot']
+export const RANGED_KINDS = ['zap', 'throw', 'shot', 'breath']
 export const isLunger = (def) => LUNGE_KINDS.includes(def.kind)
 export const isRanged = (def) => RANGED_KINDS.includes(def.kind)
 export const isFighter = (def) => isLunger(def) || isRanged(def) || def.kind === 'pulse'

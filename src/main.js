@@ -35,6 +35,7 @@ import { MELEE_REFLECT_DAMAGE, createShield, crackFraction, hitShield, reflected
 import { WATER, stepBreath, stepDepth, waveHeight } from './logic/water.js'
 import { createWaterUi } from './waterUi.js'
 import { activeLoadoutPets, addToCollection, bankCrystals, setRifleOption, unlockAttachment } from './logic/profile.js'
+import { dragonSetup, isDragon } from './logic/dragons.js'
 import { combineEffects, skillEffects } from './logic/skills.js'
 import { createPauseMenu, loadBrightness } from './pauseMenu.js'
 import { createSwapPanel } from './swap.js'
@@ -763,10 +764,10 @@ let gameMode = 'resort'
 // skill / power-up levels): see logic/profile.js. Always replace it via setProfile.
 let profile = loadProfile()
 // The sandbox has every scope and ammo unlocked (for testing); this is the profile as the rifle
-// code and the hub should see it. setProfile keeps the real unlocks so the sandbox never saves them.
-const sandboxProfile = () => (sandbox ? { ...profile, unlocked: { scopes: Object.keys(SCOPES), ammo: Object.keys(AMMO) } } : profile)
+// code and the hub should see it (every pet counts as found, so all dragons can be customised). setProfile keeps the real unlocks so the sandbox never saves them.
+const sandboxProfile = () => (sandbox ? { ...profile, collection: Object.keys(PETS), unlocked: { scopes: Object.keys(SCOPES), ammo: Object.keys(AMMO) } } : profile)
 function setProfile(next) {
-  profile = sandbox ? { ...next, unlocked: profile.unlocked } : next // the sandbox's all-unlocked view never gets saved
+  profile = sandbox ? { ...next, unlocked: profile.unlocked, collection: profile.collection } : next // the sandbox's all-unlocked view never gets saved
   saveProfile(profile)
   applySlotBonuses()
 }
@@ -780,13 +781,30 @@ const hideLimit = () => POD_HIDE_LIMIT + activeFx(game.inventory.equipped).hideT
 // The equipped power-ups (at their upgrade levels) plus the learned skills, as one effect set.
 const activeFx = (equipped) => combineEffects(powerupEffects(equipped, profile.powerups), skillEffects(profile.skills))
 
+// Creates a pet beside the player; a dragon comes out in the scale and breath picked in the Dragon Den.
+function spawnPet(id) {
+  return createPet(id, scene, game.player, isDragon(PETS[id]) ? dragonSetup(profile, PETS[id]) : null)
+}
+// Closing the hub re-dresses any dragon in play whose scale or breath was changed there.
+function refreshDragons() {
+  game.pets.forEach((pet, index) => {
+    if (!isDragon(pet.def)) return
+    const want = dragonSetup(profile, PETS[pet.def.id])
+    if (pet.def.scale.id === want.scale && pet.def.breath.id === want.breath) return
+    const fresh = spawnPet(pet.def.id)
+    fresh.mesh.position.copy(pet.mesh.position)
+    fresh.age = 0.3
+    disposePets([pet], scene)
+    game.pets[index] = fresh
+  })
+}
 // Starts the run with the active loadout's pets (replacing any pets already out).
 function applyLoadoutPets(game) {
   disposePets(game.pets, scene)
   const ids = activeLoadoutPets(profile)
   // Runs start with the skill tree's bonus crystals (the Pocket Change / Fat Wallet nodes).
   game.inventory = { ...game.inventory, pets: ids, crystals: Math.round(skillEffects(profile.skills).startCrystals) }
-  for (const id of ids) game.pets.push(createPet(id, scene, game.player))
+  for (const id of ids) game.pets.push(spawnPet(id))
 }
 const LAB_SPAWN_RADIUS = 30 // pods / chests / monsters stay inside the maze's square
 const LAB_EXIT_KEEPOUT = 5 // nothing spawns on the exit pad's cell
@@ -1554,7 +1572,7 @@ function receiveLoot(game, loot, swappedOut = null) {
         disposePets([gone], scene)
       }
     }
-    game.pets.push(createPet(loot.id, scene, game.player))
+    game.pets.push(spawnPet(loot.id))
     const pet = PETS[loot.id]
     showLootToast(hud, { title: `${verb} PET`, name: pet.name, icon: { kind: 'pet', id: pet.id }, blurb: pet.blurb })
   }
@@ -2198,7 +2216,7 @@ function startSandbox() {
         const [gone] = game.pets.splice(result.petRemoved, 1)
         if (gone) disposePets([gone], scene)
       }
-      if (result.petAdded) game.pets.push(createPet(result.petAdded, scene, game.player))
+      if (result.petAdded) game.pets.push(spawnPet(result.petAdded))
       if (kind === 'weapon') {
         setPlayerWeapon(game.player.mesh, selectedWeaponId(game.inventory))
         game.attackState.swingElapsed = null
@@ -2285,8 +2303,11 @@ const hub = createHub({
   setProfile,
   getRun: () => ({ sandbox, inRun: started && !sandbox, weapons: game.inventory.weapons, crystals: game.inventory.crystals, owned: game.inventory.powerups, equipped: game.inventory.equipped }),
   onBank: bankRunCrystals,
+  onOpenChange: (open) => {
+    if (!open) refreshDragons()
+  },
 })
-const HUB_KEYS = { Digit6: 'skills', Numpad6: 'skills', Digit7: 'powerups', Numpad7: 'powerups', KeyJ: 'gunsmith', Digit9: 'loadout', Numpad9: 'loadout' }
+const HUB_KEYS = { Digit6: 'skills', Numpad6: 'skills', Digit7: 'powerups', Numpad7: 'powerups', KeyJ: 'gunsmith', KeyN: 'dragons', Digit9: 'loadout', Numpad9: 'loadout' }
 function canOpenHub() {
   return !swapPanel.isOpen() && !pauseMenu.isOpen() && !(started && game.player.hp <= 0) && !(started && !sandbox && loadoutPanel.isOpen()) && !(started && sandbox && sandboxPanel?.isOpen?.())
 }

@@ -3,6 +3,7 @@
 // ever found (the collection), three loadouts of starting pets, and the levels
 // bought with banked crystals (skill tree + power-up upgrades). Every function
 // returns a NEW profile. src/profile.js saves it in localStorage.
+import { BREATHS, SCALES, isBreath, isScale } from './dragons.js'
 import { MAX_SLOTS, PETS, WEAPONS, PET_MAX_LEVEL, POWERUPS, SLOT_LIMITS, petLevel, petUpgradeCost } from './items.js'
 import { AMMO, AMMO_MAX_LEVEL, DEFAULT_AMMO, DEFAULT_SCOPE, RIFLE_MAX_LEVEL, SCOPES, ammoLevel, ammoUpgradeCost, cycleIn, isAmmoUnlocked, isScopeUnlocked, rifleLevel, rifleUpgradeCost, unlockedAmmo, unlockedScopes } from './rifles.js'
 import { POWERUP_MAX_LEVEL, SKILLS, powerupLevel, powerupUpgradeCost, skillLevel, skillState, skillsSpent } from './skills.js'
@@ -36,6 +37,7 @@ export function createProfile() {
     rifleLevels: {}, // rifle id -> level (absent = 1)
     ammoLevels: {}, // ammo id -> level (absent = 1)
     rifles: {}, // rifle id -> { scope, ammo } (absent = iron sights, standard ammo)
+    dragons: {}, // dragon pet id -> { scale, breath } (absent = that dragon's own look and breath)
   }
 }
 
@@ -78,6 +80,16 @@ export function normalizeProfile(raw) {
     const ammo = AMMO[saved?.ammo] ? saved.ammo : DEFAULT_AMMO
     if (scope !== DEFAULT_SCOPE || ammo !== DEFAULT_AMMO) rifles[id] = { scope, ammo }
   }
+  // Dragon customization: only known scale / breath picks are kept.
+  const dragons = {}
+  for (const id of Object.keys(PETS)) {
+    if (PETS[id].kind !== 'breath') continue
+    const saved = raw.dragons?.[id]
+    const entry = {}
+    if (isScale(saved?.scale)) entry.scale = saved.scale
+    if (isBreath(saved?.breath)) entry.breath = saved.breath
+    if (entry.scale || entry.breath) dragons[id] = entry
+  }
   const rifleLevels = {}
   for (const id of Object.keys(WEAPONS)) {
     const level = Math.min(count(raw.rifleLevels?.[id]), RIFLE_MAX_LEVEL)
@@ -98,6 +110,7 @@ export function normalizeProfile(raw) {
     powerups,
     pets,
     rifles,
+    dragons,
     unlocked: {
       scopes: Array.isArray(raw.unlocked?.scopes) ? [...new Set(raw.unlocked.scopes.filter((id) => SCOPES[id] && id !== DEFAULT_SCOPE))] : [],
       ammo: Array.isArray(raw.unlocked?.ammo) ? [...new Set(raw.unlocked.ammo.filter((id) => AMMO[id] && id !== DEFAULT_AMMO))] : [],
@@ -187,6 +200,18 @@ export function setRifleOption(profile, rifleId, kind, value, step = false) {
   const next = step ? cycleIn(ids, current[kind], value) : value
   if (!ids.includes(next)) return profile
   return { ...profile, rifles: { ...profile.rifles, [rifleId]: { ...current, [kind]: next } } }
+}
+
+// Sets (or steps) a dragon's scale (colour) or breath. Everything is open from the start; stepping
+// cycles through them all.
+export function setDragonOption(profile, petId, kind, value, step = false) {
+  if (PETS[petId]?.kind !== 'breath' || (kind !== 'scale' && kind !== 'breath')) return profile
+  const table = kind === 'scale' ? SCALES : BREATHS
+  const ids = Object.keys(table)
+  const current = profile.dragons?.[petId]?.[kind] ?? (kind === 'scale' ? PETS[petId].defaultScale : PETS[petId].defaultBreath)
+  const next = step ? ids[(ids.indexOf(current) + (value >= 0 ? 1 : ids.length - 1)) % ids.length] : value
+  if (!ids.includes(next)) return profile
+  return { ...profile, dragons: { ...profile.dragons, [petId]: { ...profile.dragons?.[petId], [kind]: next } } }
 }
 
 // Adds a found scope / ammo to the unlocked set. `kind` is 'scope' or 'ammo'.
