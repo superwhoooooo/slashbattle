@@ -22,7 +22,7 @@ const scaleHex = (hex, k) => {
   const ch = (v) => Math.min(255, Math.round(v * k))
   return (ch((hex >> 16) & 255) << 16) | (ch((hex >> 8) & 255) << 8) | ch(hex & 255)
 }
-const BULLET_BRIGHTNESS = isTouchDevice() ? 0.5 : 0.8 // phones are far more dazzled by it // shots are unlit, so this dims them (and keeps them under the bloom threshold)
+const BULLET_BRIGHTNESS = isTouchDevice() ? 0.5 : 0.55 // desktop: a touch brighter than phones // phones are far more dazzled by it // shots are unlit, so this dims them (and keeps them under the bloom threshold)
 
 export function segmentBlocked(a, b, blockers) {
   if (!blockers || blockers.length === 0) return false
@@ -41,7 +41,7 @@ export function createBulletPool() {
   const geometry = new THREE.IcosahedronGeometry(1, 1)
   const slots = []
   for (let i = 0; i < POOL_SIZE; i++) {
-    const mesh = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false /* shots stay readable in the underwater murk */ }))
+    const mesh = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ color: 0xffffff }))
     mesh.visible = false
     group.add(mesh)
     slots.push({ mesh, active: false, data: null })

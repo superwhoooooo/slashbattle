@@ -654,5 +654,5 @@ Only deep dwellers ever go under: every other monster stays floating on the surf
 (main.js's `monsterSwimY`). The eel is a jelly-sphere head with a long segmented body, back fin and tail
 fin (`characters.js`'s `addEelBody`, `accessory: 'eelBody'`) that ripples in an S-wave (`swishEelTail`).
 While you dive, the particle, bullet, enemy-orb and shockwave layers are shifted down with you
-(`fxDepthOffset`, x`DIVE_FX_DROP` so shots fly below the first-person eye), and shots/orbs ignore fog.
+(`fxDepthOffset`, x`DIVE_FX_DROP` so shots fly below the first-person eye), and shots/orbs ignore fog while you're under (`setShotFog`).
 The BREATH bar warns "SOMETHING LURKS BELOW" while any are alive. On dry rooms (e.g. the sandbox) they are normal enemies.

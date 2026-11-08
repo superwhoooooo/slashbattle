@@ -520,8 +520,19 @@ function applyFxDepth() {
   for (const group of [particleSystem.group, projectilePool.group, shockwavePool.group, bulletPool.group]) group.position.y = y
 }
 
+// Underwater, shots and enemy orbs ignore the murk so they stay readable; on land and on the
+// surface they fade with distance like everything else (otherwise far shots glare at full brightness).
+function setShotFog(on) {
+  for (const slot of [...bulletPool.slots, ...projectilePool.slots]) {
+    if (slot.mesh.material.fog === on) continue
+    slot.mesh.material.fog = on
+    slot.mesh.material.needsUpdate = true
+  }
+}
+
 function applyWaterFog(under) {
   const room = waterRoom()
+  setShotFog(!(under && room))
   if (under && room) {
     scene.fog = new THREE.Fog(room.under.fog, room.under.near, room.under.far)
     scene.background = new THREE.Color(room.under.fog)

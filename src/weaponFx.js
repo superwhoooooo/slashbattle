@@ -202,6 +202,13 @@ export function playHitFx(id, at, angle, ctx) {
   fx({ ps: ctx.particleSystem, shock: ctx.shockwavePool, warp: ctx.warp, shake: ctx.shake ?? (() => {}), o: at, a: angle })
 }
 
+// Shot trails get their own, dimmer level on desktop: a spark is left every frame a shot flies,
+// and the additive sparks pile up into a glaring streak. Desktop trails end up at ~0.75 overall
+// (x FX_BRIGHTNESS 1.3), a touch brighter than phones' 0.7; phones are left as they were.
+const TRAIL_BRIGHTNESS = isTouchDevice() ? 1 : 0.58
+const scaleColor = (hex, k) => (Math.round(((hex >> 16) & 255) * k) << 16) | (Math.round(((hex >> 8) & 255) * k) << 8) | Math.round((hex & 255) * k)
+const trailBurst = (ps, at, color, ...rest) => burst(ps, at, scaleColor(color, TRAIL_BRIGHTNESS), ...rest)
+
 // A bullet's trail, called every frame it flies: each gun leaves its own
 // kind -- sparkles, confetti, bubbles, embers, a hot beam.
 export function playBulletTrail(bullet, ctx) {
@@ -209,34 +216,34 @@ export function playBulletTrail(bullet, ctx) {
   const here = { x: bullet.x, y: 0.7, z: bullet.z }
   switch (weaponBase(bullet.weaponId)) {
     case 'staff':
-      burst(ps, here, Math.random() < 0.3 ? 0xffffff : 0xb48cff, 1, 1.4, 0.4)
+      trailBurst(ps, here, Math.random() < 0.3 ? 0xffffff : 0xb48cff, 1, 1.4, 0.4)
       break
     case 'pistol':
-      burst(ps, here, 0xffe14a, 1, 0.8)
+      trailBurst(ps, here, 0xffe14a, 1, 0.8)
       break
     case 'shotgun':
-      if (Math.random() < 0.5) burst(ps, here, pick(RAINBOW), 1, 1.6)
+      if (Math.random() < 0.5) trailBurst(ps, here, pick(RAINBOW), 1, 1.6)
       break
     case 'smg':
-      burst(ps, here, 0x66f0ff, 1, 0.6, 1.8)
+      trailBurst(ps, here, 0x66f0ff, 1, 0.6, 1.8)
       break
     case 'railgun':
-      burst(ps, here, 0x7cffb0, 2, 0.3)
-      burst(ps, here, 0xffffff, 1, 0.2)
+      trailBurst(ps, here, 0x7cffb0, 2, 0.3)
+      trailBurst(ps, here, 0xffffff, 1, 0.2)
       break
     case 'launcher':
-      burst(ps, here, Math.random() < 0.5 ? 0xff8a3a : 0x6a5a50, 2, 1.2, 0.6)
+      trailBurst(ps, here, Math.random() < 0.5 ? 0xff8a3a : 0x6a5a50, 2, 1.2, 0.6)
       break
     case 'crossbow':
-      burst(ps, here, 0xc9ff5a, 2, 0.3)
+      trailBurst(ps, here, 0xc9ff5a, 2, 0.3)
       break
     case 'flamer':
-      burst(ps, here, Math.random() < 0.5 ? 0xff6a2a : 0xffd23f, 2, 1.2, 2.2)
+      trailBurst(ps, here, Math.random() < 0.5 ? 0xff6a2a : 0xffd23f, 2, 1.2, 2.2)
       break
     case 'blaster':
-      burst(ps, here, pick(RAINBOW), 2, 1.5)
+      trailBurst(ps, here, pick(RAINBOW), 2, 1.5)
       break
     default:
-      burst(ps, here, bullet.color ?? 0xffffff, 1, 0.8)
+      trailBurst(ps, here, bullet.color ?? 0xffffff, 1, 0.8)
   }
 }
