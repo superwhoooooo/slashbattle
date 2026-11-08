@@ -39,11 +39,22 @@ const SHOTS = {
   squawk: { speed: 18, arc: 0, height: 0.7, color: 0xff4a4a, hit: 8, splash: 0 },
 }
 
-// Creates the pet `id` right next to the player, growing in.
+// Creates the pet `id` right next to the player, growing in. A pet with `split` parts (Remy &
+// Benji) comes out as one pet per part: the first is the pet, the rest ride along as its
+// `buddies` and move, aim and throw on their own (they share the pet's id, level and slot).
 export function createPet(id, scene, player) {
   const def = PETS[id]
+  if (!def.split) return makePet(def, scene, player, 1)
+  const [first, ...rest] = def.split.map((part, i) => makePet(splitDef(def, part), scene, player, i % 2 ? -1 : 1))
+  first.buddies = rest
+  return first
+}
+
+const splitDef = (def, part) => ({ ...def, ...part, interval: def.interval * def.split.length, split: undefined })
+
+function makePet(def, scene, player, side) {
   const mesh = createPetModel(def)
-  mesh.position.set(player.position.x + 1, 0, player.position.z + 1)
+  mesh.position.set(player.position.x + side, 0, player.position.z + 1)
   mesh.scale.setScalar(0.01)
   mesh.rotation.order = 'YXZ' // yaw first, so pitch and bank (soaring birds, strike tilts) are about the pet's own axes
   scene.add(mesh)
@@ -52,9 +63,17 @@ export function createPet(id, scene, player) {
 
 const targetable = (monster) => !monster.userData.dying && !monster.userData.spawning && !monster.userData.falling
 
+// Every live unit: each pet, followed by any buddies it split into.
+const unitsOf = (pets) => pets.flatMap((pet) => [pet, ...(pet.buddies ?? [])])
+
 // The nearest enemy this pet can see (and, for a fighter, would chase): in sight of the
-// pet, near enough to the player, and not behind a labyrinth wall.
-function pickTarget(pet, monsters, player) {
+// pet, near enough to the player, and not behind a labyrinth wall. `avoid` (a split pet's
+// partners' targets) is skipped when there is any other enemy to go for, so they spread out.
+function pickTarget(pet, monsters, player, avoid = []) {
+  if (avoid.length) {
+    const other = pickTarget(pet, monsters.filter((m) => !avoid.includes(m)), player)
+    if (other) return other
+  }
   const here = pet.mesh.position
   let best = null
   let bestDistance = Infinity
@@ -299,6 +318,12 @@ function zap(pet, target, ctx) {
 // back to its spot beside the player when there is none.
 export function updatePets(pets, { petDamage = 1, levels = {}, dt, elapsed, player, monsters, obstacles, particleSystem, hitstop, shockwavePool, onScratch = null }) {
   const ctx = { monsters, obstacles, particleSystem, hitstop, shockwavePool, onScratch }
+  // Split pets' partners (Remy & Benji): each unit knows the others of its pair.
+  for (const pet of pets) {
+    const team = [pet, ...(pet.buddies ?? [])]
+    for (const unit of team) unit.partners = team.filter((other) => other !== unit)
+  }
+  pets = unitsOf(pets)
   const count = pets.length
   for (const pet of pets) {
     const level = petLevel(levels, pet.def.id)
@@ -320,7 +345,9 @@ export function updatePets(pets, { petDamage = 1, levels = {}, dt, elapsed, play
     if (dist(mesh.position, player.position) > SNAP_DISTANCE) recallPet(pet, home)
 
     // Decide where to be: at an enemy (fighters) or at home.
-    const target = isFighter(def) ? pickTarget(pet, monsters, player) : null
+    const avoid = (pet.partners ?? []).map((other) => other.target).filter(Boolean)
+    const target = isFighter(def) ? pickTarget(pet, monsters, player, avoid) : null
+    pet.target = target
     let goal = home
     let speed = returnSpeed(dist(mesh.position, home))
     let holding = false
@@ -421,7 +448,7 @@ export function updatePets(pets, { petDamage = 1, levels = {}, dt, elapsed, play
 }
 
 export function disposePets(pets, scene) {
-  for (const pet of pets) {
+  for (const pet of unitsOf(pets)) {
     for (const thrown of [...(pet.sabers ?? []), ...(pet.shots ?? [])]) {
       scene.remove(thrown.mesh)
       disposeTree(thrown.mesh)

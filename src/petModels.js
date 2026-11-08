@@ -693,6 +693,18 @@ function duo() {
   return group
 }
 
+// One kid on their own, at the duo's size (for when the pair splits up, see pets.js). The
+// kid sits in a fresh root because pets.js owns the root's scale (it grows the pet in).
+function solo(build) {
+  const kidModel = build()
+  kidModel.scale.setScalar(0.85)
+  const root = new THREE.Group()
+  root.add(kidModel)
+  root.userData = kidModel.userData
+  root.userData.fly = false
+  return root
+}
+
 // What the pair throws: a pile-of-junk item (tin can, old boot or cardboard box) or a banana.
 export function createThrown(kind, variant = 0) {
   const item = new THREE.Group()
@@ -721,6 +733,8 @@ const BUILDERS = {
   ...ANIMAL_BUILDERS, // the ground walkers: realistic four-legged animals, the penguin and the tortoise
   matthias,
   remybenji: () => duo(),
+  remy: () => solo(remy),
+  benji: () => solo(benji),
   chick: () => bird({ body: 0xffd84a, belly: 0xffeb8a, beak: 0xff9a2e, wing: 0xffd84a, wingTip: 0xf0b02c, tail: 0xffd84a, crest: 0xffd84a, legs: 0xff9a2e, span: 0.3, chord: 0.2, bodyR: 0.23, bodyLen: 1.35, headR: 0.15, tailLen: 0.2, tailFeathers: 3, cruise: 1.0 }),
   owl: () => bird({ body: 0x8a6a4a, belly: 0xe0cfb0, eye: 'owl', disc: 0xf3e6c8, tufts: true, beak: 0xe0a030, wing: 0x6e5238, wingTip: 0x4f3b28, tail: 0x6e5238, legs: 0xe0a030, span: 0.62, chord: 0.36, bodyR: 0.21, bodyLen: 1.6, headR: 0.17, tailLen: 0.26, tailFeathers: 4, tailFan: 0.25, tailWidth: 0.09, cruise: 1.5 }),
   magpie: () => bird({ body: 0x23262d, belly: 0xffffff, beak: 0x1b1b1b, wing: 0x3b4a7a, wingTip: 0xf2f2f2, tail: 0x3b4a7a, tailTip: 0x2f7a6a, legs: 0x1b1b1b, span: 0.48, chord: 0.24, tailLen: 0.62, tailFeathers: 3, tailFan: 0.08, tailWidth: 0.07 }),

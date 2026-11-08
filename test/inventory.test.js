@@ -321,4 +321,36 @@ describe('Remy & Benji', () => {
     expect(PETS.remybenji.thrown).toEqual(['junk', 'banana'])
     expect(PETS.remybenji.model).toBe('remybenji')
   })
+
+  it('split into two kids once equipped, each throwing their own thing', async () => {
+    const THREE = await import('three')
+    const { createPet, updatePets, disposePets } = await import('../src/pets.js')
+    const scene = new THREE.Scene()
+    const player = { position: new THREE.Vector3(0, 0, 0), hp: 100, maxHp: 100 }
+    const pet = createPet('remybenji', scene, player)
+    expect(pet.def.model).toBe('remy')
+    expect(pet.def.thrown).toEqual(['junk'])
+    expect(pet.buddies).toHaveLength(1)
+    expect(pet.buddies[0].def.model).toBe('benji')
+    expect(pet.buddies[0].def.thrown).toEqual(['banana'])
+    // Each throws at half the pair's rate, so together they hit as hard as the pair did.
+    expect(pet.def.interval).toBeCloseTo(PETS.remybenji.interval * 2)
+    expect(scene.children).toHaveLength(2)
+    // Two enemies: the kids go after different ones.
+    const enemy = (x, z) => {
+      const m = new THREE.Group()
+      m.position.set(x, 0, z)
+      m.userData = { hp: 100, maxHp: 100 }
+      return m
+    }
+    const monsters = [enemy(4, 0), enemy(-4, 0)]
+    const pets = [pet]
+    updatePets(pets, { dt: 0.016, elapsed: 0, player, monsters, obstacles: [], particleSystem: null, hitstop: null, shockwavePool: null })
+    expect(pets).toHaveLength(1) // still one equipped pet
+    expect(pet.target).toBeTruthy()
+    expect(pet.buddies[0].target).toBeTruthy()
+    expect(pet.buddies[0].target).not.toBe(pet.target)
+    disposePets(pets, scene)
+    expect(scene.children).toHaveLength(0)
+  })
 })

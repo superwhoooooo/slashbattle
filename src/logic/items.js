@@ -124,7 +124,10 @@ export const PETS = {
   plated: { id: 'plated', name: 'Plated', icon: '🛡️', color: 0xb0bec5, model: 'shield', kind: 'guard', reduction: 0.15, blurb: 'A shield that takes 15% off every hit' },
   vortex: { id: 'vortex', name: 'Vortex', icon: '🐦‍⬛', color: 0x4d6bff, model: 'magpie', kind: 'magnet', radius: 16, blurb: 'A magpie with a huge crystal pull' },
   matthias: { id: 'matthias', name: 'Matthias', icon: '🧑', color: 0x58ff6a, saberColor: 0x58ff6a, model: 'matthias', kind: 'throw', damage: 18, interval: 1.3, range: 13, knockback: 2, blurb: 'Throws lightsabers at the nearest enemy' },
-  remybenji: { id: 'remybenji', name: 'Remy & Benji', icon: '👦', color: 0xffd84a, saberColor: 0xffd84a, model: 'remybenji', kind: 'throw', thrown: ['junk', 'banana'], damage: 16, interval: 0.9, range: 12, knockback: 1.5, blurb: 'Remy chucks junk, Benji lobs bananas, at the nearest enemy' },
+  remybenji: { id: 'remybenji', name: 'Remy & Benji', icon: '👦', color: 0xffd84a, saberColor: 0xffd84a, model: 'remybenji', kind: 'throw', thrown: ['junk', 'banana'], damage: 16, interval: 0.9, range: 12, knockback: 1.5, blurb: 'Remy chucks junk, Benji lobs bananas -- they split up to take on different enemies',
+    // Once out, the pair splits into two kids who move and throw on their own (pets.js), each
+    // at half the pair's rate so the two together hit as hard as before.
+    split: [{ model: 'remy', thrown: ['junk'] }, { model: 'benji', thrown: ['banana'] }] },
   frosty: { id: 'frosty', name: 'Frosty', icon: '🐺', color: 0xbfe9ff, model: 'wolf', kind: 'lunge', strike: 'bite', damage: 11, interval: 1.4, knockback: 1, blurb: 'An arctic wolf that runs down enemies and gives icy bites' },
   pandy: { id: 'pandy', name: 'Pandy', icon: '🐼', color: 0xeeeeee, model: 'panda', kind: 'pulse', damage: 10, interval: 1.8, radius: 3.4, knockback: 1.2, blurb: 'A panda that rolls up and bonks everything close' },
   polly: { id: 'polly', name: 'Polly', icon: '🦜', color: 0xff4a4a, model: 'parrot', kind: 'shot', projectile: 'squawk', damage: 9, interval: 1, range: 10, blurb: 'A parrot that squawks sound waves at foes' },
