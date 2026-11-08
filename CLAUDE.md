@@ -560,7 +560,7 @@ Gravity Well) or a `ripple` (an outward refracting ring; Shockwave, Earthquake, 
 impact, boss slams, exploding bullets, heavy weapons). `logic/warp.js` holds the pure
 envelope math. The Warp Field ability (`vacuum`) opens at the cursor's ground point,
 drags monsters in, confuses them (`confusedUntil` in `monster.js`: they stumble and spin,
-bosses are immune) and damages them in ticks. Meteor Strike is a falling fireball.
+bosses are immune) and damages them in ticks. Starfall drops falling fireballs (Meteor Strike is no longer in the game).
 `src/weaponFx.js`'s `playWeaponFx` gives every weapon its own swing effect (whip crack,
 hammer slam, scythe crescent, rail beam, flail whirl...) when a swing starts.
 

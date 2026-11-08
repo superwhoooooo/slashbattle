@@ -1072,6 +1072,8 @@ function weaponFxContext() {
 
 // Warp Fields and falling meteors live here (per session, cleared on restart).
 const warpFields = []
+// Meteor Strike is gone as an ability, but Starfall still drops these.
+const METEOR_BLAST = { damage: 70, radius: 4 }
 const meteors = []
 
 // The ground point an ability aims at: under the mouse (or the touch aim
@@ -1185,7 +1187,7 @@ function dropMeteor(at, { damage = null, radius = null } = {}) {
   group.add(core, glow)
   scene.add(group)
   meteors.push({ group, x: at.x, z: at.z, age: 0, fall: 0.7, damage, radius })
-  spawnShockwave(shockwavePool, at.x, at.z, radius ?? ABILITIES.meteor.radius, 0xff7a2e) // the landing marker
+  spawnShockwave(shockwavePool, at.x, at.z, radius ?? METEOR_BLAST.radius, 0xff7a2e) // the landing marker
 }
 
 function disposeMeteor(meteor) {
@@ -1197,7 +1199,7 @@ function disposeMeteor(meteor) {
 }
 
 function updateMeteors(game, dt) {
-  const def = ABILITIES.meteor
+  const def = METEOR_BLAST
   for (let i = meteors.length - 1; i >= 0; i--) {
     const m = meteors[i]
     m.age += dt
@@ -1464,8 +1466,6 @@ function activateAbility(game, slot, now) {
     burst(particleSystem, center, 0x9be37a, 24, 3)
     streak(player.position, { x: player.position.x - Math.sin(player.facing) * 4, z: player.position.z - Math.cos(player.facing) * 4 }, 0x9be37a, 10)
     warp.add('ripple', player.position.x, player.position.z, 3, 0.4)
-  } else if (used.abilityId === 'meteor') {
-    dropMeteor(abilityTargetPoint(player, ABILITIES.meteor.range))
   } else if (used.abilityId === 'ghost') {
     player.invulnerableUntil = Math.max(player.invulnerableUntil, now + ABILITIES.ghost.duration)
     player.ghostUntil = now + ABILITIES.ghost.duration

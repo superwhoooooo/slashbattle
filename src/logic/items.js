@@ -77,7 +77,6 @@ export const ABILITIES = {
   drain: { id: 'drain', name: 'Life Drain', icon: '🧛', cooldown: 16, blurb: 'Steal HP from nearby foes' },
   frenzy: { id: 'frenzy', name: 'Frenzy', icon: '⚡', cooldown: 20, duration: 6, blurb: 'Attack 40% faster' },
   sprint: { id: 'sprint', name: 'Sprint', icon: '👟', cooldown: 12, duration: 5, blurb: 'Run 1.6x faster' },
-  meteor: { id: 'meteor', name: 'Meteor Strike', icon: '☄️', cooldown: 15, damage: 70, radius: 4, distance: 6, blurb: 'Drop a meteor ahead of you' },
   ghost: { id: 'ghost', name: 'Ghost Form', icon: '👻', cooldown: 16, duration: 2.5, blurb: 'Untouchable for 2.5s' },
   vacuum: { id: 'vacuum', name: 'Warp Field', icon: '🕳️', cooldown: 14, duration: 4.5, radius: 5.5, damage: 9, range: 18, blurb: 'Warp space at your cursor: confuses and hurts, pulls in crystals' },
   quake: { id: 'quake', name: 'Earthquake', icon: '🌋', cooldown: 17, damage: 30, radius: 9, blurb: 'Shake everything in a wide ring' },

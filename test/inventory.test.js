@@ -169,7 +169,7 @@ describe('chest loot', () => {
     const w = swapItem(inv, { kind: 'weapon', id: 'axe' }, 'dagger')
     expect(w.weapons).toEqual(['staff', 'sword', 'axe', 'spear', 'hammer'])
     expect(w.selected).toBe(2)
-    expect(swapItem(inv, { kind: 'ability', id: 'meteor' }, 'heal').abilities).toEqual(['blink', 'shockwave', 'meteor', 'shield', 'rage'])
+    expect(swapItem(inv, { kind: 'ability', id: 'starfall' }, 'heal').abilities).toEqual(['blink', 'shockwave', 'starfall', 'shield', 'rage'])
     expect(swapItem(inv, { kind: 'pet', id: 'pandy' }, 'sparky').pets[0]).toBe('pandy')
     expect(swapItem(inv, { kind: 'pet', id: 'pandy' }, 'nope')).toBe(inv)
   })
