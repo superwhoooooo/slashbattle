@@ -241,7 +241,8 @@ import {
   waveSize,
 } from './logic/waves.js'
 import { enemyScale, SPLITS } from './logic/enemies.js'
-import { createMonsterAIState, separateMonsters, setDeepShield, setMonsterNavigator, setSurfaceShield, setWaterRoom, updateMonster, upgradeBossSpecials } from './monster.js'
+import { createMonsterAIState, separateMonsters, setDeepShield, setMonsterNavigator, setSurfaceShield, setTimeWarp, setWaterRoom, timeWarp, updateMonster, upgradeBossSpecials } from './monster.js'
+import { applyFreeze, isFrozen } from './logic/status.js'
 import { burst, createParticleSystem, resetParticles, setParticleViewScale, shardBurst, updateParticles } from './particles.js'
 import { createPet, disposePets, updatePets } from './pets.js'
 import { Player } from './player.js'
@@ -249,7 +250,7 @@ import { createBulletPool, fireBullets, resetBullets, updateBullets } from './bu
 import { createScratchLayer, showScratch } from './scratch.js'
 import { makeBullets } from './logic/bullets.js'
 import { createPoisonPool, lobPoison, resetPoison, updatePoison } from './hazards.js'
-import { createProjectilePool, fireProjectile, resetProjectiles, updateProjectiles } from './projectiles.js'
+import { createProjectilePool, destroyProjectilesNear, fireProjectile, resetProjectiles, updateProjectiles } from './projectiles.js'
 import { inRingBand, onBeam, puddleTargets, rainZones, ringAngles, wallOrbs } from './logic/signatures.js'
 import { CRAZY_TYPE_IDS } from './logic/crazyEnemies.js'
 import { createShockwavePool, resetShockwaves, spawnShockwave, updateShockwaves } from './shockwave.js'
@@ -483,6 +484,8 @@ document.addEventListener(
 // lock) turns the view; W moves along it and every weapon aims where you look.
 let firstPerson = false
 const TOUCH_LOOK_SPEED = 2.6 // rad/s at full stick, when turning the first-person view by touch
+let fpPitch = 0 // look up (+) / down (-), radians; view only, aiming stays on the ground plane
+const FP_PITCH_LIMIT = 1.3
 let fpYaw = 0 // same convention as player.facing: forward = (sin, cos)
 const fpCrosshair = document.createElement('div')
 fpCrosshair.style.cssText = 'position:fixed;left:50%;top:50%;width:14px;height:14px;margin:-7px 0 0 -7px;border:2px solid rgba(255,255,255,0.85);border-radius:50%;box-shadow:0 0 0 1px rgba(26,36,51,0.45);pointer-events:none;display:none;z-index:5'
@@ -493,6 +496,7 @@ function setFirstPerson(on) {
   fpCrosshair.style.display = on ? 'block' : 'none'
   if (on) {
     fpYaw = game.player.facing
+    fpPitch = 0
     if (!input.touchMode) renderer.domElement.requestPointerLock?.()?.catch?.(() => {}) // denied locks just leave the view where it is
   } else {
     cameraYaw = 0
@@ -656,7 +660,10 @@ function clampToWater(position, radius) {
   return true
 }
 window.addEventListener('mousemove', (event) => {
-  if (firstPerson && document.pointerLockElement) fpYaw -= event.movementX * 0.0025
+  if (firstPerson && document.pointerLockElement) {
+    fpYaw -= event.movementX * 0.0025
+    fpPitch = Math.max(-FP_PITCH_LIMIT, Math.min(FP_PITCH_LIMIT, fpPitch - event.movementY * 0.0025))
+  }
 })
 window.addEventListener('keydown', (event) => {
   if (event.repeat || (event.code !== 'Digit0' && event.code !== 'Numpad0')) return
@@ -1116,6 +1123,59 @@ function sparkRing(x, z, radius, color, steps = 16) {
 
 // Sustained auras while a timed buff is up: orbiting bubble sparks (shield),
 // rising flames (rage), crackling bolts (frenzy), speed streaks (sprint).
+// Whirlwind: while it lasts the player spins, hits everything close several times a
+// second and shreds enemy orbs that come near.
+function updateWhirlwind(game, dt, now) {
+  const { player } = game
+  if (now >= (player.whirlUntil ?? -Infinity)) {
+    if (player.whirlSpin) {
+      player.whirlSpin = 0
+      player.mesh.rotation.y = player.facing
+    }
+    return
+  }
+  const def = ABILITIES.whirl
+  player.whirlSpin = (player.whirlSpin ?? 0) + dt * 16
+  player.mesh.rotation.y = player.whirlSpin
+  const a = player.whirlSpin
+  for (const k of [0, Math.PI]) {
+    burst(particleSystem, { x: player.position.x + Math.sin(a + k) * def.radius * 0.85, y: 0.8, z: player.position.z + Math.cos(a + k) * def.radius * 0.85 }, 0x8af0c8, 2, 1.5)
+  }
+  destroyProjectilesNear(projectilePool, player.position.x, player.position.z, def.radius)
+  player.whirlTick = (player.whirlTick ?? 0) - dt
+  if (player.whirlTick > 0) return
+  player.whirlTick = def.interval
+  spawnShockwave(shockwavePool, player.position.x, player.position.z, def.radius, 0x8af0c8)
+  const damage = def.damage * elapsedDamageMultiplier(player, now)
+  for (const mesh of game.monsters) {
+    if (mesh.userData.dying || mesh.userData.spawning || mesh.userData.falling) continue
+    if (Math.hypot(mesh.position.x - player.position.x, mesh.position.z - player.position.z) > def.radius + (mesh.userData.reachBonus ?? 0) + mesh.userData.radius * 0.5) continue
+    damageMonster(mesh, damage, { fromPos: player.position, knockback: 1.1, obstacles: game.obstacles, particleSystem, cause: 'sword', hitstop: game.hitstop })
+  }
+}
+
+// A frozen monster wears a pale ice shell; slowed ones get a faint chill sparkle.
+const iceShellGeometry = new THREE.IcosahedronGeometry(1, 1)
+const iceShellMaterial = new THREE.MeshBasicMaterial({ color: 0xbfeaff, transparent: true, opacity: 0.42, depthWrite: false })
+function updateFrozenLook(mesh, now) {
+  const ai = mesh.userData
+  const frozen = isFrozen(ai, now)
+  let shell = ai.iceShell
+  if (!frozen) {
+    if (shell) shell.visible = false
+    return
+  }
+  if (!shell) {
+    shell = new THREE.Mesh(iceShellGeometry, iceShellMaterial)
+    const r = ai.radius * 1.15
+    shell.scale.setScalar(r)
+    shell.position.y = r * 0.85
+    mesh.add(shell)
+    ai.iceShell = shell
+  }
+  shell.visible = true
+}
+
 function updateBuffAuras(player, now, dt) {
   const { x, z } = player.position
   if (now < player.shieldUntil) {
@@ -1529,6 +1589,47 @@ function activateAbility(game, slot, now) {
     }
     burst(particleSystem, center, 0x7ae8ff, 20, 3)
     sparkRing(player.position.x, player.position.z, 1.2, 0x7ae8ff, 20)
+  } else if (used.abilityId === 'frostlance') {
+    const def = ABILITIES.frostlance
+    const lance = {
+      pellets: 1,
+      spread: 0,
+      damage: def.damage,
+      knockback: 1.4,
+      bullet: { speed: 30, life: 0.8, radius: 0.9, pierce: 99, explode: 0, color: 0x9fe4ff, freeze: def.freeze },
+    }
+    fireBullets(bulletPool, makeBullets(lance, { x: player.position.x, z: player.position.z, aimAngle: player.facing, damageMultiplier: elapsedDamageMultiplier(player, now) }))
+    burst(particleSystem, center, 0xbfeaff, 26, 4)
+    streak(player.position, { x: player.position.x + Math.sin(player.facing) * 12, z: player.position.z + Math.cos(player.facing) * 12 }, 0xbfeaff, 14)
+    warp.add('ripple', player.position.x + Math.sin(player.facing) * 2, player.position.z + Math.cos(player.facing) * 2, 3, 0.4)
+  } else if (used.abilityId === 'glacier') {
+    const def = ABILITIES.glacier
+    spawnShockwave(shockwavePool, player.position.x, player.position.z, def.radius, 0x9fe4ff)
+    spawnShockwave(shockwavePool, player.position.x, player.position.z, def.radius * 0.6, 0xffffff)
+    warp.add('ripple', player.position.x, player.position.z, def.radius * 1.1, 0.7)
+    burst(particleSystem, center, 0xbfeaff, 44, 5)
+    shardBurst(particleSystem, center, 0xbfeaff, 18, 4)
+    triggerShake(game.shake, SHAKE_HIT_MAGNITUDE, SHAKE_HIT_DURATION)
+    for (const mesh of game.monsters) {
+      if (mesh.userData.dying || mesh.userData.spawning || mesh.userData.falling) continue
+      if (Math.hypot(mesh.position.x - player.position.x, mesh.position.z - player.position.z) > def.radius + (mesh.userData.reachBonus ?? 0)) continue
+      applyFreeze(mesh.userData, now, def.freeze)
+      damageMonster(mesh, def.damage, { fromPos: player.position, knockback: 0, obstacles: game.obstacles, particleSystem, cause: 'shockwave', hitstop: game.hitstop })
+    }
+  } else if (used.abilityId === 'timewarp') {
+    const until = now + ABILITIES.timewarp.duration
+    setTimeWarp(until)
+    spawnShockwave(shockwavePool, player.position.x, player.position.z, 7, 0xffd36e)
+    warp.add('swirl', player.position.x, player.position.z, 9, 1.2)
+    burst(particleSystem, center, 0xffe9a0, 30, 3, 0.5)
+    column(player.position.x, player.position.z, 0xffd36e, 4)
+  } else if (used.abilityId === 'whirl') {
+    const def = ABILITIES.whirl
+    player.whirlUntil = now + def.duration
+    player.whirlTick = 0
+    spawnShockwave(shockwavePool, player.position.x, player.position.z, def.radius * 1.3, 0x8af0c8)
+    warp.add('swirl', player.position.x, player.position.z, def.radius * 1.5, 0.6)
+    burst(particleSystem, center, 0x8af0c8, 24, 3, 0.5)
   } else if (used.abilityId === 'bulwark') {
     raiseBulwarkWall(game, now)
   } else if (used.abilityId === 'refresh') {
@@ -3175,6 +3276,7 @@ function restartGame() {
   setChestPrompt(hud, null)
   resetShockwaves(shockwavePool)
   warp.reset()
+  setTimeWarp(-Infinity)
   warpFields.length = 0
   meteors.splice(0).forEach(disposeMeteor)
   bossBeams.splice(0).forEach((b) => disposeObject3D(b.group))
@@ -3545,7 +3647,7 @@ function gameFrame(timestamp) {
   if (!sandbox && game.inventory.pets.some((id) => !profile.collection.includes(id))) {
     setProfile(addToCollection(profile, game.inventory.pets))
   }
-  player.speedMultiplier = petFx.speedMultiplier * perk.speed * (elapsedSeconds < player.sprintUntil ? SPRINT_SPEED_MULTIPLIER : 1) * player.speedFactor(elapsedSeconds)
+  player.speedMultiplier = petFx.speedMultiplier * perk.speed * (elapsedSeconds < player.sprintUntil ? SPRINT_SPEED_MULTIPLIER : 1) * (elapsedSeconds < (player.whirlUntil ?? -Infinity) ? 1.3 : 1) * player.speedFactor(elapsedSeconds)
   if (player.stepStatus(elapsedSeconds)) burst(particleSystem, { x: player.position.x, y: 1.1, z: player.position.z }, STATUS_COLORS.poison, 3, 1.5)
   if (game.world) {
     const jump = game.world.jump
@@ -3560,7 +3662,7 @@ function gameFrame(timestamp) {
     // Touch: the 1ST button toggles first person (while diving, DIVE/SURFACE decides it), and the
     // aim stick turns the view like the mouse does.
     if (input.wasPressed('Digit0') && !waterState.diving) setFirstPerson(!firstPerson)
-    if (firstPerson && input.touchAim.aiming) fpYaw -= input.touchAim.dx * TOUCH_LOOK_SPEED * deltaSeconds
+    if (firstPerson && input.touchAim.aiming) { fpYaw -= input.touchAim.dx * TOUCH_LOOK_SPEED * deltaSeconds; fpPitch = Math.max(-FP_PITCH_LIMIT, Math.min(FP_PITCH_LIMIT, fpPitch - (input.touchAim.dy || 0) * TOUCH_LOOK_SPEED * deltaSeconds)) }
     touchControls?.setWater(Boolean(room), waterState.diving)
   }
   stepWater(elapsedSeconds, deltaSeconds)
@@ -3692,7 +3794,7 @@ function gameFrame(timestamp) {
     swingTrail,
     weaponId: selectedWeaponId(game.inventory),
     damageMultiplier: elapsedDamageMultiplier(player, elapsedSeconds) * petFx.damageMultiplier * perk.damage * (Math.random() < perk.crit ? 2 : 1),
-    cooldownMultiplier: petFx.cooldownMultiplier * perk.cooldown * (elapsedSeconds < player.frenzyUntil ? FRENZY_COOLDOWN_MULTIPLIER : 1),
+    cooldownMultiplier: petFx.cooldownMultiplier * perk.cooldown * (elapsedSeconds < player.frenzyUntil ? FRENZY_COOLDOWN_MULTIPLIER : 1) * (elapsedSeconds < timeWarp.until ? 0.77 : 1),
     knockbackMultiplier: petFx.knockbackMultiplier * perk.knockback,
     bulletPool,
     rifleSetup: riflePicks(sandboxProfile(), selectedWeaponId(game.inventory)),
@@ -3798,6 +3900,7 @@ function gameFrame(timestamp) {
       sfx.play('bossSlam', { x: mesh.position.x, z: mesh.position.z })
       questUi.showToast(`${bossById(mesh.userData.type)?.name ?? 'BOSS'} IS ENRAGED!`)
     }
+    updateFrozenLook(mesh, elapsedSeconds)
     const { hitPlayer: monsterHitPlayer, events: specialEvents } = updateMonster(mesh, player, obstacles, gameplayDelta, elapsedSeconds)
     const hitPlayer = monsterHitPlayer || (specialEvents.length > 0 && applyBossEvents(game, mesh, specialEvents, elapsedSeconds))
     updateJelly(mesh, gameplayDelta, elapsedSeconds, { speed: mesh.userData.speed, moveDir: mesh.userData.moveDir })
@@ -3896,6 +3999,7 @@ function gameFrame(timestamp) {
   updatePopups(popupPool, gameplayDelta)
   updateShockwaves(shockwavePool, gameplayDelta)
   updateWarpFields(game, gameplayDelta, elapsedSeconds)
+  updateWhirlwind(game, gameplayDelta, elapsedSeconds)
   updateMeteors(game, gameplayDelta)
   updateBossBeams(gameplayDelta)
   updateSigJobs(gameplayDelta, elapsedSeconds)
@@ -3913,6 +4017,7 @@ function gameFrame(timestamp) {
     particleSystem,
     hitstop: game.hitstop,
     arenaRadius: ARENA_RADIUS,
+    now: elapsedSeconds,
     onReflect: (info) => reflectAttack(game, info),
     onTrail: (bullet) => playBulletTrail(bullet, weaponFxContext()),
     onHit: (bullet, mesh) => {
@@ -3934,7 +4039,7 @@ function gameFrame(timestamp) {
     sfx.play('hit', { x: player.position.x, z: player.position.z })
     input.rumble(RUMBLE_LIGHT_STRENGTH, RUMBLE_LIGHT_DURATION)
   }
-  const orbHurt = updateProjectiles(projectilePool, gameplayDelta, player, elapsedSeconds, ARENA_RADIUS, bulwarkBlockers())
+  const orbHurt = updateProjectiles(projectilePool, gameplayDelta * (elapsedSeconds < timeWarp.until ? timeWarp.factor : 1), player, elapsedSeconds, ARENA_RADIUS, bulwarkBlockers())
   const poisonHurt = updatePoison(poisonPool, gameplayDelta, player, elapsedSeconds)
   if (orbHurt || poisonHurt) {
     triggerShake(shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
@@ -4103,7 +4208,8 @@ function gameFrame(timestamp) {
     // Underwater the eye sits just above the swimmer's depth; on land it's head height.
     const eye = room ? waterState.depthY + 0.9 : 1.5 + (game.world ? player.mesh.position.y : 0)
     camera.position.set(player.position.x, eye, player.position.z)
-    camera.lookAt(player.position.x + Math.sin(fpYaw) * 10, eye - 0.15, player.position.z + Math.cos(fpYaw) * 10)
+    const cp = Math.cos(fpPitch)
+    camera.lookAt(player.position.x + Math.sin(fpYaw) * 10 * cp, eye + Math.sin(fpPitch) * 10, player.position.z + Math.cos(fpYaw) * 10 * cp)
   }
 
   const shakeOffset = updateShake(shake, deltaSeconds)

@@ -43,6 +43,9 @@ export class Player {
     this.damageTakenMultiplier = 1 // < 1 with a guard pet
     this.aimAngle = null // yaw toward the mouse while a ranged weapon is out; overrides the movement facing
     this.speedMultiplier = 1 // > 1 with a speed pet or Sprint
+    this.whirlUntil = -Infinity // the Whirlwind ability: spinning and cutting everything close until then
+    this.whirlTick = 0
+    this.whirlSpin = 0
     this.frenzyUntil = -Infinity // the Frenzy ability: attack cooldown scaled down until then
     // Status effects the new enemies inflict (see applyStatus): poison ticks true damage, slow / stun cut your speed,
     // weaken cuts your damage. They ignore armour on purpose, so a maxed skill tree still feels them.

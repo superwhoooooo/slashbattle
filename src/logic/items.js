@@ -85,6 +85,10 @@ export const ABILITIES = {
   starfall: { id: 'starfall', name: 'Starfall', icon: '🌠', cooldown: 18, damage: 55, radius: 3.2, targets: 3, blurb: 'Meteors rain on the 3 nearest enemies' },
   crossfire: { id: 'crossfire', name: 'Cross Fire', icon: '✖️', cooldown: 9, damage: 26, blurb: 'Piercing shots in four directions' },
   bulwark: { id: 'bulwark', name: 'Bulwark', icon: '🏰', cooldown: 20, duration: 6, blocks: 7, spacing: 1.3, distance: 2.6, blurb: 'Raise a temporary wall in front of you' },
+  frostlance: { id: 'frostlance', name: 'Frost Lance', icon: '🧊', cooldown: 9, damage: 34, freeze: 2, blurb: 'Hurl a huge ice spear that pierces and freezes' },
+  glacier: { id: 'glacier', name: 'Glacial Burst', icon: '❄️', cooldown: 14, radius: 7.5, damage: 6, freeze: 3, blurb: 'Freeze every enemy nearby solid' },
+  timewarp: { id: 'timewarp', name: 'Time Warp', icon: '⏳', cooldown: 24, duration: 4.5, blurb: 'Slow enemies and their shots to 40%; you fire faster' },
+  whirl: { id: 'whirl', name: 'Whirlwind', icon: '🌪️', cooldown: 12, duration: 2.5, radius: 3, damage: 9, interval: 0.3, blurb: 'Spin: hit everything close, shred enemy shots' },
   refresh: { id: 'refresh', name: 'Second Wind', icon: '♻️', cooldown: 30, blurb: 'Reset other cooldowns' },
 }
 

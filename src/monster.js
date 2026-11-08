@@ -26,6 +26,14 @@ import { BOSS_SPECIALS, stepSpecialTimer } from './logic/bosses.js'
 import { nextMonsterState } from './logic/monsterAI.js'
 import { predictPosition, RANGED_ATTACKS, smoothVelocity } from './logic/enemies.js'
 import { dampAngle } from './logic/smoothing.js'
+import { statusTimeScale, TIME_WARP_FACTOR } from './logic/status.js'
+
+// The Time Warp ability slows every monster to `factor` of the clock until `until`.
+export const timeWarp = { until: -Infinity, factor: TIME_WARP_FACTOR }
+export function setTimeWarp(until, factor = TIME_WARP_FACTOR) {
+  timeWarp.until = until
+  timeWarp.factor = factor
+}
 
 const INDICATOR_DURATION = 0.6
 const MIRROR_TURN_SCALE = 0.12// how much of its usual turning a mirror enemy manages
@@ -526,6 +534,16 @@ export function updateMonster(monster, player, obstacles, dt, now) {
   if (ai.dying) return { hitPlayer: false, events: [] }
 
   const stats = MONSTER_TYPES[ai.type]
+
+  // Frozen solid it does nothing at all; slowed (frost, or the arena's Time Warp) it
+  // simply lives at a fraction of the clock, so its steering, wind-ups and shots drag.
+  const timeScale = statusTimeScale(ai, now, timeWarp.until, timeWarp.factor)
+  if (timeScale === 0) {
+    ai.speed = 0
+    ai.windUpElapsed = null
+    return { hitPlayer: false, events: [] }
+  }
+  dt *= timeScale
 
   // Confused (caught in a Warp Field): stumbles about at random, spinning,
   // too dizzy to chase or attack. Bosses shrug it off.

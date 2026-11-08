@@ -28,6 +28,7 @@ export function makeBullets(weapon, { x, z, aimAngle, damageMultiplier = 1, knoc
     radius: bullet.radius,
     pierce: bullet.pierce,
     explode: bullet.explode,
+    freeze: bullet.freeze ?? 0, // seconds a hit freezes the monster solid (Frost Lance)
     knockback: weapon.knockback * knockbackMultiplier,
     color: bullet.color,
     cause: weapon.cause ?? 'gun',

@@ -63,6 +63,19 @@ export function updateProjectiles(pool, dt, player, now, arenaRadius, blockers =
   return hitPlayer
 }
 
+// Shreds every enemy orb within `radius` of (x, z) (Whirlwind); returns how many were destroyed.
+export function destroyProjectilesNear(pool, x, z, radius) {
+  let destroyed = 0
+  for (const slot of pool.slots) {
+    if (!slot.active) continue
+    if (Math.hypot(slot.data.x - x, slot.data.z - z) > radius + slot.data.radius) continue
+    slot.active = false
+    slot.mesh.visible = false
+    destroyed++
+  }
+  return destroyed
+}
+
 export function resetProjectiles(pool) {
   for (const slot of pool.slots) {
     slot.active = false

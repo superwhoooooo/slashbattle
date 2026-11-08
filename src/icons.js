@@ -284,6 +284,47 @@ const DRAW = {
     circle(c, 56, 56, 12)
     fillStroke(c, '#050210', '#b48cff', 3)
   },
+  frostlance(c) {
+    glow(c, 56, 56, 44, 'rgba(120,200,255,0.5)')
+    line(c, [[14, 98], [88, 24]])
+    fillStroke(c, null, '#bfeaff', 10)
+    line(c, [[80, 16], [102, 12], [98, 34], [90, 30]], true)
+    fillStroke(c, '#eaf8ff', '#5ab4e8', 4)
+    line(c, [[14, 98], [88, 24]])
+    fillStroke(c, null, '#ffffff', 3)
+  },
+  glacier(c) {
+    glow(c, 56, 56, 46, 'rgba(120,200,255,0.45)')
+    for (let i = 0; i < 6; i++) {
+      const a = (i * Math.PI) / 3
+      const x = 56 + Math.cos(a) * 38
+      const y = 56 + Math.sin(a) * 38
+      line(c, [[56, 56], [x, y]])
+      fillStroke(c, null, '#d8f4ff', 6)
+      const bx = 56 + Math.cos(a) * 24
+      const by = 56 + Math.sin(a) * 24
+      line(c, [[bx + Math.cos(a + 1.2) * 9, by + Math.sin(a + 1.2) * 9], [bx, by], [bx + Math.cos(a - 1.2) * 9, by + Math.sin(a - 1.2) * 9]])
+      fillStroke(c, null, '#8fd6ff', 4)
+    }
+    circle(c, 56, 56, 7)
+    fillStroke(c, '#ffffff', '#5ab4e8', 3)
+  },
+  timewarp(c) {
+    glow(c, 56, 56, 46, 'rgba(255,214,120,0.4)')
+    line(c, [[30, 16], [82, 16], [56, 56], [82, 96], [30, 96], [56, 56]], true)
+    fillStroke(c, 'rgba(255,240,200,0.35)', '#f2c14e', 6)
+    line(c, [[44, 84], [68, 84], [56, 70]], true)
+    fillStroke(c, '#ffd36e', null)
+    line(c, [[46, 24], [66, 24], [56, 40]], true)
+    fillStroke(c, '#ffd36e', null)
+  },
+  whirl(c) {
+    glow(c, 56, 56, 46, 'rgba(160,240,200,0.4)')
+    spiral(c, 56, 56, 40, 2.4, '#8af0c8', 7)
+    spiral(c, 56, 56, 26, 1.6, '#e8fff6', 5)
+    circle(c, 56, 56, 6)
+    fillStroke(c, '#ffffff', null)
+  },
   quake(c) {
     line(c, [[8, 70], [104, 70]])
     fillStroke(c, null, '#7a4a2a', 8)

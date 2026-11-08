@@ -10,6 +10,7 @@ import { burst } from './particles.js'
 import { isTouchDevice } from './touch.js'
 import { hasWallLineOfSight, isInsideWall, isUntouchable } from './monster.js'
 import { isFrontHit } from './logic/reflect.js'
+import { applyFreeze } from './logic/status.js'
 
 const POOL_SIZE = 80
 const BULLET_HEIGHT = 0.7
@@ -72,7 +73,7 @@ function retire(slot) {
 // Advances every bullet, damaging whatever it touches (and blasting the
 // surroundings for an exploding one). Returns whether anything was hit this
 // frame, for the caller's hit shake/sound.
-export function updateBullets(pool, dt, { monsters, obstacles, particleSystem, hitstop, arenaRadius, onExplode = null, onTrail = null, onHit = null, blockers = null, onReflect = null }) {
+export function updateBullets(pool, dt, { monsters, obstacles, particleSystem, hitstop, arenaRadius, onExplode = null, onTrail = null, onHit = null, blockers = null, onReflect = null, now = 0 }) {
   let hitAny = false
   const targets = []
   for (const mesh of monsters) {
@@ -102,6 +103,7 @@ export function updateBullets(pool, dt, { monsters, obstacles, particleSystem, h
       }
       hitAny = true
       damageMonster(mesh, bulletDamage(bullet).damage, { fromPos: from, knockback: bullet.knockback, obstacles, particleSystem, cause: bullet.cause, ambush: bullet.ambush, hitstop })
+      if (bullet.freeze > 0) applyFreeze(mesh.userData, now, bullet.freeze)
       if (onHit) onHit(bullet, mesh)
     }
     if (spent) {
