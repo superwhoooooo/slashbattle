@@ -48,7 +48,7 @@ function getSkinTexture() {
 }
 
 // The body material. `rim` is how strongly the grazing-angle glow shows (bosses more).
-export function createShardMaterial(color, { rim = 0.5 } = {}) {
+export function createShardMaterial(color, { rim = 0.5, vertexColors = false } = {}) {
   const skin = getSkinTexture()
   const material = new THREE.MeshStandardMaterial({
     color,
@@ -57,7 +57,8 @@ export function createShardMaterial(color, { rim = 0.5 } = {}) {
     map: skin,
     bumpMap: skin,
     bumpScale: 0.45,
-    emissive: new THREE.Color(color).multiplyScalar(0.1),
+    emissive: new THREE.Color(color).multiplyScalar(vertexColors ? 0.06 : 0.1),
+    vertexColors,
   })
   material.userData.baseEmissive = material.emissive.clone() // the hit flash fades back to this
   material.onBeforeCompile = (shader) => {
@@ -70,7 +71,7 @@ export function createShardMaterial(color, { rim = 0.5 } = {}) {
         totalEmissiveRadiance += (diffuseColor.rgb * 0.75 + 0.1) * pow(1.0 - saturate(dot(normalize(vViewPosition), normal)), 3.0) * uRim;`,
       )
   }
-  material.customProgramCacheKey = () => `shardrim${rim}`
+  material.customProgramCacheKey = () => `shardrim${rim}${vertexColors ? 'v' : ''}`
   return material
 }
 

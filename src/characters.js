@@ -19,6 +19,7 @@ import { createFace3D } from './face3d.js'
 import { createJellyBody } from './jelly.js'
 import { getGraphicsStyle } from './graphicsStyle.js'
 import { addHorns, createShardMaterial, restyleFace, smoothGeometry } from './shardStyle.js'
+import { addCreatureParts } from './creatures.js'
 import { PLAYER_FACE, pickFaceOptions } from './logic/faceOptions.js'
 import { WEAPONS, weaponBase } from './logic/items.js'
 import { applyWeaponPose } from './weaponAnim.js'
@@ -871,6 +872,7 @@ export function createMonsterMesh(type, rng = Math.random) {
   if (shard) {
     restyleFace(face, !!stats.boss)
     if (stats.boss || stats.shape === 'box') addHorns(group, geometry, bodyCenterY, stats.size)
+    group.userData.creature = addCreatureParts(group, { stats, face, bodyCenterY })
   }
 
   const chaseIndicator = createIndicatorSprite('!')

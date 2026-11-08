@@ -43,6 +43,8 @@ export function animateAlive(mesh, target, dt, time) {
     face.eyes.right.group.scale.y = open
   }
 
+  data.creature?.update(dt, data.speed ?? 0, time) // Realist style: legs, arms, tail and fins
+
   // Bounce along while moving; settle back to the ground when still.
   const moving = Math.min(1, (data.speed ?? 0) / 3)
   alive.hop += dt * HOP_RATE * (0.4 + moving)

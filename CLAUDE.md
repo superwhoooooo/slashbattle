@@ -799,3 +799,11 @@ Bullets are 3D (`logic/bullets.js`: `y`, `vy`, `slope`; `BULLET_START_Y` 0.7 is 
 `#fp-crosshair`, converging `FP_CONVERGE` units out), in third person a cursor resting on a monster aims at its middle, otherwise
 level. `combat.js`, Frost Lance and Fan Blast use it. A target's `y0..y1` (from `bullets.js`, in the bullet layer's own space) means
 a shot aimed over or under a monster misses it; a bullet that sinks below y = 0 is spent.
+
+## Realist creatures
+`src/creatures.js` (Realist style only) grows creature parts on a monster's body: `creatureKind` picks crawler (six jointed legs),
+walker (feet + clawed arms, for boxes / cylinders) or floater (flapping fins, pointy or winged shapes); every creature also gets
+a tail, bone spikes down its back (more on bosses), angry brows on its eyes and a toothed maw riding the jelly. Each group is
+baked into one vertex-coloured mesh with one shared material, and `userData.creature.update(dt, speed, time)` (called from
+`alive.js`) swings legs / arms / tail / fins by how fast the monster moves. `test/creatures.test.js` builds every monster type
+with a stub canvas.
