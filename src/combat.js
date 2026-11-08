@@ -120,6 +120,7 @@ export function updatePlayerAttack(
           x: player.position.x + Math.sin(player.facing) * muzzle,
           z: player.position.z + Math.cos(player.facing) * muzzle,
           aimAngle: player.facing,
+          slope: player.aimSlope ?? 0, // up / down aim (main.js sets it from the look pitch or the cursor)
           damageMultiplier: computeDamage(damageMultiplier, { ambush }),
           knockbackMultiplier,
           ambush,

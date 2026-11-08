@@ -60,7 +60,7 @@ export function fireBullets(pool, bullets) {
     slot.data = bullet
     slot.mesh.material.color.setHex(bullet.color).multiplyScalar(BULLET_BRIGHTNESS)
     slot.mesh.scale.setScalar(bullet.radius)
-    slot.mesh.position.set(bullet.x, BULLET_HEIGHT, bullet.z)
+    slot.mesh.position.set(bullet.x, bullet.y ?? BULLET_HEIGHT, bullet.z)
     slot.mesh.visible = true
   }
 }
@@ -78,7 +78,9 @@ export function updateBullets(pool, dt, { monsters, obstacles, particleSystem, h
   const targets = []
   for (const mesh of monsters) {
     if (mesh.userData.dying || mesh.userData.spawning || mesh.userData.falling || isUntouchable(mesh)) continue
-    targets.push({ id: mesh.uuid, x: mesh.position.x, z: mesh.position.z, radius: mesh.userData.radius, mesh })
+    // Its vertical extent in the bullet layer's own space (the layer rides hills and dives with the player).
+    const base = mesh.position.y - pool.group.position.y
+    targets.push({ id: mesh.uuid, x: mesh.position.x, z: mesh.position.z, radius: mesh.userData.radius, y0: base - 0.3, y1: base + Math.max(mesh.userData.radius * 2.2, 1.6), mesh })
   }
 
   for (const slot of pool.slots) {
@@ -88,7 +90,7 @@ export function updateBullets(pool, dt, { monsters, obstacles, particleSystem, h
     const { alive, hits } = stepBullet(bullet, dt, targets)
     if (isInsideWall(bullet.x, bullet.z) || segmentBlocked(from, bullet, blockers)) {
       // Spent against a labyrinth wall or a Bulwark wall: a puff, and no hits through it.
-      burst(particleSystem, { x: bullet.x, y: BULLET_HEIGHT, z: bullet.z }, scaleHex(bullet.color, BULLET_BRIGHTNESS), 6, 2)
+      burst(particleSystem, { x: bullet.x, y: bullet.y ?? BULLET_HEIGHT, z: bullet.z }, scaleHex(bullet.color, BULLET_BRIGHTNESS), 6, 2)
       retire(slot)
       continue
     }
@@ -112,7 +114,7 @@ export function updateBullets(pool, dt, { monsters, obstacles, particleSystem, h
     }
     if (alive && onTrail) onTrail(bullet)
     if (hits.length > 0 && bullet.explode > 0) {
-      burst(particleSystem, { x: bullet.x, y: BULLET_HEIGHT, z: bullet.z }, scaleHex(bullet.color, BULLET_BRIGHTNESS), 30, 4)
+      burst(particleSystem, { x: bullet.x, y: bullet.y ?? BULLET_HEIGHT, z: bullet.z }, scaleHex(bullet.color, BULLET_BRIGHTNESS), 30, 4)
       if (onExplode) onExplode(bullet.x, bullet.z, bullet.explode, bullet.color)
       for (const target of targets) {
         if (target.mesh.userData.dying || hits.some((h) => h.id === target.id)) continue
@@ -124,7 +126,7 @@ export function updateBullets(pool, dt, { monsters, obstacles, particleSystem, h
       retire(slot)
       continue
     }
-    slot.mesh.position.set(bullet.x, BULLET_HEIGHT, bullet.z)
+    slot.mesh.position.set(bullet.x, bullet.y ?? BULLET_HEIGHT, bullet.z)
   }
   return hitAny
 }

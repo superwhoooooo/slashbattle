@@ -792,3 +792,10 @@ The start card's **Graphics** button (`src/graphicsStyle.js`, `localStorage` `sl
 the Jelly look and the Shardfall look (`src/shardStyle.js`, used by `characters.js`'s `createMonsterMesh`: a skin-textured,
 bump-mapped body with a fresnel rim light, smooth round bodies, plain cream eyes (red for bosses), no mouth, bone horns on
 bosses and boxy monsters). It applies to monsters created after the choice, so pick it before starting a run.
+
+## Up / down aiming
+Bullets are 3D (`logic/bullets.js`: `y`, `vy`, `slope`; `BULLET_START_Y` 0.7 is the muzzle). `main.js`'s `aimSlopeFor` sets
+`player.aimSlope` each frame: in first person (0) the shot flies along the crosshair's ray (a small circle at screen centre,
+`#fp-crosshair`, converging `FP_CONVERGE` units out), in third person a cursor resting on a monster aims at its middle, otherwise
+level. `combat.js`, Frost Lance and Fan Blast use it. A target's `y0..y1` (from `bullets.js`, in the bullet layer's own space) means
+a shot aimed over or under a monster misses it; a bullet that sinks below y = 0 is spent.

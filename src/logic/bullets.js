@@ -8,7 +8,18 @@ import { fanVelocities, projectileHits, stepProjectile } from './projectiles.js'
 
 // The bullets one trigger pull makes: `pellets` of them in a `spread`-radian
 // fan around `aimAngle`, each carrying the weapon's bullet stats.
-export function makeBullets(weapon, { x, z, aimAngle, damageMultiplier = 1, knockbackMultiplier = 1, ambush = false, steady = 0, rng = Math.random }) {
+// Bullets are 3D: they start `startY` up and climb (or fall) `slope` units per unit flown along
+// the ground, so aiming up or down sends them over or under things. A bullet that sinks below
+// y = 0 has hit the floor.
+export const BULLET_START_Y = 0.7
+export const BULLET_MAX_Y = 40
+export const MAX_AIM_SLOPE = 2.5
+
+export function clampSlope(slope) {
+  return Math.max(-MAX_AIM_SLOPE, Math.min(MAX_AIM_SLOPE, Number.isFinite(slope) ? slope : 0))
+}
+
+export function makeBullets(weapon, { x, z, aimAngle, damageMultiplier = 1, knockbackMultiplier = 1, ambush = false, steady = 0, slope = 0, startY = BULLET_START_Y, rng = Math.random }) {
   const { bullet } = weapon
   return fanVelocities(aimAngle, weapon.pellets, weapon.spread, bullet.speed).map(({ vx, vz }) => {
     // Rifles (logic/rifles.js) roll each bullet for a crit: more damage, flagged for a popup.
@@ -16,8 +27,10 @@ export function makeBullets(weapon, { x, z, aimAngle, damageMultiplier = 1, knoc
     return {
     x,
     z,
+    y: startY,
     vx,
     vz,
+    vy: Math.hypot(vx, vz) * clampSlope(slope),
     life: bullet.life,
     damage: weapon.damage * damageMultiplier * (crit ? weapon.critMult ?? 2 : 1),
     crit,
@@ -48,8 +61,12 @@ export function stepBullet(bullet, dt, targets) {
   let alive = stepProjectile(bullet, dt)
   const hits = []
   if (!alive) return { alive, hits }
+  bullet.y = (bullet.y ?? BULLET_START_Y) + (bullet.vy ?? 0) * dt
+  if (bullet.y < 0 || bullet.y > BULLET_MAX_Y) return { alive: false, hits }
   for (const target of targets) {
     if (bullet.hitIds.has(target.id)) continue
+    // A target with a vertical extent (y0..y1) is missed by a shot flying over or under it.
+    if (target.y0 !== undefined && (bullet.y < target.y0 - bullet.radius * 0.5 || bullet.y > target.y1 + bullet.radius * 0.5)) continue
     if (!projectileHits(bullet, target, target.radius)) continue
     bullet.hitIds.add(target.id)
     hits.push(target)

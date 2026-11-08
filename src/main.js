@@ -29,7 +29,7 @@ import { createHub } from './hub.js'
 import { loadProfile, saveProfile } from './profile.js'
 import { createScope } from './scope.js'
 import { SCOPES, AMMO, rifleSetup as riflePicks, stepSteady, tuneRifle } from './logic/rifles.js'
-import { bulletDamage } from './logic/bullets.js'
+import { BULLET_START_Y, bulletDamage, clampSlope } from './logic/bullets.js'
 import { DEEP_SPAWN_CHANCE, pickDeepType } from './logic/enemies.js'
 import { MELEE_REFLECT_DAMAGE, createShield, crackFraction, hitShield, reflectedDamage, stepShield } from './logic/reflect.js'
 import { WATER, stepBreath, stepDepth, waveHeight } from './logic/water.js'
@@ -485,7 +485,7 @@ document.addEventListener(
 // lock) turns the view; W moves along it and every weapon aims where you look.
 let firstPerson = false
 const TOUCH_LOOK_SPEED = 2.6 // rad/s at full stick, when turning the first-person view by touch
-let fpPitch = 0 // look up (+) / down (-), radians; view only, aiming stays on the ground plane
+let fpPitch = 0 // look up (+) / down (-), radians; shots follow it (aimSlopeFor)
 const FP_PITCH_LIMIT = 1.3
 let fpYaw = 0 // same convention as player.facing: forward = (sin, cos)
 const fpCrosshair = document.createElement('div')
@@ -707,6 +707,43 @@ function touchAimAngle(player) {
   const sx = (aimProject.x * 0.5 + 0.5) * window.innerWidth
   const sy = (-aimProject.y * 0.5 + 0.5) * window.innerHeight
   return screenAimAngle(player, sx + input.touchAim.dx * TOUCH_AIM_REACH, sy + input.touchAim.dy * TOUCH_AIM_REACH)
+}
+
+// Up / down aim. Bullets are 3D (logic/bullets.js): `slope` is the height they gain per unit flown.
+// In first person they fly along the crosshair's ray (converging on it ~FP_CONVERGE units out);
+// in third person a cursor resting on a monster sends them at its middle (over a hill, or at
+// something floating or swimming), otherwise they fly level.
+const FP_CONVERGE = 20
+const FP_EYE_HEIGHT = 1.5
+const aimSphere = new THREE.Sphere()
+const aimHit = new THREE.Vector3()
+function aimSlopeFor(player, game) {
+  if (firstPerson) {
+    const eye = waterRoom() ? BULLET_START_Y : FP_EYE_HEIGHT // underwater the eye is at the swimmer's depth
+    return clampSlope((eye + Math.tan(fpPitch) * FP_CONVERGE - BULLET_START_Y) / FP_CONVERGE)
+  }
+  if (input.touchMode || !input.mouse.moved) return 0
+  aimNdc.set((input.mouse.x / window.innerWidth) * 2 - 1, -(input.mouse.y / window.innerHeight) * 2 + 1)
+  aimRaycaster.setFromCamera(aimNdc, camera)
+  let best = null
+  let bestDistance = Infinity
+  const layerY = bulletPool.group.position.y
+  for (const mesh of game.monsters) {
+    const ai = mesh.userData
+    if (ai.dying || ai.spawning || ai.falling) continue
+    const height = Math.max(ai.radius * 2.2, 1.6)
+    aimSphere.center.set(mesh.position.x, mesh.position.y + height * 0.4, mesh.position.z)
+    aimSphere.radius = Math.max(ai.radius, 0.6) * 1.2
+    if (!aimRaycaster.ray.intersectSphere(aimSphere, aimHit)) continue
+    const distance = aimHit.distanceTo(aimRaycaster.ray.origin)
+    if (distance < bestDistance) {
+      bestDistance = distance
+      best = { y: aimSphere.center.y - layerY, x: mesh.position.x, z: mesh.position.z }
+    }
+  }
+  if (!best) return 0
+  const along = Math.max(1, Math.hypot(best.x - player.position.x, best.z - player.position.z))
+  return clampSlope((best.y - BULLET_START_Y) / along)
 }
 
 let autoShoot = false // L toggles; holds the trigger for ranged weapons
@@ -1555,7 +1592,7 @@ function activateAbility(game, slot, now) {
       knockback: 1.2,
       bullet: { speed: 24, life: 0.6, radius: 0.26, pierce: 1, explode: 0, color: 0xff5fa8 },
     }
-    fireBullets(bulletPool, makeBullets(fan, { x: player.position.x, z: player.position.z, aimAngle: player.facing, damageMultiplier: elapsedDamageMultiplier(player, now) }))
+    fireBullets(bulletPool, makeBullets(fan, { x: player.position.x, z: player.position.z, aimAngle: player.facing, slope: player.aimSlope ?? 0, damageMultiplier: elapsedDamageMultiplier(player, now) }))
     burst(particleSystem, center, 0xff5fa8, 20, 3)
   } else if (used.abilityId === 'dizzy') {
     const def = ABILITIES.dizzy
@@ -1599,7 +1636,7 @@ function activateAbility(game, slot, now) {
       knockback: 1.4,
       bullet: { speed: 30, life: 0.8, radius: 0.9, pierce: 99, explode: 0, color: 0x9fe4ff, freeze: def.freeze },
     }
-    fireBullets(bulletPool, makeBullets(lance, { x: player.position.x, z: player.position.z, aimAngle: player.facing, damageMultiplier: elapsedDamageMultiplier(player, now) }))
+    fireBullets(bulletPool, makeBullets(lance, { x: player.position.x, z: player.position.z, aimAngle: player.facing, slope: player.aimSlope ?? 0, damageMultiplier: elapsedDamageMultiplier(player, now) }))
     burst(particleSystem, center, 0xbfeaff, 26, 4)
     streak(player.position, { x: player.position.x + Math.sin(player.facing) * 12, z: player.position.z + Math.cos(player.facing) * 12 }, 0xbfeaff, 14)
     warp.add('ripple', player.position.x + Math.sin(player.facing) * 2, player.position.z + Math.cos(player.facing) * 2, 3, 0.4)
@@ -3645,6 +3682,7 @@ function gameFrame(timestamp) {
     : WEAPONS[selectedWeaponId(game.inventory)].gun
       ? mouseAimAngle(player)
       : null
+  player.aimSlope = WEAPONS[selectedWeaponId(game.inventory)].gun ? aimSlopeFor(player, game) : 0
   const petFx = petEffects(game.inventory.pets, profile.pets)
   const perk = activeFx(game.inventory.equipped)
   // Skill-tree vitals: max HP (a raise heals by the same amount) and longer i-frames.
@@ -4203,7 +4241,7 @@ function gameFrame(timestamp) {
   // A rifle scope with a wide view pulls the camera back; the reticle follows the cursor.
   const heldRifle = WEAPONS[selectedWeaponId(game.inventory)]
   const heldTuned = started && game.player.hp > 0 && heldRifle.rifle ? tuneRifle(heldRifle, riflePicks(sandboxProfile(), heldRifle.id)) : null
-  scopeZoom = scope.update(heldTuned, { player, aimAngle: player.aimAngle ?? player.facing, mouse: input.mouse, showCursor: !input.touchMode && !firstPerson && input.mouse.moved, dt: deltaSeconds, steady: steadyAim })
+  scopeZoom = scope.update(heldTuned, { player, aimAngle: player.aimAngle ?? player.facing, mouse: input.mouse, showCursor: !input.touchMode && !firstPerson && input.mouse.moved, firstPerson, dt: deltaSeconds, steady: steadyAim })
   const zoomK = player.hidden ? 1 : scopeZoom
   cameraTarget.set(
     player.position.x + cameraOffset.x * zoomK + player.moveDir.x * lookAheadAmount,

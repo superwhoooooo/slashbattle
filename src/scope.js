@@ -10,6 +10,7 @@ const STYLE = `
 #scope-reticle b { display: none; }
 #scope-reticle.steady b { display: block; position: absolute; left: 0; top: 0; width: 56px; height: 56px; transform: translate(-50%, -50%); border-radius: 50%; background: conic-gradient(rgba(255,210,63,0.95) var(--steady, 0deg), transparent 0); -webkit-mask: radial-gradient(circle, transparent 23px, #000 24px, #000 27px, transparent 28px); mask: radial-gradient(circle, transparent 23px, #000 24px, #000 27px, transparent 28px); }
 #scope-reticle.locked i { border-color: #ffd23f; box-shadow: 0 0 10px 2px rgba(255,210,63,0.9); }
+#fp-crosshair { position: fixed; left: 50%; top: 50%; width: 14px; height: 14px; transform: translate(-50%, -50%); border-radius: 50%; border: 2px solid rgba(255,255,255,0.9); box-shadow: 0 0 0 1px rgba(20,26,40,0.55); pointer-events: none; z-index: 20; display: none; }
 #scope-reticle.dot i { width: 6px; height: 6px; background: #ff4a4a; border-color: #fff; }
 #scope-reticle.ring i { width: 30px; height: 30px; }
 #scope-reticle.cross i { width: 44px; height: 44px; }
@@ -27,6 +28,10 @@ export function createScope(scene) {
   reticle.appendChild(document.createElement('i'))
   reticle.appendChild(document.createElement('b'))
   document.body.appendChild(reticle)
+  // First person: a little circle at the middle of the screen, where every shot is aimed.
+  const crosshair = document.createElement('div')
+  crosshair.id = 'fp-crosshair'
+  document.body.appendChild(crosshair)
 
   const laser = new THREE.Line(
     new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(0, 0, 1)]),
@@ -39,7 +44,8 @@ export function createScope(scene) {
   return {
     zoom: 1,
     // `tuned` is the rifle in hand (logic/rifles.js's tuneRifle) or null. Returns the camera zoom factor.
-    update(tuned, { player, aimAngle, mouse, showCursor, dt, steady = 0 }) {
+    update(tuned, { player, aimAngle, mouse, showCursor, firstPerson = false, dt, steady = 0 }) {
+      crosshair.style.display = firstPerson ? 'block' : 'none'
       const wantZoom = tuned ? tuned.zoom : 1
       this.zoom += (wantZoom - this.zoom) * (1 - Math.exp(-4 * dt))
       const on = Boolean(tuned) && showCursor
