@@ -786,14 +786,15 @@ const activeFx = (equipped) => combineEffects(powerupEffects(equipped, profile.p
 // Dragons, and the skins and breaths for them, are per-run finds: they live on the game and are lost with the
 // run (the sandbox has its own, with everything unlocked).
 let sandboxDragonState = { unlocked: { skins: SKIN_IDS, breaths: BREATH_IDS }, dragons: {} }
-const dragonState = () => (sandbox ? sandboxDragonState : game.dragonState)
+const dragonState = (g = game) => (sandbox ? sandboxDragonState : g.dragonState)
 function setDragonState(next) {
   if (sandbox) sandboxDragonState = next
   else game.dragonState = next
 }
 // Creates a pet beside the player; a dragon comes out in the scale and breath picked in the Dragon Den.
-function spawnPet(id) {
-  return createPet(id, scene, game.player, isDragon(PETS[id]) ? dragonSetup(dragonState(), PETS[id]) : null)
+// `g` defaults to the live game; createGame passes its own, since the global isn't assigned yet while it runs.
+function spawnPet(id, g = game) {
+  return createPet(id, scene, g.player, isDragon(PETS[id]) ? dragonSetup(dragonState(g), PETS[id]) : null)
 }
 // Closing the hub re-dresses any dragon in play whose scale or breath was changed there.
 function refreshDragons() {
@@ -814,7 +815,7 @@ function applyLoadoutPets(game) {
   const ids = activeLoadoutPets(profile)
   // Runs start with the skill tree's bonus crystals (the Pocket Change / Fat Wallet nodes).
   game.inventory = { ...game.inventory, pets: ids, crystals: Math.round(skillEffects(profile.skills).startCrystals) }
-  for (const id of ids) game.pets.push(spawnPet(id))
+  for (const id of ids) game.pets.push(spawnPet(id, game))
 }
 const LAB_SPAWN_RADIUS = 30 // pods / chests / monsters stay inside the maze's square
 const LAB_EXIT_KEEPOUT = 5 // nothing spawns on the exit pad's cell
