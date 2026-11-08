@@ -58,7 +58,7 @@ record.
 - 1-5 — pick a weapon from the hotbar (melee or firearm)
 - Q / Z / X / C / V — use your abilities, in the order you found them
 - 0 — toggle first-person view (pointer-locked mouse look; W moves along the view, every weapon aims where you look; Esc or 0 exits)
-- N — open the Dragon Den (customize your dragons' scale and breath)
+- N — open the Dragon Den (customize your dragons' scale and breath); in the Wilds (free roam) N jumps instead (`logic/jump.js`: a plain hop, not an ability); E near a villager talks
 - Tab — open the power-up menu (pauses the game): click a power-up to equip / unequip it (in sandbox mode Tab opens the sandbox menu instead)
 
 A standard gamepad works too (`src/logic/gamepad.js` maps a snapshot to
@@ -107,6 +107,12 @@ slashbattle/
     hazards.js         # bloater poison globs + puddles (pooled meshes)
     logic/enemies.js   # the late enemies' rules (ranged attacks, splitting, poison) + enemyScale difficulty ramp
     logic/sandbox.js   # pure sandbox item toggling + top-up
+    logic/world.js     # the Wilds: biomes, seeded chunk content (props/monsters/treasure), chunk streaming rules
+    worldArena.js      # the Wilds' look: biome-painted ground, twilight sky, instanced scenery, fireflies
+    logic/quests.js    # villager quests: generation, the quest log, dialogue (pure)
+    logic/jump.js      # the Wilds' jump physics (pure)
+    npcs.js            # the villagers: the player's jelly model in pastel colours, name tags, quest markers
+    questUi.js         # dialogue panel, quest tracker, talk prompt, toast (DOM)
     logic/levels.js    # the five places (themes) and which one follows each boss
     logic/resortLayout.js # seeded sundeck prop layout (pools, umbrellas, loungers, signs), isInPool
     logic/items.js     # weapon / ability / pet catalogs
@@ -203,6 +209,40 @@ obstacles in `game.obstacles`, and re-bakes the environment map. Each level's
 snow mounds, volcanic spires and lava rocks, neon pylons and speaker boxes,
 lollipops and gumdrops. A restart
 returns to the first place.
+
+## The Wilds (free roam world)
+Pick it on the start card (button or O). A vast mystical floating continent (`WORLD_RADIUS` 320) instead of the
+sundeck: no waves, no levels, you just roam. `createGame` calls `config.js`'s `setArenaRadius(WORLD_RADIUS)` (ARENA_RADIUS
+is a live `let` binding, so every clamp, fall and spawn ring follows; the sundeck/labyrinth reset it to 48) and builds
+`src/worldArena.js`'s `createWorldArena()`. `src/logic/world.js` (pure, seeded by `WORLD_SEED`) holds the rules:
+`biomeAt` splits the ring around the central **Sanctum** (safe; heals you; `SANCTUM_RADIUS`) into five meandering biomes
+-- Whisperwood, Amethyst Dunes, Frostveil Reach, Emberwaste, Gloomfen -- each with its own scenery, ground colours
+(`groundColorAt`, blended across borders), fog/glow and monster table (`BIOMES`; a monster entry is `[type, weight,
+minDanger]`). `dangerAt` rises 0 -> 1 from the Sanctum to the rim and scales monster hp / damage / speed and the elite
+chance (elites glow red, 2.4x hp). `chunkContent(cx, cz)` deterministically seeds a 40-unit chunk's props, camp monsters
+(stable ids) and treasure (chests, suitcases, power-ups); `diffChunks` streams chunks in within `LOAD_RADIUS` and out past
+`UNLOAD_RADIUS`. `main.js`'s `stepWorld` applies it: scenery goes into per-kind InstancedMeshes
+(`arena.world.setProps`), solid props join `game.obstacles`, camp monsters spawn through `spawnMonster` (remembered in
+`game.world.live`; a slain camp member stays dead for `RESPAWN_SECONDS`), monsters left far behind are dropped, a biome
+banner names each biome you enter, and a minimap (`#minimap`) shows the continent, monsters and chests. Random pod/chest/perk
+spawners are off (`game.world` set); treasure comes from the chunks. The edge has no wall: walk off it and you fall.
+
+**Hills.** `heightAt(x, z)` (pure, in `logic/world.js`) is the ground height: broad swells, finer bumps and ~18 big seeded
+mounds, levelled flat in the Sanctum, at the rim and under every village plaza. The ground mesh, props and grass sit on it,
+and `main.js` lifts the player, monsters, chests/pods/pickups and pets onto it (`pets` via a `groundLift` they carry). The
+particle / projectile / shockwave / bullet / crystal layers ride up with the player (`world.groundY`, `applyFxDepth`), and the
+camera follows a smoothed `camGround`.
+
+**Villages and quests.** `villages()` seeds ~9 villages (a guaranteed starter just outside the Sanctum, at least one in every
+biome); `villageLayout(v)` places a hall, cottages, a well, lamp posts, a notice board and three villagers. Villages are safe
+(`VILLAGE_SAFE_RADIUS`: no wild monsters). Villagers (`src/npcs.js`) are built with `createPlayerMesh()`, so they look like the
+player, each in their own pastel; they amble about, face you, and wear a marker ('!' request, '...' open, '?' to collect).
+Press E near one (when no suitcase is in reach) to talk: the game freezes while the dialogue (`src/questUi.js`) is open.
+`logic/quests.js`'s `questFor(npc, round)` generates a quest (slay N in the village's biome, hunt a local monster, slay an
+elite, gather crystals, walk into another biome, or deliver a letter to a villager elsewhere; paid there), `questEvent`
+advances them from kills / crystals / entering a biome / talking, and up to `MAX_ACTIVE_QUESTS` (3) can be open. Rewards are
+crystals plus a heal; a villager's next request is new each time. The tracker sits under the score and the minimap shows
+villages, with a gold ring where a quest wants you.
 
 ## Labyrinth map
 Pick it on the start card (button or K). `src/logic/maze.js` (pure) builds a seeded 7x7 maze per

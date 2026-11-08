@@ -507,6 +507,7 @@ function snapToTexel(value) {
 // big arena.
 export function updateArena(arena, playerPos, time = 0) {
   arena.water?.update(time)
+  arena.update?.(playerPos, time) // the free roam world moves its sky and fireflies with the player
   if (playerPos) {
     const snappedX = snapToTexel(playerPos.x)
     const snappedZ = snapToTexel(playerPos.z)

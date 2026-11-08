@@ -395,6 +395,37 @@
       }
       body.sandbox #sandbox-badge { display: block; }
       body.sandbox #wave-banner, body.sandbox #wave-counter { display: none !important; }
+      body.world #wave-banner, body.world #wave-counter { display: none !important; }
+      /* Free roam world: a minimap of the continent and a banner naming each biome you wander into. */
+      #minimap { display: none; position: fixed; left: 16px; bottom: 150px; width: 150px; height: 150px; border-radius: 50%; border: 3px solid rgba(255,255,255,0.75); box-shadow: 0 4px 18px rgba(20,10,60,0.45); z-index: 5; pointer-events: none; background: #1b1438; }
+      body.world #minimap { display: block; }
+      #biome-banner { display: none; position: fixed; top: 22%; left: 50%; transform: translateX(-50%); padding: 10px 28px; border-radius: 999px; background: rgba(24,16,56,0.78); color: #fff; font-weight: 800; letter-spacing: 0.18em; text-transform: uppercase; font-size: 20px; z-index: 6; pointer-events: none; opacity: 0; transition: opacity 0.6s; text-shadow: 0 0 14px var(--biome-glow, #b9a6ff); border: 2px solid var(--biome-glow, #b9a6ff); }
+      body.world #biome-banner { display: block; }
+      #biome-banner.show { opacity: 1; }
+      #sanctum-chip { display: none; position: fixed; left: 16px; bottom: 310px; padding: 4px 12px; border-radius: 999px; background: rgba(185,166,255,0.9); color: #241b3a; font-weight: 800; font-size: 12px; letter-spacing: 0.1em; z-index: 5; pointer-events: none; }
+      body.world.in-sanctum #sanctum-chip { display: block; }
+      /* Villagers and quests (free roam). */
+      #quest-tracker { display: none; position: fixed; right: 16px; top: 112px; width: 250px; flex-direction: column; gap: 6px; z-index: 5; pointer-events: none; }
+      body.world #quest-tracker.has-quests { display: flex; }
+      .quest-row { background: rgba(24,16,56,0.78); color: #fff; border-left: 4px solid #ffd15c; border-radius: 10px; padding: 7px 11px; display: flex; flex-direction: column; font-size: 13px; line-height: 1.3; box-shadow: 0 2px 10px rgba(10,6,30,0.35); }
+      .quest-row b { font-weight: 800; }
+      .quest-row span { color: #d6cdff; font-size: 12px; }
+      .quest-row.ready { border-left-color: #7dffc4; }
+      .quest-row.ready span { color: #7dffc4; font-weight: 700; }
+      #talk-prompt { display: none; position: fixed; left: 50%; bottom: 150px; transform: translateX(-50%); padding: 8px 18px; border-radius: 999px; background: rgba(24,16,56,0.86); color: #fff; font-weight: 700; z-index: 6; pointer-events: none; border: 2px solid #ffd15c; }
+      #talk-prompt.show { display: block; }
+      #quest-toast { position: fixed; top: 30%; left: 50%; transform: translate(-50%, -10px); padding: 12px 26px; border-radius: 14px; background: linear-gradient(135deg, #3a2a78, #5a3d9a); color: #fff; font-weight: 800; letter-spacing: 0.06em; z-index: 8; pointer-events: none; opacity: 0; transition: opacity 0.4s, transform 0.4s; border: 2px solid #ffd15c; box-shadow: 0 6px 24px rgba(10,6,30,0.5); }
+      #quest-toast.show { opacity: 1; transform: translate(-50%, 0); }
+      #npc-dialog { display: none; position: fixed; left: 50%; bottom: 60px; transform: translateX(-50%); width: min(560px, calc(100vw - 32px)); background: rgba(24,16,56,0.94); color: #fff; border: 2px solid #b9a6ff; border-radius: 18px; padding: 16px 20px 14px; z-index: 9; box-shadow: 0 10px 40px rgba(10,6,30,0.6); backdrop-filter: blur(6px); }
+      #npc-dialog.open { display: block; }
+      #npc-name { font-size: 20px; font-weight: 800; margin: 0; }
+      #npc-role { color: #c9bdff; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 8px; }
+      #npc-text { font-size: 16px; line-height: 1.5; margin: 6px 0 10px; }
+      #npc-reward { display: none; color: #ffd15c; font-weight: 800; margin-bottom: 10px; }
+      #npc-buttons { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
+      #npc-buttons button { font: inherit; font-weight: 700; padding: 8px 18px; border-radius: 10px; border: 2px solid #b9a6ff; background: transparent; color: #fff; cursor: pointer; }
+      #npc-buttons button.primary { background: #ffd15c; border-color: #ffd15c; color: #3a2a00; }
+      #npc-buttons button:hover { filter: brightness(1.15); }
       .sb-panel {
         position: fixed;
         top: 12px;
@@ -1157,6 +1188,7 @@
         <div class="map-row">
           <button id="resort-btn" class="map-btn" type="button">Orbital Sundeck<small>Endless waves on a floating platform</small></button>
           <button id="labyrinth-btn" class="map-btn" type="button">Labyrinth <kbd>K</kbd><small>3 floors of walls &amp; spike traps. Beat 2 bosses per floor to open the gate.</small></button>
+          <button id="world-btn" class="map-btn" type="button">The Wilds <kbd>O</kbd><small>Free roam a vast mystical continent: five biomes, monsters everywhere, no waves.</small></button>
         </div>
         <button id="hub-open-btn" type="button">Skills &amp; Loadout <kbd>6</kbd></button>
         <button id="tutorial-btn" type="button">Tutorial <kbd>G</kbd></button>
@@ -1165,6 +1197,19 @@
       </div>
     </div>
     <div id="floor-chip" class="panel"></div>
+    <canvas id="minimap" width="300" height="300"></canvas>
+    <div id="quest-tracker"></div>
+    <div id="talk-prompt"></div>
+    <div id="quest-toast"></div>
+    <div id="npc-dialog" class="panel">
+      <h2 id="npc-name"></h2>
+      <div id="npc-role"></div>
+      <div id="npc-text"></div>
+      <div id="npc-reward"></div>
+      <div id="npc-buttons"></div>
+    </div>
+    <div id="biome-banner"></div>
+    <div id="sanctum-chip">SANCTUM &middot; HEALING</div>
     <div id="win-screen" class="overlay" style="display: none">
       <div class="card panel">
         <h1>ESCAPED!</h1>

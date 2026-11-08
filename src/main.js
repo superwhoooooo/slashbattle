@@ -53,11 +53,18 @@ import { createMonsterMesh } from './characters.js'
 import { updateFace3D } from './face3d.js'
 import { animateAlive } from './alive.js'
 import { loadHighScore, saveHighScore } from './highScore.js'
+import { createWorldArena, WORLD_LEVEL } from './worldArena.js'
+import { createJumpState, stepJump } from './logic/jump.js'
+import { createNpc, setNpcMarker, updateNpc, TALK_RANGE } from './npcs.js'
+import { createQuestUi } from './questUi.js'
+import { acceptQuest, claimQuest, createQuestLog, npcDialog, npcMarker, questEvent, questsToClaim } from './logic/quests.js'
+import { BIOMES, SANCTUM_RADIUS, UNLOAD_RADIUS, WORLD_RADIUS, biomeAt, canRespawn, chunkContent, chunkKey, diffChunks, groundColorAt, heightAt, villageById, villages } from './logic/world.js'
 import { createMusic } from './music.js'
 import { createSfx } from './sfx.js'
 import { jellyHit, updateJelly } from './jelly.js'
 import {
   ARENA_RADIUS,
+  setArenaRadius,
   BLOOM_RADIUS,
   BLOOM_STRENGTH,
   BLOOM_THRESHOLD,
@@ -338,11 +345,11 @@ scene.environmentIntensity = ENVIRONMENT_INTENSITY
 // level changes (and when a restart drops back to the first one). Skipped
 // when the right one is already in place.
 let environmentLevelIndex = -1
-function setLevelEnvironment(levelIndex) {
+function setLevelEnvironment(levelIndex, level = null) {
   if (environmentLevelIndex === levelIndex) return
   environmentLevelIndex = levelIndex
   const previous = scene.environment
-  scene.environment = createEnvironmentMap(renderer, levelAt(levelIndex))
+  scene.environment = createEnvironmentMap(renderer, level ?? levelAt(levelIndex))
   if (previous) previous.dispose()
 }
 
@@ -539,7 +546,9 @@ function swishEelTail(mesh, time) {
   })
 }
 function applyFxDepth() {
-  const y = fxDepthOffset()
+  const ground = game?.world?.groundY ?? 0 // on hills, shots / sparks / rings / crystals ride up with the player
+  crystalSystem.mesh.position.y = ground
+  const y = fxDepthOffset() + ground
   for (const group of [particleSystem.group, projectilePool.group, shockwavePool.group, bulletPool.group]) group.position.y = y
 }
 
@@ -837,17 +846,22 @@ function buildLabyrinthFloor(index) {
   return { floor, arena, props: [...arena.propObstacles, { x: floor.exit.x, z: floor.exit.z, radius: LAB_EXIT_KEEPOUT }] }
 }
 
+const SUNDECK_RADIUS = 48 // ARENA_RADIUS everywhere but the free roam world
 function createGame() {
   const lab = gameMode === 'labyrinth'
+  const worldMode = gameMode === 'world'
+  setArenaRadius(worldMode ? WORLD_RADIUS : SUNDECK_RADIUS)
+  document.body.classList.toggle('world', worldMode)
   const labFloor = lab ? buildLabyrinthFloor(0) : null
   if (!lab) setMonsterNavigator(null)
   document.body.classList.toggle('labyrinth', lab)
   scene.environmentIntensity = lab ? ENVIRONMENT_INTENSITY * 0.3 : ENVIRONMENT_INTENSITY
-  const arena = lab ? labFloor.arena : createArena(levelAt(0))
+  const arena = lab ? labFloor.arena : worldMode ? createWorldArena() : createArena(levelAt(0))
   scene.add(arena.group)
   scene.background = new THREE.Color(arena.backgroundColor)
   scene.fog = arena.fog
-  setLevelEnvironment(0)
+  if (worldMode) setLevelEnvironment('world', WORLD_LEVEL)
+  else setLevelEnvironment(0)
 
   // The sundeck's umbrellas/loungers/signs are static circular obstacles,
   // built once from arena.propObstacles; pods and chests are dynamic ones
@@ -879,6 +893,7 @@ function createGame() {
     chestSpawnerState: createPodSpawnerState(),
     pickups: [], // power-ups lying on the ground, waiting to be walked over
     pickupSpawnerState: createPodSpawnerState(),
+    world: worldMode ? createWorldState() : null, // the free roam world's streamed chunks, live monsters and kill memory
     cutscene: null, // { boss, mesh, dir, state } while a boss intro is playing; freezes gameplay
     score: 0,
     chainState: createChainState(), // the current kill-chain count/multiplier (src/logic/tricks.js)
@@ -894,6 +909,15 @@ function createGame() {
   if (lab) game.waveState.wavesUntilBoss = 1 // a wave, then a boss, on every floor
 
   game.spawnRadius = lab ? LAB_SPAWN_RADIUS : ARENA_RADIUS
+  if (worldMode) {
+    // The Wilds: monsters, scenery and treasure stream in around you (stepWorld), so nothing is pre-placed.
+    applyLoadoutPets(game)
+    game.player.maxHp = Math.round(PLAYER_MAX_HP + skillEffects(profile.skills).maxHp)
+    game.player.hp = game.player.maxHp
+    stepWorld(game, 0)
+    camera.position.set(player.position.x + CAMERA_OFFSET.x, CAMERA_OFFSET.y, player.position.z + CAMERA_OFFSET.z)
+    return game
+  }
   const initialPodCount =
     POD_INITIAL_COUNT_MIN + Math.floor(Math.random() * (POD_INITIAL_COUNT_MAX - POD_INITIAL_COUNT_MIN + 1))
   for (let i = 0; i < initialPodCount; i++) trySpawnPod(game)
@@ -922,11 +946,12 @@ function createGame() {
 // Which container look (chests, suitcases) fits the current place.
 function containerStyle(game) {
   if (game.labyrinth) return 'dungeon'
+  if (game.world) return 'neon'
   return levelAt(game.levelIndex ?? 0).props.style
 }
 
-function trySpawnPod(game) {
-  const point = pickPodSpawnPoint(Math.random, {
+function trySpawnPod(game, at = null) {
+  const point = at ?? pickPodSpawnPoint(Math.random, {
     arenaRadius: game.spawnRadius,
     margin: POD_SPAWN_MARGIN,
     existingPods: game.pods.map((pod) => ({ x: pod.position.x, z: pod.position.z })),
@@ -1640,6 +1665,344 @@ function despawnPod(game, pod) {
 // (marked userData.spawning so AI/combat/separation skip it), with a
 // matching spawn-in effect tracked in game.spawnEffects until it
 // finishes.
+// ---- The Wilds (free roam): a streamed world. Chunks of scenery, monsters and treasure come alive around the
+// player (logic/world.js decides what is in each) and are dropped again when they fall far behind. ----------
+function createWorldState() {
+  return {
+    chunks: new Map(), // chunk key -> { content, obstacles, treasure: [meshes] }
+    live: new Map(), // monster id -> mesh, so a camp is never spawned twice
+    killed: new Map(), // monster id -> when you slew it (a camp respawns after a while)
+    opened: new Set(), // chest ids already looted
+    jump: createJumpState(), // N hops (see logic/jump.js)
+    npcs: new Map(), // villager id -> npc (src/npcs.js), alive while their chunk is
+    quests: createQuestLog(),
+    talkingTo: null, // the villager whose dialogue is open
+    groundY: 0, // the ground height under the player (the effect layers ride on it)
+    camGround: 0, // ...smoothed, for the camera
+    biome: null,
+    bannerUntil: 0,
+    wasInSanctum: false,
+  }
+}
+
+// ---- villagers & quests: the dialogue flow --------------------------------------------------------------
+const questUi = createQuestUi({
+  onButton: (id) => handleDialogButton(game, id),
+  onClose: () => {
+    if (game?.world) game.world.talkingTo = null
+    input.clear() // nothing pressed in the dialogue should carry into the game
+  },
+})
+
+function worldQuestEvent(game, event) {
+  const w = game.world
+  if (!w) return
+  const result = questEvent(w.quests, event)
+  w.quests = result.log
+  for (const q of result.ready) {
+    if (q.type !== 'deliver') questUi.showToast(`${q.title.toUpperCase()}: RETURN TO ${q.giverName.toUpperCase()}`)
+  }
+}
+
+const dialogInfo = (game, npc) => ({ npc: npc.def, village: villageById(npc.def.villageId), ...npcDialog(game.world.quests, npc.def) })
+
+function openTalk(game, npc) {
+  game.world.talkingTo = npc.def.id
+  // Being spoken to is an event of its own: a letter's recipient counts it, and the quest is ready to claim.
+  worldQuestEvent(game, { type: 'talk', npcId: npc.def.id })
+  questUi.show(dialogInfo(game, npc))
+  sfx.play('podIn', { x: npc.mesh.position.x, z: npc.mesh.position.z })
+}
+
+function handleDialogButton(game, id) {
+  const w = game.world
+  const npc = w?.npcs.get(w.talkingTo)
+  if (!npc) return questUi.close()
+  const dialog = npcDialog(w.quests, npc.def)
+  if (id === 'accept' && dialog.mode === 'offer') {
+    w.quests = acceptQuest(w.quests, dialog.quest)
+    questUi.showToast(`QUEST ACCEPTED: ${dialog.quest.title.toUpperCase()}`)
+    sfx.play('chestOpen', { x: npc.mesh.position.x, z: npc.mesh.position.z })
+    questUi.close()
+  } else if (id === 'claim' && dialog.mode === 'claim') {
+    const { log, quest } = claimQuest(w.quests, dialog.quest.id)
+    w.quests = log
+    if (quest) {
+      game.inventory = addCrystals(game.inventory, quest.reward)
+      game.player.hp = Math.min(game.player.maxHp, game.player.hp + game.player.maxHp * quest.heal)
+      burst(particleSystem, { x: game.player.position.x, y: 1.2, z: game.player.position.z }, 0xffd15c, 40, 4.5)
+      questUi.showToast(`QUEST COMPLETE  +${quest.reward} CRYSTALS`)
+      sfx.play('waveCleared')
+    }
+    if (questsToClaim(w.quests, npc.def.id).length) questUi.update(dialogInfo(game, npc))
+    else questUi.close()
+  } else questUi.close()
+}
+
+function rememberWorldKill(game, mesh, now) {
+  const id = mesh.userData.worldId
+  if (!game.world || !id) return
+  game.world.killed.set(id, now)
+  game.world.live.delete(id)
+}
+
+// Quietly removes a monster that fell far behind the player (not a kill; it comes back with its camp).
+function dropWorldMonster(game, mesh) {
+  const id = mesh.userData.worldId
+  if (id) game.world.live.delete(id)
+  const i = game.monsters.indexOf(mesh)
+  if (i >= 0) game.monsters.splice(i, 1)
+  const j = game.spawnEffects.findIndex((e) => e.monster === mesh)
+  if (j >= 0) {
+    disposeObject3D(game.spawnEffects[j].effect.group)
+    game.spawnEffects.splice(j, 1)
+  }
+  disposeObject3D(mesh)
+}
+
+function removeFrom(list, item) {
+  const i = list.indexOf(item)
+  if (i >= 0) list.splice(i, 1)
+}
+
+function loadWorldChunk(game, cx, cz, now) {
+  const w = game.world
+  const content = chunkContent(cx, cz)
+  const obstacles = content.props.filter((p) => p.radius > 0).map((p) => ({ x: p.x, z: p.z, radius: p.radius }))
+  game.obstacles.push(...obstacles)
+  game.props.push(...obstacles)
+  const chunk = { content, obstacles, treasure: [], npcIds: [] }
+  w.chunks.set(content.key, chunk)
+
+  for (const m of content.monsters) {
+    if (w.live.has(m.id) || !canRespawn(w.killed.get(m.id), now)) continue
+    const stats = MONSTER_TYPES[m.type]
+    // Nudge a camp member out of any tree or crystal it was seeded inside.
+    const at = { x: m.x, z: m.z }
+    for (const o of obstacles) {
+      const d = Math.hypot(at.x - o.x, at.z - o.z)
+      const need = o.radius + stats.radius + 0.4
+      if (d < need) {
+        const k = need / (d || 1)
+        at.x = o.x + (at.x - o.x || 1) * k
+        at.z = o.z + (at.z - o.z) * k
+      }
+    }
+    const mesh = spawnMonster(game, m.type, { at, hpScale: m.hpScale, effectOptions: { scale: 0.5, duration: 0.4 } })
+    mesh.userData.worldId = m.id
+    mesh.userData.elite = m.elite
+    mesh.position.y = heightAt(at.x, at.z)
+    const effect = game.spawnEffects[game.spawnEffects.length - 1]
+    if (effect) effect.effect.group.position.y = mesh.position.y
+    mesh.userData.damageScale = (1 + m.danger * 1.1) * (m.elite ? 1.35 : 1)
+    mesh.userData.speedScale = 1 + m.danger * 0.18
+    if (m.elite) {
+      const material = mesh.userData.jelly?.body?.material
+      if (material?.emissive) {
+        material.emissive.setHex(0xff3355) // elites glow a warning red
+        material.emissiveIntensity = 0.45
+      }
+    }
+    w.live.set(m.id, mesh)
+  }
+
+  // The villagers who live here.
+  for (const def of content.npcs) {
+    if (w.npcs.has(def.id)) continue
+    const npc = createNpc(def)
+    scene.add(npc.mesh)
+    w.npcs.set(def.id, npc)
+    chunk.npcIds.push(def.id)
+  }
+
+  for (const t of content.treasure) {
+    if (t.kind === 'chest' && w.opened.has(t.id)) continue
+    const list = t.kind === 'chest' ? game.chests : t.kind === 'pod' ? game.pods : game.pickups
+    const before = list.length
+    if (t.kind === 'chest') trySpawnChest(game, { at: { x: t.x, z: t.z } })
+    else if (t.kind === 'pod') trySpawnPod(game, { x: t.x, z: t.z })
+    else trySpawnPerkPickup(game, { x: t.x, z: t.z })
+    if (list.length > before) {
+      const mesh = list[list.length - 1]
+      mesh.position.y = heightAt(t.x, t.z)
+      mesh.userData.worldTreasure = t
+      chunk.treasure.push({ mesh, list })
+    }
+  }
+}
+
+function unloadWorldChunk(game, key) {
+  const w = game.world
+  const chunk = w.chunks.get(key)
+  if (!chunk) return
+  for (const o of chunk.obstacles) {
+    removeFrom(game.obstacles, o)
+    removeFrom(game.props, o)
+  }
+  for (const id of chunk.npcIds) {
+    const npc = w.npcs.get(id)
+    if (!npc || w.talkingTo === id) continue
+    disposeObject3D(npc.mesh)
+    w.npcs.delete(id)
+  }
+  for (const { mesh, list } of chunk.treasure) {
+    if (game.hidingState.currentPod === mesh) continue // you are hiding in it
+    if (mesh.userData.worldTreasure?.kind === 'chest' && mesh.userData.opened) w.opened.add(mesh.userData.worldTreasure.id)
+    if (mesh.userData.obstacle) removeFrom(game.obstacles, mesh.userData.obstacle)
+    removeFrom(list, mesh)
+    disposeObject3D(mesh)
+  }
+  w.chunks.delete(key)
+}
+
+// A name for the biome banner / minimap, and the cheap per-frame upkeep of the world.
+const biomeBanner = document.getElementById('biome-banner')
+const minimap = document.getElementById('minimap')
+let minimapBase = null
+function drawMinimap(game) {
+  if (!minimap) return
+  const ctx = minimap.getContext('2d')
+  const size = minimap.width
+  if (!minimapBase) {
+    // The continent's colours, painted once at low resolution and stretched.
+    const res = 150
+    const small = document.createElement('canvas')
+    small.width = small.height = res
+    const sctx = small.getContext('2d')
+    const image = sctx.createImageData(res, res)
+    for (let py = 0; py < res; py++) {
+      for (let px = 0; px < res; px++) {
+        const x = ((px + 0.5) / res - 0.5) * WORLD_RADIUS * 2
+        const z = ((py + 0.5) / res - 0.5) * WORLD_RADIUS * 2
+        const i = (py * res + px) * 4
+        if (Math.hypot(x, z) > WORLD_RADIUS) {
+          image.data.set([27, 20, 56, 255], i)
+        } else {
+          const [r, g, b] = groundColorAt(x, z)
+          image.data.set([Math.min(255, r * 300), Math.min(255, g * 300), Math.min(255, b * 300), 255], i)
+        }
+      }
+    }
+    sctx.putImageData(image, 0, 0)
+    minimapBase = small
+  }
+  ctx.imageSmoothingEnabled = true
+  ctx.drawImage(minimapBase, 0, 0, size, size)
+  const k = size / (WORLD_RADIUS * 2)
+  const at = (x, z) => [size / 2 + x * k, size / 2 + z * k]
+  for (const m of game.monsters) {
+    if (m.userData.dying || m.userData.falling) continue
+    const [x, y] = at(m.position.x, m.position.z)
+    ctx.fillStyle = m.userData.isBoss ? '#ffd15c' : '#ff4d6d'
+    ctx.fillRect(x - 1.5, y - 1.5, 3, 3)
+  }
+  // Villages: a pale square each; a gold ring where an open quest wants you to go.
+  const pings = new Set()
+  for (const q of game.world?.quests.active ?? []) {
+    if (q.type === 'deliver') pings.add(q.status === 'ready' || q.status === 'active' ? q.targetVillage : q.villageId)
+    else if (q.status === 'ready') pings.add(q.villageId)
+  }
+  for (const v of villages()) {
+    const [x, y] = at(v.x, v.z)
+    if (pings.has(v.id)) {
+      ctx.strokeStyle = '#ffd15c'
+      ctx.lineWidth = 2.5
+      ctx.beginPath()
+      ctx.arc(x, y, 8, 0, Math.PI * 2)
+      ctx.stroke()
+    }
+    ctx.fillStyle = '#fff6d8'
+    ctx.strokeStyle = '#3a2a78'
+    ctx.lineWidth = 1.5
+    ctx.fillRect(x - 3.5, y - 3.5, 7, 7)
+    ctx.strokeRect(x - 3.5, y - 3.5, 7, 7)
+  }
+  for (const c of game.chests) {
+    if (c.userData.opened) continue
+    const [x, y] = at(c.position.x, c.position.z)
+    ctx.fillStyle = '#ffd15c'
+    ctx.fillRect(x - 2.5, y - 2.5, 5, 5)
+  }
+  const p = game.player
+  const [px, py] = at(p.position.x, p.position.z)
+  ctx.save()
+  ctx.translate(px, py)
+  ctx.rotate(Math.PI - p.facing) // facing is atan2(x, z); canvas y points toward +z
+  ctx.fillStyle = '#ffffff'
+  ctx.strokeStyle = '#241b3a'
+  ctx.lineWidth = 2
+  ctx.beginPath()
+  ctx.moveTo(0, -7)
+  ctx.lineTo(5, 5)
+  ctx.lineTo(-5, 5)
+  ctx.closePath()
+  ctx.stroke()
+  ctx.fill()
+  ctx.restore()
+}
+
+function stepWorld(game, now, dt = 0) {
+  const w = game.world
+  const p = game.player.position
+  const { load, unload } = diffChunks(new Set(w.chunks.keys()), p.x, p.z)
+  for (const key of unload) unloadWorldChunk(game, key)
+  for (const { cx, cz } of load) loadWorldChunk(game, cx, cz, now)
+  if (load.length || unload.length) {
+    game.arena.world.setProps([...w.chunks.values()].flatMap((c) => c.content.props))
+    game.arena.world.setGrass([...w.chunks.values()].map((c) => c.content))
+  }
+
+  // Anything left far behind is let go, so a long trek never piles up monsters.
+  for (const mesh of [...game.monsters]) {
+    if (mesh.userData.dying || mesh.userData.falling || mesh.userData.spawning || mesh.userData.isBoss) continue
+    if (Math.hypot(mesh.position.x - p.x, mesh.position.z - p.z) > UNLOAD_RADIUS + 30) dropWorldMonster(game, mesh)
+  }
+
+  scene.background?.copy?.(game.arena.fog.color)
+
+  // The ground under the player (the effect layers and the camera ride on it).
+  w.groundY = heightAt(p.x, p.z)
+  w.camGround += (w.groundY - w.camGround) * (dt > 0 ? 1 - Math.exp(-5 * dt) : 1)
+
+  // Villagers: they amble, look at you, wear a marker for their quest state, and E talks to the nearest.
+  let nearest = null
+  let nearestDistance = Infinity
+  for (const npc of w.npcs.values()) {
+    const d = dt > 0 ? updateNpc(npc, dt, now, p) : Math.hypot(npc.mesh.position.x - p.x, npc.mesh.position.z - p.z)
+    setNpcMarker(npc, npcMarker(w.quests, npc.def))
+    if (d < nearestDistance) {
+      nearest = npc
+      nearestDistance = d
+    }
+  }
+  const canTalk = nearest && nearestDistance < TALK_RANGE && !game.player.hidden && game.player.hp > 0 && !game.cutscene
+  questUi.setPrompt(canTalk && !lastHidePrompt ? `E  Talk to ${nearest.def.name}` : null)
+  if (canTalk && !lastHidePrompt && dt > 0 && input.wasHidePressed()) openTalk(game, nearest)
+  questUi.setTracker(w.quests)
+
+  // The sanctum mends you.
+  const inSanctum = Math.hypot(p.x, p.z) < SANCTUM_RADIUS - 6
+  if (inSanctum !== w.wasInSanctum) {
+    w.wasInSanctum = inSanctum
+    document.body.classList.toggle('in-sanctum', inSanctum)
+  }
+  if (inSanctum && dt > 0 && game.player.hp > 0) game.player.hp = Math.min(game.player.maxHp, game.player.hp + 9 * dt)
+
+  // Walking into a new biome names it.
+  const biome = biomeAt(p.x, p.z)
+  if (biome !== w.biome) {
+    w.biome = biome
+    w.bannerUntil = now + 3.2
+    worldQuestEvent(game, { type: 'enterBiome', biome })
+    if (biomeBanner) {
+      biomeBanner.textContent = BIOMES[biome].name
+      biomeBanner.style.setProperty('--biome-glow', `#${BIOMES[biome].glow.toString(16).padStart(6, '0')}`)
+    }
+  }
+  biomeBanner?.classList.toggle('show', now < w.bannerUntil)
+  if (dt > 0) drawMinimap(game)
+}
+
 function spawnMonster(game, type, { at = null, effectOptions, hpScale = 1, facePlayer = false } = {}) {
   const stats = MONSTER_TYPES[type]
   const spawn = at ?? spawnPointNearPlayer(
@@ -1969,6 +2332,7 @@ function trickToneForId(trickId) {
 // same trick/points on the big screen-space HUD sticker.
 function scoreKill(game, mesh, cause, position, now) {
   tutorialEvent('kill')
+  if (game.world) worldQuestEvent(game, { type: 'kill', monster: mesh.userData.type, elite: Boolean(mesh.userData.elite), biome: biomeAt(position.x, position.z) })
   const trick = nameTrick({
     cause,
     inPool: isInPool(game.arena.pools, mesh.position.x, mesh.position.z),
@@ -2256,6 +2620,8 @@ function advanceFloor(game) {
 // Removes and disposes everything createGame()/spawnMonster() added to
 // the scene.
 function disposeGame(target) {
+  target.world?.npcs.forEach((npc) => disposeObject3D(npc.mesh))
+  questUi?.reset()
   disposeObject3D(target.arena.group)
   disposeObject3D(target.player.mesh)
   target.pods.forEach((pod) => disposeObject3D(pod))
@@ -2291,6 +2657,8 @@ let tutorialPanel = null
 let tutorialLastPos = null
 let tutorialSetupStep = -1
 const freePlay = () => sandbox || tutorial
+// No waves at all: the sandbox, the tutorial and the free roam world.
+const noWaves = () => freePlay() || Boolean(game?.world)
 
 function tutorialEvent(type, amount) {
   if (!tutorial) return
@@ -2448,7 +2816,8 @@ function canOpenHub() {
 window.addEventListener('keydown', (event) => {
   if (event.repeat) return
   const page = HUB_KEYS[event.code]
-  if (page && (hub.isOpen() || canOpenHub())) {
+  const jumpKey = event.code === 'KeyN' && started && game?.world && !hub.isOpen() // N hops in the Wilds instead of opening the Dragon Den
+  if (page && !jumpKey && (hub.isOpen() || canOpenHub())) {
     event.preventDefault()
     hub.toggle(page)
   } else if (event.code === 'Escape' && hub.isOpen()) {
@@ -2521,7 +2890,11 @@ function dismissStartCard(event) {
   guard('mode', () => {
     if (event?.code === 'KeyB' || event?.target?.closest?.('#sandbox-btn')) startSandbox()
     else if (event?.code === 'KeyG' || event?.target?.closest?.('#tutorial-btn')) startTutorial()
-    else if (event?.code === 'KeyK' || event?.target?.closest?.('#labyrinth-btn')) {
+    else if (event?.code === 'KeyO' || event?.target?.closest?.('#world-btn')) {
+      gameMode = 'world'
+      disposeGame(game)
+      game = createGame()
+    } else if (event?.code === 'KeyK' || event?.target?.closest?.('#labyrinth-btn')) {
       gameMode = 'labyrinth'
       // The sundeck world was already built behind the start card: swap it for the labyrinth.
       disposeGame(game)
@@ -2828,7 +3201,7 @@ function gameFrame(timestamp) {
   // is 0 for the frame(s) a freeze covers (or a fraction of deltaSeconds
   // the frame it ends partway through, so no time is lost overall).
   // The Tab power-up menu pauses the world (freeze the frame, still render).
-  if (loadoutOpen() || swapPanel.isOpen() || hub.isOpen()) {
+  if (loadoutOpen() || swapPanel.isOpen() || hub.isOpen() || questUi.isOpen()) {
     renderMenuBackdrop(timestamp, MENU_FROZEN_FPS)
     input.endFrame()
     return
@@ -2837,6 +3210,7 @@ function gameFrame(timestamp) {
   game.hitstop = nextHitstop
   const gameplayDelta = deltaSeconds * hitstopScale
 
+  if (game.world) stepWorld(game, elapsedSeconds, deltaSeconds)
   const { obstacles, player, pods, hidingState, attackState, shake } = game
   let monsters = game.monsters
 
@@ -2847,7 +3221,7 @@ function gameFrame(timestamp) {
   const clearedWaveNumber = game.waveState.waveNumber
   const bossBeforeStep = currentBoss(game.waveState)
   // Sandbox mode has no waves: nothing spawns or clears on its own.
-  const { state: nextWaveState, spawns, events } = freePlay()
+  const { state: nextWaveState, spawns, events } = noWaves()
     ? { state: game.waveState, spawns: [], events: [] }
     : stepWaves(game.waveState, gameplayDelta, monsters.length, Math.random)
   game.waveState = nextWaveState
@@ -2897,7 +3271,7 @@ function gameFrame(timestamp) {
     Math.random,
   )
   game.podSpawnerState = nextPodSpawnerState
-  if (spawnNow) trySpawnPod(game)
+  if (spawnNow && !game.world) trySpawnPod(game)
 
   const { state: nextChestSpawnerState, spawnNow: chestSpawnNow } = stepPodSpawner(
     game.chestSpawnerState,
@@ -2908,7 +3282,7 @@ function gameFrame(timestamp) {
     Math.random,
   )
   game.chestSpawnerState = nextChestSpawnerState
-  if (chestSpawnNow) trySpawnChest(game)
+  if (chestSpawnNow && !game.world) trySpawnChest(game)
 
   if (input.wasPressed('KeyL')) autoShoot = !autoShoot
   setAutoShoot(hud, autoShoot)
@@ -2949,6 +3323,16 @@ function gameFrame(timestamp) {
   }
   stepWater(elapsedSeconds, deltaSeconds)
   player.update(input, cameraYaw, deltaSeconds, room ? true : null)
+  if (game.world) {
+    // N: a plain hop (no cooldown, no ability slot). Not while hiding, falling off the edge, or paused in a menu.
+    const canHop = !player.hidden && !player.falling && player.hp > 0 && !hub.isOpen()
+    const hop = stepJump(game.world.jump, canHop && input.wasPressed('KeyN'), deltaSeconds)
+    game.world.jump = hop.state
+    if (!player.falling) player.mesh.position.y = heightAt(player.position.x, player.position.z) + hop.state.y
+    if (hop.jumped || hop.landed) {
+      burst(particleSystem, { x: player.position.x, y: 0.15, z: player.position.z }, 0xe0d6ff, hop.landed ? 14 : 8, hop.landed ? 3 : 2)
+    }
+  }
   if (room) {
     // No edge to fall off: the pool wall / buoys hold you in. You ride the waves.
     if (!player.falling && !player.hidden && clampToWater(player.position, PLAYER_RADIUS)) {
@@ -3103,6 +3487,7 @@ function gameFrame(timestamp) {
   monsters = monsters.filter((mesh) => {
     if (mesh.userData.spawning) {
       if (room) mesh.position.y = monsterSwimY(mesh, elapsedSeconds)
+      else if (game.world) mesh.position.y = heightAt(mesh.position.x, mesh.position.z)
       updateJelly(mesh, gameplayDelta, elapsedSeconds, { speed: 0, moveDir: mesh.userData.moveDir })
       updateFace3D(mesh, gameplayDelta, elapsedSeconds)
       return true
@@ -3113,6 +3498,7 @@ function gameFrame(timestamp) {
       updateFace3D(mesh, gameplayDelta, elapsedSeconds)
       const finishedDying = updateMonsterHitReaction(mesh, gameplayDelta)
       if (finishedDying) {
+        rememberWorldKill(game, mesh, elapsedSeconds)
         scoreKill(game, mesh, mesh.userData.lastHitBy ?? 'sword', mesh.position, elapsedSeconds)
         dropCrystals(crystalSystem, mesh.position.x, mesh.position.z, crystalDrops(mesh.userData.type, mesh.userData.isBoss))
         disposeObject3D(mesh) // per-monster geometry, materials and indicator textures; also removes it from the scene
@@ -3132,6 +3518,7 @@ function gameFrame(timestamp) {
       mesh.rotation.x += gameplayDelta * MONSTER_FALL_TUMBLE_SPEED
       mesh.rotation.z += gameplayDelta * MONSTER_FALL_TUMBLE_SPEED * 0.6
       if (mesh.userData.fallState.fallenY >= FALL_DESPAWN_DEPTH) {
+        rememberWorldKill(game, mesh, elapsedSeconds)
         scoreKill(game, mesh, 'fall', { x: mesh.position.x, y: 0, z: mesh.position.z }, elapsedSeconds)
         disposeObject3D(mesh)
         if (mesh.userData.isBoss) bossGone = true
@@ -3168,7 +3555,7 @@ function gameFrame(timestamp) {
       mesh.userData.sinkY = (mesh.userData.sinkY ?? targetY) + (targetY - (mesh.userData.sinkY ?? targetY)) * Math.min(1, deltaSeconds * 4)
       mesh.position.y = mesh.userData.sinkY + (mesh.userData.leapY ?? 0)
     } else {
-      mesh.position.y = mesh.userData.leapY ?? 0
+      mesh.position.y = (mesh.userData.leapY ?? 0) + (game.world ? heightAt(mesh.position.x, mesh.position.z) : 0)
     }
     if (mesh.userData.arms) {
       for (const { pivot, side } of mesh.userData.arms) pivot.rotation.z = side * (0.55 + (mesh.userData.leapY ?? 0) * 0.5)
@@ -3208,7 +3595,7 @@ function gameFrame(timestamp) {
   updateSpawnEffects(game, gameplayDelta)
 
   separateMonsters(monsters, player, obstacles)
-  updateArena(game.arena, player.position)
+  updateArena(game.arena, player.position, elapsedSeconds)
   if (game.labyrinth) {
     updateLabyrinth(game, elapsedSeconds, deltaSeconds)
     if (game.labyrinth.won) {
@@ -3278,10 +3665,20 @@ function gameFrame(timestamp) {
   }
   player.updateStatusEffects(elapsedSeconds)
   if (perk.regen > 0 && player.hp > 0) player.hp = Math.min(player.maxHp, player.hp + perk.regen * gameplayDelta)
+  // On hills, pets ride the ground: take last frame's lift off, let them move, put the new lift on.
+  if (game.world) for (const pet of game.pets) pet.mesh.position.y -= pet.groundLift ?? 0
   updatePets(game.pets, { petDamage: perk.petDamage, levels: profile.pets, dt: gameplayDelta, elapsed: elapsedSeconds, player, monsters: game.monsters, obstacles, particleSystem, hitstop: game.hitstop, shockwavePool, onScratch: petScratch })
+  if (game.world) {
+    for (const pet of game.pets) {
+      pet.groundLift = heightAt(pet.mesh.position.x, pet.mesh.position.z)
+      pet.mesh.position.y += pet.groundLift
+    }
+  }
   const collected = updateCrystals(crystalSystem, gameplayDelta, elapsedSeconds, player.position.x, player.position.z, petFx.magnetRadius * perk.magnet)
   if (collected > 0) {
-    game.inventory = addCrystals(game.inventory, Math.max(1, Math.round(collected * petFx.crystalMultiplier * perk.crystal)))
+    const gained = Math.max(1, Math.round(collected * petFx.crystalMultiplier * perk.crystal))
+    game.inventory = addCrystals(game.inventory, gained)
+    if (game.world) worldQuestEvent(game, { type: 'crystals', amount: gained })
     sfx.play('crystal')
   }
 
@@ -3294,7 +3691,7 @@ function gameFrame(timestamp) {
     Math.random,
   )
   game.pickupSpawnerState = nextPickupSpawner
-  if (pickupSpawnNow && !freePlay()) trySpawnPerkPickup(game)
+  if (pickupSpawnNow && !freePlay() && !game.world) trySpawnPerkPickup(game)
   game.pickups = game.pickups.filter((pickup) => {
     updatePerkPickup(pickup, gameplayDelta)
     if (player.hidden || Math.hypot(pickup.position.x - player.position.x, pickup.position.z - player.position.z) > PICKUP_RADIUS) return true
@@ -3347,7 +3744,7 @@ function gameFrame(timestamp) {
   updatePerkBar(game.inventory.equipped)
 
   const inBossFight = game.waveState.phase === 'bossFight'
-  const enemiesLeft = inBossFight || freePlay() || game.labyrinth?.gateOpen
+  const enemiesLeft = inBossFight || noWaves() || game.labyrinth?.gateOpen
     ? game.monsters.length
     : waveSize(game.waveState.waveNumber) - game.waveState.spawnedCount + game.monsters.length
   const bossMesh = game.monsters.find((m) => m.userData.isBoss && !m.userData.dying)
@@ -3382,13 +3779,13 @@ function gameFrame(timestamp) {
     // Sandbox never steps the wave controller, so it would sit in
     // 'intermission' at 0s and the HUD would re-pick a PA line (and the
     // announcement chime would fire) every single frame.
-    waveState: freePlay() || game.labyrinth?.gateOpen ? { ...game.waveState, phase: 'clearing' } : game.waveState,
+    waveState: noWaves() || game.labyrinth?.gateOpen ? { ...game.waveState, phase: 'clearing' } : game.waveState,
     boss: bossHud,
     chain: liveChain,
     deltaSeconds,
   })
   perf?.end('hud')
-  if (!freePlay() && hud.waveAnnouncement !== previousAnnouncement) sfx.play('announcement')
+  if (!noWaves() && hud.waveAnnouncement !== previousAnnouncement) sfx.play('announcement')
 
   // A slight look-ahead in the player's current movement direction,
   // scaled by how close to full speed they're actually moving (so it
@@ -3402,7 +3799,7 @@ function gameFrame(timestamp) {
   const zoomK = player.hidden ? 1 : scopeZoom
   cameraTarget.set(
     player.position.x + cameraOffset.x * zoomK + player.moveDir.x * lookAheadAmount,
-    cameraOffset.y * zoomK,
+    cameraOffset.y * zoomK + (game.world ? game.world.camGround : 0),
     player.position.z + cameraOffset.z * zoomK + player.moveDir.z * lookAheadAmount,
   )
   // Frame-rate-independent exponential smoothing: 1 - exp(-lambda * dt)
@@ -3410,11 +3807,11 @@ function gameFrame(timestamp) {
   // alpha THREE.Vector3.lerp takes.
   const lerpFactor = 1 - Math.exp(-CAMERA_LERP * deltaSeconds)
   camera.position.lerp(cameraTarget, lerpFactor)
-  camera.lookAt(player.position.x, 1, player.position.z)
+  camera.lookAt(player.position.x, 1 + (game.world ? game.world.camGround : 0), player.position.z)
   if (firstPerson) {
     player.mesh.visible = false
     // Underwater the eye sits just above the swimmer's depth; on land it's head height.
-    const eye = room ? waterState.depthY + 0.9 : 1.5
+    const eye = room ? waterState.depthY + 0.9 : 1.5 + (game.world ? player.mesh.position.y : 0)
     camera.position.set(player.position.x, eye, player.position.z)
     camera.lookAt(player.position.x + Math.sin(fpYaw) * 10, eye - 0.15, player.position.z + Math.cos(fpYaw) * 10)
   }

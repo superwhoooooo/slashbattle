@@ -129,7 +129,12 @@ export const FACE_SCALE_BY_TYPE = { blobbo: 1, zippy: 1.6, grumpus: 1, bloater: 
 // plus a teal border band and a white pinstripe, each a flat ring mesh
 // laid on top of the deck -- a repeating texture can't carry a band that
 // only appears near the edge, so those are separate geometry instead.
-export const ARENA_RADIUS = 48
+export let ARENA_RADIUS = 48
+// The free roam world is far bigger than the sundeck: main.js sets the radius when a run starts (every user
+// reads the live binding at call time, so the clamps, falls and spawn rings all follow).
+export function setArenaRadius(radius) {
+  ARENA_RADIUS = radius
+}
 export const ARENA_THICKNESS = 1.2
 export const ARENA_HULL_COLOR = 0xe7e9ec // light grey/white, slightly metallic sides/underside
 export const ARENA_DECK_PLANK_COLOR = '#f0e2c6' // warm white composite plank base
