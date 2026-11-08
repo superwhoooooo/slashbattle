@@ -65,7 +65,8 @@ function mergeRigid(group) {
 
 // A small, glossy, realistic eye: a dark iris-coloured ball and a pinprick of light.
 function eye(parent, x, y, z, r, iris = 0x2a1a0e) {
-  parent.add(mesh(sph(r, 12, 8), gloss(iris), [x, y, z]))
+  // A faint glow in the iris colour gives the stare some menace (dark eyes stay dark).
+  parent.add(mesh(sph(r, 12, 8), fur(iris, { roughness: 0.25, emissive: iris, emissiveIntensity: 0.7 }), [x, y, z], [1, 0.8, 1]))
   parent.add(mesh(sph(r * 0.28, 6, 4), fur(0xffffff, { roughness: 0.1 }), [x + Math.sign(x) * r * 0.15, y + r * 0.4, z + r * 0.75]))
 }
 
@@ -114,7 +115,7 @@ function quadruped(spec) {
   neck.add(mesh(capY(neckR, neckLen), coat, [0, neckLen / 2, 0]))
   const head = new THREE.Group()
   head.position.y = neckLen + neckR * 0.35
-  head.rotation.x = -tilt + (spec.headPitch ?? 0)
+  head.rotation.x = -tilt + (spec.headPitch ?? 0) + 0.12 // head held a little low, like it's stalking
   neck.add(head)
 
   const H = spec.headR ?? 0.11
@@ -127,6 +128,28 @@ function quadruped(spec) {
   if (spec.nose !== null) head.add(mesh(sph(spec.noseR ?? mr * 0.42), gloss(spec.nose ?? 0x1b1414), [0, -H * 0.3 + mr * 0.35, noseZ], [1.2, 0.8, 0.75]))
   const eyeR = spec.eyeR ?? H * 0.15
   for (const side of [-1, 1]) eye(head, side * H * (spec.eyeX ?? 0.5), H * 0.2, H * 0.74, eyeR, spec.eye)
+
+  // The ferocious face: heavy brows slanting down to the nose (a glare), a lower jaw that
+  // drops into a snarl (userData.snarl, set when it strikes), and fangs top and bottom.
+  const browMat = fur(darken(spec.brow ?? spec.coat, 0.4))
+  const bw = Math.max(eyeR, H * 0.13)
+  for (const side of [-1, 1]) {
+    head.add(mesh(new THREE.BoxGeometry(bw * 2.6, bw * 0.7, bw * 1.3), browMat, [side * H * (spec.eyeX ?? 0.5) * 0.92, H * 0.2 + bw * 1.15, H * 0.72 + bw * 0.25], [1, 1, 1], [-0.3, side * 0.25, side * 0.45]))
+  }
+  const fangMat = fur(0xf6f0e0, { roughness: 0.3 })
+  const tipZ = H * 0.55 + ml + mr * 0.45
+  const mouthY = -H * 0.3 - mr * 0.6
+  const fangLen = Math.max(H * 0.26, mr * 0.75)
+  head.add(mesh(sph(mr * 0.85), fur(0x5a1a20), [0, mouthY, H * 0.55 + ml * 0.55], [(spec.muzzleW ?? 1) * 0.85, 0.35, 1.2])) // inside of the mouth
+  for (const side of [-1, 1]) {
+    head.add(mesh(cone(fangLen * 0.24, fangLen, 6), fangMat, [side * mr * 0.55, mouthY - fangLen * 0.32, tipZ], [1, 1, 0.8], [0.15, 0, 0]))
+  }
+  const jaw = new THREE.Group()
+  jaw.position.set(0, mouthY - mr * 0.05, H * 0.5)
+  head.add(jaw)
+  const jawLen = tipZ - H * 0.5
+  jaw.add(mesh(capZ(mr * 0.7, Math.max(0.005, jawLen - mr * 0.7)), fur(spec.jaw ?? spec.muzzle ?? spec.coat), [0, -mr * 0.35, jawLen / 2], [(spec.muzzleW ?? 1) * 0.85, 0.55, 1]))
+  for (const side of [-1, 1]) jaw.add(mesh(cone(fangLen * 0.18, fangLen * 0.6, 6), fangMat, [side * mr * 0.35, -mr * 0.05 + fangLen * 0.1, jawLen - mr * 0.15], [1, 1, 0.8], [-0.15, 0, 0]))
 
   // Ears, each on its own pivot so they can flick.
   const ears = []
@@ -188,7 +211,11 @@ function quadruped(spec) {
       pivot.add(knee)
       knee.add(mesh(capY(legR * 0.8, lo), legMat, [0, -lo / 2, 0]))
       if (spec.feet === 'hoof') knee.add(mesh(new THREE.CylinderGeometry(legR * 0.85, legR * 1.05, footH, 10), footMat, [0, -lo - footH * 0.1, 0]))
-      else knee.add(mesh(sph(legR * 1.1), footMat, [0, -lo, legR * 0.35], [1, 0.62, 1.4]))
+      else {
+        knee.add(mesh(sph(legR * 1.1), footMat, [0, -lo, legR * 0.35], [1, 0.62, 1.4]))
+        // Hooked claws poking out of the front of each paw.
+        for (const dx of [-0.55, 0, 0.55]) knee.add(mesh(cone(legR * 0.2, legR * 0.85, 5), fur(0xece4d0, { roughness: 0.35 }), [dx * legR, -lo - legR * 0.2, legR * 1.85], [1, 1, 1], [Math.PI / 2 + 0.5, 0, 0]))
+      }
       // Trot: diagonal pairs move together. Hop: front pair, then hind pair.
       const phase = hop ? (front ? 0 : Math.PI * 0.6) : (((front ? 0 : 1) + (side > 0 ? 1 : 0)) % 2) * Math.PI
       legs.push({ pivot, knee, phase, front })
@@ -243,6 +270,18 @@ function quadruped(spec) {
     if (kind === 'tuft') parent.add(mesh(sph(R * 0.2), fur(tailSpec.tip ?? 0x5a3418), [0, 0, -segLen * 1.05], [1, 1, 1.4]))
   }
 
+  // Hackles: a ridge of bristling spikes raised along the spine.
+  if (spec.hackles !== false) {
+    const spikeMat = fur(darken(spec.hackleColor ?? spec.coat, 0.55))
+    const n = 9
+    for (let i = 0; i < n; i++) {
+      const f = i / (n - 1)
+      const z = L / 2 + chestR * 0.2 - f * (L + chestR * 0.2 + hipR * 0.3)
+      const h = R * (0.32 + Math.sin(Math.PI * Math.min(1, f * 1.4)) * 0.22)
+      torso.add(mesh(cone(R * 0.11, h, 4), spikeMat, [0, bodyRadiusAt({ R, L, chestR, hipR }, z) * 0.96 + h * 0.3, z], [0.6, 1, 1], [-0.55, 0, 0]))
+    }
+  }
+
   const parts = { root, g, torso, neck, head, tailBase, tailSegs, legs, ears, R, L, H, chestR, hipR, legLen, torsoY, neckLen, neckR, mr, ml, coat, under }
   spec.extras?.(parts)
   mergeRigid(g)
@@ -274,9 +313,19 @@ function quadruped(spec) {
     // Now and then an ear flicks.
     const flick = Math.max(0, Math.sin(t * 0.9) - 0.94) * 6
     for (const e of ears) e.pivot.rotation.z = e.base + e.side * flick * 0.6 * (e.side > 0 ? 1 : 0)
+    // Snarl: the jaw drops when it strikes (pets.js sets snarl = 1) and now and then at rest.
+    const ud = root.userData
+    ud.snarl = Math.max(0, (ud.snarl ?? 0) - 0.06)
+    const idleSnarl = Math.max(0, Math.sin(t * 0.7) - 0.85) * 4
+    jaw.rotation.x = ease(jaw.rotation.x, Math.max(ud.snarl, idleSnarl) * 0.55)
     spec.animate?.(parts, t, moving)
   }
   return root
+}
+
+function darken(hex, k) {
+  const ch = (v) => Math.round(v * k)
+  return (ch((hex >> 16) & 255) << 16) | (ch((hex >> 8) & 255) << 8) | ch(hex & 255)
 }
 
 // ---- Species markings ----------------------------------------------------------------
@@ -472,7 +521,7 @@ const rabbit = () =>
 
 const ram = () =>
   quadruped({
-    coat: 0xece4d2, under: 0xece4d2, legs: 0x3a2e26, muzzle: 0x3a2e26, nose: 0x1a1412, noseR: 0.012, eye: 0xb88a24, feet: 'hoof', hoof: 0x1e1a18,
+    hackles: false, coat: 0xece4d2, under: 0xece4d2, legs: 0x3a2e26, muzzle: 0x3a2e26, nose: 0x1a1412, noseR: 0.012, eye: 0xb88a24, feet: 'hoof', hoof: 0x1e1a18,
     bodyR: 0.17, bodyLen: 0.38, chest: 1.05, legLen: 0.24, legR: 0.026, headR: 0.09, muzzleLen: 0.08, muzzleR: 0.045, neckTilt: 0.85, neckLen: 0.06,
     ear: { kind: 'floppy', size: 0.7, back: 0x3a2e26 }, tail: { kind: 'stub' },
     size: 1.05,
@@ -544,7 +593,7 @@ const monkey = () =>
 
 const unicorn = () =>
   quadruped({
-    coat: 0xfbf8fb, under: 0xffffff, legs: 0xf6f0f6, muzzle: 0xf9eef6, nose: 0xe4b6cc, noseR: 0.01, eye: 0x3a1e5a, eyeR: 0.02, feet: 'hoof', hoof: 0xd8b8f0,
+    hackles: false, coat: 0xfbf8fb, under: 0xffffff, legs: 0xf6f0f6, muzzle: 0xf9eef6, nose: 0xe4b6cc, noseR: 0.01, eye: 0x3a1e5a, eyeR: 0.02, feet: 'hoof', hoof: 0xd8b8f0,
     bodyR: 0.15, bodyLen: 0.44, chest: 1.1, legLen: 0.34, legR: 0.03, headR: 0.085, muzzleLen: 0.14, muzzleR: 0.045, neckTilt: 0.45, neckLen: 0.22, neckR: 0.065, headPitch: 0.7, eyeX: 0.62,
     ear: { kind: 'point', size: 0.75, inner: 0xf2c2e0 },
     tail: { kind: 'flowing', len: 0.42, lift: -0.4, curl: 0.12, r: 0.05, colors: [0xff9ad5, 0xc6a2ff, 0x9ad8ff, 0xa8f0c8, 0xfff0a0] },
@@ -593,7 +642,8 @@ function penguin() {
   head.add(mesh(sph(0.115), black, [0, 0, 0], [0.95, 1, 1.05]))
   for (const side of [-1, 1]) {
     head.add(mesh(sph(0.05), gold, [side * 0.085, -0.03, -0.01], [0.5, 1.2, 0.8], [0, 0, side * 0.3]))
-    eye(head, side * 0.06, 0.025, 0.085, 0.014, 0x1a1210)
+    eye(head, side * 0.06, 0.025, 0.085, 0.016, 0xd8261e) // red, glowing
+    head.add(mesh(new THREE.BoxGeometry(0.05, 0.012, 0.02), gold, [side * 0.056, 0.05, 0.09], [1, 1, 1], [-0.3, side * 0.3, side * 0.5])) // angry brow
   }
   // The bill: long, slender, slightly down-curved, with an orange stripe.
   const bill = mesh(cone(0.026, 0.16, 8), black, [0, -0.015, 0.17], [1, 1, 0.8], [Math.PI / 2 + 0.15, 0, 0])
@@ -642,6 +692,7 @@ function turtle() {
   const scuteMat = fur(0x8a6a34, { roughness: 0.55 })
   const rimMat = fur(0xc9a860, { roughness: 0.6 })
   const skin = fur(0x8a8a5a)
+  const spikeMat = fur(0x3a2c14, { roughness: 0.5 })
   const shell = new THREE.Group()
   shell.position.y = 0.14
   root.add(shell)
@@ -655,6 +706,10 @@ function turtle() {
     const p = mesh(new THREE.CylinderGeometry(r, r * 1.08, 0.025, 6), scuteMat, [x, ny * 0.34 * 0.82 + 0.005, z])
     p.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(nx * 0.8, ny, nz * 0.8).normalize())
     shell.add(p)
+    // A thorny spike out of each plate, like a snapping turtle.
+    const spike = mesh(cone(r * 0.3, r * 1.1, 5), spikeMat, [x, ny * 0.34 * 0.82 + r * 0.5, z])
+    spike.quaternion.copy(p.quaternion)
+    shell.add(spike)
   }
   for (const z of [-0.17, 0, 0.17]) plate(0, z, 0.085)
   for (let i = 0; i < 8; i++) {
@@ -670,7 +725,11 @@ function turtle() {
   neck.add(head)
   head.add(mesh(sph(0.07), skin, [0, 0, 0], [0.9, 0.85, 1.2]))
   head.add(mesh(sph(0.035), fur(0x6a6a44), [0, -0.025, 0.065], [1.2, 0.6, 1])) // beak-like jaw
-  for (const side of [-1, 1]) eye(head, side * 0.045, 0.02, 0.045, 0.013, 0x1a1408)
+  head.add(mesh(cone(0.018, 0.05, 6), fur(0x3a3420, { roughness: 0.4 }), [0, -0.02, 0.1], [1.3, 1, 1], [Math.PI + 0.3, 0, 0])) // hooked snapping beak
+  for (const side of [-1, 1]) {
+    eye(head, side * 0.045, 0.02, 0.045, 0.014, 0xe0a020)
+    head.add(mesh(new THREE.BoxGeometry(0.04, 0.012, 0.02), fur(0x4a4a2e), [side * 0.042, 0.045, 0.05], [1, 1, 1], [-0.3, side * 0.3, side * 0.5])) // scowl
+  }
   const legs = []
   for (const [x, z, phase] of [[-0.24, 0.24, 0], [0.24, -0.24, 0], [0.24, 0.24, Math.PI], [-0.24, -0.24, Math.PI]]) {
     const pivot = new THREE.Group()
@@ -696,7 +755,7 @@ function turtle() {
 // How much bigger the ground walkers are than petModels.js's usual ~0.9-unit pet scale, so they
 // read as real animals next to the player (~1.2 tall). The model goes inside a fresh root,
 // because pets.js owns the root's scale (it grows the pet in when it spawns).
-export const GROUND_PET_SCALE = 1.5
+export const GROUND_PET_SCALE = 1.8
 const grown = (build) => () => {
   const model = build()
   model.scale.setScalar(GROUND_PET_SCALE)

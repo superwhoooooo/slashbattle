@@ -239,6 +239,7 @@ function strikeTarget(pet, target, ctx) {
   const look = STRIKES[def.strike] ?? STRIKES.bite
   pet.timer = def.interval / (pet.rate ?? 1)
   pet.strikeT = STRIKE_TIME
+  mesh.userData.snarl = 1 // real animals bare their teeth (petAnimals.js)
   // Animals with claws rake the enemy (a scratch across the screen); everyone else throws sparks.
   if (mesh.userData.claws && ctx.onScratch) ctx.onScratch(target, def)
   else burst(ctx.particleSystem, { x: (mesh.position.x + target.position.x) / 2, y: 0.7, z: (mesh.position.z + target.position.z) / 2 }, def.color, look.sparks, look.speed)
@@ -275,6 +276,7 @@ function pulse(pet, ctx) {
   if (inReach.length === 0) return
   pet.timer = def.interval / (pet.rate ?? 1)
   pet.strikeT = STRIKE_TIME
+  mesh.userData.snarl = 1
   if (mesh.userData.claws && ctx.onScratch) inReach.slice(0, 3).forEach((target) => ctx.onScratch(target, def))
   else burst(ctx.particleSystem, { x: mesh.position.x, y: 0.5, z: mesh.position.z }, def.color, 14, def.radius * 1.3)
   if (ctx.shockwavePool) spawnShockwave(ctx.shockwavePool, mesh.position.x, mesh.position.z, def.radius, def.color)
