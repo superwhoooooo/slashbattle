@@ -112,7 +112,7 @@ export function createTouchControls(input, hud) {
   // Any touch on the play area also nudges a cutscene along.
   for (const zone of [moveZone, aimZone]) {
     zone.addEventListener('pointerdown', () => {
-      input.tapKey('Space')
+      if (!input.wildsKeys) input.tapKey('Space') // in the Wilds Space is the jump, not 'next'
       layer.classList.add('used')
     })
   }
@@ -134,10 +134,12 @@ export function createTouchControls(input, hud) {
     },
   })
 
+  let attackKey = 'Space'
   attachStick(aimZone, {
     onStart() {
       input.touchAim.active = true
-      input.holdKey('Space', true) // holding the aim stick is holding attack
+      attackKey = input.wildsKeys ? 'KeyN' : 'Space'
+      input.holdKey(attackKey, true) // holding the aim stick is holding attack
     },
     onChange(x, y, strength) {
       input.touchAim.dx = x
@@ -147,7 +149,7 @@ export function createTouchControls(input, hud) {
     onEnd() {
       input.touchAim.active = false
       input.touchAim.aiming = false
-      input.holdKey('Space', false)
+      input.holdKey(attackKey, false)
     },
   })
 
@@ -168,7 +170,9 @@ export function createTouchControls(input, hud) {
   }
 
   const actions = el('div', 'touch-actions')
-  addButton(actions, 'HIDE', 'big', () => input.tapKey('KeyE'))
+  const jumpButton = addButton(actions, 'JUMP', 'big', () => input.tapKey('Space'))
+  jumpButton.style.display = 'none'
+  const hideButton = addButton(actions, 'HIDE', 'big', () => input.tapKey('KeyE'))
   addButton(actions, 'CHEST', 'big', () => input.tapKey('KeyF'))
   layer.appendChild(actions)
 
@@ -221,6 +225,12 @@ export function createTouchControls(input, hud) {
 
   return {
     // main.js: show the DIVE button only in a water room; it reads SURFACE while you're under.
+    // main.js: in the Wilds the E button talks to villagers and a JUMP button appears (Space = jump).
+    setWilds(on, canTalk) {
+      jumpButton.style.display = on ? '' : 'none'
+      hideButton.textContent = on ? 'TALK' : 'HIDE'
+      hideButton.classList.toggle('ready', Boolean(canTalk))
+    },
     setWater(inWater, diving) {
       diveButton.style.display = inWater ? '' : 'none'
       diveButton.textContent = diving ? 'SURFACE' : 'DIVE'

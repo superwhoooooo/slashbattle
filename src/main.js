@@ -50,6 +50,7 @@ import { createTouchControls, isTouchDevice } from './touch.js'
 import { sandboxToggleItem, sandboxTopUp } from './logic/sandbox.js'
 import { createAudio } from './audio.js'
 import { createMonsterMesh } from './characters.js'
+import { GRAPHICS_LABELS, getGraphicsStyle, nextGraphicsStyle, setGraphicsStyle } from './graphicsStyle.js'
 import { updateFace3D } from './face3d.js'
 import { animateAlive } from './alive.js'
 import { loadHighScore, saveHighScore } from './highScore.js'
@@ -2105,7 +2106,7 @@ function stepWorld(game, now, dt = 0) {
     }
   }
   const canTalk = nearest && nearestDistance < TALK_RANGE && !game.player.hidden && game.player.hp > 0 && !game.cutscene
-  questUi.setPrompt(canTalk && !lastHidePrompt ? `E  Talk to ${nearest.def.name}` : null)
+  questUi.setPrompt(canTalk && !lastHidePrompt ? `${input.touchMode ? 'Tap TALK' : 'E'}  to talk to ${nearest.def.name}` : null)
   if (canTalk && !lastHidePrompt && dt > 0 && input.wasHidePressed()) openTalk(game, nearest)
   questUi.setTracker(w.quests)
 
@@ -3162,6 +3163,17 @@ window.addEventListener('keydown', (event) => {
   } else if (event.code === 'KeyT') bankRunCrystals()
 })
 document.getElementById('hub-open-btn')?.addEventListener('click', () => hub.open('loadout'))
+// Graphics style (monster look), picked on the start card and remembered.
+const graphicsBtn = document.getElementById('graphics-btn')
+function showGraphicsStyle() {
+  if (graphicsBtn) graphicsBtn.textContent = `Graphics: ${GRAPHICS_LABELS[getGraphicsStyle()]}`
+}
+graphicsBtn?.addEventListener('click', () => {
+  if (started) return
+  setGraphicsStyle(nextGraphicsStyle())
+  showGraphicsStyle()
+})
+showGraphicsStyle()
 touchControls?.addMenuButton(() => (hub.isOpen() ? hub.close() : hub.open('skills')), 'SKILLS')
 touchControls?.addMenuButton(bankRunCrystals, 'BANK')
 
@@ -3211,7 +3223,7 @@ function dismissStartCard(event) {
   // press both landing on the same frame and dismissing it twice.
   if (started) return
   // Opening the hub (its button, or keys 6 / 7 / 9) or typing inside it isn't "start".
-  if (hub.isOpen() || event?.target?.closest?.('#hub-open-btn, #hub-root') || HUB_KEYS[event?.code]) return
+  if (hub.isOpen() || event?.target?.closest?.('#hub-open-btn, #hub-root, #graphics-btn') || HUB_KEYS[event?.code]) return
   started = true
   // The card goes away first, and each step below is guarded: one failing (audio on an odd
   // browser, a bad saved profile) must never leave the card up with every click ignored.
@@ -3664,6 +3676,7 @@ function gameFrame(timestamp) {
     if (input.wasPressed('Digit0') && !waterState.diving) setFirstPerson(!firstPerson)
     if (firstPerson && input.touchAim.aiming) { fpYaw -= input.touchAim.dx * TOUCH_LOOK_SPEED * deltaSeconds; fpPitch = Math.max(-FP_PITCH_LIMIT, Math.min(FP_PITCH_LIMIT, fpPitch - (input.touchAim.dy || 0) * TOUCH_LOOK_SPEED * deltaSeconds)) }
     touchControls?.setWater(Boolean(room), waterState.diving)
+    touchControls?.setWilds(Boolean(game.world))
   }
   stepWater(elapsedSeconds, deltaSeconds)
   input.wildsKeys = Boolean(game?.world)

@@ -17,6 +17,8 @@ import {
 } from './config.js'
 import { createFace3D } from './face3d.js'
 import { createJellyBody } from './jelly.js'
+import { getGraphicsStyle } from './graphicsStyle.js'
+import { addHorns, createShardMaterial, restyleFace, smoothGeometry } from './shardStyle.js'
 import { PLAYER_FACE, pickFaceOptions } from './logic/faceOptions.js'
 import { WEAPONS, weaponBase } from './logic/items.js'
 import { applyWeaponPose } from './weaponAnim.js'
@@ -846,8 +848,10 @@ function addRings(group, stats, y) {
 
 export function createMonsterMesh(type, rng = Math.random) {
   const stats = MONSTER_TYPES[type]
-  const geometry = GEOMETRY_BUILDERS[stats.shape](stats.size)
-  const material = createJellyMaterial(stats.color)
+  const shard = getGraphicsStyle() === 'shard'
+  let geometry = GEOMETRY_BUILDERS[stats.shape](stats.size)
+  if (shard && (stats.shape === 'sphere' || stats.shape === 'icosahedron')) geometry = smoothGeometry(geometry)
+  const material = shard ? createShardMaterial(stats.color, { rim: stats.boss ? 0.65 : 0.5 }) : createJellyMaterial(stats.color)
   const bodyCenterY = monsterBodyCenterY(stats, geometry)
   const group = createJellyBody(geometry, material, stats.edgeColor, bodyCenterY)
 
@@ -864,6 +868,10 @@ export function createMonsterMesh(type, rng = Math.random) {
   })
   group.add(face.group)
   group.userData.face3d = face
+  if (shard) {
+    restyleFace(face, !!stats.boss)
+    if (stats.boss || stats.shape === 'box') addHorns(group, geometry, bodyCenterY, stats.size)
+  }
 
   const chaseIndicator = createIndicatorSprite('!')
   const searchIndicator = createIndicatorSprite('?')

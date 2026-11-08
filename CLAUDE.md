@@ -124,6 +124,9 @@ slashbattle/
     logic/bosses.js    # the seven bosses (stats, specials, dialogue), boss order/scaling
     logic/cutscene.js  # the boss-intro cutscene timeline (enter -> talk -> title -> done), concierge intro line
     logic/hitstop.js   # hitstop freeze state (triggerHitstop / stepHitstop)
+    logic/status.js    # freeze / slow / Time Warp rules (applyFreeze, statusTimeScale; bosses are slowed, not frozen)
+    graphicsStyle.js   # the saved monster look ('jelly' | 'shard'), picked on the start card
+    shardStyle.js      # the Shardfall-like look: skin-textured rim-lit body, cream eyes, horns
     logic/hudText.js   # HUD phrasing (enemiesLeftText)
     logic/tricks.js    # kill trick names (nameTrick) and the chain multiplier (stepChain)
     logic/announcements.js # the resort PA lines (wave start/cleared, boss incoming, low hp, ambush)
@@ -777,3 +780,15 @@ next run). A dragon is never added to the pet collection or a loadout, and the s
 everything unlocked) is what `dragonSetup` / `setDragonOption` / `unlockDragonPart` work on. Each dragon always has its own starting
 skin and breath; the rest drop from chests (`availableLoot`'s `skin` / `breath` loot, their own rare `dragonpart` category at weight
 0.12, about 1 chest in 25) only while a dragon is out. A new one goes straight onto the dragon you have out.
+
+## Shardfall-inspired abilities and graphics style
+Four abilities borrowed from the Shardfall game: **Frost Lance** (`frostlance`: a huge piercing bullet with `bullet.freeze`,
+applied in `bullets.js`), **Glacial Burst** (`glacier`: freezes everything in a radius), **Time Warp** (`timewarp`:
+`monster.js`'s `setTimeWarp` slows every monster's clock to 40%, enemy orbs slow too, you fire 23% faster) and **Whirlwind**
+(`whirl`: `main.js`'s `updateWhirlwind` spins you, hits everything close every 0.3s, shreds enemy orbs via
+`destroyProjectilesNear`, +30% speed). Frozen monsters do nothing and wear an ice shell (`updateFrozenLook`); bosses are only
+slowed (`logic/status.js`: `applyFreeze`, `applySlow`, `statusTimeScale`, which `updateMonster` applies to its `dt`).
+The start card's **Graphics** button (`src/graphicsStyle.js`, `localStorage` `slashbattle:graphics`) switches monsters between
+the Jelly look and the Shardfall look (`src/shardStyle.js`, used by `characters.js`'s `createMonsterMesh`: a skin-textured,
+bump-mapped body with a fresnel rim light, smooth round bodies, plain cream eyes (red for bosses), no mouth, bone horns on
+bosses and boxy monsters). It applies to monsters created after the choice, so pick it before starting a run.
