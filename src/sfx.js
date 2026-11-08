@@ -271,6 +271,38 @@ export function createSfx(audio) {
       }
     },
 
+    // One dialogue blip (logic/bossVoice.js's babbleFor): a bendy, wobbly, sometimes growly little
+    // voice note. Not positional: the cutscene is up close. Never throws.
+    babble(blip) {
+      const ctx = audio.context
+      if (!ctx || !blip) return
+      try {
+        const time = ctx.currentTime
+        const peak = 0.16
+        const osc = ctx.createOscillator()
+        osc.type = blip.wave
+        osc.frequency.setValueAtTime(blip.freq, time)
+        osc.frequency.exponentialRampToValueAtTime(Math.max(30, blip.freq * blip.slide), time + blip.dur)
+        if (blip.wobble > 0) {
+          const lfo = ctx.createOscillator()
+          const depth = ctx.createGain()
+          lfo.frequency.value = 18 + blip.wobble * 14
+          depth.gain.value = blip.freq * 0.08 * blip.wobble
+          lfo.connect(depth)
+          depth.connect(osc.frequency)
+          lfo.start(time)
+          lfo.stop(time + blip.dur + 0.05)
+        }
+        osc.connect(envelope(ctx, audio.master, time, peak, 0.006, blip.dur))
+        osc.start(time)
+        osc.stop(time + blip.dur + 0.05)
+        if (blip.fifth > 0) tone(ctx, audio.master, 'triangle', blip.freq * blip.fifth, time, blip.dur, peak * 0.6, { attack: 0.006, freqEnd: Math.max(30, blip.freq * blip.fifth * blip.slide) })
+        if (blip.growl > 0) noise(ctx, audio.master, sharedNoiseBuffer(ctx), time, blip.dur, peak * blip.growl * 2, 'bandpass', blip.freq * 1.5, { attack: 0.006, q: 2 })
+      } catch {
+        // Ignore: never let a synthesis glitch break the cutscene.
+      }
+    },
+
     // Keeps the shared AudioContext's listener at the camera's position
     // and facing, so positional voices pan/attenuate correctly. Call
     // every frame once the camera has settled for that frame.

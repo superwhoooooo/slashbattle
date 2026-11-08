@@ -676,3 +676,9 @@ Each dragon species also has its own **special ability** (`SPECIALS` in `logic/d
 fired on a cooldown once an enemy is in range: Cinderwing's Meteor Rain, Glacier's Blizzard, Stormcaller's Thunderstorm,
 Nightshade's Toxic Cloud, Aurelia's Aurora Nova (hurts enemies, heals you) and Voidmaw's Void Beam (a charged, huge line of
 energy). The special's colour follows the dragon's scale.
+
+## Boss dialogue noises
+While a boss's line types out in the intro cutscene, each other letter blips (`logic/bossVoice.js`: a per-boss `BOSS_VOICES`
+profile of waveform, base pitch, letter spread, slide, wobble, growl and an eerie extra partial; the letter picks the pitch;
+`newestBlip` allows one blip a frame). `sfx.babble` synthesizes it (wobbles via an LFO on the pitch, growl via filtered noise);
+the concierge has a soft polite voice and the boss's name slamming on screen plays `bossSlam`. Wired in `main.js`'s `runCutscene`.

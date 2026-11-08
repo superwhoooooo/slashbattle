@@ -197,6 +197,7 @@ import { crystalDrops } from './logic/crystals.js'
 import { isInPool } from './logic/resortLayout.js'
 import { createChainState, hasChainExpired, nameTrick, stepChain, trickPoints } from './logic/tricks.js'
 import { killVoiceForTrick } from './logic/sfx.js'
+import { newestBlip, voiceFor } from './logic/bossVoice.js'
 import { CUTSCENE_ENTER_DURATION, createCutscene, introLines, speakerFor, stepCutscene, visibleChars } from './logic/cutscene.js'
 import {
   addCrystals,
@@ -1930,6 +1931,17 @@ function runCutscene(game, advancePressed, deltaSeconds, elapsedSeconds) {
     return
   }
   const line = lines[lineIndex]
+  // Dialogue noises: the speaker's own babble for each newly typed letter (the concierge is polite, bosses are weird).
+  if (phase === 'talk') {
+    const shown = visibleChars(line, lineElapsed)
+    const before = cutscene.babbleLine === lineIndex ? cutscene.babbleShown : 0
+    cutscene.babbleLine = lineIndex
+    cutscene.babbleShown = shown
+    if (shown > before) sfx.babble(newestBlip(line, before, shown, voiceFor(lineIndex === 0 ? 'concierge' : boss.id)))
+  } else if (phase === 'title' && cutscene.babbleLine !== 'title') {
+    cutscene.babbleLine = 'title'
+    sfx.play('bossSlam') // the name slams on screen
+  }
   showCutscene(hud, {
     boss,
     phase,
