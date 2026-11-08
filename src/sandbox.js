@@ -4,7 +4,7 @@
 // (clear the arena, heal, drop a chest or pod, toggle god mode).
 // It's pure DOM -- main.js hands in the callbacks and calls `refresh`.
 import { iconImg } from './icons.js'
-import { BOSSES } from './logic/bosses.js'
+import { ALL_BOSSES as BOSSES } from './logic/bosses.js'
 import { ABILITIES, PETS, POWERUPS, WEAPONS } from './logic/items.js'
 import { LEVELS } from './logic/levels.js'
 import { MONSTER_TYPES } from './config.js'

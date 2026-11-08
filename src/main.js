@@ -233,7 +233,7 @@ import {
   waveSize,
 } from './logic/waves.js'
 import { enemyScale, SPLITS } from './logic/enemies.js'
-import { createMonsterAIState, separateMonsters, setDeepShield, setMonsterNavigator, setSurfaceShield, updateMonster, upgradeBossSpecials } from './monster.js'
+import { createMonsterAIState, separateMonsters, setDeepShield, setMonsterNavigator, setSurfaceShield, setWaterRoom, updateMonster, upgradeBossSpecials } from './monster.js'
 import { burst, createParticleSystem, resetParticles, setParticleViewScale, shardBurst, updateParticles } from './particles.js'
 import { createPet, disposePets, updatePets } from './pets.js'
 import { Player } from './player.js'
@@ -511,6 +511,13 @@ const waterY = (x, z, time) => waterState.depthY + waveHeight(x, z, time, waterR
 const DEEP_LURK_Y = -WATER.depth * 0.45
 function monsterSwimY(mesh, time) {
   const { x, z } = mesh.position
+  if (mesh.userData.amphibious) {
+    // A water boss sinks until its whole body is under (you see the shadow through the water); a diver
+    // finds it right at their own depth. During its intro (spawning / cutscene) it floats on top.
+    const surface = WATER.floatY + waveHeight(x, z, time, waterRoom()?.surface.amp ?? 0.2)
+    if (!mesh.userData.submerged || mesh.userData.spawning) return surface
+    return waterState.diving ? waterY(x, z, time) - 0.4 : surface - (mesh.userData.radius * 2.4 + 0.6)
+  }
   if (!mesh.userData.deep) return WATER.floatY + waveHeight(x, z, time, waterRoom()?.surface.amp ?? 0.2)
   return waterState.diving ? waterY(x, z, time) : DEEP_LURK_Y
 }
@@ -594,6 +601,7 @@ function resetWater() {
 function stepWater(now, dt) {
   const room = waterRoom()
   const { player } = game
+  setWaterRoom(Boolean(room))
   setDeepShield(Boolean(room) && !waterState.diving)
   setSurfaceShield(Boolean(room) && waterState.diving)
   applyFxDepth()
@@ -622,7 +630,7 @@ function stepWater(now, dt) {
   } else if (!waterState.diving && player.speed > 2 && Math.random() < 0.3) {
     burst(particleSystem, { x: player.position.x, y: 0.1 - fxDepthOffset(), z: player.position.z }, 0xffffff, 1, 1.3, 0.6)
   }
-  const lurking = game.monsters.some((m) => m.userData.deep && !m.userData.dying)
+  const lurking = game.monsters.some((m) => (m.userData.deep || m.userData.submerged) && !m.userData.dying)
   waterUi.update({ room: true, diving: waterState.diving, fraction: waterState.breath / WATER.breath, lurking })
 }
 
@@ -1798,6 +1806,39 @@ function reflectAttack(game, info) {
   }
 }
 
+// The urchin prince's beam: a red warning line while it charges, then a bright column that hurts anything on the
+// line (a diver or a floater alike). Short-lived meshes; `kind` is 'warn' or 'beam'.
+const bossBeams = []
+function addBossBeam(event, kind, life) {
+  const mid = -0.7 // between the surface and a diver's depth, so it reads from both
+  const half = event.length / 2
+  const mat = (color, opacity) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false, fog: false })
+  const group = new THREE.Group()
+  const widths = kind === 'warn' ? [[0.12, 0xff3355, 0.7]] : [[0.45, 0xffffff, 0.95], [event.width, 0xdbb8ff, 0.55], [event.width * 1.8, 0x8a3df0, 0.2]]
+  const parts = widths.map(([w, color, opacity]) => {
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(w, w, event.length, 12), mat(color, opacity))
+    group.add(m)
+    return { m, opacity }
+  })
+  group.position.set(event.x + Math.sin(event.aim) * half, mid, event.z + Math.cos(event.aim) * half)
+  group.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(Math.sin(event.aim), 0, Math.cos(event.aim)))
+  scene.add(group)
+  bossBeams.push({ group, parts, kind, life, age: 0 })
+}
+function updateBossBeams(dt) {
+  for (let i = bossBeams.length - 1; i >= 0; i--) {
+    const b = bossBeams[i]
+    b.age += dt
+    const t = b.age / b.life
+    for (const { m, opacity } of b.parts) m.material.opacity = opacity * (b.kind === 'warn' ? 0.5 + 0.5 * Math.sin(b.age * 24) : Math.max(0, 1 - t))
+    if (b.kind === 'beam') b.group.scale.set(1 + t * 0.4, 1, 1 + t * 0.4)
+    if (t >= 1) {
+      disposeObject3D(b.group)
+      bossBeams.splice(i, 1)
+    }
+  }
+}
+
 const pendingSummons = []
 const pendingSplits = []
 
@@ -1810,10 +1851,15 @@ function applyBossEvents(game, bossMesh, events, now) {
   const { player } = game
   let hurtPlayer = false
   // A diver is out of reach of anything on the surface (only deep dwellers' moves reach them).
-  const playerDistance = (x, z) => (player.diving && !bossMesh.userData.deep ? Infinity : Math.hypot(player.position.x - x, player.position.z - z))
+  const playerDistance = (x, z) => (player.diving && !bossMesh.userData.deep && !bossMesh.userData.reachAll ? Infinity : Math.hypot(player.position.x - x, player.position.z - z))
   for (const event of events) {
     if (event.type === 'slam') {
-      spawnShockwave(shockwavePool, event.x, event.z, event.radius, 0xff3355)
+      if (event.geyser) {
+        // A geyser erupts from under the marked spot: a column of spray.
+        burst(particleSystem, { x: event.x, y: 0.4 - fxDepthOffset(), z: event.z }, 0xbff6ff, 40, 6, 2.2)
+        burst(particleSystem, { x: event.x, y: 1.5 - fxDepthOffset(), z: event.z }, 0xffffff, 24, 3, 3)
+      }
+      spawnShockwave(shockwavePool, event.x, event.z, event.radius, event.geyser ? 0x6ee7ff : 0xff3355)
       warp.add('ripple', event.x, event.z, event.radius * 1.1, 0.6)
       burst(particleSystem, { x: event.x, y: 0.3, z: event.z }, 0xff9a5a, 36, 4.5)
       sfx.play('bossSlam', { x: event.x, z: event.z })
@@ -1839,6 +1885,55 @@ function applyBossEvents(game, bossMesh, events, now) {
       // Deferred: we're mid-way through filtering game.monsters, which is
       // reassigned afterward and would drop anything spawned right now.
       pendingSummons.push({ bossMesh, count: event.count, maxMinions: event.maxMinions })
+    } else if (event.type === 'warn') {
+      // A ring on the water where something is about to erupt from below.
+      spawnShockwave(shockwavePool, event.x, event.z, event.radius, 0xffd15c)
+      sfx.play('podIn', { x: event.x, z: event.z })
+    } else if (event.type === 'beamWarn') {
+      addBossBeam(event, 'warn', event.duration)
+      sfx.play('podIn', { x: event.x, z: event.z })
+    } else if (event.type === 'beam') {
+      addBossBeam(event, 'beam', 0.7)
+      warp.add('ripple', event.x, event.z, 8, 0.6)
+      sfx.play('bossSlam', { x: event.x, z: event.z })
+      input.rumble(RUMBLE_STRONG_STRENGTH, RUMBLE_STRONG_DURATION)
+      // Distance from the player to the beam's line (it only goes forward from the boss).
+      const px = player.position.x - event.x
+      const pz = player.position.z - event.z
+      const along = px * Math.sin(event.aim) + pz * Math.cos(event.aim)
+      const across = Math.abs(px * Math.cos(event.aim) - pz * Math.sin(event.aim))
+      if (along > 0 && along < event.length && across <= event.width + 0.6 && player.damagePlayer(event.damage, now)) hurtPlayer = true
+      triggerShake(game.shake, SHAKE_DAMAGE_MAGNITUDE * 1.5, SHAKE_DAMAGE_DURATION)
+    } else if (event.type === 'dive') {
+      burst(particleSystem, { x: event.x, y: 0.2 - fxDepthOffset(), z: event.z }, 0xbff6ff, 36, 4.5)
+      sfx.play('podIn', { x: event.x, z: event.z })
+    } else if (event.type === 'breach') {
+      // Bursts up out of the water under you: a ring that hurts (diving or not), and the urchin's spines fly.
+      spawnShockwave(shockwavePool, event.x, event.z, event.radius, 0x6ee7ff)
+      warp.add('ripple', event.x, event.z, event.radius * 1.2, 0.7)
+      burst(particleSystem, { x: event.x, y: 0.5 - fxDepthOffset(), z: event.z }, 0xffffff, 48, 6, 2.5)
+      sfx.play('bossSlam', { x: event.x, z: event.z })
+      if (Math.hypot(player.position.x - event.x, player.position.z - event.z) <= event.radius && player.damagePlayer(event.damage, now)) hurtPlayer = true
+      triggerShake(game.shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
+      if (event.spines > 0) {
+        const spread = Math.PI * 2 * (event.spines - 1) / event.spines
+        for (const { vx, vz } of fanVelocities(0, event.spines, spread, 8)) {
+          fireProjectile(projectilePool, { x: event.x, z: event.z, vx, vz, damage: Math.round(event.damage * 0.5), color: 0xdbb8ff, size: 1 })
+        }
+      }
+    } else if (event.type === 'pull') {
+      // The angler's light drags you across the water toward it.
+      const dx = event.x - player.position.x
+      const dz = event.z - player.position.z
+      const d = Math.hypot(dx, dz)
+      if (d > event.stopAt && d < event.range) {
+        const step = Math.min(event.strength, d - event.stopAt)
+        player.position.x += (dx / d) * step
+        player.position.z += (dz / d) * step
+        player.mesh.position.x = player.position.x
+        player.mesh.position.z = player.position.z
+        if (Math.random() < 0.4) burst(particleSystem, { x: player.position.x, y: 0.6 - fxDepthOffset(), z: player.position.z }, 0xfff1a8, 1, 1)
+      }
     } else if (event.type === 'blink') {
       burst(particleSystem, { x: event.from.x, y: 1, z: event.from.z }, 0xe9a3ff, 24, 3)
       burst(particleSystem, { x: event.to.x, y: 1, z: event.to.z }, 0xe9a3ff, 24, 3)
@@ -2004,6 +2099,7 @@ function changeLevel(game, levelIndex) {
   game.arena = arena
   game.props = arena.propObstacles
   game.levelIndex = levelIndex
+  game.waveState = { ...game.waveState, inWater: Boolean(level.water) } // water rooms only get the water bosses
   resetWater()
   if (!level.water) {
     game.player.mesh.position.y = 0
@@ -2472,6 +2568,7 @@ function restartGame() {
   warp.reset()
   warpFields.length = 0
   meteors.splice(0).forEach(disposeMeteor)
+  bossBeams.splice(0).forEach((b) => disposeObject3D(b.group))
   bulwarkWalls.splice(0).forEach(removeBulwarkWall)
   pendingSummons.length = 0
   clearSwingTrail(swingTrail)
@@ -3125,6 +3222,7 @@ function gameFrame(timestamp) {
   updateShockwaves(shockwavePool, gameplayDelta)
   updateWarpFields(game, gameplayDelta, elapsedSeconds)
   updateMeteors(game, gameplayDelta)
+  updateBossBeams(gameplayDelta)
   updateBulwarkWalls(elapsedSeconds)
   updateBuffAuras(player, elapsedSeconds, gameplayDelta)
   setGhostLook(player.mesh, elapsedSeconds < (player.ghostUntil ?? -Infinity) ? 0.28 : 1)

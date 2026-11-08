@@ -3,7 +3,7 @@
 // controller's phase state machine, and the score awarded for a kill or
 // a cleared wave. Kept free of Three.js imports so Vitest can exercise
 // it without WebGL; the Three-side driver lives in main.js.
-import { bossForFight, bossById, shuffleBossOrder, wavesBeforeBoss } from './bosses.js'
+import { bossForFight, bossById, shuffleBossOrder, shuffleWaterBossOrder, waterBossForFight, wavesBeforeBoss } from './bosses.js'
 
 export const WAVE_BASE_SIZE = 4
 export const WAVE_GROWTH = 4
@@ -86,6 +86,10 @@ export function createWaveState(rng = Math.random) {
     bossesDefeated: 0,
     wavesUntilBoss: wavesBeforeBoss(0),
     bossOrder: shuffleBossOrder(rng),
+    // In a water room (main.js sets `inWater` when the place changes) only the three water bosses arrive.
+    inWater: false,
+    waterBossOrder: shuffleWaterBossOrder(rng),
+    waterBossesDefeated: 0,
   }
 }
 
@@ -96,6 +100,7 @@ export function isBossNext(state) {
 
 // The boss this run meets next (or is fighting right now).
 export function currentBoss(state) {
+  if (state.inWater) return waterBossForFight(state.waterBossOrder, state.waterBossesDefeated)
   return bossForFight(state.bossOrder, state.bossesDefeated)
 }
 
@@ -166,6 +171,7 @@ export function stepWaves(state, dt, aliveCount, rng = Math.random) {
       events.push('bossDefeated')
       next.waveNumber += 1
       next.bossesDefeated += 1
+      if (next.inWater) next.waterBossesDefeated += 1
       next.wavesUntilBoss = wavesBeforeBoss(next.bossesDefeated)
       next.phase = 'intermission'
       next.phaseElapsed = 0

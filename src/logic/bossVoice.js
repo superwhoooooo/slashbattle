@@ -25,6 +25,9 @@ export const BOSS_VOICES = {
   boss_mirror: { wave: 'sine', base: 880, range: 0.8, dur: 0.1, slide: 1.02, wobble: 0.05, growl: 0, fifth: 1.003 }, // shimmering echo
   boss_hopper: { wave: 'triangle', base: 200, range: 1.5, dur: 0.07, slide: 1.9, wobble: 0, growl: 0, fifth: 0 }, // boing
   boss_glimmer: { wave: 'sine', base: 640, range: 1.6, dur: 0.05, slide: 0.6, wobble: 0.4, growl: 0, fifth: 1.5 }, // twinkly zaps
+  boss_eel: { wave: 'sawtooth', base: 150, range: 1.9, dur: 0.035, slide: 1.4, wobble: 0.95, growl: 0.6, fifth: 1.414 }, // crackling static
+  boss_angler: { wave: 'sine', base: 330, range: 0.6, dur: 0.18, slide: 0.85, wobble: 0.35, growl: 0, fifth: 1.25 }, // a siren's slow, sweet hum
+  boss_urchin: { wave: 'square', base: 240, range: 1.0, dur: 0.05, slide: 0.9, wobble: 0.15, growl: 0.15, fifth: 1.12 }, // prissy little prickles
 }
 
 const FALLBACK_WAVES = ['sine', 'triangle', 'square', 'sawtooth']

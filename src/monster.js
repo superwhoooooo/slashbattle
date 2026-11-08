@@ -63,6 +63,12 @@ export function createMonsterAIState(stats = {}) {
     speedScale: 1,
     damageScale: 1,
     special: null,
+    // Water bosses (logic/bosses.js `amphibious`): they sink under the water and surface again, and
+    // their attacks reach you whether you float or dive.
+    amphibious: stats.amphibious ?? null,
+    reachAll: Boolean(stats.amphibious),
+    submerged: false,
+    tideTimer: stats.amphibious?.up ? stats.amphibious.up * 0.6 : 0,
     chargeRemaining: 0,
     leapY: 0, // height above its float/ground level while leaping
     windUpElapsed: null,
@@ -113,10 +119,16 @@ let surfaceShield = false
 export function setSurfaceShield(on) {
   surfaceShield = on
 }
-const shieldedFrom = (ai) => (deepShield && ai.deep === true) || (surfaceShield && ai.deep !== true)
-// Out of reach right now: a deep dweller while you're not diving.
+// True in a water room (main.js sets it every frame); water bosses only sink there.
+let inWaterRoom = false
+export function setWaterRoom(on) {
+  inWaterRoom = on
+}
+// A water boss reaches you wherever you are (it hits from underneath); everything else is shielded by depth.
+const shieldedFrom = (ai) => !ai.reachAll && ((deepShield && ai.deep === true) || (surfaceShield && ai.deep !== true))
+// Out of reach right now: a deep dweller, or a submerged water boss, while you're not diving.
 export function isUntouchable(monster) {
-  return deepShield && monster.userData.deep === true
+  return deepShield && (monster.userData.deep === true || monster.userData.submerged === true)
 }
 
 export function setMonsterNavigator(nav) {
@@ -204,7 +216,7 @@ function updateTelegraph(monster, ai) {
 // Starts one of a boss's specials (see BOSS_SPECIALS): a charge is an
 // instant dash; everything else winds up first (the boss stops, puffs up,
 // and slam/spin show their danger ring).
-function beginSpecial(monster, ai, stats, name) {
+function beginSpecial(monster, ai, stats, name, player, events) {
   const cfg = BOSS_SPECIALS[name]
   showIndicator(monster, 'chase')
   if (name === 'charge') {
@@ -213,6 +225,12 @@ function beginSpecial(monster, ai, stats, name) {
   }
   const radius = name === 'slam' || name === 'leap' ? cfg.radius : stats.radius + (cfg.radiusBonus ?? 0)
   ai.special = { name, phase: 'windup', remaining: cfg.windup, radius, tick: 0 }
+  if (name === 'geyser') {
+    // Marks the spot you stand on now; it erupts there when the wind-up ends, so keep moving.
+    ai.special.radius = cfg.radius
+    ai.special.target = { x: player.position.x, z: player.position.z }
+    events.push({ type: 'warn', x: player.position.x, z: player.position.z, radius: cfg.radius, duration: cfg.windup })
+  }
 }
 
 // The moment a wind-up ends: pushes the event the caller turns into damage
@@ -220,12 +238,18 @@ function beginSpecial(monster, ai, stats, name) {
 // into its whirling phase. `events` is the caller's list to append to.
 function fireSpecial(monster, ai, stats, player, obstacles, events) {
   const name = ai.special.name
+  const geyserTarget = ai.special.target
+  const beamAim = ai.special.aim
   const cfg = BOSS_SPECIALS[name]
   const x = monster.position.x
   const z = monster.position.z
   const damage = Math.round(stats.damage * (cfg.damageMultiplier ?? 1) * (ai.damageScale ?? 1))
 
   if (name === 'spin') {
+    ai.special = { ...ai.special, phase: 'active', remaining: cfg.duration, tick: 0 }
+    return
+  }
+  if (name === 'lure') {
     ai.special = { ...ai.special, phase: 'active', remaining: cfg.duration, tick: 0 }
     return
   }
@@ -239,6 +263,11 @@ function fireSpecial(monster, ai, stats, player, obstacles, events) {
 
   if (name === 'slam') {
     events.push({ type: 'slam', x, z, radius: cfg.radius, damage })
+  } else if (name === 'beam') {
+    events.push({ type: 'beam', x, z, aim: beamAim, length: cfg.length, width: cfg.width, damage })
+  } else if (name === 'geyser') {
+    const at = geyserTarget ?? { x, z }
+    events.push({ type: 'slam', geyser: true, x: at.x, z: at.z, radius: cfg.radius, damage })
   } else if (name === 'summon') {
     events.push({ type: 'summon', count: cfg.count, maxMinions: cfg.maxMinions })
   } else if (name === 'lob') {
@@ -279,7 +308,7 @@ function fireSpecial(monster, ai, stats, player, obstacles, events) {
 function stepBossSpecials(monster, ai, stats, player, obstacles, dt, events) {
   let speed = stats.speed
   const engaged = ai.state === 'chase' || ai.state === 'attack'
-  if (ai.special && !engaged && ai.special.phase !== 'air') ai.special = null // lost the player (they hid): fizzle
+  if (ai.special && !engaged && ai.special.phase !== 'air' && ai.special.name !== 'beam') ai.special = null // lost the player (they hid): fizzle
   if (!ai.special && !engaged) ai.chargeRemaining = 0
 
   if (ai.special) {
@@ -307,6 +336,14 @@ function stepBossSpecials(monster, ai, stats, player, obstacles, dt, events) {
         jellyHit(monster, 0.7) // a squash on landing
         ai.special = null
       }
+    } else if (special.name === 'lure') {
+      // Its light glows and drags you in, tick by tick (main.js moves the player on each 'pull').
+      const cfg = BOSS_SPECIALS.lure
+      jellyHit(monster, -MONSTER_ATTACK_WINDUP_INFLATE_RATE * dt * 0.5)
+      monster.rotation.y = dampAngle(monster.rotation.y, Math.atan2(player.position.x - monster.position.x, player.position.z - monster.position.z), MONSTER_FACING_DAMPING, dt)
+      ai.speed = 0
+      if (!player.hidden) events.push({ type: 'pull', x: monster.position.x, z: monster.position.z, strength: cfg.pull * dt, stopAt: stats.radius + 1.1, range: cfg.range })
+      if (special.remaining <= 0) ai.special = null
     } else {
       // Spinning: whirl in place-ish, creeping toward the player, and
       // hitting everything in range every tickInterval.
@@ -357,12 +394,67 @@ function stepBossSpecials(monster, ai, stats, player, obstacles, dt, events) {
         }
       }
       if (tick.fire) {
-        beginSpecial(monster, ai, stats, name)
+        beginSpecial(monster, ai, stats, name, player, events)
         break
       }
     }
   }
   return { speed, busy: false }
+}
+
+// A water boss's tide: `always` ones sink at once and stay under; the rest surface for `up` seconds, sink for
+// `down`, and BREACH back up (a warning ring 0.9s ahead, then a damaging eruption, plus a ring of spines for
+// the urchin). Does nothing outside a water room. Pushes 'dive' / 'warn' / 'breach' events.
+const BREACH_WARN = 0.9
+function stepAmphibious(monster, ai, stats, player, dt, events) {
+  const cfg = ai.amphibious
+  if (!cfg || !inWaterRoom) return
+  const x = monster.position.x
+  const z = monster.position.z
+  if (cfg.always) {
+    if (!ai.submerged) {
+      ai.submerged = true
+      events.push({ type: 'dive', x, z })
+    }
+    return
+  }
+  // The first hit it takes while floating: it notices you, sinks, and charges a heavy beam along your line.
+  if (cfg.beamOnHit) {
+    const hit = !ai.submerged && ai.hpSeen != null && ai.hp < ai.hpSeen
+    ai.hpSeen = ai.hp
+    if (hit) {
+      const beam = BOSS_SPECIALS.beam
+      const aim = Math.atan2(player.position.x - x, player.position.z - z)
+      ai.submerged = true
+      ai.tideTimer = cfg.down
+      ai.breachWarned = false
+      ai.special = { name: 'beam', phase: 'windup', remaining: beam.windup, radius: stats.radius, tick: 0, aim }
+      events.push({ type: 'dive', x, z })
+      events.push({ type: 'beamWarn', x, z, aim, length: beam.length, width: beam.width, duration: beam.windup })
+      return
+    }
+  }
+  if (ai.special) return // finish the move first
+  ai.tideTimer -= dt
+  const radius = stats.radius + 2.5
+  if (!ai.submerged) {
+    if (ai.tideTimer <= 0) {
+      ai.submerged = true
+      ai.tideTimer = cfg.down
+      ai.breachWarned = false
+      events.push({ type: 'dive', x, z })
+    }
+    return
+  }
+  if (ai.tideTimer <= BREACH_WARN && !ai.breachWarned) {
+    ai.breachWarned = true
+    events.push({ type: 'warn', x, z, radius, duration: BREACH_WARN })
+  }
+  if (ai.tideTimer <= 0) {
+    ai.submerged = false
+    ai.tideTimer = cfg.up
+    events.push({ type: 'breach', x, z, radius, damage: Math.round(stats.damage * 0.9 * (ai.damageScale ?? 1)), spines: cfg.spines ?? 0 })
+  }
 }
 
 // A shooter in range: backs off if you crowd it, otherwise holds its ground,
@@ -518,6 +610,7 @@ export function updateMonster(monster, player, obstacles, dt, now) {
   if (ai.specials ?? stats.specials) {
     ;({ speed, busy } = stepBossSpecials(monster, ai, stats, player, obstacles, dt, events))
   }
+  if (ai.amphibious) stepAmphibious(monster, ai, stats, player, dt, events)
   updateTelegraph(monster, ai)
 
   if (busy) {

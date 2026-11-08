@@ -36,6 +36,14 @@ export const BOSS_SPECIALS = {
   //         damaging puddle. Its flight/puddle numbers are RANGED_ATTACKS.boss_bloater's.
   lob: { interval: 5.5, windup: 0.6, damageMultiplier: 0.5 },
   leap: { interval: 5, windup: 0.45, duration: 0.75, radius: 2.6, damageMultiplier: 1.1, range: 11, height: 3.2 },
+  //   geyser - (water bosses) marks the spot you stand on, then erupts from UNDER it `windup` seconds
+  //            later: it hits whether you float on the surface or dive
+  //   lure - (the angler) its light drags you toward it for `duration` seconds at `pull` units/second
+  geyser: { interval: 6.5, windup: 1.1, radius: 3.4, damageMultiplier: 1.25 },
+  //   beam - (the urchin, never on a timer) fired the moment you hit it while it floats: it sinks, a red line
+  //          marks where you stood, and `windup` seconds later a heavy beam of `width` and `length` goes off
+  beam: { interval: 999, windup: 1.3, length: 42, width: 1.5, damageMultiplier: 2.4 },
+  lure: { interval: 12, windup: 0.5, duration: 2.8, pull: 5.5, range: 26, damageMultiplier: 1 },
 }
 
 const BOSS_DEFS = [
@@ -214,10 +222,60 @@ const BOSS_DEFS = [
   },
 ]
 
+
+// ---- The water bosses: the only bosses that arrive in a water room (and they never visit dry places).
+// Each is AMPHIBIOUS (`amphibious`): it spends `up` seconds on the surface, then sinks for `down` seconds
+// (untouchable unless you dive), and BREACHES back up under your feet (a telegraphed ring, then damage). Its
+// attacks reach you whether you float or dive ("reachAll"): a geyser erupts from below you, and a submerged boss
+// still bites. `always: true` (Volt Moray, Lady Lumina) never surfaces at all: they live UNDER the water, so you
+// must dive to hurt them while they zap, erupt and lure you from below. `spines` (the urchin) makes its breach fire a ring of spines, and `beamOnHit` makes the first hit you land while it
+// floats send it under and fire a powerful beam (so a diver gets ONE free hit per surfacing).
+const WATER_BOSS_DEFS = [
+  {
+    id: 'boss_eel',
+    name: 'VOLT MORAY',
+    title: 'Shock of the Century',
+    specials: ['charge', 'geyser', 'barrage'],
+    score: 1500,
+    stats: { shape: 'sphere', size: 3.0, accessory: 'eelBody', color: 0x2fe6b0, edgeColor: 0xeaffb0, speed: 2.8, hp: 1050, damage: 17, radius: 1.4, amphibious: { always: true } },
+    lines: [
+      'Bzzzt. Do not be alarmed. Bzzzzzt. Be a little alarmed.',
+      'I am an eel. I am also, legally, a lightning bolt. The paperwork is long.',
+      'You cannot hide on the surface. I am already underneath you.',
+    ],
+  },
+  {
+    id: 'boss_angler',
+    name: 'LADY LUMINA',
+    title: 'Follow the Pretty Light',
+    specials: ['lure', 'geyser', 'summon'],
+    score: 1600,
+    stats: { shape: 'sphere', size: 4.0, accessory: 'lure', color: 0x3a2fa8, edgeColor: 0x9fb0ff, speed: 1.5, hp: 1300, damage: 22, radius: 1.8, amphibious: { always: true } },
+    lines: [
+      'Oh! A visitor. Come closer. Closer. No, CLOSER.',
+      'Isn\'t my light lovely? Everyone says so, right before they stop saying anything.',
+      'Swim toward the glow, dear. It is perfectly safe. It is not.',
+    ],
+  },
+  {
+    id: 'boss_urchin',
+    name: 'PRINCE PRICKLEPANTS',
+    title: 'Do Not Hug',
+    specials: ['spin', 'geyser', 'barrage'],
+    score: 1550,
+    stats: { shape: 'dodecahedron', size: 3.4, accessory: 'spikes', color: 0x8a3df0, edgeColor: 0xdbb8ff, speed: 1.7, hp: 1150, damage: 18, radius: 1.7, amphibious: { up: 8, down: 5, spines: 14, beamOnHit: true } },
+    lines: [
+      'Greetings, peasant. Please do not touch the royal spikes.',
+      'It is a very sharp family. We have had to stop hugging.',
+      'I shall rise from beneath you, and I shall be VERY pointy about it.',
+    ],
+  },
+]
+
 // How far past the body's own radius a boss swings (and can be swung at).
 const BOSS_ATTACK_REACH = 1.2
 
-export const BOSSES = BOSS_DEFS.map((def) => ({
+const makeBoss = (def) => ({
   ...def,
   stats: {
     ...def.stats,
@@ -229,15 +287,34 @@ export const BOSSES = BOSS_DEFS.map((def) => ({
     knockbackScale: 0.2, // a boss barely budges from a sword hit (but can still be shoved off the edge)
     attackCooldown: 1.6,
   },
-}))
+})
+
+// The dry-land bosses, and the three that only ever appear in water rooms.
+export const BOSSES = BOSS_DEFS.map(makeBoss)
+export const WATER_BOSSES = WATER_BOSS_DEFS.map(makeBoss)
+export const ALL_BOSSES = [...BOSSES, ...WATER_BOSSES]
 
 export const BOSS_COUNT = BOSSES.length
 
 // Boss stats keyed by id, for folding into MONSTER_TYPES.
-export const BOSS_MONSTER_TYPES = Object.fromEntries(BOSSES.map((boss) => [boss.id, boss.stats]))
+export const BOSS_MONSTER_TYPES = Object.fromEntries(ALL_BOSSES.map((boss) => [boss.id, boss.stats]))
 
 export function bossById(id) {
-  return BOSSES.find((boss) => boss.id === id) ?? null
+  return ALL_BOSSES.find((boss) => boss.id === id) ?? null
+}
+
+// A shuffled order of the water bosses; `waterBossForFight` walks it by how many water fights were won.
+export function shuffleWaterBossOrder(rng = Math.random) {
+  const order = WATER_BOSSES.map((_, index) => index)
+  for (let i = order.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1))
+    ;[order[i], order[j]] = [order[j], order[i]]
+  }
+  return order
+}
+
+export function waterBossForFight(order, waterFightsWon) {
+  return WATER_BOSSES[order[waterFightsWon % order.length]]
 }
 
 // How many bosses are the originals (King Gloop ... Omega Jello): they are the
