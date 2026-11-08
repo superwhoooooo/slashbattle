@@ -7,7 +7,7 @@
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { HEMI_LIGHT_INTENSITY, KEY_LIGHT_OFFSET, KEY_LIGHT_SHADOW_EXTENT, SHADOW_MAP_SIZE, SKY_RADIUS } from './config.js'
-import { BIOMES, WORLD_RADIUS, biomeAt, groundColorAt, heightAt, mulberry32 } from './logic/world.js'
+import { BIOMES, LAKES, WATER_LEVEL, WORLD_RADIUS, biomeAt, groundColorAt, heightAt, mulberry32 } from './logic/world.js'
 
 // Stand-in for a logic/levels.js entry, so the sky/environment-map code can treat the world like a place.
 export const WORLD_LEVEL = {
@@ -236,6 +236,71 @@ const MODELS = {
     ],
     glow: [part(box(2.6, 0.12, 0.05), 0xb9a6ff, { y: 5.05, z: 0.68 })],
   }),
+  // A standing temple column: square plinth, fluted shaft, carved capital, a thread of rune light.
+  column: () => ({
+    lit: [
+      part(box(1.7, 0.45, 1.7), 0x8d86a3, { y: 0.22 }),
+      part(cyl(0.62, 0.72, 5.2, 8), 0xa7a0bd, { y: 3.05 }),
+      part(cyl(0.78, 0.66, 0.4, 8), 0x9b94b3, { y: 5.85 }),
+      part(box(1.8, 0.5, 1.8), 0x8d86a3, { y: 6.3 }),
+    ],
+    glow: [part(box(0.07, 3.4, 0.07), 0xb9a6ff, { x: 0.66, y: 3.0 }), part(ico(0.1, 1), 0xd9ccff, { y: 5.4, z: 0.7 })],
+  }),
+  // A snapped column: a jagged stump and a fallen drum lying beside it.
+  columnBroken: () => ({
+    lit: [
+      part(box(1.7, 0.45, 1.7), 0x7d7893, { y: 0.22 }),
+      part(cyl(0.62, 0.72, 2.2, 8), 0x9b94b3, { y: 1.55 }),
+      part(cone(0.7, 0.9, 5), 0x8d86a3, { y: 3.1, ry: 0.4 }),
+      part(cyl(0.6, 0.6, 1.4, 8), 0x8d86a3, { x: 1.5, y: 0.6, z: 0.6, rz: Math.PI / 2, ry: 0.5 }),
+      part(box(0.8, 0.5, 0.6), 0x7d7893, { x: -1.3, y: 0.25, z: -0.8, ry: 0.7 }),
+    ],
+    glow: [],
+  }),
+  // A crumbling wall with a gap, a few stones tumbled at its foot, moss-green on the top course.
+  ruinWall: () => ({
+    lit: [
+      part(box(3.4, 3.2, 0.9), 0x8d86a3, { x: -1.2, y: 1.6 }),
+      part(box(2.2, 1.6, 0.9), 0x7d7893, { x: 2.2, y: 0.8 }),
+      part(box(3.0, 0.3, 1.0), 0x5f7a52, { x: -1.2, y: 3.3 }),
+      part(box(0.7, 0.5, 0.6), 0x9b94b3, { x: 1.0, y: 0.25, z: 0.9, ry: 0.5 }),
+      part(box(0.5, 0.4, 0.5), 0x7d7893, { x: 3.2, y: 1.9, z: 0.1, ry: 0.2, rz: 0.2 }),
+    ],
+    glow: [],
+  }),
+  // The shrine: a stepped altar, an arch of two pillars and a lintel, a crystal hanging in the doorway.
+  shrine: () => ({
+    lit: [
+      part(box(4.2, 0.35, 4.2), 0x8d86a3, { y: 0.17 }),
+      part(box(3.0, 0.35, 3.0), 0x9b94b3, { y: 0.52 }),
+      part(box(0.7, 3.6, 0.7), 0xa7a0bd, { x: -1.2, y: 2.5 }),
+      part(box(0.7, 3.6, 0.7), 0xa7a0bd, { x: 1.2, y: 2.5 }),
+      part(box(3.4, 0.6, 0.9), 0x8d86a3, { y: 4.6 }),
+      part(cone(0.9, 0.7, 4), 0x7d7893, { y: 5.25, ry: Math.PI / 4 }),
+    ],
+    glow: [part(oct(0.5), 0x9ff0ff, { y: 2.6, sy: 1.5 }), part(ico(0.9, 1), 0x6dd8ff, { y: 2.6 }), part(box(2.2, 0.05, 2.2), 0xb9a6ff, { y: 0.72 })],
+  }),
+  // A ruined watchtower: a thick round shaft with arrow slits, a broken crown of battlements, a low doorway.
+  tower: () => {
+    const lit = [
+      part(cyl(2.9, 3.2, 1.0, 10), 0x7d7893, { y: 0.5 }),
+      part(cyl(2.4, 2.8, 10.5, 10), 0x8d86a3, { y: 6.0 }),
+      part(cyl(2.8, 2.5, 0.7, 10), 0x9b94b3, { y: 11.5 }),
+      part(box(1.4, 1.5, 0.3), 0x2a2540, { y: 1.9, z: 2.7 }),
+      part(cone(1.1, 1.4, 5), 0x7d7893, { x: -1.6, y: 12.5, z: 1.0 }),
+    ]
+    for (let i = 0; i < 7; i++) {
+      if (i === 2 || i === 5) continue // gaps in the battlements
+      const a = (i / 7) * Math.PI * 2
+      lit.push(part(box(0.95, 0.9 + (i % 3) * 0.3, 0.8), 0x9b94b3, { x: Math.cos(a) * 2.5, y: 12.1, z: Math.sin(a) * 2.5, ry: -a }))
+    }
+    return { lit, glow: [part(box(0.22, 1.3, 0.1), 0xffd990, { x: 0, y: 6.4, z: 2.45 }), part(box(0.22, 1.3, 0.1), 0xffd990, { x: 2.35, y: 8.4, z: 0.4, ry: 1.4 }), part(ico(0.4, 1), 0xb9a6ff, { y: 12.4 })] }
+  },
+  // The temple floor: two wide flagstone steps with a glowing rune ring (the columns, wall and shrine are props of their own).
+  temple: () => ({
+    lit: [part(cyl(12.5, 12.8, 0.1, 20), 0x8a84a0, { y: 0.05 }), part(cyl(9.8, 10.0, 0.18, 20), 0x9b94b3, { y: 0.1 })],
+    glow: [part(new THREE.TorusGeometry(7.4, 0.07, 4, 40), 0xb9a6ff, { y: 0.22, rx: Math.PI / 2 }), part(new THREE.TorusGeometry(4.6, 0.05, 4, 32), 0x9ff0ff, { y: 0.22, rx: Math.PI / 2 })],
+  }),
 }
 
 // ---- village buildings ---------------------------------------------------------------------------------
@@ -375,6 +440,20 @@ function createGround() {
   const ground = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ vertexColors: true, map: createGroundDetail(), roughness: 0.96, metalness: 0 }))
   ground.receiveShadow = true
   return ground
+}
+
+// Every lake's water: a translucent disc at the surface level. The lake beds dip below it, so the disc only shows
+// where the ground is under water.
+function createLakes() {
+  const group = new THREE.Group()
+  const material = new THREE.MeshStandardMaterial({ color: 0x2f9ad8, emissive: 0x0b3a66, emissiveIntensity: 0.55, roughness: 0.12, metalness: 0.15, transparent: true, opacity: 0.66, depthWrite: false })
+  for (const lake of LAKES) {
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(lake.radius * 1.55, 56).rotateX(-Math.PI / 2), material)
+    disc.position.set(lake.x, WATER_LEVEL, lake.z)
+    disc.renderOrder = 2
+    group.add(disc)
+  }
+  return group
 }
 
 // The continent is a floating island: a dark rocky cone hangs beneath it, and a thin glowing rim marks the edge.
@@ -593,6 +672,8 @@ export function createWorldArena() {
   group.add(keyLight.target)
 
   group.add(createGround(), createUnderside())
+  const lakes = createLakes()
+  group.add(lakes)
   const sky = createSky()
   group.add(sky)
 

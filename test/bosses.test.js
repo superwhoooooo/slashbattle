@@ -92,14 +92,12 @@ describe('wavesBeforeBoss / bossHpScale', () => {
     expect([0, 1, 2, 3].map(wavesBeforeBoss)).toEqual([1, 2, 3, 4])
   })
 
-  it('eases the first few boss fights, then gives full strength', () => {
-    expect(bossEase(0).damage).toBeLessThan(bossEase(1).damage)
-    expect(bossEase(0).hp).toBeLessThan(bossEase(2).hp)
-    expect(bossEase(3)).toEqual({ hp: 1, damage: 1 })
+  it('gives full strength from the very first boss fight', () => {
+    for (const n of [0, 1, 2, 3]) expect(bossEase(n)).toEqual({ hp: 1, damage: 1 })
   })
 
   it('makes later boss fights tougher', () => {
-    expect(bossHpScale(0)).toBeLessThan(0.6) // the opener goes easy
+    expect(bossHpScale(0)).toBe(1) // the opener is a real fight
     expect(bossHpScale(3)).toBeCloseTo(1.25 ** 3)
     expect(bossHpScale(4) / bossHpScale(3)).toBeCloseTo(1.25) // +25% every fight once the easing ends
     expect(bossHpScale(7)).toBeGreaterThan(bossHpScale(3))

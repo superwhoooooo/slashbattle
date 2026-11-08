@@ -678,6 +678,172 @@ function addSpikes(group, stats, bodyCenterY) {
   }
 }
 
+// ---- the crazy enemies' add-ons (logic/crazyEnemies.js). Each returns nothing and may set
+// group.userData.animateAcc(time), which main.js calls every frame. ----
+
+// Bumblo: two buzzing wings on its back.
+function addWings(group, stats, y) {
+  const s = stats.size
+  const mat = new THREE.MeshStandardMaterial({ color: 0xe8f6ff, transparent: true, opacity: 0.7, roughness: 0.2, side: THREE.DoubleSide })
+  const wings = []
+  for (const side of [-1, 1]) {
+    const pivot = new THREE.Group()
+    pivot.position.set(side * s * 0.25, y + s * 0.45, -s * 0.2)
+    const wing = new THREE.Mesh(new THREE.SphereGeometry(s * 0.5, 14, 8).scale(1, 0.12, 0.5), mat)
+    wing.position.x = side * s * 0.5
+    pivot.add(wing)
+    group.add(pivot)
+    wings.push({ pivot, side })
+  }
+  // A black-and-gold stripe round the middle.
+  const stripe = new THREE.Mesh(new THREE.TorusGeometry(s * 0.56, s * 0.05, 6, 20), accessoryMaterial(0x2a1f10))
+  stripe.rotation.x = Math.PI / 2
+  stripe.position.y = y
+  group.add(stripe)
+  group.userData.animateAcc = (t) => {
+    for (const { pivot, side } of wings) pivot.rotation.z = side * (0.35 + Math.sin(t * 38 + (side > 0 ? 0 : 0.4)) * 0.45)
+  }
+}
+
+// Snapper: two big pincers out front that snap open and shut.
+function addClaws(group, stats, y) {
+  const s = stats.size
+  const mat = accessoryMaterial(new THREE.Color(stats.color).multiplyScalar(0.9), 0.4)
+  const claws = []
+  for (const side of [-1, 1]) {
+    const arm = new THREE.Group()
+    arm.position.set(side * s * 0.55, y - s * 0.1, s * 0.4)
+    const upper = new THREE.Mesh(new THREE.CylinderGeometry(s * 0.08, s * 0.08, s * 0.45, 8), mat)
+    upper.rotation.x = Math.PI / 2
+    upper.position.z = s * 0.2
+    const jaws = []
+    for (const j of [-1, 1]) {
+      const jaw = new THREE.Mesh(new THREE.ConeGeometry(s * 0.14, s * 0.5, 6), mat)
+      jaw.rotation.x = Math.PI / 2
+      jaw.position.set(0, j * s * 0.05, s * 0.6)
+      jaws.push({ jaw, j })
+      arm.add(jaw)
+    }
+    arm.add(upper)
+    group.add(arm)
+    claws.push({ jaws, side })
+  }
+  group.userData.animateAcc = (t) => {
+    for (const { jaws, side } of claws) for (const { jaw, j } of jaws) jaw.position.y = j * s * (0.05 + (Math.sin(t * 6 + side) * 0.5 + 0.5) * 0.07)
+  }
+}
+
+// Sporeling: a big spotted mushroom cap perched on top.
+function addCap(group, stats, y) {
+  const s = stats.size
+  const cap = new THREE.Mesh(new THREE.SphereGeometry(s * 0.7, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 0.7, 1), accessoryMaterial(0xff4d6d, 0.45))
+  cap.position.y = y + s * 0.55
+  group.add(cap)
+  const spotMat = accessoryMaterial(0xfff4e0, 0.6)
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2
+    const spot = new THREE.Mesh(new THREE.SphereGeometry(s * 0.09, 8, 6), spotMat)
+    spot.position.set(Math.cos(a) * s * 0.42, y + s * 0.55 + s * 0.3, Math.sin(a) * s * 0.42)
+    spot.scale.y = 0.5
+    group.add(spot)
+  }
+}
+
+// Boogle: a glowing halo that bobs over its head.
+function addHalo(group, stats, y) {
+  const s = stats.size
+  const halo = new THREE.Mesh(new THREE.TorusGeometry(s * 0.36, s * 0.04, 8, 24), glowMaterial(0xfff1a8, 1.8))
+  halo.rotation.x = Math.PI / 2
+  group.add(halo)
+  group.userData.animateAcc = (t) => {
+    halo.position.y = y + s * 0.85 + Math.sin(t * 2.5) * s * 0.06
+    halo.rotation.z = t * 1.5
+  }
+}
+
+// Kablooma: a lit fuse on top that sputters.
+function addFuse(group, stats, y) {
+  const s = stats.size
+  const wick = new THREE.Mesh(new THREE.CylinderGeometry(s * 0.04, s * 0.05, s * 0.3, 6), accessoryMaterial(0x6a5236))
+  wick.position.y = y + s * 0.62
+  const spark = new THREE.Mesh(new THREE.IcosahedronGeometry(s * 0.12, 0), glowMaterial(0xffa23a, 2))
+  spark.position.y = y + s * 0.85
+  group.add(wick, spark)
+  group.userData.animateAcc = (t) => {
+    spark.scale.setScalar(0.8 + Math.abs(Math.sin(t * 18)) * 0.7)
+    spark.position.x = Math.sin(t * 25) * s * 0.03
+  }
+}
+
+// Icicle: sharp ice crystals all round the body.
+function addIcicles(group, stats, y) {
+  const s = stats.size
+  const mat = new THREE.MeshStandardMaterial({ color: 0xdff8ff, roughness: 0.15, metalness: 0.1, emissive: 0x6fd0ff, emissiveIntensity: 0.35 })
+  for (let i = 0; i < 12; i++) {
+    const phi = Math.acos(1 - (2 * (i + 0.5)) / 12)
+    const theta = Math.PI * (1 + Math.sqrt(5)) * i
+    const dir = new THREE.Vector3(Math.sin(phi) * Math.cos(theta), Math.cos(phi) * 0.9 + 0.1, Math.sin(phi) * Math.sin(theta)).normalize()
+    const shard = new THREE.Mesh(new THREE.ConeGeometry(s * 0.09, s * 0.55, 5), mat)
+    shard.position.copy(dir).multiplyScalar(s * 0.62).add(new THREE.Vector3(0, y, 0))
+    shard.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir)
+    group.add(shard)
+  }
+}
+
+// Wispy: a tall, flickering flame on top, with a soft glow.
+function addFlame(group, stats, y) {
+  const s = stats.size
+  const flame = new THREE.Mesh(new THREE.ConeGeometry(s * 0.28, s * 0.9, 8), glowMaterial(0xbdf8ff, 1.6))
+  flame.position.y = y + s * 0.95
+  const glow = new THREE.Mesh(new THREE.SphereGeometry(s * 0.75, 12, 8), new THREE.MeshBasicMaterial({ color: 0x7af0ff, transparent: true, opacity: 0.18, blending: THREE.AdditiveBlending, depthWrite: false }))
+  glow.position.y = y
+  group.add(flame, glow)
+  group.userData.animateAcc = (t) => {
+    flame.scale.set(1 + Math.sin(t * 13) * 0.12, 1 + Math.sin(t * 9 + 1) * 0.2, 1 + Math.cos(t * 11) * 0.12)
+    glow.material.opacity = 0.14 + Math.sin(t * 7) * 0.05
+  }
+}
+
+// Drillbit: a spiralling drill bit out front that spins.
+function addHorn(group, stats, y) {
+  const s = stats.size
+  const bit = new THREE.Mesh(new THREE.ConeGeometry(s * 0.28, s * 0.95, 8), accessoryMaterial(0xdfe5f2, 0.25, 0.8))
+  bit.rotation.x = Math.PI / 2
+  bit.position.set(0, y - s * 0.05, s * 0.75)
+  const ridges = []
+  for (let i = 0; i < 3; i++) {
+    const ridge = new THREE.Mesh(new THREE.TorusGeometry(s * (0.24 - i * 0.06), s * 0.03, 5, 14), accessoryMaterial(0x8a93a8, 0.3, 0.8))
+    ridge.position.set(0, y - s * 0.05, s * (0.55 + i * 0.22))
+    group.add(ridge)
+    ridges.push(ridge)
+  }
+  group.add(bit)
+  group.userData.animateAcc = (t) => {
+    bit.rotation.y = t * 30
+    ridges.forEach((r, i) => (r.rotation.z = t * 20 + i))
+  }
+}
+
+// Twister: three rings of wind whirling round its body.
+function addRings(group, stats, y) {
+  const s = stats.size
+  const mat = new THREE.MeshBasicMaterial({ color: 0xe0e0ff, transparent: true, opacity: 0.5, depthWrite: false })
+  const rings = []
+  for (let i = 0; i < 3; i++) {
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(s * (0.55 + i * 0.12), s * 0.035, 5, 28), mat)
+    ring.rotation.x = Math.PI / 2
+    ring.position.y = y + (i - 1) * s * 0.42
+    group.add(ring)
+    rings.push(ring)
+  }
+  group.userData.animateAcc = (t) => {
+    rings.forEach((r, i) => {
+      r.rotation.z = t * (6 + i * 3) * (i % 2 ? -1 : 1)
+      r.rotation.x = Math.PI / 2 + Math.sin(t * 3 + i) * 0.18
+    })
+  }
+}
+
 export function createMonsterMesh(type, rng = Math.random) {
   const stats = MONSTER_TYPES[type]
   const geometry = GEOMETRY_BUILDERS[stats.shape](stats.size)
@@ -729,6 +895,8 @@ export function createMonsterMesh(type, rng = Math.random) {
   if (stats.accessory === 'lure') addLure(group, stats)
   if (stats.accessory === 'spikes') addSpikes(group, stats, bodyCenterY)
   if (stats.accessory === 'eelBody') addEelBody(group, stats, bodyCenterY)
+  const crazyAccessory = { wings: addWings, claws: addClaws, cap: addCap, halo: addHalo, fuse: addFuse, icicles: addIcicles, flame: addFlame, horn: addHorn, rings: addRings }[stats.accessory]
+  if (crazyAccessory) crazyAccessory(group, stats, bodyCenterY)
 
   group.userData.body = body
   group.userData.type = type

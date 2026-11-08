@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   BIOMES, CHUNK_SIZE, OUTER_BIOMES, SANCTUM_RADIUS, WORLD_RADIUS, UNLOAD_RADIUS,
   biomeAt, canRespawn, chunkContent, chunksAround, dangerAt, diffChunks, groundColorAt, valueNoise,
+  LAKES, WATER_LEVEL, chunkCoord, lakeAt, ruinLayout, ruins,
 } from '../src/logic/world.js'
 
 describe('world biomes', () => {
@@ -61,7 +62,7 @@ describe('world chunks', () => {
         const c = chunkContent(cx, cz)
         const r = Math.hypot((cx + 0.5) * CHUNK_SIZE, (cz + 0.5) * CHUNK_SIZE)
         for (const m of c.monsters) {
-          expect(BIOMES[c.biome].monsters.some((e) => e[0] === m.type)).toBe(true)
+          expect(Boolean(m.lake || m.ruinId || m.id.includes(':g') || BIOMES[c.biome].monsters.some((e) => e[0] === m.type))).toBe(true)
           if (r < 140) { near++; nearHp += m.hpScale; nearN++ } else if (r > 200) { far++; farHp += m.hpScale; farN++ }
         }
       }
@@ -130,13 +131,13 @@ describe('world hills', () => {
       lo = Math.min(lo, h); hi = Math.max(hi, h)
       expect(Number.isFinite(h)).toBe(true)
     }
-    expect(lo).toBeGreaterThan(-1.5)
-    expect(hi).toBeGreaterThan(5) // real hills
+    expect(lo).toBeGreaterThan(-2.2) // lake floors
+    expect(hi).toBeGreaterThan(20) // real, tall hills
   })
 
   it('is smooth: neighbouring points never jump', () => {
     for (let x = -250; x < 250; x += 37) for (let z = -250; z < 250; z += 41) {
-      expect(Math.abs(heightAt(x, z) - heightAt(x + 1, z))).toBeLessThan(1.2)
+      expect(Math.abs(heightAt(x, z) - heightAt(x + 1, z))).toBeLessThan(1.6)
     }
   })
 })
@@ -182,5 +183,51 @@ describe('villages', () => {
     }
     expect(npcs).toBe(villages().length * 3)
     expect(nearestVillage(v.x + 3, v.z, VILLAGE_PLAZA_RADIUS).village.id).toBe(v.id)
+  })
+})
+
+describe('lakes, ruins and spacing', () => {
+  it('has lakes whose beds are below the surface, with water monsters and no trees in them', () => {
+    expect(LAKES.length).toBeGreaterThanOrEqual(5)
+    for (const lake of LAKES) {
+      expect(heightAt(lake.x, lake.z)).toBeLessThan(WATER_LEVEL - 1)
+      expect(lakeAt(lake.x, lake.z)).toBe(lake)
+      const cx = chunkCoord(lake.x)
+      const cz = chunkCoord(lake.z)
+      const c = chunkContent(cx, cz)
+      expect(c.monsters.filter((m) => m.lake).length).toBeGreaterThanOrEqual(2)
+      for (const p of c.props) expect(lakeAt(p.x, p.z)).toBe(null)
+    }
+  })
+
+  it('keeps villages far apart and out of the lakes, one in every biome', () => {
+    const list = villages()
+    for (const a of list) {
+      for (const b of list) if (a !== b) expect(Math.hypot(a.x - b.x, a.z - b.z)).toBeGreaterThanOrEqual(95)
+      expect(lakeAt(a.x, a.z, 0.9)).toBe(null)
+    }
+    for (const biome of ['whisperwood', 'amethyst', 'frostveil', 'emberwaste', 'gloomfen']) expect(list.some((v) => v.biome === biome)).toBe(true)
+  })
+
+  it('scatters ruins: temples guarded by a boss, towers and shrines with loot', () => {
+    const list = ruins()
+    expect(list.length).toBeGreaterThanOrEqual(8)
+    const kinds = new Set(list.map((r) => r.kind))
+    expect(kinds).toEqual(new Set(['temple', 'tower', 'shrine']))
+    for (const r of list) {
+      const layout = ruinLayout(r)
+      expect(layout.props.length).toBeGreaterThan(2)
+      expect(layout.treasure.length).toBeGreaterThan(0)
+      expect(layout.guards.some((g) => g.role === 'boss')).toBe(r.kind === 'temple')
+    }
+    const temple = list.find((r) => r.kind === 'temple')
+    const c = chunkContent(chunkCoord(temple.x - 5), chunkCoord(temple.z + 5))
+    expect(c.monsters.some((m) => m.boss)).toBe(true)
+  })
+
+  it('has real peaks to glide from', () => {
+    let hi = 0
+    for (let x = -300; x < 300; x += 6) for (let z = -300; z < 300; z += 6) hi = Math.max(hi, heightAt(x, z))
+    expect(hi).toBeGreaterThan(25)
   })
 })

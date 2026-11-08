@@ -58,7 +58,7 @@ record.
 - 1-5 — pick a weapon from the hotbar (melee or firearm)
 - Q / Z / X / C / V — use your abilities, in the order you found them
 - 0 — toggle first-person view (pointer-locked mouse look; W moves along the view, every weapon aims where you look; Esc or 0 exits)
-- N — open the Dragon Den (customize your dragons' scale and breath); in the Wilds (free roam) N shoots/swings instead and Space jumps (`logic/jump.js`: a plain hop, not an ability); E near a villager talks
+- N — open the Dragon Den (customize your dragons' scale and breath); in the Wilds (free roam) N shoots/swings instead and Space jumps (`logic/jump.js`: a plain hop, not an ability); Space again in the air opens the paraglider (`src/glider.js`: slow steady sink, 1.7x speed; Space folds it); E near a villager talks
 - Tab — open the power-up menu (pauses the game): click a power-up to equip / unequip it (in sandbox mode Tab opens the sandbox menu instead)
 
 A standard gamepad works too (`src/logic/gamepad.js` maps a snapshot to
@@ -232,6 +232,16 @@ mounds, levelled flat in the Sanctum, at the rim and under every village plaza. 
 and `main.js` lifts the player, monsters, chests/pods/pickups and pets onto it (`pets` via a `groundLift` they carry). The
 particle / projectile / shockwave / bullet / crystal layers ride up with the player (`world.groundY`, `applyFxDepth`), and the
 camera follows a smoothed `camGround`.
+
+**Higher hills, lakes, ruins.** The mounds are tall (peaks of 26-36 units, big enough to launch a paraglider from; overlapping hills
+merge with `max`). `LAKES` (7, on low ground, away from villages) dip the ground to `LAKE_BED` below `WATER_LEVEL`; `worldArena.js`
+draws a translucent water disc per lake, wading is slower, and `lakeAt` keeps props/grass/land monsters out. Each lake holds
+urchins, eels and anglers (`WATER_MONSTERS`; chunk monster entries with `lake: {x,z,radius}`, clamped in main.js so they
+never leave it, floating at the surface). `ruins()` seeds ~12 Zelda-style sites on levelled flagstones: **temples** (a ring of
+columns, broken walls, a central shrine, a chest, and a guardian **boss** from `BOSSES` plus two elites; the boss respawns
+after `BOSS_RESPAWN_SECONDS`), **watchtowers** (a chest, an elite and guards) and lone **shrines** (a power-up and a suitcase).
+`ruinLayout(ruin)` returns props / treasure / guards; ruins show as triangles on the minimap (gold = boss temple). Villages
+are at least `VILLAGE_MIN_SEPARATION` (150) apart.
 
 **Villages and quests.** `villages()` seeds ~9 villages (a guaranteed starter just outside the Sanctum, at least one in every
 biome); `villageLayout(v)` places a hall, cottages, a well, lamp posts, a notice board and three villagers. Villages are safe
@@ -511,7 +521,8 @@ fields are `attackRange`/`reachBonus` (so big bodies can still hit and be hit),
 `faceLayout.js`'s `bodySurfaceDistance`, so faces sit right on them, and a
 body's resting height comes off its bounding box. A run shuffles the seven
 (`shuffleBossOrder`), so all appear before any repeats. Every boss fight makes
-the next one tougher (after the first three's `bossEase` warm-up): hp compounds
+the next one tougher (there is no warm-up: `bossEase` is 1 from the first fight, so even Orbital Resort's boss is full
+strength, and `BOSS_HEAD_START` (2) gives every boss two fights' worth of extra moves and faster cooldowns from the start): hp compounds
 +25% per fight won (`bossHpScale`), damage +15% (`bossDamageScale`, applied to
 melee and specials alike), each fight teaches the boss one more special it
 lacks from `BOSS_EXTRA_SPECIALS` (`bossSpecialsFor`), and special cooldowns
@@ -639,7 +650,7 @@ ability bar, pet icons, chest prompt, loot toast) is in `hud.js`.
 
 ## Recent tuning notes
 - Waves: 4 enemies on wave 1, +4 per wave, faster trickle (`waves.js`); in the labyrinth half of spawns bring a second monster.
-- Bosses: `bosses.js`'s `bossEase` makes the first three boss fights softer (hp and damage); `bossHpScale` folds it in.
+- Bosses: `bossEase` no longer softens the opening fights; `BOSS_HEAD_START` makes even the first boss use extra specials.
 - Labyrinth walls block melee, bullets and pets (`monster.js`'s `hasWallLineOfSight` / `isInsideWall`).
 - Ghost Form fades the player (`main.js`'s `setGhostLook`) and counts as hidden for monster perception.
 - Pause menu has a "Main menu" button (reloads to the start card).
@@ -676,6 +687,17 @@ use the boss special machinery through `specials` and `specialIntervals` (per-ty
 Grumpus Maximus, Duke Bloatsworth, Spinner Supreme, Splitzilla, Sir Reflectalot, King Hopalot, The Blinkmaster;
 16 bosses now, all appear before any repeat); `RANGED_ATTACKS.boss_bloater/boss_spinner` and
 `SPLITS.boss_splitter` give them their enemy's signature trick.
+
+## The ten crazy enemies
+`src/logic/crazyEnemies.js` (pure data) adds ten regular enemies, each with a CRAZY boss form: **Bumblo** (wings, charges) ->
+Queen Bumbletron, **Snapper** (claws, spins) -> King Crabulon, **Sporeling** (mushroom cap, spore orbs) -> Grand Shroombah,
+**Boogle** (halo, ghost orbs) -> Phantom Prince, **Kablooma** (lit fuse, leaps) -> Big Kaboom, **Icicle** (ice shards,
+slides) -> Blizzard Baron, **Prickle Pete** (spins) -> General Cactus, **Wispy** (flame, blinks) -> Will-o-the-Whimsy,
+**Drillbit** (spinning drill, charges) -> Drillzilla, **Twister** (whirling rings, spins) -> Cyclone CEO. A regular one has one
+move, its boss form four or five (the existing `BOSS_SPECIALS`, so each boss's set of moves is unique). Each has an `unlock`
+wave (3-8): `crazyWeights(n)` folds them into `pickMonsterType` (Orbital Resort and every other place), `world.js`'s biome
+tables carry them in the Wilds, and the boss forms join `BOSSES` (also the Wilds' temple guardians). Their add-ons
+(`characters.js`: wings, claws, cap, halo, fuse, icicles, flame, horn, rings) animate through `userData.animateAcc(time)`.
 
 ## Water rooms
 Three `LEVELS` carry a `water` block (Pool Room, Pacific Ocean, Glowing Reef Aquarium) and follow bosses like

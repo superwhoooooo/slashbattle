@@ -24,6 +24,16 @@ export const BOSS_VOICES = {
   boss_splitter: { wave: 'square', base: 300, range: 1.0, dur: 0.07, slide: 1, wobble: 0.25, growl: 0, fifth: 1.06 }, // two voices out of tune
   boss_mirror: { wave: 'sine', base: 880, range: 0.8, dur: 0.1, slide: 1.02, wobble: 0.05, growl: 0, fifth: 1.003 }, // shimmering echo
   boss_hopper: { wave: 'triangle', base: 200, range: 1.5, dur: 0.07, slide: 1.9, wobble: 0, growl: 0, fifth: 0 }, // boing
+  boss_bumble: { wave: 'sawtooth', base: 240, range: 0.6, dur: 0.05, slide: 1.1, wobble: 1, growl: 0.25, fifth: 0 }, // a buzzing swarm
+  boss_snapper: { wave: 'square', base: 130, range: 1.4, dur: 0.06, slide: 0.7, wobble: 0, growl: 0.2, fifth: 0 }, // clacking claws
+  boss_sporeling: { wave: 'sine', base: 190, range: 1.3, dur: 0.1, slide: 0.8, wobble: 0.8, growl: 0.15, fifth: 1.12 }, // a squishy puff
+  boss_boogle: { wave: 'sine', base: 360, range: 1.0, dur: 0.15, slide: 0.6, wobble: 0.9, growl: 0, fifth: 1.5 }, // a ghostly moan
+  boss_kablooma: { wave: 'sawtooth', base: 90, range: 1.8, dur: 0.05, slide: 1.6, wobble: 0.1, growl: 0.5, fifth: 0 }, // a hissing fuse
+  boss_icicle: { wave: 'triangle', base: 980, range: 0.9, dur: 0.06, slide: 0.9, wobble: 0.05, growl: 0, fifth: 1.25 }, // tinkling ice
+  boss_prickle: { wave: 'square', base: 110, range: 0.8, dur: 0.12, slide: 0.85, wobble: 0, growl: 0.35, fifth: 0 }, // a barked order
+  boss_wispy: { wave: 'sine', base: 700, range: 1.2, dur: 0.09, slide: 1.2, wobble: 0.7, growl: 0, fifth: 1.34 }, // a twinkling whisper
+  boss_drillbit: { wave: 'sawtooth', base: 150, range: 0.5, dur: 0.04, slide: 1, wobble: 1, growl: 0.4, fifth: 0 }, // a whirring bit
+  boss_twister: { wave: 'triangle', base: 330, range: 1.6, dur: 0.07, slide: 1.4, wobble: 0.6, growl: 0.1, fifth: 1.5 }, // corporate whoosh
   boss_glimmer: { wave: 'sine', base: 640, range: 1.6, dur: 0.05, slide: 0.6, wobble: 0.4, growl: 0, fifth: 1.5 }, // twinkly zaps
   boss_eel: { wave: 'sawtooth', base: 150, range: 1.9, dur: 0.035, slide: 1.4, wobble: 0.95, growl: 0.6, fifth: 1.414 }, // crackling static
   boss_angler: { wave: 'sine', base: 330, range: 0.6, dur: 0.18, slide: 0.85, wobble: 0.35, growl: 0, fifth: 1.25 }, // a siren's slow, sweet hum

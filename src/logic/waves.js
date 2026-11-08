@@ -4,6 +4,7 @@
 // a cleared wave. Kept free of Three.js imports so Vitest can exercise
 // it without WebGL; the Three-side driver lives in main.js.
 import { bossForFight, bossById, shuffleBossOrder, shuffleWaterBossOrder, waterBossForFight, wavesBeforeBoss } from './bosses.js'
+import { CRAZY_SCORES, crazyWeights } from './crazyEnemies.js'
 
 export const WAVE_BASE_SIZE = 4
 export const WAVE_GROWTH = 4
@@ -46,7 +47,9 @@ function typeWeights(n) {
   const hopper = n >= 4 ? Math.min(0.07 + 0.015 * (n - 4), 0.16) : 0
   const mirror = n >= 6 ? Math.min(0.06 + 0.015 * (n - 6), 0.14) : 0
   const glimmer = n >= 8 ? Math.min(0.06 + 0.015 * (n - 8), 0.14) : 0
-  const remaining = 1 - grumpus - bloater - spinner - splitter - hopper - mirror - glimmer
+  const crazy = crazyWeights(n)
+  const crazyTotal = Object.values(crazy).reduce((sum, w) => sum + w, 0)
+  const remaining = Math.max(0.1, 1 - grumpus - bloater - spinner - splitter - hopper - mirror - glimmer - crazyTotal)
   const weights = { blobbo: remaining * 0.55, zippy: remaining * 0.45, grumpus }
   if (bloater) weights.bloater = bloater
   if (spinner) weights.spinner = spinner
@@ -54,6 +57,7 @@ function typeWeights(n) {
   if (hopper) weights.hopper = hopper
   if (mirror) weights.mirror = mirror
   if (glimmer) weights.glimmer = glimmer
+  Object.assign(weights, crazy)
   return weights
 }
 
@@ -182,7 +186,7 @@ export function stepWaves(state, dt, aliveCount, rng = Math.random) {
   return { state: next, spawns, events }
 }
 
-const SCORE_BY_TYPE = { blobbo: 100, zippy: 75, grumpus: 150, bloater: 200, spinner: 175, splitter: 225, splitling: 40, angler: 230, urchin: 200, eel: 180, hopper: 210, mirror: 220, glimmer: 190 }
+const SCORE_BY_TYPE = { blobbo: 100, zippy: 75, grumpus: 150, bloater: 200, spinner: 175, splitter: 225, splitling: 40, angler: 230, urchin: 200, eel: 180, hopper: 210, mirror: 220, glimmer: 190, ...CRAZY_SCORES }
 
 // Points awarded for killing one monster of `type` (including falling
 // off the platform's edge), 0 for an unrecognized type.

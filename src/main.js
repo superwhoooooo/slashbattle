@@ -54,11 +54,12 @@ import { updateFace3D } from './face3d.js'
 import { animateAlive } from './alive.js'
 import { loadHighScore, saveHighScore } from './highScore.js'
 import { createWorldArena, WORLD_LEVEL } from './worldArena.js'
-import { createJumpState, stepJump } from './logic/jump.js'
+import { GLIDE_SPEED_MULTIPLIER, createJumpState, isGliding, stepJump } from './logic/jump.js'
+import { createGlider, updateGlider } from './glider.js'
 import { createNpc, setNpcMarker, updateNpc, TALK_RANGE } from './npcs.js'
 import { createQuestUi } from './questUi.js'
 import { acceptQuest, claimQuest, createQuestLog, npcDialog, npcMarker, questEvent, questsToClaim } from './logic/quests.js'
-import { BIOMES, SANCTUM_RADIUS, UNLOAD_RADIUS, WORLD_RADIUS, biomeAt, canRespawn, chunkContent, chunkKey, diffChunks, groundColorAt, heightAt, villageById, villages } from './logic/world.js'
+import { BIOMES, BOSS_RESPAWN_SECONDS, SANCTUM_RADIUS, UNLOAD_RADIUS, WATER_LEVEL, WORLD_RADIUS, biomeAt, canRespawn, chunkContent, chunkKey, diffChunks, groundColorAt, heightAt, ruins, villageById, villages } from './logic/world.js'
 import { createMusic } from './music.js'
 import { createSfx } from './sfx.js'
 import { jellyHit, updateJelly } from './jelly.js'
@@ -198,7 +199,7 @@ import {
   updateInventoryHud,
 } from './hud.js'
 import { Input } from './input.js'
-import { bossById, bossCooldownScale, bossDamageScale, bossHpScale, bossSpecialsFor } from './logic/bosses.js'
+import { BOSS_HEAD_START, bossById, bossCooldownScale, bossDamageScale, bossHpScale, bossSpecialsFor } from './logic/bosses.js'
 import { fanVelocities } from './logic/projectiles.js'
 import { clampToPlatform, isOnPlatform, resolveArenaMove, spawnPointNearPlayer } from './logic/arena.js'
 import { crystalDrops } from './logic/crystals.js'
@@ -1673,7 +1674,8 @@ function createWorldState() {
     live: new Map(), // monster id -> mesh, so a camp is never spawned twice
     killed: new Map(), // monster id -> when you slew it (a camp respawns after a while)
     opened: new Set(), // chest ids already looted
-    jump: createJumpState(), // N hops (see logic/jump.js)
+    jump: createJumpState(), // Space hops, and again in the air opens the paraglider (see logic/jump.js)
+    glider: createGlider(), // the canopy, parented to the player mesh on first use
     npcs: new Map(), // villager id -> npc (src/npcs.js), alive while their chunk is
     quests: createQuestLog(),
     talkingTo: null, // the villager whose dialogue is open
@@ -1775,7 +1777,7 @@ function loadWorldChunk(game, cx, cz, now) {
   w.chunks.set(content.key, chunk)
 
   for (const m of content.monsters) {
-    if (w.live.has(m.id) || !canRespawn(w.killed.get(m.id), now)) continue
+    if (w.live.has(m.id) || !canRespawn(w.killed.get(m.id), now, m.boss ? BOSS_RESPAWN_SECONDS : undefined)) continue
     const stats = MONSTER_TYPES[m.type]
     // Nudge a camp member out of any tree or crystal it was seeded inside.
     const at = { x: m.x, z: m.z }
@@ -1791,11 +1793,22 @@ function loadWorldChunk(game, cx, cz, now) {
     const mesh = spawnMonster(game, m.type, { at, hpScale: m.hpScale, effectOptions: { scale: 0.5, duration: 0.4 } })
     mesh.userData.worldId = m.id
     mesh.userData.elite = m.elite
-    mesh.position.y = heightAt(at.x, at.z)
+    mesh.position.y = m.lake ? WATER_LEVEL - 0.3 : heightAt(at.x, at.z)
     const effect = game.spawnEffects[game.spawnEffects.length - 1]
     if (effect) effect.effect.group.position.y = mesh.position.y
     mesh.userData.damageScale = (1 + m.danger * 1.1) * (m.elite ? 1.35 : 1)
     mesh.userData.speedScale = 1 + m.danger * 0.18
+    if (m.lake) {
+      mesh.userData.lake = m.lake // water monsters never leave their lake
+      mesh.position.y = WATER_LEVEL - 0.3
+    }
+    if (m.boss) {
+      // A guardian boss: tougher the deeper in it stands (it already knows moves like a boss several fights in).
+      const fights = BOSS_HEAD_START + Math.round(m.danger * 4)
+      mesh.userData.damageScale = bossDamageScale(fights)
+      mesh.userData.speedScale = 1
+      upgradeBossSpecials(mesh.userData, bossSpecialsFor(stats.specials, fights), bossCooldownScale(fights))
+    }
     if (m.elite) {
       const material = mesh.userData.jelly?.body?.material
       if (material?.emissive) {
@@ -1917,6 +1930,19 @@ function drawMinimap(game) {
     ctx.fillRect(x - 3.5, y - 3.5, 7, 7)
     ctx.strokeRect(x - 3.5, y - 3.5, 7, 7)
   }
+  for (const r of ruins()) {
+    const [x, y] = at(r.x, r.z)
+    ctx.fillStyle = r.kind === 'temple' ? '#ffd15c' : '#c9b8ff'
+    ctx.strokeStyle = '#2a1f55'
+    ctx.lineWidth = 1.2
+    ctx.beginPath()
+    ctx.moveTo(x, y - 4.5)
+    ctx.lineTo(x + 4, y + 3)
+    ctx.lineTo(x - 4, y + 3)
+    ctx.closePath()
+    ctx.fill()
+    ctx.stroke()
+  }
   for (const c of game.chests) {
     if (c.userData.opened) continue
     const [x, y] = at(c.position.x, c.position.z)
@@ -1961,8 +1987,8 @@ function stepWorld(game, now, dt = 0) {
   scene.background?.copy?.(game.arena.fog.color)
 
   // The ground under the player (the effect layers and the camera ride on it).
-  w.groundY = heightAt(p.x, p.z)
-  w.camGround += (w.groundY - w.camGround) * (dt > 0 ? 1 - Math.exp(-5 * dt) : 1)
+  w.groundY = w.jump.air ? w.jump.alt : heightAt(p.x, p.z)
+  w.camGround += (w.groundY - w.camGround) * (dt > 0 ? 1 - Math.exp(-(w.jump.air ? 12 : 5) * dt) : 1) // keeps up with a glide down a hill
 
   // Villagers: they amble, look at you, wear a marker for their quest state, and E talks to the nearest.
   let nearest = null
@@ -2077,7 +2103,7 @@ function startBossCutscene(game) {
   // Every boss fight makes the next one tougher: more hp (above), harder hits, extra moves, shorter cooldowns.
   const fights = game.waveState.bossesDefeated
   mesh.userData.damageScale = bossDamageScale(fights)
-  upgradeBossSpecials(mesh.userData, bossSpecialsFor(boss.stats.specials, fights), bossCooldownScale(fights))
+  upgradeBossSpecials(mesh.userData, bossSpecialsFor(boss.stats.specials, fights + BOSS_HEAD_START), bossCooldownScale(fights + BOSS_HEAD_START))
   const dx = player.position.x - at.x
   const dz = player.position.z - at.z
   const length = Math.hypot(dx, dz) || 1
@@ -3310,6 +3336,11 @@ function gameFrame(timestamp) {
     setProfile(addToCollection(profile, game.inventory.pets))
   }
   player.speedMultiplier = petFx.speedMultiplier * perk.speed * (elapsedSeconds < player.sprintUntil ? SPRINT_SPEED_MULTIPLIER : 1)
+  if (game.world) {
+    const jump = game.world.jump
+    if (isGliding(jump)) player.speedMultiplier *= GLIDE_SPEED_MULTIPLIER // the paraglider carries you along
+    else if (!jump.air && heightAt(player.position.x, player.position.z) < WATER_LEVEL - 0.4) player.speedMultiplier *= 0.72 // wading is slow
+  }
   // The player keeps full speed through a hitstop freeze: only the world stops,
   // otherwise every landed hit stalls your movement for a moment.
   if (firstPerson) cameraYaw = fpYaw + Math.PI
@@ -3325,13 +3356,18 @@ function gameFrame(timestamp) {
   input.wildsKeys = Boolean(game?.world)
   player.update(input, cameraYaw, deltaSeconds, room ? true : null)
   if (game.world) {
-    // Space: a plain hop (no cooldown, no ability slot). Not while hiding, falling off the edge, or paused in a menu.
+    // Space: a plain hop; Space again in the air opens the paraglider (no cooldown, no ability slot). Not while hiding,
+    // falling off the edge, or paused in a menu.
     const canHop = !player.hidden && !player.falling && player.hp > 0 && !hub.isOpen()
-    const hop = stepJump(game.world.jump, canHop && input.wasPressed('Space'), deltaSeconds)
+    const ground = heightAt(player.position.x, player.position.z)
+    const hop = stepJump(game.world.jump, canHop && input.wasPressed('Space'), deltaSeconds, ground)
     game.world.jump = hop.state
-    if (!player.falling) player.mesh.position.y = heightAt(player.position.x, player.position.z) + hop.state.y
+    if (!player.falling) player.mesh.position.y = hop.state.alt
+    if (!game.world.glider.parent) player.mesh.add(game.world.glider)
+    updateGlider(game.world.glider, hop.state.gliding && hop.state.air, deltaSeconds, elapsedSeconds)
+    if (hop.opened) burst(particleSystem, { x: player.position.x, y: hop.state.alt + 2.8, z: player.position.z }, 0xffd0e0, 18, 3)
     if (hop.jumped || hop.landed) {
-      burst(particleSystem, { x: player.position.x, y: 0.15, z: player.position.z }, 0xe0d6ff, hop.landed ? 14 : 8, hop.landed ? 3 : 2)
+      burst(particleSystem, { x: player.position.x, y: hop.state.alt + 0.15, z: player.position.z }, 0xe0d6ff, hop.landed ? 14 : 8, hop.landed ? 3 : 2)
     }
   }
   if (room) {
@@ -3488,7 +3524,7 @@ function gameFrame(timestamp) {
   monsters = monsters.filter((mesh) => {
     if (mesh.userData.spawning) {
       if (room) mesh.position.y = monsterSwimY(mesh, elapsedSeconds)
-      else if (game.world) mesh.position.y = heightAt(mesh.position.x, mesh.position.z)
+      else if (game.world) mesh.position.y = mesh.userData.lake ? WATER_LEVEL - 0.3 : heightAt(mesh.position.x, mesh.position.z)
       updateJelly(mesh, gameplayDelta, elapsedSeconds, { speed: 0, moveDir: mesh.userData.moveDir })
       updateFace3D(mesh, gameplayDelta, elapsedSeconds)
       return true
@@ -3556,12 +3592,23 @@ function gameFrame(timestamp) {
       mesh.userData.sinkY = (mesh.userData.sinkY ?? targetY) + (targetY - (mesh.userData.sinkY ?? targetY)) * Math.min(1, deltaSeconds * 4)
       mesh.position.y = mesh.userData.sinkY + (mesh.userData.leapY ?? 0)
     } else {
-      mesh.position.y = (mesh.userData.leapY ?? 0) + (game.world ? heightAt(mesh.position.x, mesh.position.z) : 0)
+      const home = mesh.userData.lake
+      if (home) {
+        const dx = mesh.position.x - home.x
+        const dz = mesh.position.z - home.z
+        const d = Math.hypot(dx, dz)
+        if (d > home.radius) {
+          mesh.position.x = home.x + (dx / d) * home.radius
+          mesh.position.z = home.z + (dz / d) * home.radius
+        }
+      }
+      mesh.position.y = (mesh.userData.leapY ?? 0) + (home ? WATER_LEVEL - 0.3 + Math.sin(elapsedSeconds * 2 + home.x) * 0.1 : game.world ? heightAt(mesh.position.x, mesh.position.z) : 0)
     }
     if (mesh.userData.arms) {
       for (const { pivot, side } of mesh.userData.arms) pivot.rotation.z = side * (0.55 + (mesh.userData.leapY ?? 0) * 0.5)
     }
     if (mesh.userData.eelTail) swishEelTail(mesh, elapsedSeconds)
+    mesh.userData.animateAcc?.(elapsedSeconds)
     if (!room && !isOnPlatform({ x: mesh.position.x, z: mesh.position.z }, ARENA_RADIUS)) {
       mesh.userData.falling = true
       mesh.userData.fallState = { velocityY: 0, fallenY: 0 }
@@ -3590,6 +3637,12 @@ function gameFrame(timestamp) {
       trySpawnChest(game, { at: clampToPlatform(bossDeathPoint, ARENA_RADIUS - CHEST_SPAWN_MARGIN), cost: 0 })
       // ...and a power-up, a little off to the side so the two don't overlap.
       trySpawnPerkPickup(game, clampToPlatform({ x: bossDeathPoint.x + 3, z: bossDeathPoint.z + 1 }, ARENA_RADIUS - CHEST_SPAWN_MARGIN))
+      if (game.world) {
+        // On the hills the loot has to sit on the ground, not at sea level.
+        const lift = (item) => item && (item.position.y = heightAt(item.position.x, item.position.z))
+        lift(game.chests[game.chests.length - 1])
+        lift(game.pickups[game.pickups.length - 1])
+      }
     }
   }
 
@@ -3748,7 +3801,8 @@ function gameFrame(timestamp) {
   const enemiesLeft = inBossFight || noWaves() || game.labyrinth?.gateOpen
     ? game.monsters.length
     : waveSize(game.waveState.waveNumber) - game.waveState.spawnedCount + game.monsters.length
-  const bossMesh = game.monsters.find((m) => m.userData.isBoss && !m.userData.dying)
+  // In the Wilds a boss's bar only shows once you are near its lair.
+  const bossMesh = game.monsters.find((m) => m.userData.isBoss && !m.userData.dying && (!game.world || Math.hypot(m.position.x - player.position.x, m.position.z - player.position.z) < 70))
   const bossHud = bossMesh
     ? {
         name: bossById(bossMesh.userData.type).name,

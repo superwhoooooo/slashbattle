@@ -46,6 +46,8 @@ export const BOSS_SPECIALS = {
   lure: { interval: 12, windup: 0.5, duration: 2.8, pull: 5.5, range: 26, damageMultiplier: 1 },
 }
 
+import { CRAZY_BOSS_DEFS } from './crazyEnemies.js'
+
 const BOSS_DEFS = [
   {
     id: 'boss_gloop',
@@ -275,6 +277,9 @@ const WATER_BOSS_DEFS = [
 // How far past the body's own radius a boss swings (and can be swung at).
 const BOSS_ATTACK_REACH = 1.2
 
+// The ten crazy boss forms (logic/crazyEnemies.js) join the dry-land roster.
+BOSS_DEFS.push(...CRAZY_BOSS_DEFS)
+
 const makeBoss = (def) => ({
   ...def,
   stats: {
@@ -356,6 +361,7 @@ export function wavesBeforeBoss(bossesDefeated) {
 export const BOSS_HP_GROWTH = 1.25
 export const BOSS_DAMAGE_GROWTH = 1.15
 export const BOSS_COOLDOWN_SHRINK = 0.9
+export const BOSS_HEAD_START = 2 // a boss's first fight already counts as this many won, for its moves and cooldowns
 export const BOSS_MIN_COOLDOWN_SCALE = 0.4
 // Moves a boss can pick up on later fights, in the order it learns them (skipping ones it has).
 // `lob` is left out: it needs the Bloater's ranged-attack tuning.
@@ -384,12 +390,9 @@ export function bossSpecialsFor(specials, bossesDefeated) {
 // half the hp and hits much softer, easing back to full strength by the
 // fourth boss. Returns multipliers for hp and damage.
 export function bossEase(bossesDefeated) {
-  const steps = [
-    { hp: 0.5, damage: 0.55 },
-    { hp: 0.7, damage: 0.7 },
-    { hp: 0.85, damage: 0.85 },
-  ]
-  return steps[bossesDefeated] ?? { hp: 1, damage: 1 }
+  // No warm-up any more: even the opening fight (Orbital Resort) is full strength, and it starts with BOSS_HEAD_START
+  // fights' worth of extra moves and faster cooldowns.
+  return { hp: 1, damage: 1 }
 }
 
 // Special-move timer: counts `timer` down by dt and, when it reaches 0,

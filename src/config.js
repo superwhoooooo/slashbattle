@@ -1,6 +1,7 @@
 // Tunable constants shared across the game. Grouped by the system that
 // mostly cares about them; values are in world units unless noted.
 import { BOSS_MONSTER_TYPES } from './logic/bosses.js'
+import { CRAZY_TYPES } from './logic/crazyEnemies.js'
 
 export const PLAYER_RADIUS = 0.35
 export const PLAYER_BODY_RADIUS = 0.6 // icosahedron radius for the player's jelly body (visual only; PLAYER_RADIUS stays the collision radius)
@@ -58,6 +59,8 @@ export const MONSTER_TYPES = {
   splitling: { shape: 'cone', size: 0.6, color: 0xd7b0ff, edgeColor: 0xeedcff, speed: 4.6, hp: 18, damage: 5, radius: 0.28 },
   // The seven bosses (src/logic/bosses.js) share the same stat shape, plus
   // boss-only fields (attackRange, reachBonus, knockbackScale, special...).
+  // Ten more regular enemies with crazy boss forms (logic/crazyEnemies.js; the bosses are in BOSS_MONSTER_TYPES).
+  ...CRAZY_TYPES,
   ...BOSS_MONSTER_TYPES,
 }
 

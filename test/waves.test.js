@@ -55,14 +55,30 @@ describe('pickMonsterType', () => {
   it('unlocks bloaters + hoppers on wave 4, spinners on 5, splitters + mirrors on 6, glimmers on 8', () => {
     const typesAt = (n) => {
       const seen = new Set()
-      for (let i = 0; i <= 200; i++) seen.add(pickMonsterType(n, () => i / 200))
+      for (let i = 0; i <= 400; i++) seen.add(pickMonsterType(n, () => i / 400))
       return seen
     }
-    expect(typesAt(3)).toEqual(new Set(['blobbo', 'zippy', 'grumpus']))
-    expect(typesAt(4)).toEqual(new Set(['blobbo', 'zippy', 'grumpus', 'bloater', 'hopper']))
-    expect(typesAt(5)).toEqual(new Set(['blobbo', 'zippy', 'grumpus', 'bloater', 'hopper', 'spinner']))
-    expect(typesAt(6)).toEqual(new Set(['blobbo', 'zippy', 'grumpus', 'bloater', 'hopper', 'spinner', 'splitter', 'mirror']))
-    expect(typesAt(8)).toEqual(new Set(['blobbo', 'zippy', 'grumpus', 'bloater', 'hopper', 'spinner', 'splitter', 'mirror', 'glimmer']))
+    const original = ['blobbo', 'zippy', 'grumpus', 'bloater', 'hopper', 'spinner', 'splitter', 'mirror', 'glimmer']
+    expect(typesAt(1)).toEqual(new Set(['blobbo']))
+    expect(typesAt(3)).toEqual(new Set(['blobbo', 'zippy', 'grumpus', 'bumble', 'sporeling']))
+    expect(typesAt(4).has('bloater') && typesAt(4).has('hopper')).toBe(true)
+    expect(typesAt(4).has('spinner')).toBe(false)
+    expect(typesAt(5).has('spinner')).toBe(true)
+    expect(typesAt(5).has('splitter')).toBe(false)
+    expect(typesAt(6).has('splitter') && typesAt(6).has('mirror')).toBe(true)
+    expect(typesAt(8).has('glimmer')).toBe(true)
+    expect(typesAt(5).has('glimmer')).toBe(false)
+  })
+
+  it('brings in the ten crazy enemies a few at a time, all of them by wave 8', () => {
+    const typesAt = (n) => {
+      const seen = new Set()
+      for (let i = 0; i <= 600; i++) seen.add(pickMonsterType(n, () => i / 600))
+      return seen
+    }
+    const crazy = ['bumble', 'snapper', 'sporeling', 'boogle', 'kablooma', 'icicle', 'prickle', 'wispy', 'drillbit', 'twister']
+    expect(crazy.filter((t) => typesAt(2).has(t))).toEqual([])
+    expect(crazy.filter((t) => typesAt(8).has(t))).toEqual(crazy)
   })
 })
 

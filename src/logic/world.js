@@ -7,12 +7,15 @@
 //   dangerAt(x, z)       - 0 at the sanctum up to 1 at the rim: how tough the monsters are
 //   chunkContent(cx, cz) - the props, monsters and treasure seeded into one chunk
 
+import { BOSSES } from './bosses.js'
+
 export const WORLD_RADIUS = 320
 export const WORLD_SEED = 7219
 export const CHUNK_SIZE = 40
 export const LOAD_RADIUS = 125 // chunks whose centre is this close to the player are alive
 export const UNLOAD_RADIUS = 150 // ...and drop away beyond this
 export const SANCTUM_RADIUS = 46 // the safe, healing heart of the world
+export const BOSS_RESPAWN_SECONDS = 900 // a guardian boss takes much longer to return
 export const RESPAWN_SECONDS = 200 // a slain camp comes back this long after you killed it
 
 export const BIOMES = {
@@ -32,7 +35,7 @@ export const BIOMES = {
     fog: 0x1a3a40,
     grass: 190,
     props: [['mooncap', 3], ['gloomTree', 6], ['wisp', 2]],
-    monsters: [['blobbo', 5, 0], ['hopper', 3, 0.1], ['grumpus', 3, 0.15], ['splitter', 2, 0.45]],
+    monsters: [['blobbo', 5, 0], ['hopper', 3, 0.1], ['grumpus', 3, 0.15], ['splitter', 2, 0.45], ['bumble', 3, 0.05], ['sporeling', 3, 0.1], ['wispy', 2, 0.35]],
   },
   amethyst: {
     name: 'Amethyst Dunes',
@@ -41,7 +44,7 @@ export const BIOMES = {
     fog: 0x3c2352,
     grass: 110,
     props: [['crystal', 6], ['dunerock', 3], ['wisp', 1]],
-    monsters: [['zippy', 5, 0], ['mirror', 3, 0.25], ['glimmer', 3, 0.3], ['spinner', 2, 0.4]],
+    monsters: [['zippy', 5, 0], ['mirror', 3, 0.25], ['glimmer', 3, 0.3], ['spinner', 2, 0.4], ['boogle', 3, 0.15], ['snapper', 3, 0.2], ['drillbit', 3, 0.3]],
   },
   frostveil: {
     name: 'Frostveil Reach',
@@ -50,7 +53,7 @@ export const BIOMES = {
     fog: 0x27415c,
     grass: 100,
     props: [['iceSpire', 5], ['frostPine', 5], ['wisp', 1]],
-    monsters: [['zippy', 3, 0], ['grumpus', 4, 0.1], ['splitter', 3, 0.3], ['bloater', 2, 0.4]],
+    monsters: [['zippy', 3, 0], ['grumpus', 4, 0.1], ['splitter', 3, 0.3], ['bloater', 2, 0.4], ['icicle', 4, 0.05], ['twister', 3, 0.35], ['boogle', 2, 0.3]],
   },
   emberwaste: {
     name: 'Emberwaste',
@@ -59,7 +62,7 @@ export const BIOMES = {
     fog: 0x401a14,
     grass: 45,
     props: [['obsidian', 6], ['emberRock', 4], ['wisp', 1]],
-    monsters: [['grumpus', 4, 0], ['spinner', 3, 0.2], ['bloater', 3, 0.25], ['hopper', 2, 0.3]],
+    monsters: [['grumpus', 4, 0], ['spinner', 3, 0.2], ['bloater', 3, 0.25], ['hopper', 2, 0.3], ['kablooma', 4, 0.1], ['prickle', 4, 0.05], ['drillbit', 3, 0.25]],
   },
   gloomfen: {
     name: 'Gloomfen',
@@ -68,10 +71,11 @@ export const BIOMES = {
     fog: 0x22301a,
     grass: 170,
     props: [['deadTree', 5], ['lanternReed', 5], ['mooncap', 2]],
-    monsters: [['blobbo', 3, 0], ['bloater', 4, 0.1], ['splitter', 3, 0.2], ['hopper', 3, 0.2]],
+    monsters: [['blobbo', 3, 0], ['bloater', 4, 0.1], ['splitter', 3, 0.2], ['hopper', 3, 0.2], ['sporeling', 3, 0.05], ['boogle', 3, 0.1], ['snapper', 2, 0.25], ['wispy', 3, 0.2]],
   },
 }
 
+const WATER_MONSTERS = [['urchin', 3, 0], ['eel', 3, 0.08], ['angler', 2, 0.22]] // [type, weight, minDanger]
 export const OUTER_BIOMES = ['whisperwood', 'amethyst', 'frostveil', 'emberwaste', 'gloomfen']
 
 // ---- seeded noise -----------------------------------------------------------------------------
@@ -155,7 +159,23 @@ export function groundColorAt(x, z) {
   const sanctum = BIOMES.sanctum.ground
   const toSanctum = 1 - smooth(Math.min(1, Math.max(0, (r - (SANCTUM_RADIUS - 10)) / 26)))
   const dapple = 0.82 + valueNoise(x * 0.09, z * 0.09, WORLD_SEED + 3) * 0.36 + (valueNoise(x * 0.4, z * 0.4, WORLD_SEED + 4) - 0.5) * 0.08
-  const land = color.map((c, i) => Math.min(1, mix(c, sanctum[i], toSanctum) * dapple))
+  let land = color.map((c, i) => Math.min(1, mix(c, sanctum[i], toSanctum) * dapple))
+  // Lakes: pale sand on the shore, a dark blue-green bed under the water.
+  for (const lake of LAKES) {
+    if (Math.hypot(x - lake.x, z - lake.z) > lake.radius * 1.9) continue
+    const d = lakeDistance(lake, x, z)
+    if (d >= 1.3) continue
+    const sand = [0.78, 0.72, 0.52]
+    const bed = [0.1, 0.28, 0.36]
+    land = land.map((c, i) => mix(mix(c, sand[i] * dapple, smooth((1.3 - d) / 0.35)), bed[i], smooth((1 - d) / 0.4)))
+  }
+  // Ruins sit on old flagstones.
+  const ruin = nearestRuin(x, z, RUIN_PLATFORM_RADIUS + 4)
+  if (ruin) {
+    const t = 1 - smooth(Math.min(1, Math.max(0, (ruin.distance - (RUIN_PLATFORM_RADIUS - 3)) / 7)))
+    const flags = [0.5, 0.48, 0.56]
+    land = land.map((c, i) => mix(c, flags[i] * (0.85 + dapple * 0.18), t * 0.85))
+  }
   // A village's plaza is paved in warm stone, fading back into the grass.
   const near = nearestVillage(x, z, VILLAGE_PLAZA_RADIUS + 5)
   if (near) {
@@ -173,10 +193,12 @@ export function groundColorAt(x, z) {
 const MOUNDS = (() => {
   const rng = mulberry32(WORLD_SEED + 500)
   const list = []
-  for (let i = 0; i < 18; i++) {
+  for (let i = 0; i < 30; i++) {
     const angle = rng() * Math.PI * 2
-    const r = SANCTUM_RADIUS + 55 + rng() * (WORLD_RADIUS - SANCTUM_RADIUS - 120)
-    list.push({ x: Math.cos(angle) * r, z: Math.sin(angle) * r, radius: 22 + rng() * 18, height: 6 + rng() * 7 })
+    const r = SANCTUM_RADIUS + 50 + rng() * (WORLD_RADIUS - SANCTUM_RADIUS - 115)
+    // Most are tall hills; every fifth is a real peak, high enough to launch a paraglider from.
+    const peak = i % 5 === 0
+    list.push({ x: Math.cos(angle) * r, z: Math.sin(angle) * r, radius: (peak ? 34 : 24) + rng() * 20, height: peak ? 26 + rng() * 10 : 12 + rng() * 9 })
   }
   return list
 })()
@@ -185,11 +207,13 @@ const MOUNDS = (() => {
 function rawTerrain(x, z) {
   const broad = (valueNoise(x * 0.009, z * 0.009, WORLD_SEED + 21) - 0.5) * 2
   const mid = (valueNoise(x * 0.024, z * 0.024, WORLD_SEED + 22) - 0.5) * 2
-  let h = broad * 6.5 + mid * 2.2 + 1.2
+  let h = broad * 8 + mid * 3 + 1.4
+  let hill = 0
   for (const m of MOUNDS) {
     const d2 = ((x - m.x) ** 2 + (z - m.z) ** 2) / (m.radius * m.radius)
-    if (d2 < 9) h += m.height * Math.exp(-d2 * 1.3)
+    if (d2 < 9) hill = Math.max(hill, m.height * Math.exp(-d2 * 1.3)) // overlapping hills merge instead of stacking
   }
+  h += hill
   return h > 0 ? h : h * 0.1 // valleys flatten into meadows instead of digging pits
 }
 
@@ -198,14 +222,71 @@ function terrainHeight(x, z) {
   const r = Math.hypot(x, z)
   const inner = smooth(Math.min(1, Math.max(0, (r - (SANCTUM_RADIUS - 6)) / 44)))
   const outer = 1 - smooth(Math.min(1, Math.max(0, (r - (WORLD_RADIUS - 46)) / 40)))
-  return rawTerrain(x, z) * inner * outer
+  return lakeHeight(x, z, rawTerrain(x, z) * inner * outer)
+}
+
+// ---- lakes --------------------------------------------------------------------------------------------
+
+export const WATER_LEVEL = 0 // the surface of every lake
+const LAKE_BED = -1.9 // the lake floor: wadeable, with the head and shoulders above the surface
+const LAKE_NOISE_SEED = WORLD_SEED + 30
+const STARTER_SITE = { x: 62, z: -46 }
+
+// Seeded lakes scattered over the outer land, clear of the Sanctum and the starter village.
+export const LAKES = (() => {
+  const rng = mulberry32(WORLD_SEED + 700)
+  const list = []
+  for (let attempt = 0; attempt < 5000 && list.length < 9; attempt++) {
+    const angle = rng() * Math.PI * 2
+    const r = SANCTUM_RADIUS + 62 + rng() * (WORLD_RADIUS - SANCTUM_RADIUS - 135)
+    const x = Math.cos(angle) * r
+    const z = Math.sin(angle) * r
+    const radius = 17 + rng() * 14
+    if (Math.hypot(x - STARTER_SITE.x, z - STARTER_SITE.z) < radius + 80) continue
+    if (list.some((l) => Math.hypot(l.x - x, l.z - z) < l.radius + radius + 55)) continue
+    // Only on low ground: a lake dug into a hillside would leave a cliff.
+    let low = true
+    for (let k = 0; k < 12 && low; k++) low = rawTerrain(x + Math.cos(k * 0.52) * radius * 1.6, z + Math.sin(k * 0.52) * radius * 1.6) < 6.5
+    if (!low || rawTerrain(x, z) > 6.5) continue
+    list.push({ id: `lake${list.length}`, x, z, radius })
+  }
+  return list
+})()
+
+// How far (in lake radii, with a wobbly shoreline) a point is from a lake's middle: < 1 is water.
+function lakeDistance(lake, x, z) {
+  return Math.hypot(x - lake.x, z - lake.z) / lake.radius + (valueNoise(x * 0.045, z * 0.045, LAKE_NOISE_SEED) - 0.5) * 0.45
+}
+
+// The lake whose bed contains this point (the ground is below the surface), else null.
+export function lakeAt(x, z, margin = 0) {
+  for (const lake of LAKES) {
+    if (Math.hypot(x - lake.x, z - lake.z) > lake.radius * 1.9) continue
+    if (lakeDistance(lake, x, z) < 0.85 + margin) return lake
+  }
+  return null
+}
+
+// Banks level out toward the lake and the floor drops away to LAKE_BED.
+function lakeHeight(x, z, h) {
+  for (const lake of LAKES) {
+    if (Math.hypot(x - lake.x, z - lake.z) > lake.radius * 1.9) continue
+    const d = lakeDistance(lake, x, z)
+    if (d >= 1.3) continue
+    const bank = smooth(Math.min(1, Math.max(0, (1.3 - d) / 0.5)))
+    h = h + (Math.min(h, 1) - h) * bank
+    const bed = smooth(Math.min(1, Math.max(0, (1 - d) / 0.45)))
+    h = h * (1 - bed) + LAKE_BED * bed
+  }
+  return h
 }
 
 // ---- villages -----------------------------------------------------------------------------------------
 
 export const VILLAGE_PLAZA_RADIUS = 13 // the paved, level square at a village's heart
 export const VILLAGE_SAFE_RADIUS = 46 // no wild monsters inside this
-const VILLAGE_CELL = 150
+const VILLAGE_CELL = 190
+export const VILLAGE_MIN_SEPARATION = 150 // villages are a real trek apart
 const VILLAGE_PREFIX = ['Mist', 'Star', 'Moon', 'Ember', 'Frost', 'Glim', 'Whisper', 'Amber', 'Silver', 'Dusk', 'Lantern', 'Briar', 'Thistle', 'Hollow']
 const VILLAGE_SUFFIX = ['haven', 'hollow', 'watch', 'rest', 'fall', 'ford', 'moor', 'glade', 'reach', 'wick']
 const NPC_NAMES = ['Mira', 'Oren', 'Thessaly', 'Bram', 'Lyra', 'Corin', 'Isolde', 'Fenn', 'Maren', 'Tobin', 'Sable', 'Wren', 'Edda', 'Joss', 'Nell', 'Perrin', 'Anwen', 'Kestrel', 'Odell', 'Ysolde', 'Haldor', 'Sorrel', 'Pim', 'Garrick']
@@ -223,24 +304,28 @@ export function villages() {
     for (let j = -span; j <= span; j++) {
       const rng = mulberry32(Math.imul(i, 40503) ^ Math.imul(j, 9176) ^ (WORLD_SEED + 91))
       if (rng() > 0.97) continue
-      const x = (i + 0.5) * VILLAGE_CELL + (rng() - 0.5) * 90
-      const z = (j + 0.5) * VILLAGE_CELL + (rng() - 0.5) * 90
+      const x = (i + 0.5) * VILLAGE_CELL + (rng() - 0.5) * 110
+      const z = (j + 0.5) * VILLAGE_CELL + (rng() - 0.5) * 110
       const r = Math.hypot(x, z)
       if (r < SANCTUM_RADIUS + 50 || r > WORLD_RADIUS - 55) continue
-      if (sites.some((s) => Math.hypot(s.x - x, s.z - z) < 95)) continue
+      if (lakeAt(x, z, 0.9) || LAKES.some((l) => Math.hypot(l.x - x, l.z - z) < l.radius * 1.25 + 30)) continue
+      if (sites.some((s) => Math.hypot(s.x - x, s.z - z) < VILLAGE_MIN_SEPARATION)) continue
       sites.push({ x, z })
     }
   }
   // Every biome gets at least one village, so no region is left without people.
   for (const biome of OUTER_BIOMES) {
     if (sites.some((s) => biomeAt(s.x, s.z) === biome)) continue
-    search: for (const r of [170, 200, 140, 225]) {
-      for (let a = 0; a < 360; a += 6) {
-        const x = Math.cos((a * Math.PI) / 180) * r
-        const z = Math.sin((a * Math.PI) / 180) * r
-        if (biomeAt(x, z) !== biome || sites.some((s) => Math.hypot(s.x - x, s.z - z) < 95)) continue
-        sites.push({ x, z })
-        break search
+    search: for (const separation of [VILLAGE_MIN_SEPARATION, 120, 95]) {
+      for (const r of [170, 200, 140, 225]) {
+        for (let a = 0; a < 360; a += 6) {
+          const x = Math.cos((a * Math.PI) / 180) * r
+          const z = Math.sin((a * Math.PI) / 180) * r
+          if (biomeAt(x, z) !== biome || sites.some((s) => Math.hypot(s.x - x, s.z - z) < separation)) continue
+          if (LAKES.some((l) => Math.hypot(l.x - x, l.z - z) < l.radius * 1.25 + 30)) continue
+          sites.push({ x, z })
+          break search
+        }
       }
     }
   }
@@ -281,7 +366,104 @@ export function heightAt(x, z) {
     const w = 1 - smooth(Math.min(1, Math.max(0, (d - VILLAGE_PLAZA_RADIUS) / 26)))
     h = h + (v.baseHeight - h) * w
   }
+  for (const r of ruins()) {
+    const d = Math.hypot(r.x - x, r.z - z)
+    if (d > RUIN_PLATFORM_RADIUS + 30) continue
+    const w = 1 - smooth(Math.min(1, Math.max(0, (d - RUIN_PLATFORM_RADIUS) / 30)))
+    h = h + (r.baseHeight - h) * w
+  }
   return h
+}
+
+// ---- ruins, temples and towers ----------------------------------------------------------------------
+
+export const RUIN_PLATFORM_RADIUS = 13
+const RUIN_NAMES = ['Sunken Temple', 'Broken Watch', 'Old Shrine', 'Lost Sanctum', 'Hollow Spire', 'Dusk Temple', 'Forgotten Keep', 'Starfall Shrine']
+let ruinCache = null
+
+// Seeded ruin sites: a temple with a guardian boss, a tower with a chest, or a lone shrine. Kept away from
+// villages, lakes and the Sanctum, and well spaced out.
+export function ruins() {
+  if (ruinCache) return ruinCache
+  const rng = mulberry32(WORLD_SEED + 900)
+  const sites = []
+  const kinds = ['temple', 'tower', 'shrine', 'temple', 'tower', 'shrine', 'temple', 'tower', 'shrine', 'tower', 'temple', 'shrine']
+  for (let attempt = 0; attempt < 900 && sites.length < kinds.length; attempt++) {
+    const angle = rng() * Math.PI * 2
+    const r = SANCTUM_RADIUS + 45 + rng() * (WORLD_RADIUS - SANCTUM_RADIUS - 105)
+    const x = Math.cos(angle) * r
+    const z = Math.sin(angle) * r
+    if (villages().some((v) => Math.hypot(v.x - x, v.z - z) < 75)) continue
+    if (LAKES.some((l) => Math.hypot(l.x - x, l.z - z) < l.radius * 1.5 + 30)) continue
+    if (sites.some((q) => Math.hypot(q.x - x, q.z - z) < 85)) continue
+    sites.push({ x, z, kind: kinds[sites.length] })
+  }
+  ruinCache = sites.map((site, index) => ({
+    id: `r${index}`,
+    index,
+    kind: site.kind,
+    x: site.x,
+    z: site.z,
+    name: RUIN_NAMES[index % RUIN_NAMES.length],
+    baseHeight: terrainHeight(site.x, site.z),
+    biome: biomeAt(site.x, site.z),
+  }))
+  return ruinCache
+}
+
+export function nearestRuin(x, z, radius = Infinity) {
+  let best = null
+  for (const r of ruins()) {
+    const d = Math.hypot(r.x - x, r.z - z)
+    if (d <= radius && (!best || d < best.distance)) best = { ruin: r, distance: d }
+  }
+  return best
+}
+
+// A ruin's stones, its loot and its guards (all seeded). A temple's guardian is a boss that waits inside.
+//   props - like any prop   treasure - [{ id, kind, x, z }]   guards - [{ id, role: 'boss' | 'elite' | 'guard', x, z }]
+export function ruinLayout(ruin) {
+  const rng = mulberry32(ruin.index * 6151 + WORLD_SEED + 11)
+  const props = []
+  const treasure = []
+  const guards = []
+  const add = (kind, x, z, scale = 1, rot = rng() * Math.PI * 2) => props.push({ kind, x, z, scale, rot, radius: PROP_RADIUS[kind] * scale })
+  const ring = (n, radius, pickKind, start = rng() * 6.28) => {
+    for (let i = 0; i < n; i++) {
+      const a = start + (i / n) * Math.PI * 2
+      add(pickKind(i), ruin.x + Math.cos(a) * radius, ruin.z + Math.sin(a) * radius, 0.95 + rng() * 0.2)
+    }
+  }
+  const guardAt = (role, i, radius) => {
+    const a = rng() * Math.PI * 2
+    guards.push({ id: `${ruin.id}:g${i}`, role, x: ruin.x + Math.cos(a) * radius, z: ruin.z + Math.sin(a) * radius })
+  }
+  if (ruin.kind === 'temple') {
+    add('temple', ruin.x, ruin.z, 1, 0)
+    ring(8, 8.5, (i) => (rng() < 0.4 ? 'columnBroken' : 'column'))
+    for (let i = 0; i < 3; i++) add('ruinWall', ruin.x + Math.cos(0.5 + i * 0.7) * 11.5, ruin.z + Math.sin(0.5 + i * 0.7) * 11.5, 1, 0.5 + i * 0.7 + Math.PI / 2)
+    add('shrine', ruin.x, ruin.z, 1.1, 0)
+    treasure.push({ id: `${ruin.id}:chest`, kind: 'chest', x: ruin.x + 4.2, z: ruin.z + 1.5 })
+    if (rng() < 0.6) treasure.push({ id: `${ruin.id}:perk`, kind: 'perk', x: ruin.x - 4, z: ruin.z - 1.5 })
+    guards.push({ id: `${ruin.id}:boss`, role: 'boss', x: ruin.x - 5, z: ruin.z + 5 })
+    guardAt('elite', 1, 9)
+    guardAt('elite', 2, 9)
+  } else if (ruin.kind === 'tower') {
+    add('tower', ruin.x, ruin.z, 1.1 + rng() * 0.2, 0)
+    for (let i = 0; i < 3; i++) add('ruinWall', ruin.x + Math.cos(i * 2.1 + 0.4) * 8, ruin.z + Math.sin(i * 2.1 + 0.4) * 8, 0.9, i * 2.1 + 0.4 + Math.PI / 2)
+    ring(4, 11, () => 'columnBroken')
+    treasure.push({ id: `${ruin.id}:chest`, kind: 'chest', x: ruin.x + 5, z: ruin.z + 4 })
+    guardAt('elite', 1, 8)
+    guardAt('guard', 2, 9)
+    guardAt('guard', 3, 9)
+  } else {
+    add('shrine', ruin.x, ruin.z, 1.3, 0)
+    ring(6, 6.5, (i) => (i % 2 ? 'standingStone' : 'columnBroken'))
+    treasure.push({ id: `${ruin.id}:perk`, kind: 'perk', x: ruin.x + 3, z: ruin.z + 2 })
+    treasure.push({ id: `${ruin.id}:pod`, kind: 'pod', x: ruin.x - 3.5, z: ruin.z - 2 })
+    guardAt('elite', 1, 8)
+  }
+  return { props, treasure, guards }
 }
 
 // A village's buildings, lamps, well and notice board, and the people who live there (all seeded).
@@ -366,6 +548,7 @@ export const PROP_RADIUS = {
   obsidian: 1.3, emberRock: 1.5,
   deadTree: 0.7, lanternReed: 0,
   ruinArch: 2.4,
+  column: 0.8, columnBroken: 0.8, ruinWall: 2.0, shrine: 1.2, tower: 2.8, temple: 0,
   cottage: 2.9, cottageTeal: 2.9, cottageAmber: 2.9, hall: 4.2, well: 1.3, lampPost: 0.35, noticeBoard: 0.9,
 }
 
@@ -400,6 +583,7 @@ export function chunkContent(cx, cz) {
     // The very centre stays clear for the spawn point, and villages keep their own streets clear.
     if (Math.hypot(p.x, p.z) < 9) continue
     if (nearestVillage(p.x, p.z, VILLAGE_PLAZA_RADIUS + 22)) continue
+    if (lakeAt(p.x, p.z, 0.35) || nearestRuin(p.x, p.z, RUIN_PLATFORM_RADIUS + 2)) continue // no trees in the water or in the ruins
     const kind = pickWeighted(rng, biome.props)[0]
     const scale = 0.75 + rng() * 0.8
     out.props.push({ kind, x: p.x, z: p.z, scale, rot: rng() * Math.PI * 2, radius: PROP_RADIUS[kind] * scale })
@@ -407,7 +591,7 @@ export function chunkContent(cx, cz) {
   // A ruined arch now and then, anywhere out of the sanctum: a landmark to steer by.
   if (out.biome !== 'sanctum' && rng() < 0.12) {
     const p = place()
-    if (inWorld(p)) out.props.push({ kind: 'ruinArch', x: p.x, z: p.z, scale: 1.2 + rng() * 0.6, rot: rng() * Math.PI * 2, radius: PROP_RADIUS.ruinArch })
+    if (inWorld(p) && !lakeAt(p.x, p.z, 0.5) && !nearestRuin(p.x, p.z, RUIN_PLATFORM_RADIUS + 4) && !nearestVillage(p.x, p.z, VILLAGE_PLAZA_RADIUS + 22)) out.props.push({ kind: 'ruinArch', x: p.x, z: p.z, scale: 1.2 + rng() * 0.6, rot: rng() * Math.PI * 2, radius: PROP_RADIUS.ruinArch })
   }
 
   // Monsters in camps: a few per chunk, more and meaner the farther from the sanctum.
@@ -418,6 +602,7 @@ export function chunkContent(cx, cz) {
       const p = place()
       if (!inWorld(p) || Math.hypot(p.x, p.z) < SANCTUM_RADIUS + 6) continue
       if (nearestVillage(p.x, p.z, VILLAGE_SAFE_RADIUS)) continue // villages are safe
+      if (lakeAt(p.x, p.z, 0.3) || nearestRuin(p.x, p.z, RUIN_PLATFORM_RADIUS + 3)) continue // land monsters keep out of the water; ruins have their own guards
       const options = biome.monsters.filter((m) => danger >= m[2])
       const [type] = pickWeighted(rng, options)
       const elite = rng() < 0.05 + danger * 0.18
@@ -442,6 +627,53 @@ export function chunkContent(cx, cz) {
     for (const n of layout.npcs) if (inChunk(n)) out.npcs.push(n)
   }
 
+  // Lakes: water monsters live in the one whose middle falls in this chunk (they stay in it).
+  const lakeRng = mulberry32(Math.imul(cx, 15485863) ^ Math.imul(cz, 32452843) ^ (WORLD_SEED + 55))
+  for (const lake of LAKES) {
+    if (!inChunk(lake)) continue
+    const danger = dangerAt(lake.x, lake.z)
+    const options = WATER_MONSTERS.filter((m) => danger >= m[2])
+    const count = 2 + Math.floor(lakeRng() * 3) + (lake.radius > 25 ? 1 : 0)
+    for (let i = 0; i < count; i++) {
+      const [type] = pickWeighted(lakeRng, options)
+      const a = lakeRng() * Math.PI * 2
+      const d = lake.radius * (0.15 + lakeRng() * 0.45)
+      const elite = lakeRng() < 0.06 + danger * 0.2
+      out.monsters.push({
+        id: `${lake.id}:m${i}`,
+        type,
+        x: lake.x + Math.cos(a) * d,
+        z: lake.z + Math.sin(a) * d,
+        elite,
+        danger,
+        hpScale: (1 + danger * 1.4) * (elite ? 2.4 : 1),
+        lake: { x: lake.x, z: lake.z, radius: lake.radius * 0.8 },
+      })
+    }
+  }
+
+  // Ruins: stones, loot and guards. A temple's guardian is a boss (hpScale / danger follow the land around it).
+  for (const ruin of ruins()) {
+    if (Math.hypot(ruin.x - center.x, ruin.z - center.z) > 60) continue
+    const layout = ruinLayout(ruin)
+    for (const prop of layout.props) if (inChunk(prop)) out.props.push(prop)
+    for (const t of layout.treasure) if (inChunk(t)) out.treasure.push(t)
+    const danger = Math.max(0.3, dangerAt(ruin.x, ruin.z))
+    for (const g of layout.guards) {
+      if (!inChunk(g)) continue
+      if (g.role === 'boss') {
+        const boss = BOSSES[ruin.index % BOSSES.length]
+        out.monsters.push({ id: g.id, type: boss.id, x: g.x, z: g.z, elite: false, boss: true, danger, hpScale: 0.9 + danger * 1.1, ruinId: ruin.id, name: ruin.name })
+        continue
+      }
+      const options = biome.monsters.filter((m) => danger >= m[2])
+      if (!options.length) continue
+      const elite = g.role === 'elite'
+      const [type] = pickWeighted(rng, options)
+      out.monsters.push({ id: g.id, type, x: g.x, z: g.z, elite, danger, hpScale: (1 + danger * 1.6) * (elite ? 2.4 : 1) })
+    }
+  }
+
   // Grass: tufts scattered over the chunk (a separate random stream, so it never shifts props or monsters).
   // `tint` (0-1) picks a shade between the biome's base and tip colours; `scale` varies the height.
   const grassRng = mulberry32((Math.imul(cx, 83492791) ^ Math.imul(cz, 297121507) ^ WORLD_SEED) + 17)
@@ -453,6 +685,7 @@ export function chunkContent(cx, cz) {
     if (patch < 0.32 && grassRng() < 0.7) continue // bare patches
     if (Math.hypot(gx, gz) > WORLD_RADIUS - 3) continue
     if (nearestVillage(gx, gz, VILLAGE_PLAZA_RADIUS + 1)) continue // the plaza is paved
+    if (lakeAt(gx, gz, 0.1) || nearestRuin(gx, gz, RUIN_PLATFORM_RADIUS - 2)) continue // no grass under water or flagstones
     out.grass.push({ x: gx, z: gz, scale: 0.7 + grassRng() * 0.9 + patch * 0.4, rot: grassRng() * Math.PI * 2, tint: grassRng() })
   }
 
@@ -461,7 +694,7 @@ export function chunkContent(cx, cz) {
   if (far && rng() < 0.1) out.treasure.push({ id: `${out.key}:chest`, kind: 'chest', ...place() })
   if (far && rng() < 0.16) out.treasure.push({ id: `${out.key}:pod`, kind: 'pod', ...place() })
   if (far && rng() < 0.04) out.treasure.push({ id: `${out.key}:perk`, kind: 'perk', ...place() })
-  out.treasure = out.treasure.filter((t) => inWorld(t) && !nearestVillage(t.x, t.z, VILLAGE_PLAZA_RADIUS + 24))
+  out.treasure = out.treasure.filter((t) => inWorld(t) && !nearestVillage(t.x, t.z, VILLAGE_PLAZA_RADIUS + 24) && !lakeAt(t.x, t.z, 0.2))
   return out
 }
 
@@ -483,6 +716,6 @@ export function diffChunks(aliveKeys, x, z) {
 }
 
 // Whether a slain camp member is ready to come back.
-export function canRespawn(killedAt, now) {
-  return killedAt == null || now - killedAt >= RESPAWN_SECONDS
+export function canRespawn(killedAt, now, after = RESPAWN_SECONDS) {
+  return killedAt == null || now - killedAt >= after
 }
