@@ -14,7 +14,7 @@ const Y = 0.9
 // `level` is 1 for hit effects and lower while a swing effect plays.
 let level = 1
 const SWING_LEVEL = 0.35
-const FX_BRIGHTNESS = isTouchDevice() ? 0.7 : 1.3 // swing sparks are additive, so scale their colour down
+const FX_BRIGHTNESS = isTouchDevice() ? 0.7 : 0.8 // swing sparks are additive, so scale their colour down; desktop a touch above phones
 const ch = (v) => Math.min(255, Math.round(v * FX_BRIGHTNESS)) // clamped so values above 1 can't spill into the next channel
 const dim = (hex) => (ch((hex >> 16) & 255) << 16) | (ch((hex >> 8) & 255) << 8) | ch(hex & 255)
 const burst = (ps, at, color, count, ...rest) => rawBurst(ps, at, dim(color), Math.max(1, Math.round(count * level)), ...rest)
@@ -204,8 +204,8 @@ export function playHitFx(id, at, angle, ctx) {
 
 // Shot trails get their own, dimmer level on desktop: a spark is left every frame a shot flies,
 // and the additive sparks pile up into a glaring streak. Desktop trails end up at ~0.75 overall
-// (x FX_BRIGHTNESS 1.3), a touch brighter than phones' 0.7; phones are left as they were.
-const TRAIL_BRIGHTNESS = isTouchDevice() ? 1 : 0.58
+// (x FX_BRIGHTNESS 0.8), a touch brighter than phones' 0.7; phones are left as they were.
+const TRAIL_BRIGHTNESS = isTouchDevice() ? 1 : 0.94
 const scaleColor = (hex, k) => (Math.round(((hex >> 16) & 255) * k) << 16) | (Math.round(((hex >> 8) & 255) * k) << 8) | Math.round((hex & 255) * k)
 const trailBurst = (ps, at, color, ...rest) => burst(ps, at, scaleColor(color, TRAIL_BRIGHTNESS), ...rest)
 

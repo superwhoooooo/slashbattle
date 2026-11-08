@@ -239,7 +239,9 @@ function strikeTarget(pet, target, ctx) {
   const look = STRIKES[def.strike] ?? STRIKES.bite
   pet.timer = def.interval / (pet.rate ?? 1)
   pet.strikeT = STRIKE_TIME
-  burst(ctx.particleSystem, { x: (mesh.position.x + target.position.x) / 2, y: 0.7, z: (mesh.position.z + target.position.z) / 2 }, def.color, look.sparks, look.speed)
+  // Animals with claws rake the enemy (a scratch across the screen); everyone else throws sparks.
+  if (mesh.userData.claws && ctx.onScratch) ctx.onScratch(target, def)
+  else burst(ctx.particleSystem, { x: (mesh.position.x + target.position.x) / 2, y: 0.7, z: (mesh.position.z + target.position.z) / 2 }, def.color, look.sparks, look.speed)
   hitMonster(pet, target, def.damage * (pet.damageMult ?? 1), { x: mesh.position.x, z: mesh.position.z }, ctx)
 }
 
@@ -273,7 +275,8 @@ function pulse(pet, ctx) {
   if (inReach.length === 0) return
   pet.timer = def.interval / (pet.rate ?? 1)
   pet.strikeT = STRIKE_TIME
-  burst(ctx.particleSystem, { x: mesh.position.x, y: 0.5, z: mesh.position.z }, def.color, 14, def.radius * 1.3)
+  if (mesh.userData.claws && ctx.onScratch) inReach.slice(0, 3).forEach((target) => ctx.onScratch(target, def))
+  else burst(ctx.particleSystem, { x: mesh.position.x, y: 0.5, z: mesh.position.z }, def.color, 14, def.radius * 1.3)
   if (ctx.shockwavePool) spawnShockwave(ctx.shockwavePool, mesh.position.x, mesh.position.z, def.radius, def.color)
   for (const target of inReach) hitMonster(pet, target, def.damage * (pet.damageMult ?? 1), { x: mesh.position.x, z: mesh.position.z }, ctx)
 }
@@ -292,8 +295,8 @@ function zap(pet, target, ctx) {
 
 // Moves every pet for one tick: out to the nearest enemy in sight and into its attack, or
 // back to its spot beside the player when there is none.
-export function updatePets(pets, { petDamage = 1, levels = {}, dt, elapsed, player, monsters, obstacles, particleSystem, hitstop, shockwavePool }) {
-  const ctx = { monsters, obstacles, particleSystem, hitstop, shockwavePool }
+export function updatePets(pets, { petDamage = 1, levels = {}, dt, elapsed, player, monsters, obstacles, particleSystem, hitstop, shockwavePool, onScratch = null }) {
+  const ctx = { monsters, obstacles, particleSystem, hitstop, shockwavePool, onScratch }
   const count = pets.length
   for (const pet of pets) {
     const level = petLevel(levels, pet.def.id)
@@ -373,7 +376,7 @@ export function updatePets(pets, { petDamage = 1, levels = {}, dt, elapsed, play
       mesh.position.y = mesh.userData.fly
         ? HOVER_HEIGHT + Math.sin(elapsed * 3 + index * 1.7) * 0.12
         : moving
-          ? Math.abs(Math.sin(elapsed * (travelled > 6 ? 14 : 9) + index)) * (travelled > 6 ? 0.22 : 0.14)
+          ? Math.abs(Math.sin(elapsed * (travelled > 6 ? 14 : 9) + index)) * (travelled > 6 ? 0.22 : 0.14) * (mesh.userData.gait === 'walk' ? 0.12 : 1) // real walkers stride (their legs move), hoppers bounce
           : 0
     }
     mesh.rotation.x = basePitch

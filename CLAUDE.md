@@ -584,7 +584,11 @@ Only once you own everything does a chest pay out score and a heal ("LOADOUT FUL
   `projectile`: Waddles' snowball, Goldie's lobbed water droplet, Polly's squawk rings), `throw` (stands off, hurls
   lightsabers / junk / bananas: Matthias, Remy & Benji, Mojo), and `heal`, `magnet`, `guard` which stay by your side.
   No pet buffs the player's own stats (`petEffects` only folds magnet radius and damage taken). Each is a real
-  animal / object model from `src/petModels.js` (`def.model`). Pets can't be hurt; they stay on the platform, slide
+  animal / object model from `src/petModels.js` (`def.model`); the ground walkers (16 four-legged animals, the
+  penguin and the tortoise) are realistic builds in `src/petAnimals.js` (`quadruped`: chest/hips/neck, muzzle, glossy
+  eyes, jointed legs that trot or hop, jointed tail, per-species markings; parts merged per joint by `mergeRigid`).
+  Their melee hits (`lunge` strikes and `pulse` hits) show as claw scratches on the screen over the enemy
+  (`src/scratch.js`, via `updatePets`' `onScratch` / main.js's `petScratch`) instead of sparks. Pets can't be hurt; they stay on the platform, slide
   along labyrinth walls, and pop back beside you if stuck or farther than `SNAP_DISTANCE`.
 
 `combat.js`'s `damageMonster` is the one place a monster takes a hit (sword,
@@ -651,7 +655,8 @@ In a water room main.js swaps `DEEP_SPAWN_CHANCE` of each wave's arrivals for on
 `setDeepShield(true)` makes them untouchable (`isUntouchable`: `damageMonster`, melee and bullets all skip them),
 blind to you (they count you as hidden) and sunk out of sight; dive and they rise to your depth and fight.
 Only deep dwellers ever go under: every other monster stays floating on the surface while you dive
-(main.js's `monsterSwimY`). The eel is a jelly-sphere head with a long segmented body, back fin and tail
+(main.js's `monsterSwimY`). A diver is hidden from and out of reach of every surface monster (`monster.js`'s
+`setSurfaceShield`: they lose track and search, their melee, slams/spins, orbs and poison can't hit you). The eel is a jelly-sphere head with a long segmented body, back fin and tail
 fin (`characters.js`'s `addEelBody`, `accessory: 'eelBody'`) that ripples in an S-wave (`swishEelTail`).
 While you dive, the particle, bullet, enemy-orb and shockwave layers are shifted down with you
 (`fxDepthOffset`, x`DIVE_FX_DROP` so shots fly below the first-person eye), and shots/orbs ignore fog while you're under (`setShotFog`).

@@ -50,7 +50,7 @@ export function updateProjectiles(pool, dt, player, now, arenaRadius, blockers =
     if (!slot.active) continue
     const before = { x: slot.data.x, z: slot.data.z }
     const alive = stepProjectile(slot.data, dt) && !segmentBlocked(before, slot.data, blockers)
-    const hit = alive && !player.hidden && projectileHits(slot.data, player.position, PLAYER_RADIUS)
+    const hit = alive && !player.hidden && !player.diving && projectileHits(slot.data, player.position, PLAYER_RADIUS)
     if (hit && player.damagePlayer(slot.data.damage, now)) hitPlayer = true
     if (!alive || hit || !isOnPlatform(slot.data, arenaRadius + 6)) {
       slot.active = false

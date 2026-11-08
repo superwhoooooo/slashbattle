@@ -230,11 +230,12 @@ import {
   waveSize,
 } from './logic/waves.js'
 import { enemyScale, SPLITS } from './logic/enemies.js'
-import { createMonsterAIState, separateMonsters, setDeepShield, setMonsterNavigator, updateMonster, upgradeBossSpecials } from './monster.js'
+import { createMonsterAIState, separateMonsters, setDeepShield, setMonsterNavigator, setSurfaceShield, updateMonster, upgradeBossSpecials } from './monster.js'
 import { burst, createParticleSystem, resetParticles, setParticleViewScale, shardBurst, updateParticles } from './particles.js'
 import { createPet, disposePets, updatePets } from './pets.js'
 import { Player } from './player.js'
 import { createBulletPool, fireBullets, resetBullets, updateBullets } from './bullets.js'
+import { createScratchLayer, showScratch } from './scratch.js'
 import { makeBullets } from './logic/bullets.js'
 import { createPoisonPool, lobPoison, resetPoison, updatePoison } from './hazards.js'
 import { createProjectilePool, fireProjectile, resetProjectiles, updateProjectiles } from './projectiles.js'
@@ -431,6 +432,18 @@ scene.add(poisonPool.group)
 const shockwavePool = createShockwavePool()
 scene.add(shockwavePool.group)
 const bulletPool = createBulletPool()
+const scratchLayer = createScratchLayer()
+// A clawed pet's hit: a claw scratch on the screen over the enemy, sized to how big it looks.
+const scratchAt = new THREE.Vector3()
+function petScratch(target, def) {
+  const height = (target.userData.radius ?? 0.6) * 1.2
+  scratchAt.set(target.position.x, target.position.y + height, target.position.z)
+  const distance = camera.position.distanceTo(scratchAt)
+  scratchAt.project(camera)
+  if (scratchAt.z > 1 || Math.abs(scratchAt.x) > 1.2 || Math.abs(scratchAt.y) > 1.2) return // behind the camera or off screen
+  const size = Math.max(70, Math.min(280, (window.innerHeight * 1.1 * (target.userData.radius ?? 0.6)) / Math.max(1, distance)))
+  showScratch(scratchLayer, ((scratchAt.x + 1) / 2) * window.innerWidth, ((1 - scratchAt.y) / 2) * window.innerHeight, size, def.color)
+}
 scene.add(bulletPool.group)
 const scope = createScope(scene)
 let steadyAim = 0 // 0..1, charges while the player stands still with a scoped rifle
@@ -579,6 +592,7 @@ function stepWater(now, dt) {
   const room = waterRoom()
   const { player } = game
   setDeepShield(Boolean(room) && !waterState.diving)
+  setSurfaceShield(Boolean(room) && waterState.diving)
   applyFxDepth()
   if (!room) {
     waterUi.update({ room: false, diving: false, fraction: 1 })
@@ -1752,7 +1766,8 @@ const pendingSplits = []
 function applyBossEvents(game, bossMesh, events, now) {
   const { player } = game
   let hurtPlayer = false
-  const playerDistance = (x, z) => Math.hypot(player.position.x - x, player.position.z - z)
+  // A diver is out of reach of anything on the surface (only deep dwellers' moves reach them).
+  const playerDistance = (x, z) => (player.diving && !bossMesh.userData.deep ? Infinity : Math.hypot(player.position.x - x, player.position.z - z))
   for (const event of events) {
     if (event.type === 'slam') {
       spawnShockwave(shockwavePool, event.x, event.z, event.radius, 0xff3355)
@@ -3106,7 +3121,7 @@ function gameFrame(timestamp) {
   }
   player.updateStatusEffects(elapsedSeconds)
   if (perk.regen > 0 && player.hp > 0) player.hp = Math.min(player.maxHp, player.hp + perk.regen * gameplayDelta)
-  updatePets(game.pets, { petDamage: perk.petDamage, levels: profile.pets, dt: gameplayDelta, elapsed: elapsedSeconds, player, monsters: game.monsters, obstacles, particleSystem, hitstop: game.hitstop, shockwavePool })
+  updatePets(game.pets, { petDamage: perk.petDamage, levels: profile.pets, dt: gameplayDelta, elapsed: elapsedSeconds, player, monsters: game.monsters, obstacles, particleSystem, hitstop: game.hitstop, shockwavePool, onScratch: petScratch })
   const collected = updateCrystals(crystalSystem, gameplayDelta, elapsedSeconds, player.position.x, player.position.z, petFx.magnetRadius * perk.magnet)
   if (collected > 0) {
     game.inventory = addCrystals(game.inventory, Math.max(1, Math.round(collected * petFx.crystalMultiplier * perk.crystal)))

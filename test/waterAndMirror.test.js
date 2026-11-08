@@ -113,6 +113,25 @@ describe('deep dwellers', () => {
     for (let t = 2; t < 3; t += 0.05) updateMonster(eel, player, [], 0.05, t)
     expect(['chase', 'attack']).toContain(eel.userData.state)
   })
+
+  it('surface monsters lose track of a diver and can not hurt them', async () => {
+    const { setDeepShield, setSurfaceShield, createMonsterAIState, updateMonster } = await import('../src/monster.js')
+    const blobbo = { position: { x: 0, y: 0, z: 0 }, rotation: { y: 0 }, userData: { type: 'blobbo', radius: 0.6, jelly: { hit: { value: 0, velocity: 0 } }, ...createMonsterAIState(MONSTER_TYPES.blobbo) } }
+    let hits = 0
+    const player = { position: { x: 0.8, z: 0 }, hidden: false, damagePlayer: () => ++hits > 0 }
+    setDeepShield(false)
+    setSurfaceShield(true)
+    for (let t = 0; t < 4; t += 0.05) updateMonster(blobbo, player, [], 0.05, t)
+    expect(['chase', 'attack']).not.toContain(blobbo.userData.state)
+    expect(hits).toBe(0)
+    // Surface again and it's back on you.
+    setSurfaceShield(false)
+    for (let t = 4; t < 12 && hits === 0; t += 0.05) {
+      player.position = { x: blobbo.position.x + 0.8, z: blobbo.position.z } // stay right beside it
+      updateMonster(blobbo, player, [], 0.05, t)
+    }
+    expect(hits).toBeGreaterThan(0)
+  })
 })
 
 describe('mirror shield', () => {

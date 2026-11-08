@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { ANIMAL_BUILDERS } from './petAnimals.js'
 
 // Pet models: little real animals and real things (a fox, a bee, a bomb, a
 // medkit...) built from a handful of primitives, instead of the jellies'
@@ -46,153 +47,7 @@ function addEyes(group, { x = 0.09, y, z, r = 0.055 }) {
   }
 }
 
-// ---- Four-legged critters -------------------------------------------------
-
-// opts: body, belly, snout, nose, ear ('point' | 'round' | 'long'), earInner,
-// tail ('bushy' | 'puff' | 'short' | 'striped'), tailTip, mask, brows,
-// horns, wool, size
-function critter(opts) {
-  const group = new THREE.Group()
-  const body = mat(opts.body)
-  const size = opts.size ?? 1
-
-  group.add(part(sphere(0.3), opts.wool ? mat(opts.wool) : body, [0, 0.36, -0.02], [1, 0.85, 1.25]))
-  if (opts.belly) group.add(part(sphere(0.24), mat(opts.belly), [0, 0.3, 0.1], [1, 0.8, 1.1]))
-
-  const head = new THREE.Group()
-  head.position.set(0, 0.62, 0.3)
-  head.add(part(sphere(0.22), body, [0, 0, 0]))
-  head.add(part(sphere(0.11), mat(opts.snout ?? opts.belly ?? opts.body), [0, -0.04, 0.17], [1, 0.8, 1]))
-  head.add(part(sphere(0.035), mat(opts.nose ?? 0x2b2020), [0, -0.01, 0.27]))
-  addEyes(head, { x: 0.09, y: 0.05, z: 0.15 })
-  if (opts.mask) head.add(part(new THREE.BoxGeometry(0.4, 0.07, 0.1), mat(opts.mask), [0, 0.05, 0.14]))
-  if (opts.brows) {
-    for (const side of [-1, 1]) {
-      const brow = part(new THREE.BoxGeometry(0.11, 0.03, 0.03), mat(0x2b2020), [side * 0.09, 0.14, 0.18])
-      brow.rotation.z = side * -0.4
-      head.add(brow)
-    }
-  }
-  for (const side of [-1, 1]) {
-    if (opts.ear === 'long') {
-      const ear = part(new THREE.CapsuleGeometry(0.05, 0.3, 4, 8), body, [side * 0.1, 0.34, -0.02])
-      ear.rotation.z = side * -0.15
-      head.add(ear)
-      head.add(part(new THREE.CapsuleGeometry(0.025, 0.22, 4, 8), mat(opts.earInner ?? 0xffb6c1), [side * 0.1, 0.34, 0.01]))
-    } else if (opts.ear === 'round') {
-      head.add(part(sphere(0.08), body, [side * 0.15, 0.17, -0.02]))
-      head.add(part(sphere(0.045), mat(opts.earInner ?? 0xe0a890), [side * 0.15, 0.17, 0.02]))
-    } else {
-      const ear = part(new THREE.ConeGeometry(0.075, 0.2, 4), body, [side * 0.12, 0.25, -0.02])
-      ear.rotation.z = side * -0.2
-      head.add(ear)
-      head.add(part(new THREE.ConeGeometry(0.04, 0.12, 4), mat(opts.earInner ?? 0x2b2020), [side * 0.12, 0.23, 0.01]))
-    }
-    if (opts.horns) {
-      const horn = part(new THREE.TorusGeometry(0.1, 0.035, 8, 14, Math.PI * 1.5), mat(opts.horns), [side * 0.2, 0.04, -0.02])
-      horn.rotation.y = side * Math.PI / 2
-      horn.rotation.z = side > 0 ? 0.6 : Math.PI - 0.6
-      head.add(horn)
-    }
-  }
-  group.add(head)
-
-  const legMaterial = mat(opts.legs ?? opts.body)
-  for (const x of [-0.14, 0.14]) {
-    for (const z of [-0.2, 0.18]) {
-      group.add(part(new THREE.CylinderGeometry(0.06, 0.055, 0.2, 8), legMaterial, [x, 0.1, z]))
-    }
-  }
-
-  const tail = new THREE.Group()
-  tail.position.set(0, 0.4, -0.34)
-  if (opts.tail === 'bushy' || opts.tail === 'striped') {
-    const seg = part(new THREE.CapsuleGeometry(0.09, 0.28, 4, 10), body, [0, 0.05, -0.12])
-    seg.rotation.x = -1.0
-    tail.add(seg)
-    if (opts.tail === 'striped') {
-      for (const t of [0.1, 0.2, 0.3]) {
-        const ring = part(new THREE.TorusGeometry(0.095, 0.022, 6, 12), mat(0x2b2b2b), [0, 0.12 - t * 0.2, -0.04 - t * 0.55])
-        ring.rotation.x = -1.0 + Math.PI / 2
-        tail.add(ring)
-      }
-    }
-    if (opts.tailTip) tail.add(part(sphere(0.09), mat(opts.tailTip), [0, 0.2, -0.3]))
-  } else if (opts.tail === 'puff') {
-    tail.add(part(sphere(0.1), mat(opts.tailTip ?? 0xffffff), [0, 0.05, -0.06]))
-  } else {
-    tail.add(part(sphere(0.06), body, [0, 0, -0.04]))
-  }
-  group.add(tail)
-
-  group.scale.setScalar(size)
-  group.userData.fly = false
-  group.userData.animate = (t, moving) => {
-    tail.rotation.y = Math.sin(t * (moving ? 14 : 6)) * 0.45
-    head.rotation.x = Math.sin(t * 2.2) * 0.05
-  }
-  return group
-}
-
 // ---- Birds ---------------------------------------------------------------
-
-// An upright bird that walks (the penguin): flippers flap while it waddles along.
-// opts: body, belly, beak, wing, eye ('plain' | 'owl'), tufts, crest, tail
-function groundBird(opts) {
-  const group = new THREE.Group()
-  const body = mat(opts.body)
-  group.add(part(sphere(0.28), body, [0, 0.5, 0], [1, 1, 1.1]))
-  if (opts.belly) group.add(part(sphere(0.22), mat(opts.belly), [0, 0.44, 0.1], [1, 1, 0.9]))
-  group.add(part(sphere(0.2), body, [0, 0.82, 0.12]))
-
-  if (opts.eye === 'owl') {
-    for (const side of [-1, 1]) {
-      group.add(part(sphere(0.095), mat(0xfff2c2), [side * 0.1, 0.86, 0.26], [1, 1, 0.5]))
-      group.add(part(sphere(0.05), mat(0x1b1b1b), [side * 0.1, 0.86, 0.3], [1, 1, 0.5]))
-    }
-  } else {
-    addEyes(group, { x: 0.09, y: 0.87, z: 0.24, r: 0.045 })
-  }
-  const beak = part(new THREE.ConeGeometry(0.06, 0.16, 8), mat(opts.beak ?? 0xffa63d), [0, 0.8, 0.36])
-  beak.rotation.x = Math.PI / 2
-  group.add(beak)
-
-  if (opts.tufts) {
-    for (const side of [-1, 1]) {
-      const tuft = part(new THREE.ConeGeometry(0.06, 0.16, 4), body, [side * 0.13, 1.0, 0.1])
-      tuft.rotation.z = side * -0.3
-      group.add(tuft)
-    }
-  }
-  if (opts.crest) {
-    const crest = part(new THREE.ConeGeometry(0.05, 0.14, 4), mat(opts.crest), [0, 1.03, 0.1])
-    crest.rotation.x = -0.4
-    group.add(crest)
-  }
-  const tail = part(new THREE.ConeGeometry(0.1, 0.3, 4), mat(opts.tail ?? opts.body), [0, 0.4, -0.38])
-  tail.rotation.x = -Math.PI / 2 - 0.3
-  group.add(tail)
-
-  const wings = []
-  for (const side of [-1, 1]) {
-    const wing = new THREE.Group()
-    wing.position.set(side * 0.26, 0.55, 0)
-    wing.add(part(sphere(0.2), mat(opts.wing ?? opts.body), [side * 0.07, 0, -0.02], [0.35, 0.8, 1]))
-    group.add(wing)
-    wings.push({ wing, side })
-  }
-  for (const x of [-0.08, 0.08]) {
-    group.add(part(new THREE.CylinderGeometry(0.018, 0.018, 0.14, 6), mat(0xffa63d), [x, 0.14, 0.04]))
-    group.add(part(new THREE.BoxGeometry(0.07, 0.02, 0.1), mat(0xffa63d), [x, 0.07, 0.07]))
-  }
-
-  group.userData.fly = false
-  group.userData.animate = (t, moving) => {
-    const flap = Math.sin(t * (moving ? 18 : 9)) * (moving ? 0.7 : 0.35)
-    for (const { wing, side } of wings) wing.rotation.z = side * flap
-  }
-  return group
-}
 
 // A bird in flight: horizontal body, head and beak forward, wings spread wide and bending
 // at the wrist, a tail fan and tucked (or trailing) feet. pets.js lets these soar over the
@@ -493,34 +348,6 @@ function magnet() {
   group.userData.fly = true
   group.userData.animate = (t) => {
     group.rotation.z = Math.sin(t * 2) * 0.08
-  }
-  return group
-}
-
-function turtle() {
-  const group = new THREE.Group()
-  const shell = new THREE.Mesh(new THREE.SphereGeometry(0.38, 18, 12, 0, Math.PI * 2, 0, Math.PI / 2), mat(0x3f9a5a, { roughness: 0.5 }))
-  shell.scale.set(1, 0.75, 1.15)
-  shell.position.y = 0.16
-  group.add(shell)
-  group.add(part(new THREE.TorusGeometry(0.38, 0.03, 6, 24), mat(0xd9c88a), [0, 0.17, 0]))
-  group.children[1].rotation.x = Math.PI / 2
-  group.children[1].scale.set(1, 1.15, 1)
-  for (const [x, z] of [[0, 0], [0.16, 0.14], [-0.16, 0.14], [0.16, -0.16], [-0.16, -0.16]]) {
-    group.add(part(new THREE.CylinderGeometry(0.09, 0.09, 0.03, 6), mat(0x2f7f48), [x, 0.4 - Math.hypot(x, z) * 0.3, z]))
-  }
-  const skin = mat(0x9ad06b)
-  const head = part(sphere(0.13), skin, [0, 0.2, 0.46])
-  group.add(head)
-  addEyes(group, { x: 0.06, y: 0.25, z: 0.54, r: 0.035 })
-  for (const x of [-0.26, 0.26]) {
-    for (const z of [-0.22, 0.24]) group.add(part(sphere(0.09), skin, [x, 0.06, z], [1, 0.7, 1.3]))
-  }
-  group.add(part(new THREE.ConeGeometry(0.05, 0.12, 6), skin, [0, 0.1, -0.5], [1, 1, 1]))
-  group.children[group.children.length - 1].rotation.x = -Math.PI / 2
-  group.userData.fly = false
-  group.userData.animate = (t) => {
-    head.position.z = 0.46 + Math.sin(t * 2) * 0.02
   }
   return group
 }
@@ -891,30 +718,14 @@ export function createThrown(kind, variant = 0) {
 }
 
 const BUILDERS = {
+  ...ANIMAL_BUILDERS, // the ground walkers: realistic four-legged animals, the penguin and the tortoise
   matthias,
   remybenji: () => duo(),
   chick: () => bird({ body: 0xffd84a, belly: 0xffeb8a, beak: 0xff9a2e, wing: 0xffd84a, wingTip: 0xf0b02c, tail: 0xffd84a, crest: 0xffd84a, legs: 0xff9a2e, span: 0.3, chord: 0.2, bodyR: 0.23, bodyLen: 1.35, headR: 0.15, tailLen: 0.2, tailFeathers: 3, cruise: 1.0 }),
   owl: () => bird({ body: 0x8a6a4a, belly: 0xe0cfb0, eye: 'owl', disc: 0xf3e6c8, tufts: true, beak: 0xe0a030, wing: 0x6e5238, wingTip: 0x4f3b28, tail: 0x6e5238, legs: 0xe0a030, span: 0.62, chord: 0.36, bodyR: 0.21, bodyLen: 1.6, headR: 0.17, tailLen: 0.26, tailFeathers: 4, tailFan: 0.25, tailWidth: 0.09, cruise: 1.5 }),
   magpie: () => bird({ body: 0x23262d, belly: 0xffffff, beak: 0x1b1b1b, wing: 0x3b4a7a, wingTip: 0xf2f2f2, tail: 0x3b4a7a, tailTip: 0x2f7a6a, legs: 0x1b1b1b, span: 0.48, chord: 0.24, tailLen: 0.62, tailFeathers: 3, tailFan: 0.08, tailWidth: 0.07 }),
-  fox: () => critter({ body: 0xe8782e, belly: 0xfff0dc, snout: 0xfff0dc, ear: 'point', tail: 'bushy', tailTip: 0xffffff, legs: 0x3a2a22 }),
-  bear: () => critter({ body: 0x8a5a38, snout: 0xd8b48a, ear: 'round', tail: 'short', brows: true, size: 1.1 }),
-  rabbit: () => critter({ body: 0xf4efe8, belly: 0xffffff, snout: 0xfff5f5, nose: 0xff8fa8, ear: 'long', tail: 'puff' }),
-  raccoon: () => critter({ body: 0x8c8f96, belly: 0xc9ccd2, snout: 0xe8e6e0, mask: 0x2b2b2b, ear: 'round', earInner: 0x4a4a4a, tail: 'striped', legs: 0x4a4a4a }),
-  ram: () => critter({ body: 0x3a2f2a, wool: 0xf3ede0, snout: 0x5a4a40, ear: 'round', earInner: 0x5a4a40, tail: 'short', horns: 0xc9b07a, legs: 0x3a2f2a, size: 1.05 }),
-  wolf: () => critter({ body: 0xdce8f0, belly: 0xffffff, snout: 0xffffff, ear: 'point', tail: 'bushy', tailTip: 0xbfe9ff, legs: 0x8aa0b0, size: 1.05 }),
-  panda: () => critter({ body: 0xf6f6f6, belly: 0xffffff, snout: 0xf6f6f6, ear: 'round', earInner: 0x222222, mask: 0x222222, tail: 'short', legs: 0x222222, size: 1.1 }),
   parrot: () => bird({ body: 0xe0302e, belly: 0xff7a5a, beak: 0xffd23f, beakKind: 'hook', wing: 0x2e86de, wingTip: 0xffd23f, tail: 0x2e86de, tailTip: 0xe0302e, legs: 0x8a8a8a, span: 0.5, chord: 0.26, tailLen: 0.6, tailFeathers: 3, tailFan: 0.1, tailWidth: 0.07 }),
   duck: () => bird({ body: 0xffffff, belly: 0xf3f3f3, beak: 0xff9a2e, beakKind: 'flat', wing: 0xf3f3f3, wingTip: 0x5f93d6, tail: 0xffffff, legs: 0xff9a2e, span: 0.5, chord: 0.22, bodyR: 0.2, bodyLen: 1.9, headR: 0.12, neck: 0.07, tailLen: 0.22, tailFan: 0.3 }),
-  ninjacoon: () => critter({ body: 0x3a3550, belly: 0x59507a, snout: 0x59507a, mask: 0xff4a6a, ear: 'round', earInner: 0x1b1b1b, tail: 'striped', legs: 0x1b1b1b }),
-  cat: () => critter({ body: 0xf0b27a, belly: 0xffffff, snout: 0xffffff, nose: 0xff8fa8, ear: 'point', tail: 'bushy', tailTip: 0xffffff }),
-  pig: () => critter({ body: 0xffb3c1, snout: 0xff8fa8, nose: 0xc2566e, ear: 'round', earInner: 0xff8fa8, tail: 'puff', size: 1.05 }),
-  koala: () => critter({ body: 0xb0b6c0, belly: 0xe6e8ec, snout: 0xe6e8ec, nose: 0x1b1b1b, ear: 'round', earInner: 0xf2f2f2, tail: 'short', size: 1.05 }),
-  tiger: () => critter({ body: 0xff9a2e, belly: 0xfff0dc, snout: 0xfff0dc, mask: 0x2b2b2b, brows: true, ear: 'round', tail: 'striped', legs: 0x2b2b2b, size: 1.08 }),
-  lion: () => critter({ body: 0xe8b04a, wool: 0xb8741e, belly: 0xfff0dc, snout: 0xfff0dc, ear: 'round', tail: 'striped', brows: true, size: 1.12 }),
-  pug: () => critter({ body: 0xe0c090, snout: 0x3a2f2a, nose: 0x1b1b1b, mask: 0x3a2f2a, ear: 'round', earInner: 0x3a2f2a, tail: 'puff', legs: 0xe0c090 }),
-  monkey: () => critter({ body: 0x8a5a38, belly: 0xe8c8a0, snout: 0xe8c8a0, ear: 'round', earInner: 0xe8c8a0, tail: 'striped', legs: 0x6a4228 }),
-  unicorn: () => critter({ body: 0xffffff, belly: 0xfff0fb, snout: 0xffeaf6, nose: 0xff8fa8, ear: 'point', earInner: 0xffc2e6, tail: 'bushy', tailTip: 0xff8ad8, horns: 0xffd1f0, legs: 0xf2e6f0 }),
-  penguin: () => groundBird({ body: 0x1f2a44, belly: 0xffffff, beak: 0xff9a2e, wing: 0x1f2a44, tail: 0x1f2a44 }),
   flamingo: () => bird({ body: 0xff7fa8, belly: 0xffa0c0, beak: 0x2b2b2b, wing: 0xff5f90, wingTip: 0x2b2b2b, tail: 0xff7fa8, legs: 0xff7fa8, legStyle: 'trail', neck: 0.34, span: 0.62, chord: 0.2, bodyR: 0.17, bodyLen: 1.7, headR: 0.095, tailLen: 0.18, tailFeathers: 3, tailFan: 0.15, cruise: 1.4 }),
   toucan: () => bird({ body: 0x1b1b1b, belly: 0xffffff, beak: 0xff8a00, beakKind: 'big', beakTip: 0x1b1b1b, wing: 0x2b2b2b, wingTip: 0x1b1b1b, tail: 0x1b1b1b, tailTip: 0xe03a2e, legs: 0x4a6aa8, span: 0.46, chord: 0.26, headR: 0.14, tailLen: 0.38 }),
   bomb,
@@ -925,7 +736,6 @@ const BUILDERS = {
   medkit,
   sprout,
   magnet,
-  turtle,
   shield,
   bee,
   goldfish,

@@ -49,7 +49,7 @@ export function createSwingTrail(color) {
   const material = new THREE.MeshBasicMaterial({
     vertexColors: true,
     transparent: true,
-    opacity: isTouchDevice() ? 0.3 : 0.7,
+    opacity: isTouchDevice() ? 0.3 : 0.35, // desktop a touch above phones (additive: it glares fast)
     blending: THREE.AdditiveBlending,
     depthWrite: false,
     side: THREE.DoubleSide,

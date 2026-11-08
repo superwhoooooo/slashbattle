@@ -106,6 +106,14 @@ let deepShield = false
 export function setDeepShield(on) {
   deepShield = on
 }
+// True while the player is diving in a water room: everything that lives on the surface then
+// loses track of you (counts you as hidden, like a pod) and can't hurt you. Only the deep
+// dwellers (eel, angler, urchin) come down to fight. main.js sets it every frame.
+let surfaceShield = false
+export function setSurfaceShield(on) {
+  surfaceShield = on
+}
+const shieldedFrom = (ai) => (deepShield && ai.deep === true) || (surfaceShield && ai.deep !== true)
 // Out of reach right now: a deep dweller while you're not diving.
 export function isUntouchable(monster) {
   return deepShield && monster.userData.deep === true
@@ -456,7 +464,8 @@ export function updateMonster(monster, player, obstacles, dt, now) {
     distanceToPlayer: perceivedDistance,
     playerPos: player.position,
     // Hiding in a pod and Ghost Form both make you unseen.
-    playerHidden: player.hidden === true || now < (player.ghostUntil ?? -Infinity) || (deepShield && ai.deep === true),
+    // Diving hides you from the surface monsters; being up top hides you from the deep ones.
+    playerHidden: player.hidden === true || now < (player.ghostUntil ?? -Infinity) || shieldedFrom(ai),
   }
 
   const next = nextMonsterState(
@@ -544,7 +553,7 @@ export function updateMonster(monster, player, obstacles, dt, now) {
       jellyHit(monster, -MONSTER_ATTACK_WINDUP_INFLATE_RATE * dt)
 
       if (ai.windUpElapsed >= MONSTER_ATTACK_WINDUP_DURATION) {
-        hitPlayer = player.damagePlayer(Math.round(stats.damage * ai.damageScale), now)
+        hitPlayer = !shieldedFrom(ai) && player.damagePlayer(Math.round(stats.damage * ai.damageScale), now)
         ai.attackCooldown.trigger(now)
         ai.windUpElapsed = null
       }

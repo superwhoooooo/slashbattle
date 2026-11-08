@@ -221,7 +221,7 @@ export function updatePoison(pool, dt, player, now) {
         if (d.mesh.position.y < 0.05 || slot.splash <= 0) d.mesh.visible = false
       }
     }
-    if (hit && player.damagePlayer(p.damage, now)) hurt = true
+    if (hit && !player.diving && player.damagePlayer(p.damage, now)) hurt = true // poison sits on the surface
   }
   return hurt
 }
