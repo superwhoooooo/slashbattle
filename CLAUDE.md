@@ -623,7 +623,7 @@ Only once you own everything does a chest pay out score and a heal ("LOADOUT FUL
   cooldown shown on its slot): Blink, Shockwave, Heal Pulse, Bubble Shield,
   Rage, Lunge (dash + slash), Thunderstorm (lightning on the nearest 4), Gravity
   Well (drag enemies in), Bullet Ring (16 shots), Life Drain (damage + heal),
-  Frenzy (attack twice as fast), Sprint (1.6x speed), Second Wind (resets the
+  Frenzy (attack 40% faster), Sprint (1.6x speed), Second Wind (resets the
   other cooldowns). Effects live in `main.js`'s `activateAbility`.
 - **Pets** (`PETS`, kinds in logic/items.js): every attacker does what its blurb says, and fighters **roam**
   (`logic/petAI.js` decides where to be, `pets.js` moves/hits): with an enemy in sight (`SIGHT` 16 from the pet, within

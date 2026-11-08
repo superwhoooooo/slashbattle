@@ -119,7 +119,22 @@ export const CRAZY_ENEMIES = [
 import { signatureFor } from './signatures.js'
 
 // Each regular one also carries its own signature attack (a smaller version of its boss's idea).
-export const CRAZY_TYPES = Object.fromEntries(CRAZY_ENEMIES.map((e) => [e.id, { ...e.stats, signature: signatureFor(e.id) }]))
+// The regular ones are buffed on top of the numbers above: tougher, harder-hitting, a bit quicker, and their moves come
+// round sooner.
+export const CRAZY_BUFF = { hp: 1.4, damage: 1.25, speed: 1.1, cooldown: 0.8 }
+const buffed = (e) => {
+  const signature = signatureFor(e.id)
+  const intervals = Object.fromEntries(Object.entries(e.stats.specialIntervals ?? {}).map(([k, v]) => [k, v * CRAZY_BUFF.cooldown]))
+  return {
+    ...e.stats,
+    hp: Math.round(e.stats.hp * CRAZY_BUFF.hp),
+    damage: Math.round(e.stats.damage * CRAZY_BUFF.damage),
+    speed: +(e.stats.speed * CRAZY_BUFF.speed).toFixed(2),
+    specialIntervals: intervals,
+    signature: signature && { ...signature, interval: signature.interval * CRAZY_BUFF.cooldown, damageMultiplier: (signature.damageMultiplier ?? 0.6) * 1.2 },
+  }
+}
+export const CRAZY_TYPES = Object.fromEntries(CRAZY_ENEMIES.map((e) => [e.id, buffed(e)]))
 export const CRAZY_TYPE_IDS = CRAZY_ENEMIES.map((e) => e.id)
 export const CRAZY_BOSS_DEFS = CRAZY_ENEMIES.map((e) => e.boss)
 export const CRAZY_SCORES = Object.fromEntries(CRAZY_ENEMIES.map((e, i) => [e.id, 170 + (i % 5) * 15 + e.unlock * 4]))

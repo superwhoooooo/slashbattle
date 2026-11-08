@@ -706,5 +706,5 @@ export const DRAIN_RADIUS = 6
 export const DRAIN_DAMAGE = 14
 export const DRAIN_HEAL_PER_HIT = 5
 export const DRAIN_COLOR = 0xd0104a
-export const FRENZY_COOLDOWN_MULTIPLIER = 0.5 // attack cooldown scale while Frenzy is up
+export const FRENZY_COOLDOWN_MULTIPLIER = 0.7 // attack cooldown scale while Frenzy is up
 export const SPRINT_SPEED_MULTIPLIER = 1.6

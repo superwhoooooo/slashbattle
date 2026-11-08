@@ -31,7 +31,7 @@ const NODES = [
   node('sharp', 'conditioning', 1, 1, 'Sharpened', '🗡️', 5, { crit: 0.02 }, ['heavy'], '+2% chance to hit for double'),
   node('brace', 'conditioning', 1, 2, 'Brace', '🛡️', 4, { knockback: 0.08 }, ['heavy'], '+8% knockback'),
   node('secondwind', 'conditioning', 2, 0, 'Second Wind', '🌬️', 5, { regen: 0.08 }, ['thick'], 'Regain 0.08 HP per second'),
-  node('quickdraw', 'conditioning', 2, 1, 'Quick Draw', '⚡', 5, { cooldown: -0.02 }, ['sharp'], 'Attack 2% faster'),
+  node('quickdraw', 'conditioning', 2, 1, 'Quick Draw', '⚡', 5, { cooldown: -0.01 }, ['sharp'], 'Attack 1% faster'),
   node('bruiser', 'conditioning', 2, 2, 'Bruiser', '💢', 5, { damage: 0.03 }, ['brace'], '+3% damage'),
   node('ironlungs', 'conditioning', 3, 0, 'Iron Lungs', '🫁', 4, { maxHp: 8 }, ['secondwind'], '+8 max HP'),
   node('finisher', 'conditioning', 3, 1, 'Finisher', '🩸', 4, { killHeal: 0.5 }, ['quickdraw'], 'Heal 0.5 HP per kill'),
@@ -52,7 +52,7 @@ const NODES = [
   node('vigorous', 'mobility', 2, 1, 'Vigorous', '🔋', 5, { haste: -0.03 }, ['slip'], 'Abilities recharge 3% faster'),
   node('sticky', 'mobility', 2, 2, 'Sticky Fingers', '🤏', 5, { crystal: 0.05 }, ['showboat'], '+5% crystals'),
   node('evasive', 'mobility', 3, 0, 'Evasive', '🕺', 3, { iframes: 0.12 }, ['momentum'], '+12% invulnerability after a hit'),
-  node('nimble', 'mobility', 3, 1, 'Nimble Fingers', '🤹', 5, { cooldown: -0.02 }, ['vigorous'], 'Attack 2% faster'),
+  node('nimble', 'mobility', 3, 1, 'Nimble Fingers', '🤹', 5, { cooldown: -0.01 }, ['vigorous'], 'Attack 1% faster'),
   node('vacuum', 'mobility', 3, 2, 'Vacuum', '🌪️', 4, { magnet: 0.1 }, ['sticky'], '+10% pickup range'),
   node('blur', 'mobility', 4, 0, 'Blur', '🌫️', 3, { speed: 0.03 }, ['evasive'], '+3% move speed'),
   node('rhythm', 'mobility', 4, 1, 'Combo Rhythm', '🥁', 4, { crit: 0.03 }, ['nimble'], '+3% chance to hit for double'),
@@ -158,7 +158,7 @@ export function combineEffects(a, b) {
     out[key] = FLAT.has(key) ? x + y : x * y
   }
   out.damageTaken = Math.max(0.3, out.damageTaken)
-  out.cooldown = Math.max(0.35, out.cooldown)
+  out.cooldown = Math.max(0.55, out.cooldown)
   out.haste = Math.max(0.35, out.haste)
   out.chestPrice = Math.max(0.4, out.chestPrice)
   out.crit = Math.min(0.75, out.crit)
