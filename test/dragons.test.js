@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { BREATHS, SCALES, breathVictims, dragonSetup, isDragon, tuneDragon } from '../src/logic/dragons.js'
+import { BREATHS, SCALES, breathVictims, createDragonState, dragonSetup, isDragon, tuneDragon } from '../src/logic/dragons.js'
 import { PETS } from '../src/logic/items.js'
-import { createProfile, normalizeProfile, setDragonOption, unlockDragonPart } from '../src/logic/profile.js'
+import { normalizeProfile, setDragonOption, unlockDragonPart } from '../src/logic/profile.js'
 import { availableLoot, rollChestLoot } from '../src/logic/inventory.js'
 import { isFighter, isRanged } from '../src/logic/petAI.js'
 
@@ -30,13 +30,13 @@ describe('dragon pets', () => {
   })
 
   it('uses the saved picks, then the dragon\'s own defaults', () => {
-    expect(dragonSetup(createProfile(), PETS.glacier)).toEqual({ scale: 'azure', breath: 'frost' })
-    const p = setDragonOption(unlockDragonPart(createProfile(), 'skin', 'amethyst'), 'glacier', 'scale', 'amethyst')
+    expect(dragonSetup(createDragonState(), PETS.glacier)).toEqual({ scale: 'azure', breath: 'frost' })
+    const p = setDragonOption(unlockDragonPart(createDragonState(), 'skin', 'amethyst'), 'glacier', 'scale', 'amethyst')
     expect(dragonSetup(p, PETS.glacier)).toEqual({ scale: 'amethyst', breath: 'frost' })
   })
 
   it('ignores bad picks and non-dragons, steps through every option', () => {
-    const p = createProfile()
+    const p = createDragonState()
     expect(setDragonOption(p, 'sparky', 'scale', 'azure')).toBe(p)
     expect(setDragonOption(p, 'glacier', 'scale', 'nope')).toBe(p)
     let q = p
@@ -49,10 +49,12 @@ describe('dragon pets', () => {
     expect(seen.size).toBe(Object.keys(SCALES).length)
   })
 
-  it('keeps only valid dragon picks when loading a save', () => {
-    const profile = normalizeProfile({ dragons: { glacier: { scale: 'opal', breath: 'bogus' }, sparky: { scale: 'opal' } } })
-    expect(profile.dragons).toEqual({ glacier: { scale: 'opal' } })
-    expect(dragonSetup(profile, PETS.glacier).scale).toBe('azure') // opal is not unlocked, so back to its own skin
+  it('never saves dragons: they are per-run finds, lost with the run', () => {
+    const profile = normalizeProfile({ collection: ['glacier', 'sparky'], dragons: { glacier: { scale: 'opal' } }, unlocked: { skins: ['opal'], breaths: ['void'] } })
+    expect(profile.collection).toEqual(['sparky'])
+    expect(profile.dragons).toBeUndefined()
+    expect(profile.unlocked.skins).toBeUndefined()
+    expect(createDragonState().unlocked.skins).toEqual([]) // every run starts with none
   })
 
   it('splashes nearby enemies and chains lightning to the closest ones', () => {
@@ -88,7 +90,7 @@ describe('dragon specials', () => {
 
 describe('dragon unlocks', () => {
   it('only lets you pick skins and breaths you have found, besides the dragon\'s own', () => {
-    const p = createProfile()
+    const p = createDragonState()
     expect(setDragonOption(p, 'glacier', 'scale', 'obsidian')).toBe(p)
     expect(setDragonOption(p, 'glacier', 'breath', 'void')).toBe(p)
     expect(setDragonOption(p, 'glacier', 'scale', 'azure').dragons.glacier.scale).toBe('azure')
@@ -101,7 +103,7 @@ describe('dragon unlocks', () => {
 
   it('drops skins and breaths from chests only once you have a dragon', () => {
     const inv = { weapons: ['staff'], abilities: [], pets: [], equipped: [], powerups: [] }
-    const unlocked = createProfile().unlocked
+    const unlocked = createDragonState().unlocked
     const kinds = (list) => new Set(list.map((l) => l.kind))
     expect(kinds(availableLoot(inv, unlocked)).has('skin')).toBe(false)
     expect(kinds(availableLoot({ ...inv, pets: ['glacier'] }, unlocked)).has('skin')).toBe(true)
@@ -114,7 +116,7 @@ describe('dragon unlocks', () => {
 describe('dragon part rarity', () => {
   it('keeps dragon parts to a small share of chests', () => {
     const inv = { weapons: ['staff'], abilities: [], pets: ['glacier'], equipped: [], powerups: [] }
-    const unlocked = createProfile().unlocked
+    const unlocked = createDragonState().unlocked
     let n = 0
     let parts = 0
     let seed = 7

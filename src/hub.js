@@ -131,7 +131,7 @@ const TABS = [
 // Callbacks: getProfile() -> profile, setProfile(next) (main saves it), getRun() ->
 // { inRun, crystals, owned: [], equipped: [] }, onBank() banks the run's crystals,
 // onOpenChange(open).
-export function createHub({ getProfile, setProfile, getRun, onBank, onOpenChange }) {
+export function createHub({ getProfile, setProfile, getDragons, setDragons, getRun, onBank, onOpenChange }) {
   const style = document.createElement('style')
   style.textContent = CSS
   document.head.appendChild(style)
@@ -431,13 +431,19 @@ export function createHub({ getProfile, setProfile, getRun, onBank, onOpenChange
   }
   function dragonsPage(profile) {
     const wrap = el('div')
-    wrap.appendChild(el('p', 'hub-note', 'Dragons circle high above you and breathe on enemies from the air. Find them in chests. Each dragon starts with its own skin and breath; more skins and breaths are rare chest finds while a dragon is out, and are yours for good. Changes apply the moment you close this page. Pet upgrades are on the Loadout page.'))
+    const state = getDragons()
+    const run = getRun()
+    wrap.appendChild(el('p', 'hub-note', 'Dragons are found in chests during a run and are lost when the run ends (you can find them again next run). Each dragon starts with its own skin and breath; more skins and breaths are rare chest finds while a dragon is out. Changes apply the moment you close this page. Pet upgrades are on the Loadout page.'))
     const grid = el('div', 'hub-grid')
     grid.style.gridTemplateColumns = 'repeat(auto-fill, minmax(340px, 1fr))'
-    const active = profile.loadouts[profile.activeLoadout].pets
+    const pick = (id, kind, value) => {
+      setDragons(actions.setDragonOption(getDragons(), id, kind, value))
+      render()
+    }
     for (const base of Object.values(PETS).filter(isDragon)) {
-      const have = profile.collection.includes(base.id)
-      const setup = dragonSetup(profile, base)
+      const out = run.pets?.includes(base.id) // out in this run (the sandbox has them all)
+      const have = free() || out
+      const setup = dragonSetup(state, base)
       const tuned = tuneDragon(base, setup)
       const card = el('div', `hub-perk hub-gun${have ? '' : ' locked'}`)
       card.style.setProperty('--branch', hex(tuned.scale.glow))
@@ -449,21 +455,21 @@ export function createHub({ getProfile, setProfile, getRun, onBank, onOpenChange
       if (!have) img.style.filter = 'brightness(0) opacity(0.35)'
       card.appendChild(img)
       const name = el('div', 'nm', have ? base.name : '???')
-      if (have && active.includes(base.id)) name.appendChild(el('span', 'tag', 'STARTS WITH YOU'))
+      if (out) name.appendChild(el('span', 'tag', 'WITH YOU'))
       card.appendChild(name)
-      card.appendChild(el('div', 'ef', have ? describeDragon(tuned).join(' · ') : 'Not found yet: open chests to find dragons'))
+      card.appendChild(el('div', 'ef', have ? describeDragon(tuned).join(' · ') : 'Not found this run: open chests to find dragons'))
       card.appendChild(el('div', 'nx', have ? `${tuned.scale.name} · ${tuned.breath.name} · Lv ${petLevel(profile.pets, base.id)}` : base.blurb))
       if (have) {
         const scales = el('div', 'chips')
         scales.appendChild(el('b', '', 'Skins'))
         for (const sc of Object.values(SCALES)) {
-          scales.appendChild(chip({ name: sc.name, blurb: sc.blurb }, { on: sc.id === setup.scale, locked: !isSkinUnlocked(profile.unlocked, sc.id, base), svg: dragonSvgScale(sc), color: hex(sc.glow), click: () => act(api.setDragon(base.id, 'scale', sc.id)) }))
+          scales.appendChild(chip({ name: sc.name, blurb: sc.blurb }, { on: sc.id === setup.scale, locked: !isSkinUnlocked(state.unlocked, sc.id, base), svg: dragonSvgScale(sc), color: hex(sc.glow), click: () => pick(base.id, 'scale', sc.id) }))
         }
         card.appendChild(scales)
         const breaths = el('div', 'chips')
         breaths.appendChild(el('b', '', 'Breath'))
         for (const br of Object.values(BREATHS)) {
-          breaths.appendChild(chip(br, { on: br.id === setup.breath, locked: !isBreathUnlocked(profile.unlocked, br.id, base), svg: breathSvg(br), color: hex(br.color), click: () => act(api.setDragon(base.id, 'breath', br.id)) }))
+          breaths.appendChild(chip(br, { on: br.id === setup.breath, locked: !isBreathUnlocked(state.unlocked, br.id, base), svg: breathSvg(br), color: hex(br.color), click: () => pick(base.id, 'breath', br.id) }))
         }
         card.appendChild(breaths)
         card.appendChild(el('div', 'bl', `${tuned.scale.blurb}  ·  ${tuned.breath.blurb}`))
@@ -547,16 +553,15 @@ export function createHub({ getProfile, setProfile, getRun, onBank, onOpenChange
   function loadoutPage(profile) {
     const wrap = loadoutStrip(profile)
     const active = profile.loadouts[profile.activeLoadout]
-    wrap.appendChild(el('p', 'hub-note', `This pet joins you at the start of every run (changes apply from your next run). Spend banked crystals on Upgrade to make a pet stronger and quicker for good. Collected ${profile.collection.length}/${Object.keys(PETS).length}: find new pets in chests.`))
+    wrap.appendChild(el('p', 'hub-note', `This pet joins you at the start of every run (changes apply from your next run). Spend banked crystals on Upgrade to make a pet stronger and quicker for good. Collected ${profile.collection.length}/${Object.values(PETS).filter((p) => !isDragon(p)).length}: find new pets in chests.`))
 
     const grid = el('div', 'hub-pets')
-    for (const pet of Object.values(PETS)) {
+    for (const pet of Object.values(PETS).filter((p) => !isDragon(p))) {
       const have = profile.collection.includes(pet.id)
       const b = el('button', `hub-pet${active.pets.includes(pet.id) ? ' in' : ''}${have ? '' : ' locked'}`)
       b.type = 'button'
       b.title = have ? pet.blurb : 'Not found yet'
       const petImg = iconImg('pet', pet.id)
-      if (isDragon(pet)) petImg.src = dragonIconUrl(tuneDragon(pet, dragonSetup(profile, pet)))
       b.appendChild(petImg)
       b.appendChild(el('span', 'nm', have ? pet.name : '???'))
       const level = petLevel(profile.pets, pet.id)
@@ -608,7 +613,6 @@ export function createHub({ getProfile, setProfile, getRun, onBank, onOpenChange
     respec: () => ({ profile: actions.respecSkills(getProfile()), ok: true }),
     upgradePowerup: (id) => buy(actions.buyPowerupLevel, id),
     setRifle: (id, kind, value) => ({ profile: actions.setRifleOption(getProfile(), id, kind, value), ok: true }),
-    setDragon: (id, kind, value) => ({ profile: actions.setDragonOption(getProfile(), id, kind, value), ok: true }),
     upgradeRifle: (id) => buy(actions.buyRifleLevel, id),
     upgradeAmmo: (id) => buy(actions.buyAmmoLevel, id),
     upgradePet: (id) => buy(actions.buyPetLevel, id),

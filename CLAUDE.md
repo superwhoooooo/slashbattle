@@ -670,7 +670,7 @@ Six dragon pets (`kind: 'breath'` in `logic/items.js`: Cinderwing, Glacier, Stor
 gem, membrane wings that beat harder when moving, orbiting motes) and breathe bolts at enemies from the air. Like a rifle's
 scope and ammo, each takes a **scale** (8 mystical colour schemes) and a **breath** (flame splash, frost shove, storm chain,
 venom triple-spit, void heavy hit, solar beam), all pure data in `logic/dragons.js` (`tuneDragon` folds the picks into the def,
-`breathVictims` finds splash/chain targets). Picks live in `profile.dragons` (`setDragonOption`); the hub's Dragon Den page (N)
+`breathVictims` finds splash/chain targets). Picks live in the run's dragon state (`game.dragonState`, `setDragonOption`); the hub's Dragon Den page (N)
 edits them, and closing the hub re-dresses dragons already out (`main.js`'s `refreshDragons`). Pet levels apply as usual.
 Each dragon species also has its own **special ability** (`SPECIALS` in `logic/dragons.js`, effects in `src/dragonSpecials.js`),
 fired on a cooldown once an enemy is in range: Cinderwing's Meteor Rain, Glacier's Blizzard, Stormcaller's Thunderstorm,
@@ -683,7 +683,9 @@ profile of waveform, base pitch, letter spread, slide, wobble, growl and an eeri
 `newestBlip` allows one blip a frame). `sfx.babble` synthesizes it (wobbles via an LFO on the pitch, growl via filtered noise);
 the concierge has a soft polite voice and the boss's name slamming on screen plays `bossSlam`. Wired in `main.js`'s `runCutscene`.
 
-Dragon **skins** (the 8 scales) and **breaths** must be unlocked: each dragon always has its own starting skin and breath, and the
-rest drop from chests (`availableLoot`'s `skin` / `breath` loot, in the 0.35-weight attachment category) while you carry
-found a dragon. They live in `profile.unlocked.skins` / `.breaths` (`unlockDragonPart`), a new one goes straight onto the dragon you
-have out, and `setDragonOption` / `dragonSetup` only accept unlocked picks. The sandbox has them all unlocked.
+Dragons are **per-run finds**: a dragon, and the skins and breaths for it, are lost when the run ends (you can find them again
+next run). A dragon is never added to the pet collection or a loadout, and the saved profile holds no dragon data. The run's
+`game.dragonState` (`createDragonState`: `unlocked.skins` / `.breaths` plus each dragon's `dragons[id]` picks; sandbox has its own with
+everything unlocked) is what `dragonSetup` / `setDragonOption` / `unlockDragonPart` work on. Each dragon always has its own starting
+skin and breath; the rest drop from chests (`availableLoot`'s `skin` / `breath` loot, their own rare `dragonpart` category at weight
+0.12, about 1 chest in 25) only while a dragon is out. A new one goes straight onto the dragon you have out.

@@ -56,8 +56,12 @@ export function isBreath(id) {
   return Object.prototype.hasOwnProperty.call(BREATHS, id)
 }
 
+// A fresh run's dragon state: nothing unlocked beyond each dragon's own look and breath, no picks.
+// Lives on the game (not the saved profile), so it is lost when the run ends.
+export const createDragonState = () => ({ unlocked: { skins: [], breaths: [] }, dragons: {} })
+
 // ---- Unlocks: skins (scales) and breaths are found in chests (once you have a dragon) and kept in the
-// profile. Every dragon always has its own starting skin and breath.
+// run's dragon state. Every dragon always has its own starting skin and breath.
 export const ownSkin = (def) => def?.defaultScale ?? DEFAULT_SCALE
 export const ownBreath = (def) => def?.defaultBreath ?? DEFAULT_BREATH
 export const isSkinUnlocked = (unlocked, id, def = null) => id === ownSkin(def) || (unlocked?.skins ?? []).includes(id)

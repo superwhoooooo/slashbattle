@@ -34,8 +34,9 @@ import { DEEP_SPAWN_CHANCE, pickDeepType } from './logic/enemies.js'
 import { MELEE_REFLECT_DAMAGE, createShield, crackFraction, hitShield, reflectedDamage, stepShield } from './logic/reflect.js'
 import { WATER, stepBreath, stepDepth, waveHeight } from './logic/water.js'
 import { createWaterUi } from './waterUi.js'
-import { activeLoadoutPets, addToCollection, bankCrystals, setDragonOption, setRifleOption, unlockAttachment, unlockDragonPart } from './logic/profile.js'
-import { BREATHS, SCALES as DRAGON_SKINS, SKIN_IDS, BREATH_IDS, dragonSetup, isDragon } from './logic/dragons.js'
+import { activeLoadoutPets, addToCollection, bankCrystals, setRifleOption, unlockAttachment } from './logic/profile.js'
+import { setDragonOption, unlockDragonPart } from './logic/profile.js'
+import { BREATHS, SCALES as DRAGON_SKINS, SKIN_IDS, BREATH_IDS, createDragonState, dragonSetup, isDragon } from './logic/dragons.js'
 import { combineEffects, skillEffects } from './logic/skills.js'
 import { createPauseMenu, loadBrightness } from './pauseMenu.js'
 import { createSwapPanel } from './swap.js'
@@ -766,7 +767,7 @@ let gameMode = 'resort'
 let profile = loadProfile()
 // The sandbox has every scope and ammo unlocked (for testing); this is the profile as the rifle
 // code and the hub should see it (every pet counts as found, so all dragons can be customised). setProfile keeps the real unlocks so the sandbox never saves them.
-const sandboxProfile = () => (sandbox ? { ...profile, collection: Object.keys(PETS), unlocked: { scopes: Object.keys(SCOPES), ammo: Object.keys(AMMO), skins: SKIN_IDS, breaths: BREATH_IDS } } : profile)
+const sandboxProfile = () => (sandbox ? { ...profile, collection: Object.keys(PETS), unlocked: { scopes: Object.keys(SCOPES), ammo: Object.keys(AMMO) } } : profile)
 function setProfile(next) {
   profile = sandbox ? { ...next, unlocked: profile.unlocked, collection: profile.collection } : next // the sandbox's all-unlocked view never gets saved
   saveProfile(profile)
@@ -782,15 +783,23 @@ const hideLimit = () => POD_HIDE_LIMIT + activeFx(game.inventory.equipped).hideT
 // The equipped power-ups (at their upgrade levels) plus the learned skills, as one effect set.
 const activeFx = (equipped) => combineEffects(powerupEffects(equipped, profile.powerups), skillEffects(profile.skills))
 
+// Dragons, and the skins and breaths for them, are per-run finds: they live on the game and are lost with the
+// run (the sandbox has its own, with everything unlocked).
+let sandboxDragonState = { unlocked: { skins: SKIN_IDS, breaths: BREATH_IDS }, dragons: {} }
+const dragonState = () => (sandbox ? sandboxDragonState : game.dragonState)
+function setDragonState(next) {
+  if (sandbox) sandboxDragonState = next
+  else game.dragonState = next
+}
 // Creates a pet beside the player; a dragon comes out in the scale and breath picked in the Dragon Den.
 function spawnPet(id) {
-  return createPet(id, scene, game.player, isDragon(PETS[id]) ? dragonSetup(profile, PETS[id]) : null)
+  return createPet(id, scene, game.player, isDragon(PETS[id]) ? dragonSetup(dragonState(), PETS[id]) : null)
 }
 // Closing the hub re-dresses any dragon in play whose scale or breath was changed there.
 function refreshDragons() {
   game.pets.forEach((pet, index) => {
     if (!isDragon(pet.def)) return
-    const want = dragonSetup(profile, PETS[pet.def.id])
+    const want = dragonSetup(dragonState(), PETS[pet.def.id])
     if (pet.def.scale.id === want.scale && pet.def.breath.id === want.breath) return
     const fresh = spawnPet(pet.def.id)
     fresh.mesh.position.copy(pet.mesh.position)
@@ -856,6 +865,7 @@ function createGame() {
     waveState: createWaveState(),
     inventory: createInventory(), // crystals, the weapon hotbar, abilities, pets (see logic/inventory.js)
     pets: [], // live pet objects (src/pets.js) for inventory.pets
+    dragonState: createDragonState(), // dragon skins / breaths found and picked this run (lost with it)
     chests: [], // chest meshes on the platform
     chestSpawnerState: createPodSpawnerState(),
     pickups: [], // power-ups lying on the ground, waiting to be walked over
@@ -1513,7 +1523,7 @@ function openChestNow(game, chest, now) {
   burst(particleSystem, point, CHEST_FLASH_COLOR, 40, 4, 1)
   shardBurst(particleSystem, point, CHEST_FLASH_COLOR, 16, 3)
 
-  const loot = rollChestLoot(game.inventory, Math.random, profile.unlocked, profile.collection)
+  const loot = rollChestLoot(game.inventory, Math.random, { ...profile.unlocked, ...game.dragonState.unlocked }, profile.collection)
   if (!loot) {
     game.score += CHEST_ALL_OWNED_SCORE
     game.player.hp = Math.min(game.player.maxHp, game.player.hp + CHEST_ALL_OWNED_HEAL)
@@ -1523,7 +1533,7 @@ function openChestNow(game, chest, now) {
 
   // A pet you find is yours for good: it goes into your collection (and so the Loadout page)
   // right away, even if you then decline to swap it in for the one you're carrying.
-  if (loot.kind === 'pet' && !sandbox) setProfile(addToCollection(profile, [loot.id]))
+  if (loot.kind === 'pet' && !sandbox && !isDragon(PETS[loot.id])) setProfile(addToCollection(profile, [loot.id])) // dragons are per-run finds
 
   // Slots full: ask which of your items to swap out (the game pauses).
   if (needsSwap(game.inventory, loot)) {
@@ -1552,10 +1562,10 @@ function receiveLoot(game, loot, swappedOut = null) {
     // Dragon parts are kept on the profile; a dragon you carry puts the new one on right away.
     const isSkin = loot.kind === 'skin'
     const table = isSkin ? DRAGON_SKINS : BREATHS
-    setProfile(unlockDragonPart(profile, loot.kind, loot.id))
+    setDragonState(unlockDragonPart(dragonState(), loot.kind, loot.id))
     const wearer = game.pets.find((pet) => isDragon(pet.def))
     if (wearer) {
-      setProfile(setDragonOption(profile, wearer.def.id, isSkin ? 'scale' : 'breath', loot.id))
+      setDragonState(setDragonOption(dragonState(), wearer.def.id, isSkin ? 'scale' : 'breath', loot.id))
       refreshDragons()
     }
     showLootToast(hud, { title: isSkin ? 'NEW DRAGON SKIN' : 'NEW DRAGON BREATH', name: table[loot.id].name, icon: { kind: 'pet', id: wearer ? wearer.def.id : 'cinderwing' }, blurb: `${table[loot.id].blurb}. N opens the Dragon Den` })
@@ -2326,7 +2336,9 @@ function bankRunCrystals() {
 const hub = createHub({
   getProfile: () => sandboxProfile(),
   setProfile,
-  getRun: () => ({ sandbox, inRun: started && !sandbox, weapons: game.inventory.weapons, crystals: game.inventory.crystals, owned: game.inventory.powerups, equipped: game.inventory.equipped }),
+  getDragons: dragonState,
+  setDragons: setDragonState,
+  getRun: () => ({ sandbox, inRun: started && !sandbox, pets: game.inventory.pets, weapons: game.inventory.weapons, crystals: game.inventory.crystals, owned: game.inventory.powerups, equipped: game.inventory.equipped }),
   onBank: bankRunCrystals,
   onOpenChange: (open) => {
     if (!open) refreshDragons()

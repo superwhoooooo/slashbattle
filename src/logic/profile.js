@@ -3,7 +3,7 @@
 // ever found (the collection), three loadouts of starting pets, and the levels
 // bought with banked crystals (skill tree + power-up upgrades). Every function
 // returns a NEW profile. src/profile.js saves it in localStorage.
-import { BREATHS, SCALES, isBreath, isBreathUnlocked, isScale, isSkinUnlocked, unlockedBreaths, unlockedSkins } from './dragons.js'
+import { BREATHS, SCALES, isDragon, unlockedBreaths, unlockedSkins } from './dragons.js'
 import { MAX_SLOTS, PETS, WEAPONS, PET_MAX_LEVEL, POWERUPS, SLOT_LIMITS, petLevel, petUpgradeCost } from './items.js'
 import { AMMO, AMMO_MAX_LEVEL, DEFAULT_AMMO, DEFAULT_SCOPE, RIFLE_MAX_LEVEL, SCOPES, ammoLevel, ammoUpgradeCost, cycleIn, isAmmoUnlocked, isScopeUnlocked, rifleLevel, rifleUpgradeCost, unlockedAmmo, unlockedScopes } from './rifles.js'
 import { POWERUP_MAX_LEVEL, SKILLS, powerupLevel, powerupUpgradeCost, skillLevel, skillState, skillsSpent } from './skills.js'
@@ -33,11 +33,10 @@ export function createProfile() {
     skills: {}, // skill id -> level
     powerups: {}, // power-up id -> level (absent = 1)
     pets: {}, // pet id -> level (absent = 1)
-    unlocked: { scopes: [], ammo: [], skins: [], breaths: [] }, // scope / ammo / dragon skin / dragon breath ids found in chests
+    unlocked: { scopes: [], ammo: [] }, // scope / ammo ids found in chests
     rifleLevels: {}, // rifle id -> level (absent = 1)
     ammoLevels: {}, // ammo id -> level (absent = 1)
     rifles: {}, // rifle id -> { scope, ammo } (absent = iron sights, standard ammo)
-    dragons: {}, // dragon pet id -> { scale, breath } (absent = that dragon's own look and breath)
   }
 }
 
@@ -48,7 +47,7 @@ const count = (value) => (Number.isFinite(value) && value > 0 ? Math.floor(value
 export function normalizeProfile(raw) {
   const base = createProfile()
   if (!raw || typeof raw !== 'object') return base
-  const collection = Array.isArray(raw.collection) ? [...new Set(raw.collection.filter((id) => PETS[id]))] : []
+  const collection = Array.isArray(raw.collection) ? [...new Set(raw.collection.filter((id) => PETS[id] && !isDragon(PETS[id])))] : [] // dragons are per-run finds, never collected
   const loadouts = base.loadouts.map((fallback, i) => {
     const saved = Array.isArray(raw.loadouts) ? raw.loadouts[i] : null
     const pets = Array.isArray(saved?.pets) ? [...new Set(saved.pets.filter((id) => collection.includes(id)))].slice(0, MAX_SLOTS.pets) : []
@@ -80,16 +79,6 @@ export function normalizeProfile(raw) {
     const ammo = AMMO[saved?.ammo] ? saved.ammo : DEFAULT_AMMO
     if (scope !== DEFAULT_SCOPE || ammo !== DEFAULT_AMMO) rifles[id] = { scope, ammo }
   }
-  // Dragon customization: only known scale / breath picks are kept.
-  const dragons = {}
-  for (const id of Object.keys(PETS)) {
-    if (PETS[id].kind !== 'breath') continue
-    const saved = raw.dragons?.[id]
-    const entry = {}
-    if (isScale(saved?.scale)) entry.scale = saved.scale
-    if (isBreath(saved?.breath)) entry.breath = saved.breath
-    if (entry.scale || entry.breath) dragons[id] = entry
-  }
   const rifleLevels = {}
   for (const id of Object.keys(WEAPONS)) {
     const level = Math.min(count(raw.rifleLevels?.[id]), RIFLE_MAX_LEVEL)
@@ -110,12 +99,9 @@ export function normalizeProfile(raw) {
     powerups,
     pets,
     rifles,
-    dragons,
     unlocked: {
       scopes: Array.isArray(raw.unlocked?.scopes) ? [...new Set(raw.unlocked.scopes.filter((id) => SCOPES[id] && id !== DEFAULT_SCOPE))] : [],
       ammo: Array.isArray(raw.unlocked?.ammo) ? [...new Set(raw.unlocked.ammo.filter((id) => AMMO[id] && id !== DEFAULT_AMMO))] : [],
-      skins: Array.isArray(raw.unlocked?.skins) ? [...new Set(raw.unlocked.skins.filter((id) => SCALES[id]))] : [],
-      breaths: Array.isArray(raw.unlocked?.breaths) ? [...new Set(raw.unlocked.breaths.filter((id) => BREATHS[id]))] : [],
     },
     rifleLevels,
     ammoLevels,
@@ -204,24 +190,26 @@ export function setRifleOption(profile, rifleId, kind, value, step = false) {
   return { ...profile, rifles: { ...profile.rifles, [rifleId]: { ...current, [kind]: next } } }
 }
 
+// Dragon state is per RUN, not part of the saved profile: `{ unlocked: { skins, breaths }, dragons: { petId: { scale, breath } } }`
+// lives on the game (main.js's dragonState) and is lost with the run. These helpers work on that shape.
 // Sets (or steps) a dragon's skin ('scale') or breath. Only unlocked ones can be picked (a dragon's own
 // starting skin and breath always can); stepping cycles through the unlocked ones.
-export function setDragonOption(profile, petId, kind, value, step = false) {
+export function setDragonOption(state, petId, kind, value, step = false) {
   const def = PETS[petId]
-  if (def?.kind !== 'breath' || (kind !== 'scale' && kind !== 'breath')) return profile
-  const ids = kind === 'scale' ? unlockedSkins(profile.unlocked, def) : unlockedBreaths(profile.unlocked, def)
-  const current = profile.dragons?.[petId]?.[kind] ?? (kind === 'scale' ? def.defaultScale : def.defaultBreath)
+  if (def?.kind !== 'breath' || (kind !== 'scale' && kind !== 'breath')) return state
+  const ids = kind === 'scale' ? unlockedSkins(state.unlocked, def) : unlockedBreaths(state.unlocked, def)
+  const current = state.dragons?.[petId]?.[kind] ?? (kind === 'scale' ? def.defaultScale : def.defaultBreath)
   const next = step ? ids[(Math.max(0, ids.indexOf(current)) + (value >= 0 ? 1 : ids.length - 1)) % ids.length] : value
-  if (!ids.includes(next)) return profile
-  return { ...profile, dragons: { ...profile.dragons, [petId]: { ...profile.dragons?.[petId], [kind]: next } } }
+  if (!ids.includes(next)) return state
+  return { ...state, dragons: { ...state.dragons, [petId]: { ...state.dragons?.[petId], [kind]: next } } }
 }
 
 // Adds a found dragon skin or breath to the unlocked set. `kind` is 'skin' or 'breath'.
-export function unlockDragonPart(profile, kind, id) {
+export function unlockDragonPart(state, kind, id) {
   const key = kind === 'skin' ? 'skins' : 'breaths'
-  if (!(kind === 'skin' ? SCALES : BREATHS)[id]) return profile
-  if (((kind === 'skin' ? profile.unlocked?.skins : profile.unlocked?.breaths) ?? []).includes(id)) return profile
-  return { ...profile, unlocked: { ...profile.unlocked, [key]: [...(profile.unlocked?.[key] ?? []), id] } }
+  if (!(kind === 'skin' ? SCALES : BREATHS)[id]) return state
+  if (((kind === 'skin' ? state.unlocked?.skins : state.unlocked?.breaths) ?? []).includes(id)) return state
+  return { ...state, unlocked: { ...state.unlocked, [key]: [...(state.unlocked?.[key] ?? []), id] } }
 }
 
 // Adds a found scope / ammo to the unlocked set. `kind` is 'scope' or 'ammo'.
