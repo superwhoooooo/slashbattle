@@ -292,7 +292,7 @@ export function createDragonModel(def = {}) {
     w.wing.position.set(side * 0.22, 0.24, 0.12)
     w.wing.scale.x = side
     torso.add(w.wing)
-    wings.push(w)
+    wings.push({ ...w, side })
   }
 
   // Mystic motes drifting around the dragon in its glow colour.
@@ -316,10 +316,14 @@ export function createDragonModel(def = {}) {
     const effort = clamp(ud.effort, 0, 1)
     const beat = t * (4.2 + effort * 6)
     const lift = 0.18 + effort * 0.12
-    wings.forEach(({ wing }) => {
-      wing.rotation.z = Math.sin(beat) * (0.6 + effort * 0.3) + lift // up / down from the shoulder
-      wing.rotation.y = -0.1 + Math.sin(beat - 0.7) * 0.12 // sweeps forward on the downstroke
-      wing.rotation.x = Math.sin(beat - 1.2) * 0.1
+    // The left wing is mirrored with a negative x scale, but rotations apply in the body's frame, so
+    // its z and y turns are flipped (`side`) to beat in step with the right. A beat is a strong
+    // downstroke and a slower, folded-up recovery.
+    const stroke = Math.sin(beat) + 0.28 * Math.sin(2 * beat + 0.6)
+    wings.forEach(({ wing, side }) => {
+      wing.rotation.z = side * (stroke * (0.55 + effort * 0.25) + lift)
+      wing.rotation.y = side * (-0.12 + Math.sin(beat - 0.9) * 0.14)
+      wing.rotation.x = Math.sin(beat - 1.3) * 0.12
     })
     rig.position.y = -Math.sin(beat) * 0.05 // the body dips on the upstroke
     // The neck sways; the whole neck rears back when breathing.
