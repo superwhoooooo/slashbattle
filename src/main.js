@@ -2816,7 +2816,7 @@ function canOpenHub() {
 window.addEventListener('keydown', (event) => {
   if (event.repeat) return
   const page = HUB_KEYS[event.code]
-  const jumpKey = event.code === 'KeyN' && started && game?.world && !hub.isOpen() // N hops in the Wilds instead of opening the Dragon Den
+  const jumpKey = event.code === 'KeyN' && started && game?.world && !hub.isOpen() // N shoots in the Wilds instead of opening the Dragon Den
   if (page && !jumpKey && (hub.isOpen() || canOpenHub())) {
     event.preventDefault()
     hub.toggle(page)
@@ -3322,11 +3322,12 @@ function gameFrame(timestamp) {
     touchControls?.setWater(Boolean(room), waterState.diving)
   }
   stepWater(elapsedSeconds, deltaSeconds)
+  input.wildsKeys = Boolean(game?.world)
   player.update(input, cameraYaw, deltaSeconds, room ? true : null)
   if (game.world) {
-    // N: a plain hop (no cooldown, no ability slot). Not while hiding, falling off the edge, or paused in a menu.
+    // Space: a plain hop (no cooldown, no ability slot). Not while hiding, falling off the edge, or paused in a menu.
     const canHop = !player.hidden && !player.falling && player.hp > 0 && !hub.isOpen()
-    const hop = stepJump(game.world.jump, canHop && input.wasPressed('KeyN'), deltaSeconds)
+    const hop = stepJump(game.world.jump, canHop && input.wasPressed('Space'), deltaSeconds)
     game.world.jump = hop.state
     if (!player.falling) player.mesh.position.y = heightAt(player.position.x, player.position.z) + hop.state.y
     if (hop.jumped || hop.landed) {

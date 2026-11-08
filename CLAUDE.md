@@ -58,7 +58,7 @@ record.
 - 1-5 — pick a weapon from the hotbar (melee or firearm)
 - Q / Z / X / C / V — use your abilities, in the order you found them
 - 0 — toggle first-person view (pointer-locked mouse look; W moves along the view, every weapon aims where you look; Esc or 0 exits)
-- N — open the Dragon Den (customize your dragons' scale and breath); in the Wilds (free roam) N jumps instead (`logic/jump.js`: a plain hop, not an ability); E near a villager talks
+- N — open the Dragon Den (customize your dragons' scale and breath); in the Wilds (free roam) N shoots/swings instead and Space jumps (`logic/jump.js`: a plain hop, not an ability); E near a villager talks
 - Tab — open the power-up menu (pauses the game): click a power-up to equip / unequip it (in sandbox mode Tab opens the sandbox menu instead)
 
 A standard gamepad works too (`src/logic/gamepad.js` maps a snapshot to

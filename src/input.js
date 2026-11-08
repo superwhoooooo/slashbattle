@@ -139,7 +139,9 @@ export class Input {
   // Attack: held, like Space/left click -- A or RT held swings just as
   // continuously as holding the keyboard/mouse equivalent does.
   isAttackDown() {
-    return this.isMouseDown(0) || this.isDown('Space') || this._gamepadActions.attack
+    // In the Wilds (`wildsKeys`) N shoots and Space is the jump instead.
+    const key = this.wildsKeys ? 'KeyN' : 'Space'
+    return this.isMouseDown(0) || this.isDown(key) || this._gamepadActions.attack
   }
 
   // Hide in / exit a pod: edge-triggered, like E.
