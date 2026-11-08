@@ -3,7 +3,7 @@
 // crystals buy skill levels and power-up upgrades; the loadout picks the pets
 // you start every run with. Pure DOM; main.js hands in the profile and callbacks.
 import { dragonIconUrl, iconImg } from './icons.js'
-import { BREATHS, SCALES, describeDragon, dragonSetup, isDragon, tuneDragon } from './logic/dragons.js'
+import { BREATHS, SCALES, describeDragon, dragonSetup, isBreathUnlocked, isDragon, isSkinUnlocked, tuneDragon } from './logic/dragons.js'
 import { skillIconSvg } from './skillIcons.js'
 import * as actions from './logic/profile.js'
 import { PETS, PET_MAX_LEVEL, POWERUPS, SLOT_LIMITS, WEAPONS, petBoost, petLevel, petUpgradeCost, powerupEffects } from './logic/items.js'
@@ -431,7 +431,7 @@ export function createHub({ getProfile, setProfile, getRun, onBank, onOpenChange
   }
   function dragonsPage(profile) {
     const wrap = el('div')
-    wrap.appendChild(el('p', 'hub-note', 'Dragons circle high above you and breathe on enemies from the air. Find them in chests, then dress each one in any mystical scale and give it any breath. Changes apply the moment you close this page. Pet upgrades are on the Loadout page.'))
+    wrap.appendChild(el('p', 'hub-note', 'Dragons circle high above you and breathe on enemies from the air. Find them in chests. Each dragon starts with its own skin and breath; more skins and breaths are rare chest finds while a dragon is out, and are yours for good. Changes apply the moment you close this page. Pet upgrades are on the Loadout page.'))
     const grid = el('div', 'hub-grid')
     grid.style.gridTemplateColumns = 'repeat(auto-fill, minmax(340px, 1fr))'
     const active = profile.loadouts[profile.activeLoadout].pets
@@ -455,15 +455,15 @@ export function createHub({ getProfile, setProfile, getRun, onBank, onOpenChange
       card.appendChild(el('div', 'nx', have ? `${tuned.scale.name} · ${tuned.breath.name} · Lv ${petLevel(profile.pets, base.id)}` : base.blurb))
       if (have) {
         const scales = el('div', 'chips')
-        scales.appendChild(el('b', '', 'Scales'))
+        scales.appendChild(el('b', '', 'Skins'))
         for (const sc of Object.values(SCALES)) {
-          scales.appendChild(chip({ name: sc.name, blurb: sc.blurb }, { on: sc.id === setup.scale, locked: false, svg: dragonSvgScale(sc), color: hex(sc.glow), click: () => act(api.setDragon(base.id, 'scale', sc.id)) }))
+          scales.appendChild(chip({ name: sc.name, blurb: sc.blurb }, { on: sc.id === setup.scale, locked: !isSkinUnlocked(profile.unlocked, sc.id, base), svg: dragonSvgScale(sc), color: hex(sc.glow), click: () => act(api.setDragon(base.id, 'scale', sc.id)) }))
         }
         card.appendChild(scales)
         const breaths = el('div', 'chips')
         breaths.appendChild(el('b', '', 'Breath'))
         for (const br of Object.values(BREATHS)) {
-          breaths.appendChild(chip(br, { on: br.id === setup.breath, locked: false, svg: breathSvg(br), color: hex(br.color), click: () => act(api.setDragon(base.id, 'breath', br.id)) }))
+          breaths.appendChild(chip(br, { on: br.id === setup.breath, locked: !isBreathUnlocked(profile.unlocked, br.id, base), svg: breathSvg(br), color: hex(br.color), click: () => act(api.setDragon(base.id, 'breath', br.id)) }))
         }
         card.appendChild(breaths)
         card.appendChild(el('div', 'bl', `${tuned.scale.blurb}  ·  ${tuned.breath.blurb}`))

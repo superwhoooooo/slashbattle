@@ -19,6 +19,7 @@ export const SCALES = {
   starlit: { id: 'starlit', name: 'Starlit Void', body: 0x1c1f6e, belly: 0x7a6cff, wing: 0x0b0d3a, horn: 0xd7d9ff, glow: 0xb48bff, blurb: 'Midnight scales scattered with tiny stars' },
 }
 export const DEFAULT_SCALE = 'crimson'
+export const SKIN_IDS = Object.keys(SCALES)
 
 // Each breath: the bolt's colour, and how it bends the dragon's own numbers. `splash` is a
 // blast radius around the target, `chain` how many extra enemies it arcs to, `bolts` how many
@@ -32,6 +33,7 @@ export const BREATHS = {
   solar: { id: 'solar', name: 'Sunbeam', color: 0xffffff, core: 0xfff7c2, blurb: 'Piercing beams of light that reach far and burst wide', damage: 1.15, interval: 1.2, splash: 1.5, splashShare: 0.4, range: 1.3 },
 }
 export const DEFAULT_BREATH = 'flame'
+export const BREATH_IDS = Object.keys(BREATHS)
 
 // Each species' own special ability: fires now and then (every `interval` seconds, once an enemy is
 // in range) on top of its normal breath. Damage is `mult` x the dragon's base damage (after pet level
@@ -54,13 +56,21 @@ export function isBreath(id) {
   return Object.prototype.hasOwnProperty.call(BREATHS, id)
 }
 
-// A dragon's default look and breath (each species ships with its own); the saved pick wins.
+// ---- Unlocks: skins (scales) and breaths are found in chests (once you have a dragon) and kept in the
+// profile. Every dragon always has its own starting skin and breath.
+export const ownSkin = (def) => def?.defaultScale ?? DEFAULT_SCALE
+export const ownBreath = (def) => def?.defaultBreath ?? DEFAULT_BREATH
+export const isSkinUnlocked = (unlocked, id, def = null) => id === ownSkin(def) || (unlocked?.skins ?? []).includes(id)
+export const isBreathUnlocked = (unlocked, id, def = null) => id === ownBreath(def) || (unlocked?.breaths ?? []).includes(id)
+export const unlockedSkins = (unlocked, def) => SKIN_IDS.filter((id) => isSkinUnlocked(unlocked, id, def))
+export const unlockedBreaths = (unlocked, def) => BREATH_IDS.filter((id) => isBreathUnlocked(unlocked, id, def))
+
+// A dragon's look and breath: the saved pick if it is a real, unlocked one, else its own default.
 export function dragonSetup(profile, def) {
   const saved = profile?.dragons?.[def.id]
-  return {
-    scale: isScale(saved?.scale) ? saved.scale : def.defaultScale ?? DEFAULT_SCALE,
-    breath: isBreath(saved?.breath) ? saved.breath : def.defaultBreath ?? DEFAULT_BREATH,
-  }
+  const skin = isScale(saved?.scale) && isSkinUnlocked(profile?.unlocked, saved.scale, def)
+  const breath = isBreath(saved?.breath) && isBreathUnlocked(profile?.unlocked, saved.breath, def)
+  return { scale: skin ? saved.scale : ownSkin(def), breath: breath ? saved.breath : ownBreath(def) }
 }
 
 // The def pets.js runs for a dragon: its base def with the breath's multipliers folded in and

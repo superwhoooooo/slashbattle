@@ -34,8 +34,8 @@ import { DEEP_SPAWN_CHANCE, pickDeepType } from './logic/enemies.js'
 import { MELEE_REFLECT_DAMAGE, createShield, crackFraction, hitShield, reflectedDamage, stepShield } from './logic/reflect.js'
 import { WATER, stepBreath, stepDepth, waveHeight } from './logic/water.js'
 import { createWaterUi } from './waterUi.js'
-import { activeLoadoutPets, addToCollection, bankCrystals, setRifleOption, unlockAttachment } from './logic/profile.js'
-import { dragonSetup, isDragon } from './logic/dragons.js'
+import { activeLoadoutPets, addToCollection, bankCrystals, setDragonOption, setRifleOption, unlockAttachment, unlockDragonPart } from './logic/profile.js'
+import { BREATHS, SCALES as DRAGON_SKINS, SKIN_IDS, BREATH_IDS, dragonSetup, isDragon } from './logic/dragons.js'
 import { combineEffects, skillEffects } from './logic/skills.js'
 import { createPauseMenu, loadBrightness } from './pauseMenu.js'
 import { createSwapPanel } from './swap.js'
@@ -766,7 +766,7 @@ let gameMode = 'resort'
 let profile = loadProfile()
 // The sandbox has every scope and ammo unlocked (for testing); this is the profile as the rifle
 // code and the hub should see it (every pet counts as found, so all dragons can be customised). setProfile keeps the real unlocks so the sandbox never saves them.
-const sandboxProfile = () => (sandbox ? { ...profile, collection: Object.keys(PETS), unlocked: { scopes: Object.keys(SCOPES), ammo: Object.keys(AMMO) } } : profile)
+const sandboxProfile = () => (sandbox ? { ...profile, collection: Object.keys(PETS), unlocked: { scopes: Object.keys(SCOPES), ammo: Object.keys(AMMO), skins: SKIN_IDS, breaths: BREATH_IDS } } : profile)
 function setProfile(next) {
   profile = sandbox ? { ...next, unlocked: profile.unlocked, collection: profile.collection } : next // the sandbox's all-unlocked view never gets saved
   saveProfile(profile)
@@ -1513,7 +1513,7 @@ function openChestNow(game, chest, now) {
   burst(particleSystem, point, CHEST_FLASH_COLOR, 40, 4, 1)
   shardBurst(particleSystem, point, CHEST_FLASH_COLOR, 16, 3)
 
-  const loot = rollChestLoot(game.inventory, Math.random, profile.unlocked)
+  const loot = rollChestLoot(game.inventory, Math.random, profile.unlocked, profile.collection)
   if (!loot) {
     game.score += CHEST_ALL_OWNED_SCORE
     game.player.hp = Math.min(game.player.maxHp, game.player.hp + CHEST_ALL_OWNED_HEAL)
@@ -1546,6 +1546,19 @@ function receiveLoot(game, loot, swappedOut = null) {
     const held = selectedWeaponId(game.inventory)
     if (WEAPONS[held].rifle) setProfile(setRifleOption(profile, held, loot.kind, loot.id))
     showLootToast(hud, { title: loot.kind === 'scope' ? 'NEW SCOPE' : 'NEW AMMO', name: table[loot.id].name, icon: { kind: 'weapon', id: WEAPONS[held].rifle ? held : game.inventory.weapons.find((w) => WEAPONS[w].rifle) }, blurb: `${table[loot.id].blurb}. [ ] to switch, J to upgrade` })
+    return
+  }
+  if (loot.kind === 'skin' || loot.kind === 'breath') {
+    // Dragon parts are kept on the profile; a dragon you carry puts the new one on right away.
+    const isSkin = loot.kind === 'skin'
+    const table = isSkin ? DRAGON_SKINS : BREATHS
+    setProfile(unlockDragonPart(profile, loot.kind, loot.id))
+    const wearer = game.pets.find((pet) => isDragon(pet.def))
+    if (wearer) {
+      setProfile(setDragonOption(profile, wearer.def.id, isSkin ? 'scale' : 'breath', loot.id))
+      refreshDragons()
+    }
+    showLootToast(hud, { title: isSkin ? 'NEW DRAGON SKIN' : 'NEW DRAGON BREATH', name: table[loot.id].name, icon: { kind: 'pet', id: wearer ? wearer.def.id : 'cinderwing' }, blurb: `${table[loot.id].blurb}. N opens the Dragon Den` })
     return
   }
   if (swappedOut) game.inventory = swapItem(game.inventory, loot, swappedOut)

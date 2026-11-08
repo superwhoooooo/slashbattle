@@ -10,6 +10,7 @@ import {
   SLOT_LIMITS,
   WEAPONS,
 } from './items.js'
+import { BREATH_IDS, SKIN_IDS, isBreathUnlocked, isDragon, isSkinUnlocked } from './dragons.js'
 import { AMMO_IDS, SCOPE_IDS, isAmmoUnlocked, isScopeUnlocked } from './rifles.js'
 
 export function createInventory() {
@@ -49,7 +50,7 @@ export function selectWeaponSlot(inventory, slot) {
 // Everything a chest could still hand out: every weapon, ability and pet
 // not yet owned. When that category is already full, the item is still
 // on offer -- you get to swap it in for something you have (see needsSwap).
-export function availableLoot(inventory, unlocked = null) {
+export function availableLoot(inventory, unlocked = null, collection = []) {
   const loot = []
   for (const id of Object.keys(WEAPONS)) if (!inventory.weapons.includes(id)) loot.push({ kind: 'weapon', id })
   for (const id of Object.keys(ABILITIES)) if (!inventory.abilities.includes(id)) loot.push({ kind: 'ability', id })
@@ -58,6 +59,12 @@ export function availableLoot(inventory, unlocked = null) {
   if (unlocked && inventory.weapons.some((id) => WEAPONS[id]?.rifle)) {
     for (const id of SCOPE_IDS) if (!isScopeUnlocked(unlocked, id)) loot.push({ kind: 'scope', id })
     for (const id of AMMO_IDS) if (!isAmmoUnlocked(unlocked, id)) loot.push({ kind: 'ammo', id })
+  }
+  // Dragon skins and breaths only drop while you are carrying a dragon to put them on (`collection` is unused).
+  const hasDragon = inventory.pets.some((id) => isDragon(PETS[id]))
+  if (unlocked && hasDragon) {
+    for (const id of SKIN_IDS) if (!isSkinUnlocked(unlocked, id)) loot.push({ kind: 'skin', id })
+    for (const id of BREATH_IDS) if (!isBreathUnlocked(unlocked, id)) loot.push({ kind: 'breath', id })
   }
   return loot
 }
@@ -107,15 +114,17 @@ export function swapItem(inventory, { kind, id }, outId) {
 // run -- with the pet slot, hotbar and ability slots full and everything else asking for a swap --
 // they were the one thing a chest just handed over, a quarter of all chests. At 0.35 they're about
 // 1 chest in 9 while weapons, abilities and pets are all still on offer.
-export const CHEST_CATEGORY_WEIGHTS = { weapon: 1, ability: 1, pet: 1, attachment: 0.35 }
+// Dragon skins and breaths are their own, rarer category (0.12: roughly 1 chest in 25 while the other
+// three are on offer) so the 12 of them never crowd out real loot, and they only drop while a dragon is out.
+export const CHEST_CATEGORY_WEIGHTS = { weapon: 1, ability: 1, pet: 1, attachment: 0.35, dragonpart: 0.12 }
 
 // Rolls a chest's reward: first a category (weighted by CHEST_CATEGORY_WEIGHTS among the
 // categories that still have something to give), then an item within it. null once you own
 // everything.
-export function rollChestLoot(inventory, rng = Math.random, unlocked = null) {
-  const loot = availableLoot(inventory, unlocked)
+export function rollChestLoot(inventory, rng = Math.random, unlocked = null, collection = []) {
+  const loot = availableLoot(inventory, unlocked, collection)
   if (loot.length === 0) return null
-  const categoryOf = (item) => (item.kind === 'scope' || item.kind === 'ammo' ? 'attachment' : item.kind)
+  const categoryOf = (item) => (item.kind === 'scope' || item.kind === 'ammo' ? 'attachment' : item.kind === 'skin' || item.kind === 'breath' ? 'dragonpart' : item.kind)
   const kinds = [...new Set(loot.map(categoryOf))]
   const weights = kinds.map((k) => CHEST_CATEGORY_WEIGHTS[k] ?? 1)
   let pick = rng() * weights.reduce((a, b) => a + b, 0)

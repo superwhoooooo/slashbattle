@@ -682,3 +682,8 @@ While a boss's line types out in the intro cutscene, each other letter blips (`l
 profile of waveform, base pitch, letter spread, slide, wobble, growl and an eerie extra partial; the letter picks the pitch;
 `newestBlip` allows one blip a frame). `sfx.babble` synthesizes it (wobbles via an LFO on the pitch, growl via filtered noise);
 the concierge has a soft polite voice and the boss's name slamming on screen plays `bossSlam`. Wired in `main.js`'s `runCutscene`.
+
+Dragon **skins** (the 8 scales) and **breaths** must be unlocked: each dragon always has its own starting skin and breath, and the
+rest drop from chests (`availableLoot`'s `skin` / `breath` loot, in the 0.35-weight attachment category) while you carry
+found a dragon. They live in `profile.unlocked.skins` / `.breaths` (`unlockDragonPart`), a new one goes straight onto the dragon you
+have out, and `setDragonOption` / `dragonSetup` only accept unlocked picks. The sandbox has them all unlocked.
