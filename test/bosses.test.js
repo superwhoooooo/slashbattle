@@ -178,7 +178,7 @@ describe('the new enemies stay annoying against a maxed build', () => {
   it('gives every one a status on hit and a share of damage armour cannot stop', async () => {
     const { CRAZY_TYPES } = await import('../src/logic/crazyEnemies.js')
     for (const [id, stats] of Object.entries(CRAZY_TYPES)) {
-      expect(stats.trueFraction, id).toBeGreaterThanOrEqual(0.4)
+      expect(stats.trueFraction, id).toBeGreaterThanOrEqual(0.2)
       if (id !== 'kablooma') expect(['poison', 'slow', 'weaken', 'drain', 'stun']).toContain(stats.onHit.status)
     }
   })

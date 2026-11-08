@@ -121,18 +121,18 @@ import { signatureFor } from './signatures.js'
 // Each regular one also carries its own signature attack (a smaller version of its boss's idea).
 // The regular ones are buffed on top of the numbers above: tougher, harder-hitting, a bit quicker, and their moves come
 // round sooner.
-export const CRAZY_BUFF = { hp: 1.4, damage: 1.25, speed: 1.1, cooldown: 0.8 }
+export const CRAZY_BUFF = { hp: 1.15, damage: 1.05, speed: 1.0, cooldown: 0.92 }
 const ON_HIT = {
-  bumble: { status: 'poison', seconds: 4 },
-  snapper: { status: 'slow', seconds: 2.5, factor: 0.55 },
-  sporeling: { status: 'weaken', seconds: 5 },
-  boogle: { status: 'drain', amount: 5 },
+  bumble: { status: 'poison', seconds: 2.5 },
+  snapper: { status: 'slow', seconds: 1.8, factor: 0.7 },
+  sporeling: { status: 'weaken', seconds: 3 },
+  boogle: { status: 'drain', amount: 3 },
   kablooma: null,
-  icicle: { status: 'slow', seconds: 3, factor: 0.4 },
-  prickle: { status: 'poison', seconds: 5 },
-  wispy: { status: 'drain', amount: 4 },
+  icicle: { status: 'slow', seconds: 2, factor: 0.6 },
+  prickle: { status: 'poison', seconds: 3 },
+  wispy: { status: 'drain', amount: 2 },
   drillbit: { status: 'stun' },
-  twister: { status: 'slow', seconds: 2, factor: 0.6 },
+  twister: { status: 'slow', seconds: 1.5, factor: 0.75 },
 }
 const buffed = (e) => {
   const signature = signatureFor(e.id)
@@ -144,8 +144,8 @@ const buffed = (e) => {
     speed: +(e.stats.speed * CRAZY_BUFF.speed).toFixed(2),
     specialIntervals: intervals,
     onHit: ON_HIT[e.id], // a status it inflicts on every hit (poison, slow, weaken, drain, stun)
-    trueFraction: e.id === 'kablooma' ? 0.6 : 0.4, // the share of its damage armour can't reduce
-    signature: signature && { ...signature, interval: signature.interval * CRAZY_BUFF.cooldown, damageMultiplier: (signature.damageMultiplier ?? 0.6) * 1.2 },
+    trueFraction: e.id === 'kablooma' ? 0.3 : 0.2, // the share of its damage armour can't reduce
+    signature: signature && { ...signature, interval: signature.interval * CRAZY_BUFF.cooldown, damageMultiplier: (signature.damageMultiplier ?? 0.6) * 1.0 },
   }
 }
 export const CRAZY_TYPES = Object.fromEntries(CRAZY_ENEMIES.map((e) => [e.id, buffed(e)]))
@@ -156,6 +156,6 @@ export const CRAZY_SCORES = Object.fromEntries(CRAZY_ENEMIES.map((e, i) => [e.id
 // Each unlocked enemy's share of a wave's spawns: it starts small and grows, capped.
 export function crazyWeights(n) {
   const weights = {}
-  for (const e of CRAZY_ENEMIES) if (n >= e.unlock) weights[e.id] = Math.min(0.04 + 0.008 * (n - e.unlock), 0.075)
+  for (const e of CRAZY_ENEMIES) if (n >= e.unlock) weights[e.id] = Math.min(0.035 + 0.007 * (n - e.unlock), 0.06)
   return weights
 }

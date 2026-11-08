@@ -116,8 +116,8 @@ export class Player {
       this.slowUntil = Math.max(this.slowUntil, now + seconds)
       this.slowFactor = Math.min(this.slowFactor, factor)
     } else if (kind === 'stun') {
-      this.slowUntil = Math.max(this.slowUntil, now + 0.5)
-      this.slowFactor = 0.12
+      this.slowUntil = Math.max(this.slowUntil, now + 0.35)
+      this.slowFactor = Math.min(this.slowFactor, 0.3)
     } else if (kind === 'weaken') this.weakUntil = Math.max(this.weakUntil, now + seconds)
   }
 
