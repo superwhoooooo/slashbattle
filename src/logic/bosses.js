@@ -47,6 +47,7 @@ export const BOSS_SPECIALS = {
 }
 
 import { CRAZY_BOSS_DEFS } from './crazyEnemies.js'
+import { signatureFor } from './signatures.js'
 
 const BOSS_DEFS = [
   {
@@ -286,6 +287,7 @@ const makeBoss = (def) => ({
     ...def.stats,
     boss: true,
     specials: def.specials,
+    signature: signatureFor(def.id), // the one attack only this boss has (logic/signatures.js)
     // Shooter bosses (Duke Bloatsworth, Spinner Supreme) name a longer range of their own.
     attackRange: def.stats.attackRange ?? def.stats.radius + BOSS_ATTACK_REACH,
     reachBonus: def.stats.radius, // added to the player's ATTACK_RANGE so a swing reaches the boss's far side

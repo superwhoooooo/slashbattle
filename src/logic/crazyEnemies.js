@@ -8,7 +8,7 @@ export const CRAZY_ENEMIES = [
     id: 'bumble',
     name: 'Bumblo',
     unlock: 3,
-    stats: { shape: 'sphere', size: 1.2, color: 0xffc933, edgeColor: 0xfff0a0, speed: 3.2, hp: 40, damage: 6, radius: 0.55, accessory: 'wings', specials: ['charge'], specialIntervals: { charge: 3.6 } },
+    stats: { shape: 'sphere', size: 1.2, color: 0xffc933, edgeColor: 0xfff0a0, speed: 3.2, hp: 40, damage: 6, radius: 0.55, accessory: 'wings', specials: ['charge', 'blink'], specialIntervals: { charge: 3.6, blink: 6 } },
     boss: {
       id: 'boss_bumble', name: 'QUEEN BUMBLETRON', title: 'Buzz Off (Literally)', specials: ['charge', 'barrage', 'summon', 'blink', 'spin'], score: 1650,
       stats: { shape: 'sphere', size: 4.2, color: 0xffb800, edgeColor: 0xfff0a0, speed: 2.8, hp: 1100, damage: 16, radius: 1.9, accessory: 'wings' },
@@ -19,7 +19,7 @@ export const CRAZY_ENEMIES = [
     id: 'snapper',
     name: 'Snapper',
     unlock: 4,
-    stats: { shape: 'box', size: 1.3, color: 0xff6a4a, edgeColor: 0xffc0a8, speed: 2.4, hp: 95, damage: 13, radius: 0.6, accessory: 'claws', specials: ['spin'], specialIntervals: { spin: 5 } },
+    stats: { shape: 'box', size: 1.3, color: 0xff6a4a, edgeColor: 0xffc0a8, speed: 2.4, hp: 95, damage: 13, radius: 0.6, accessory: 'claws', specials: ['spin', 'charge'], specialIntervals: { spin: 5, charge: 6 } },
     boss: {
       id: 'boss_snapper', name: 'KING CRABULON', title: 'Sideways Supremacy', specials: ['slam', 'spin', 'charge', 'geyser'], score: 1750,
       stats: { shape: 'box', size: 3.8, color: 0xe8442a, edgeColor: 0xffc0a8, speed: 2.1, hp: 1500, damage: 22, radius: 1.6, accessory: 'claws' },
@@ -41,7 +41,7 @@ export const CRAZY_ENEMIES = [
     id: 'boogle',
     name: 'Boogle',
     unlock: 5,
-    stats: { shape: 'octahedron', size: 1.2, color: 0xcfd8ff, edgeColor: 0xffffff, speed: 2.6, hp: 45, damage: 8, radius: 0.5, accessory: 'halo', attackRange: 10, specials: ['barrage'], specialIntervals: { barrage: 4.2 } },
+    stats: { shape: 'octahedron', size: 1.2, color: 0xcfd8ff, edgeColor: 0xffffff, speed: 2.6, hp: 45, damage: 8, radius: 0.5, accessory: 'halo', attackRange: 10, specials: ['barrage', 'blink'], specialIntervals: { barrage: 4.2, blink: 7 } },
     boss: {
       id: 'boss_boogle', name: 'PHANTOM PRINCE', title: 'Rather Dead, Quite Rude', specials: ['barrage', 'blink', 'lure', 'summon'], score: 1800,
       stats: { shape: 'octahedron', size: 3.8, color: 0xb9c6ff, edgeColor: 0xffffff, speed: 2.4, hp: 1200, damage: 17, radius: 1.5, accessory: 'halo', attackRange: 12 },
@@ -63,7 +63,7 @@ export const CRAZY_ENEMIES = [
     id: 'icicle',
     name: 'Icicle',
     unlock: 6,
-    stats: { shape: 'tetrahedron', size: 1.2, color: 0x9fe8ff, edgeColor: 0xffffff, speed: 2.0, hp: 60, damage: 9, radius: 0.5, accessory: 'icicles', specials: ['charge'], specialIntervals: { charge: 3.8 } },
+    stats: { shape: 'tetrahedron', size: 1.2, color: 0x9fe8ff, edgeColor: 0xffffff, speed: 2.0, hp: 60, damage: 9, radius: 0.5, accessory: 'icicles', specials: ['charge', 'barrage'], specialIntervals: { charge: 3.8, barrage: 6 } },
     boss: {
       id: 'boss_icicle', name: 'BLIZZARD BARON', title: 'Cold Open', specials: ['barrage', 'spin', 'slam', 'blink'], score: 1850,
       stats: { shape: 'tetrahedron', size: 3.8, color: 0x7fd4ff, edgeColor: 0xffffff, speed: 2.2, hp: 1250, damage: 18, radius: 1.5, accessory: 'icicles' },
@@ -107,7 +107,7 @@ export const CRAZY_ENEMIES = [
     id: 'twister',
     name: 'Twister',
     unlock: 8,
-    stats: { shape: 'cylinder', size: 1.6, color: 0xa0a0ff, edgeColor: 0xe0e0ff, speed: 2.6, hp: 70, damage: 8, radius: 0.7, accessory: 'rings', specials: ['spin'], specialIntervals: { spin: 3.5 } },
+    stats: { shape: 'cylinder', size: 1.6, color: 0xa0a0ff, edgeColor: 0xe0e0ff, speed: 2.6, hp: 70, damage: 8, radius: 0.7, accessory: 'rings', specials: ['spin', 'charge'], specialIntervals: { spin: 3.5, charge: 6 } },
     boss: {
       id: 'boss_twister', name: 'CYCLONE CEO', title: 'Quarterly Gale Report', specials: ['spin', 'charge', 'barrage', 'summon'], score: 2000,
       stats: { shape: 'cylinder', size: 4.0, color: 0x8888ff, edgeColor: 0xe0e0ff, speed: 2.8, hp: 1300, damage: 17, radius: 1.7, accessory: 'rings' },
@@ -116,7 +116,10 @@ export const CRAZY_ENEMIES = [
   },
 ]
 
-export const CRAZY_TYPES = Object.fromEntries(CRAZY_ENEMIES.map((e) => [e.id, e.stats]))
+import { signatureFor } from './signatures.js'
+
+// Each regular one also carries its own signature attack (a smaller version of its boss's idea).
+export const CRAZY_TYPES = Object.fromEntries(CRAZY_ENEMIES.map((e) => [e.id, { ...e.stats, signature: signatureFor(e.id) }]))
 export const CRAZY_TYPE_IDS = CRAZY_ENEMIES.map((e) => e.id)
 export const CRAZY_BOSS_DEFS = CRAZY_ENEMIES.map((e) => e.boss)
 export const CRAZY_SCORES = Object.fromEntries(CRAZY_ENEMIES.map((e, i) => [e.id, 170 + (i % 5) * 15 + e.unlock * 4]))

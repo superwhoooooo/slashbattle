@@ -130,3 +130,32 @@ describe('stepSpecialTimer', () => {
     expect(stepSpecialTimer(0.5, 1, 8)).toEqual({ timer: 8, fire: true })
   })
 })
+
+describe('signature attacks', () => {
+  it('gives every boss its own named attack, no two alike', async () => {
+    const { ALL_BOSSES } = await import('../src/logic/bosses.js')
+    const labels = new Set()
+    const recipes = new Set()
+    for (const boss of ALL_BOSSES) {
+      const s = boss.stats.signature
+      expect(s, boss.id).toBeTruthy()
+      labels.add(s.label)
+      const { label, id, ...tuning } = s
+      recipes.add(JSON.stringify(tuning))
+    }
+    expect(labels.size).toBe(ALL_BOSSES.length)
+    expect(recipes.size).toBe(ALL_BOSSES.length)
+  })
+
+  it('uses a wide mix of attack kinds', async () => {
+    const { ALL_BOSSES } = await import('../src/logic/bosses.js')
+    expect(new Set(ALL_BOSSES.map((b) => b.stats.signature.kind)).size).toBeGreaterThanOrEqual(8)
+  })
+
+  it('gives each new regular enemy a signature and at least two moves', async () => {
+    const { CRAZY_TYPES } = await import('../src/logic/crazyEnemies.js')
+    for (const [id, stats] of Object.entries(CRAZY_TYPES)) {
+      expect(stats.signature, id).toBeTruthy()
+    }
+  })
+})

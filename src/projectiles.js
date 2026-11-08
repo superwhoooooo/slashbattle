@@ -7,7 +7,7 @@ import { isOnPlatform } from './logic/arena.js'
 import { projectileHits, stepProjectile } from './logic/projectiles.js'
 import { segmentBlocked } from './bullets.js'
 
-const POOL_SIZE = 40
+const POOL_SIZE = 150 // signature attacks (rings, spirals, walls) fire a lot of orbs
 const ORB_RADIUS = 0.32
 const ORB_HEIGHT = 0.7
 const ORB_LIFE = 3.2

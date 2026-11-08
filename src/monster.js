@@ -58,6 +58,8 @@ export function createMonsterAIState(stats = {}) {
     // Shooters (bloater, spinner): time to the next shot, plus a smoothed
     // read on where the player is heading so a lob can lead them.
     rangedTimer: 1.2 + Math.random() * 1.8,
+    // The signature attack (logic/signatures.js): its cooldown, part-way down at the start.
+    signatureTimer: stats.signature ? stats.signature.interval * (0.5 + Math.random() * 0.4) : Infinity,
     playerVel: { x: 0, z: 0 },
     prevPlayerPos: null,
     speedScale: 1,
@@ -319,7 +321,13 @@ function stepBossSpecials(monster, ai, stats, player, obstacles, dt, events) {
       const dz = player.position.z - monster.position.z
       monster.rotation.y = dampAngle(monster.rotation.y, Math.atan2(dx, dz), MONSTER_FACING_DAMPING, dt)
       jellyHit(monster, -MONSTER_ATTACK_WINDUP_INFLATE_RATE * dt)
-      if (special.remaining <= 0) fireSpecial(monster, ai, stats, player, obstacles, events)
+      if (special.remaining <= 0) {
+        if (special.name === 'signature') {
+          const aim = Math.atan2(player.position.x - monster.position.x, player.position.z - monster.position.z)
+          events.push({ type: 'signature', attack: special.attack, x: monster.position.x, z: monster.position.z, aim, damage: Math.max(1, Math.round(stats.damage * (special.attack.damageMultiplier ?? 0.6) * (ai.damageScale ?? 1))), boss: stats.boss === true })
+          ai.special = null
+        } else fireSpecial(monster, ai, stats, player, obstacles, events)
+      }
       ai.speed = 0
     } else if (special.phase === 'air') {
       // Mid-leap: slides from the take-off spot to the landing spot along an arc, then stomps.
@@ -378,8 +386,14 @@ function stepBossSpecials(monster, ai, stats, player, obstacles, dt, events) {
   if (ai.chargeRemaining > 0) {
     ai.chargeRemaining -= dt
     speed = stats.speed * BOSS_SPECIALS.charge.speedMultiplier
+  } else if (engaged && stats.signature && !player.hidden && (ai.signatureTimer -= dt) <= 0) {
+    // The signature attack: nobody else has this one.
+    ai.signatureTimer = stats.signature.interval * (ai.specialIntervalScale ?? 1)
+    showIndicator(monster, 'chase')
+    ai.special = { name: 'signature', phase: 'windup', remaining: stats.signature.windup, attack: stats.signature, radius: 0, tick: 0 }
+    events.push({ type: 'sigWarn', attack: stats.signature, x: monster.position.x, z: monster.position.z })
   } else if (engaged) {
-    for (const name of ai.specials ?? stats.specials) {
+    for (const name of ai.specials ?? stats.specials ?? []) {
       // A charge only makes sense while closing in, not once in melee range.
       if (name === 'charge' && ai.state !== 'chase') continue
       const interval = (stats.specialIntervals?.[name] ?? BOSS_SPECIALS[name].interval) * (ai.specialIntervalScale ?? 1)
@@ -607,7 +621,7 @@ export function updateMonster(monster, player, obstacles, dt, now) {
 
   let speed = stats.speed * ai.speedScale
   let busy = false
-  if (ai.specials ?? stats.specials) {
+  if (ai.specials ?? stats.specials ?? stats.signature) {
     ;({ speed, busy } = stepBossSpecials(monster, ai, stats, player, obstacles, dt, events))
   }
   if (ai.amphibious) stepAmphibious(monster, ai, stats, player, dt, events)

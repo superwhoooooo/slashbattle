@@ -699,6 +699,15 @@ wave (3-8): `crazyWeights(n)` folds them into `pickMonsterType` (Orbital Resort 
 tables carry them in the Wilds, and the boss forms join `BOSSES` (also the Wilds' temple guardians). Their add-ons
 (`characters.js`: wings, claws, cap, halo, fuse, icicles, flame, horn, rings) animate through `userData.animateAcc(time)`.
 
+## Signature attacks
+Every boss has one attack nobody else has, and each of the ten new regular enemies a smaller one (`src/logic/signatures.js`, pure
+data + geometry; `SIGNATURES` keyed by boss / enemy id, folded into `stats.signature`). Each names itself (`label`, shown as a toast
+when a boss winds it up) and picks a pattern kind with its own tuning: `ring`, `spiral`, `rain` (blast zones that mark themselves,
+then go off; `around` / `player` / `chase`), `wall` (orbs with a gap), `spokes` (warning lines then beams, optionally a rotated
+second volley), `shotgun`, `puddles`, `nova` (expanding rings) and `enrage`. `monster.js` runs the cooldown/wind-up
+(`ai.signatureTimer`, `ai.special.name === 'signature'`) and emits `sigWarn` / `signature` events; `main.js`'s `runSignature`
+plays the pattern out with a tiny job scheduler (`sigJobs`, ticked by `updateSigJobs`). The new regular enemies also have two moves each.
+
 ## Water rooms
 Three `LEVELS` carry a `water` block (Pool Room, Pacific Ocean, Glowing Reef Aquarium) and follow bosses like
 the other places (also in the sandbox level list). `arena.js` swaps the deck and props for

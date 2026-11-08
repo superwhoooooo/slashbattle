@@ -250,6 +250,7 @@ import { createScratchLayer, showScratch } from './scratch.js'
 import { makeBullets } from './logic/bullets.js'
 import { createPoisonPool, lobPoison, resetPoison, updatePoison } from './hazards.js'
 import { createProjectilePool, fireProjectile, resetProjectiles, updateProjectiles } from './projectiles.js'
+import { inRingBand, onBeam, puddleTargets, rainZones, ringAngles, wallOrbs } from './logic/signatures.js'
 import { createShockwavePool, resetShockwaves, spawnShockwave, updateShockwaves } from './shockwave.js'
 import { createPopupPool, resetPopups, showPopup, updatePopups } from './popups.js'
 import { createSpawnEffect, updateSpawnEffect } from './spawner.js'
@@ -2199,7 +2200,7 @@ function reflectAttack(game, info) {
 // line (a diver or a floater alike). Short-lived meshes; `kind` is 'warn' or 'beam'.
 const bossBeams = []
 function addBossBeam(event, kind, life) {
-  const mid = -0.7 // between the surface and a diver's depth, so it reads from both
+  const mid = waterRoom() ? -0.7 : 0.9 + (game?.world?.groundY ?? 0) // in water: between the surface and a diver's depth; on land: chest height
   const half = event.length / 2
   const mat = (color, opacity) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false, fog: false })
   const group = new THREE.Group()
@@ -2225,6 +2226,134 @@ function updateBossBeams(dt) {
       disposeObject3D(b.group)
       bossBeams.splice(i, 1)
     }
+  }
+}
+
+
+// ---- signature attacks: every boss (and each new enemy) has one move nobody else has (logic/signatures.js) ----
+// A tiny scheduler: a pattern is a handful of timed jobs (rings staggered, a spiral's volleys, blast zones going off).
+const sigJobs = []
+const addSigJob = (delay, fn) => sigJobs.push({ t: delay, fn })
+function updateSigJobs(dt, now) {
+  for (let i = sigJobs.length - 1; i >= 0; i--) {
+    const job = sigJobs[i]
+    job.t -= dt
+    if (job.t <= 0) {
+      sigJobs.splice(i, 1)
+      job.fn(now)
+    }
+  }
+}
+function sigHurt(game) {
+  triggerShake(game.shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
+  triggerDamageFlash(hud)
+  sfx.play('playerHurt', { x: game.player.position.x, z: game.player.position.z })
+  input.rumble(RUMBLE_STRONG_STRENGTH, RUMBLE_STRONG_DURATION)
+  game.hitstop.remaining = triggerHitstop(game.hitstop, HITSTOP_PLAYER_HURT).remaining
+}
+
+function runSignature(game, bossMesh, event) {
+  const a = event.attack
+  const { player } = game
+  const color = a.color
+  const size = a.size ?? 1
+  const alive = () => game.monsters.includes(bossMesh) && !bossMesh.userData.dying && !bossMesh.userData.falling
+  const hurt = (dmg, now) => {
+    if (!player.hidden && player.damagePlayer(dmg, now)) sigHurt(game)
+  }
+  const orb = (x, z, vx, vz) => fireProjectile(projectilePool, { x, z, vx, vz, damage: event.damage, color, size })
+  const here = () => ({ x: bossMesh.position.x, z: bossMesh.position.z })
+  const target = { x: player.position.x, z: player.position.z }
+  const zone = (x, z, radius, delay) => {
+    spawnShockwave(shockwavePool, x, z, radius, 0xffd15c) // the warning ring
+    addSigJob(delay, (now) => {
+      spawnShockwave(shockwavePool, x, z, radius, color)
+      warp.add('ripple', x, z, radius * 1.1, 0.5)
+      burst(particleSystem, { x, y: 0.4, z }, color, 28, 4.5)
+      sfx.play('bossSlam', { x, z })
+      if (Math.hypot(player.position.x - x, player.position.z - z) <= radius) hurt(event.damage, now)
+    })
+  }
+  if (a.kind === 'ring') {
+    for (let r = 0; r < a.rings; r++) {
+      addSigJob(r * a.stagger, () => {
+        if (!alive()) return
+        const p = here()
+        for (const ang of ringAngles(a.count, event.aim + r * a.twist)) orb(p.x, p.z, Math.sin(ang) * a.speed, Math.cos(ang) * a.speed)
+        burst(particleSystem, { x: p.x, y: 1, z: p.z }, color, 12, 3)
+      })
+    }
+  } else if (a.kind === 'spiral') {
+    const steps = Math.floor(a.duration / a.rate)
+    for (let s = 0; s < steps; s++) {
+      addSigJob(s * a.rate, () => {
+        if (!alive()) return
+        const p = here()
+        for (let k = 0; k < a.arms; k++) {
+          const ang = event.aim + (k / a.arms) * Math.PI * 2 + a.turn * s * a.rate
+          orb(p.x, p.z, Math.sin(ang) * a.speed, Math.cos(ang) * a.speed)
+        }
+      })
+    }
+  } else if (a.kind === 'rain') {
+    if (a.mode === 'chase') {
+      for (let i = 0; i < a.count; i++) addSigJob(i * a.every, () => alive() && zone(player.position.x, player.position.z, a.radius, a.delay))
+    } else {
+      for (const z of rainZones(a.mode, a.count, target)) zone(z.x, z.z, a.radius, a.delay)
+    }
+  } else if (a.kind === 'wall') {
+    const p = here()
+    const gapAt = 0.15 + Math.random() * 0.7
+    for (const aim of a.sideways ? [event.aim + Math.PI / 2, event.aim - Math.PI / 2] : [event.aim]) {
+      for (const o of wallOrbs({ x: p.x, z: p.z, aim, count: a.count, spacing: a.spacing, speed: a.speed, gap: a.gap, gapAt })) orb(o.x, o.z, o.vx, o.vz)
+    }
+  } else if (a.kind === 'spokes') {
+    const p = here()
+    const volley = (offset, startDelay) => {
+      const angles = ringAngles(a.count, event.aim + offset)
+      addSigJob(startDelay, () => {
+        for (const aim of angles) addBossBeam({ x: p.x, z: p.z, aim, length: a.length, width: a.width }, 'warn', a.delay)
+        sfx.play('podIn', { x: p.x, z: p.z })
+      })
+      addSigJob(startDelay + a.delay, (now) => {
+        for (const aim of angles) {
+          addBossBeam({ x: p.x, z: p.z, aim, length: a.length, width: a.width }, 'beam', 0.6)
+          if (onBeam({ x: player.position.x, z: player.position.z }, { x: p.x, z: p.z, aim, length: a.length, width: a.width })) hurt(event.damage, now)
+        }
+        sfx.play('bossSlam', { x: p.x, z: p.z })
+        triggerShake(game.shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
+      })
+    }
+    volley(0, 0)
+    if (a.second) volley(a.second, a.delay + 0.3)
+  } else if (a.kind === 'shotgun') {
+    const p = here()
+    for (const base of a.mirror ? [event.aim, event.aim + Math.PI] : [event.aim]) {
+      for (const { vx, vz } of fanVelocities(base, a.count, a.spread, a.speed)) orb(p.x, p.z, vx, vz)
+    }
+    burst(particleSystem, { x: p.x, y: 1, z: p.z }, color, 14, 3)
+  } else if (a.kind === 'puddles') {
+    const p = here()
+    puddleTargets(a.layout, a.count, p, target).forEach((t, i) => {
+      addSigJob(i * 0.12, () => alive() && lobPoison(poisonPool, { x: p.x, z: p.z, tx: t.x, tz: t.z, flight: 0.9, radius: a.radius, life: a.life, tick: 0.6, damage: event.damage }))
+    })
+  } else if (a.kind === 'nova') {
+    const p = here()
+    a.radii.forEach((r) => spawnShockwave(shockwavePool, p.x, p.z, r, 0xffffff)) // where the rings will pass
+    a.radii.forEach((r, i) => {
+      addSigJob(0.7 + i * a.gap, (now) => {
+        spawnShockwave(shockwavePool, p.x, p.z, r, color)
+        warp.add('ripple', p.x, p.z, r, 0.5)
+        sfx.play('bossSlam', { x: p.x, z: p.z })
+        if (inRingBand({ x: player.position.x, z: player.position.z }, p.x, p.z, r)) hurt(event.damage, now)
+      })
+    })
+  } else if (a.kind === 'enrage') {
+    bossMesh.userData.speedScale *= a.speed
+    burst(particleSystem, { x: bossMesh.position.x, y: 1.2, z: bossMesh.position.z }, color, 30, 4)
+    addSigJob(a.duration, () => {
+      bossMesh.userData.speedScale /= a.speed
+    })
   }
 }
 
@@ -2323,6 +2452,12 @@ function applyBossEvents(game, bossMesh, events, now) {
         player.mesh.position.z = player.position.z
         if (Math.random() < 0.4) burst(particleSystem, { x: player.position.x, y: 0.6 - fxDepthOffset(), z: player.position.z }, 0xfff1a8, 1, 1)
       }
+    } else if (event.type === 'sigWarn') {
+      burst(particleSystem, { x: event.x, y: 1.4, z: event.z }, event.attack.color, 16, 3)
+      sfx.play('podIn', { x: event.x, z: event.z })
+      if (bossMesh.userData.isBoss) questUi.showToast(`${event.attack.label}!`)
+    } else if (event.type === 'signature') {
+      runSignature(game, bossMesh, event)
     } else if (event.type === 'blink') {
       burst(particleSystem, { x: event.from.x, y: 1, z: event.from.z }, 0xe9a3ff, 24, 3)
       burst(particleSystem, { x: event.to.x, y: 1, z: event.to.z }, 0xe9a3ff, 24, 3)
@@ -2605,6 +2740,7 @@ function advanceFloor(game) {
   game.pickups = []
   setChestPrompt(hud, null)
   resetProjectiles(projectilePool)
+  sigJobs.length = 0
   resetPoison(poisonPool)
   resetBullets(bulletPool)
   pendingSummons.length = 0
@@ -2959,6 +3095,7 @@ function restartGame() {
   resetParticles(particleSystem)
   resetPopups(popupPool)
   resetProjectiles(projectilePool)
+  sigJobs.length = 0
   resetPoison(poisonPool)
   resetBullets(bulletPool)
   resetCrystals(crystalSystem)
@@ -3664,6 +3801,7 @@ function gameFrame(timestamp) {
   updateWarpFields(game, gameplayDelta, elapsedSeconds)
   updateMeteors(game, gameplayDelta)
   updateBossBeams(gameplayDelta)
+  updateSigJobs(gameplayDelta, elapsedSeconds)
   updateBulwarkWalls(elapsedSeconds)
   updateBuffAuras(player, elapsedSeconds, gameplayDelta)
   setGhostLook(player.mesh, elapsedSeconds < (player.ghostUntil ?? -Infinity) ? 0.28 : 1)
