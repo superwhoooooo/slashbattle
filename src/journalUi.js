@@ -42,7 +42,7 @@ export function createJournalUi({ onClose } = {}) {
     const goals = MILESTONES.map((m) => {
       const done = journal.claimed.includes(m.id)
       const have = milestoneProgress(journal, m)
-      const reward = `${m.crystals} crystals${m.loot ? ` + a ${m.loot}` : ''}`
+      const reward = `${m.crystals} crystals${m.loot ? ` + ${m.loot === 'ability' ? 'an' : 'a'} ${m.loot}` : ''}`
       return `<div class="j-goal ${done ? 'done' : ''}"><div class="j-goal-top"><b>${esc(m.title)}</b><span>${done ? 'DONE' : `${have}/${m.need}`}</span></div><div class="j-sub">${esc(m.desc)} &middot; ${esc(reward)}</div><div class="j-bar"><i style="width:${(have / m.need) * 100}%"></i></div></div>`
     }).join('')
     const sights = landmarks()

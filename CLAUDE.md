@@ -59,6 +59,7 @@ record.
 - Q / Z / X / C / V — use your abilities, in the order you found them
 - 0 — toggle first-person view (pointer-locked mouse look; W moves along the view, every weapon aims where you look; Esc or 0 exits)
 - N — open the Dragon Den (customize your dragons' scale and breath); in the Wilds (free roam) N shoots/swings instead and Space jumps (`logic/jump.js`: a plain hop, not an ability); Space again in the air opens the paraglider (`src/glider.js`: slow steady sink, 1.7x speed; Space folds it); E near a villager talks
+- U — in the Wilds: open the Wilds journal (goals, landmarks, bestiary, races); F inside a treasure map's circle digs
 - Tab — open the power-up menu (pauses the game): click a power-up to equip / unequip it (in sandbox mode Tab opens the sandbox menu instead)
 
 A standard gamepad works too (`src/logic/gamepad.js` maps a snapshot to
@@ -111,6 +112,9 @@ slashbattle/
     worldArena.js      # the Wilds' look: biome-painted ground, twilight sky, auroras/lightning, instanced scenery, fireflies
     worldModelKit.js   # part/limb/primitive helpers the Wilds' scenery models are merged from
     frontierModels.js  # models for the Frontier biomes' scenery and the landmarks
+    wildsActivities.js # the Wilds' lanterns, wayshrines, race rings, star shards (look only)
+    journalUi.js       # the Wilds journal panel (U)
+    logic/wildsJournal.js # journal + milestones + bestiary (saved); logic/lanterns.js, wayshrines.js, treasure.js, races.js, wildEvents.js, wildsSpots.js: the activities' rules
     logic/quests.js    # villager quests: generation, the quest log, dialogue (pure)
     logic/jump.js      # the Wilds' jump physics (pure)
     npcs.js            # the villagers: the player's jelly model in pastel colours, name tags, quest markers
@@ -251,7 +255,7 @@ own (`BIOMES[id].landmarks`). `landmarkLayout(lm)` returns props / treasure / gu
 invisible obstacle with no model). Ruins and landmarks are both "sites" (`sites()`, `nearestSite`): the ground is levelled
 under them, scenery / grass / wild camps keep off, and `chunkContent` streams their props, loot and guards (`siteId`).
 Reaching one shows "DISCOVERED: name" (per run, `game.world.discovered`) and feeds a `{ type: 'discover', landmarkId, kind,
-biome }` quest event (no quest uses it yet). They show as diamonds on the minimap. Roads run from each village to its nearest
+biome }` quest event (see activities below). They show as diamonds on the minimap. Roads run from each village to its nearest
 landmark too, and Frontier villages connect to the nearest village closer in (a branching network).
 
 **Hills.** `heightAt(x, z)` (pure, in `logic/world.js`) is the ground height: broad swells, finer bumps and ~84 big seeded
@@ -286,6 +290,31 @@ villages, with a gold ring where a quest wants you.
 now `WILD_CHEST_CHANCE` (30%) of chunks beyond 20 units hold one (kept off roads and out of props), every village has one
 (`villageLayout(v).treasure`) and ruin chests are never filtered. Quests: harder ones (`quest.weaponReward`; elites always) also
 pay a weapon you don't own (`questWeaponFor`); a full hotbar opens the swap panel. The dialogue, tracker and toast mention it.
+
+**Things to do out there (activities).** All pure rules in `src/logic/` (tested in `test/wildsActivities.test.js`), the look in
+`src/wildsActivities.js` (added to the arena group as `game.world.fx`), wired by `main.js`'s `stepActivities` (from `stepWorld`):
+- **Wilds journal** (`logic/wildsJournal.js`, saved in `slashbattle:journal`, a save key): landmarks found, biomes walked, a bestiary
+  (kills per creature; the first of a kind ever pays `BESTIARY_FIRST_REWARD`), lanterns lit, race best times, treasures, events,
+  shrines. `MILESTONES` pay once per device (crystals, some a weapon / ability / pet you lack via `pickUnowned`, queued in
+  `w.lootQueue` so the swap panel can ask). U (or the touch JOURNAL button) opens `src/journalUi.js`'s panel; it freezes the game.
+- **Landmark discoveries** pay crystals (more the first time ever) and hand over a **treasure map**; villagers' 'explore' requests
+  become 'discover' quests (`Seek <landmark>`, `DISCOVER_CHANCE`) completed by the `discover` event, fired on every arrival.
+- **Treasure maps** (`logic/treasure.js`): up to `MAX_MAPS`; a dashed gold circle on the minimap (off-centre `hint`) holds the spot,
+  a status chip reads cold / cool / warm / hot, sparkles show when close, and F inside the circle digs (`digAt`, `DIG_RADIUS`): a free
+  chest plus crystals. The travelling merchant sells maps too.
+- **Lost Lanterns** (`logic/lanterns.js`, 160 seeded): walk into one to light it (crystals, a bonus every 10th; remembered in the
+  journal). Unlit ones within 120 are drawn (one instanced batch) and show on the minimap within 55.
+- **Wayshrines** (`logic/wayshrines.js`, ~25 beside roads): a timed boon (Swiftwind speed, Giant's Might damage, Stoneward ward,
+  Gilded Luck double crystals, Wellspring regen + heal), then `SHRINE_RECHARGE`; `foldBoons` folds running boons into `perk`.
+- **Sky-ring races** (`logic/races.js`): start gates on high summits; `stepRace` starts the clock in the gate, counts rings in order
+  (rings hang on a conservatively steep glide path, so too high is fixable by folding the glider), and medals by time (gold / silver
+  / limit from an honest glide-then-run estimate); best times go in the journal.
+- **Roaming events** (`logic/wildEvents.js`): a director (`stepEventDirector`; never in the Sanctum, a village, a lake or a race)
+  starts one every `EVENT_GAP`: **Ambush** (two rushes of the local monsters, `hordePlan`; beat them in time for crystals + a free
+  chest), **Starfall** (meteors via `dropMeteor`, which now land on the hills; each leaves a star shard), **Travelling merchant**
+  (an NPC with id `merchant`; the dialogue panel lists `merchantStock`: gear you lack, a map, a tonic = boon, or a stew), and the
+  **Wandering Titan** (a roaming boss via `spawnWildMonster`, bounty on top of its chest; it leaves if ignored).
+Status chips (`#wilds-status`) show the race clock, the event, treasure heat and boons; toasts now queue (`questUi.showToast`).
 
 ## Labyrinth map
 Pick it on the start card (button or K). `src/logic/maze.js` (pure) builds a seeded 7x7 maze per
