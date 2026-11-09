@@ -128,6 +128,7 @@ slashbattle/
     graphicsStyle.js   # the saved monster look ('jelly' | 'shard' = Realist), picked on the start card; the Wilds force creatures
     beasts.js          # the Realist creatures: one baked, hide-textured, rim-lit creature body per monster type
     logic/hudText.js   # HUD phrasing (enemiesLeftText)
+    logic/checkpoint.js # the Wilds' save points (Sanctum + villages): spot rules, respawn spot, saved-spot parsing
     logic/shadyGuests.js # the paparazzo, gopher and Bellhop Bandit: stats, wave weights, snipe/burrow state machines, steal/refund rules
     logic/tricks.js    # kill trick names (nameTrick) and the chain multiplier (stepChain)
     logic/announcements.js # the resort PA lines (wave start/cleared, boss incoming, low hp, ambush)
@@ -842,3 +843,14 @@ damage; in reach it emits `steal` (`stealAmount` of your crystals into `userData
 (`fleeTarget`) for `BANDIT.fleeTime`, then `escape` removes it with the loot; each non-lethal hit leaks `leakAmount` back
 (`leakPending`, dropped by main.js); a kill drops `refundWithTip`, a fall credits it straight back). No boss forms or Wilds
 biome entries yet. `test/shadyGuestsSim.test.js` drives all three through the real `updateMonster`.
+
+## Wilds save points (you never really die there)
+`src/logic/checkpoint.js` (pure): the Sanctum and every village are save points (`saveSpotAt`). Walking into one saves it
+(`main.js`'s `stepWorld`, toast "PROGRESS SAVED"; `slashbattle:checkpoint` is a save key, so it syncs and exports with the rest) and a
+new Wilds run starts there. In the Wilds, hitting 0 HP never reaches the game-over screen: `respawnAtCheckpoint` gets you back up at the
+last save point (the Sanctum before any) with full HP, `RESPAWN_IFRAMES` of invulnerability, statuses cleared, and everything you carry
+kept. Falling off the world respawns you at the save point too (hurt, not healed). The Downed But Determined skill still fires first.
+
+## Bullets keep their launch height
+The bullet layer rides the player's jumps and hills (`applyFxDepth`), so `bullets.js` stamps each bullet with the layer height it was
+fired at (`layerY`) and draws / hit-tests it at that world height (`localY`); a shot no longer bobs up and down while you jump.

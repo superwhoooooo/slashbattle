@@ -52,11 +52,16 @@ export function createBulletPool() {
 
 // Launches `bullets` (from logic/bullets.js's makeBullets). Silently skips
 // any that don't fit in the pool.
+// The layer this pool sits in rides the player's jumps and hills, so a bullet remembers the layer
+// height it was fired at (`layerY`) and stays at that height in the world instead of bobbing with you.
+const localY = (pool, bullet) => (bullet.y ?? BULLET_HEIGHT) + (bullet.layerY ?? pool.group.position.y) - pool.group.position.y
+
 export function fireBullets(pool, bullets) {
   for (const bullet of bullets) {
     const slot = pool.slots.find((s) => !s.active)
     if (!slot) return
     slot.active = true
+    bullet.layerY = pool.group.position.y
     slot.data = bullet
     slot.mesh.material.color.setHex(bullet.color).multiplyScalar(BULLET_BRIGHTNESS)
     slot.mesh.scale.setScalar(bullet.radius)
@@ -78,19 +83,24 @@ export function updateBullets(pool, dt, { monsters, obstacles, particleSystem, h
   const targets = []
   for (const mesh of monsters) {
     if (mesh.userData.dying || mesh.userData.spawning || mesh.userData.falling || isUntouchable(mesh)) continue
-    // Its vertical extent in the bullet layer's own space (the layer rides hills and dives with the player).
-    const base = mesh.position.y - pool.group.position.y
-    targets.push({ id: mesh.uuid, x: mesh.position.x, z: mesh.position.z, radius: mesh.userData.radius, y0: base - 0.3, y1: base + Math.max(mesh.userData.radius * 2.2, 1.6), mesh })
+    // Its vertical extent in the world; re-based onto each bullet's own launch layer below.
+    const base = mesh.position.y
+    targets.push({ id: mesh.uuid, x: mesh.position.x, z: mesh.position.z, radius: mesh.userData.radius, w0: base - 0.3, w1: base + Math.max(mesh.userData.radius * 2.2, 1.6), y0: 0, y1: 0, mesh })
   }
 
   for (const slot of pool.slots) {
     if (!slot.active) continue
     const bullet = slot.data
     const from = { x: bullet.x, z: bullet.z }
+    const launchY = bullet.layerY ?? pool.group.position.y
+    for (const t of targets) {
+      t.y0 = t.w0 - launchY
+      t.y1 = t.w1 - launchY
+    }
     const { alive, hits } = stepBullet(bullet, dt, targets)
     if (isInsideWall(bullet.x, bullet.z) || segmentBlocked(from, bullet, blockers)) {
       // Spent against a labyrinth wall or a Bulwark wall: a puff, and no hits through it.
-      burst(particleSystem, { x: bullet.x, y: bullet.y ?? BULLET_HEIGHT, z: bullet.z }, scaleHex(bullet.color, BULLET_BRIGHTNESS), 6, 2)
+      burst(particleSystem, { x: bullet.x, y: localY(pool, bullet), z: bullet.z }, scaleHex(bullet.color, BULLET_BRIGHTNESS), 6, 2)
       retire(slot)
       continue
     }
@@ -112,9 +122,9 @@ export function updateBullets(pool, dt, { monsters, obstacles, particleSystem, h
       retire(slot)
       continue
     }
-    if (alive && onTrail) onTrail(bullet)
+    if (alive && onTrail) onTrail({ ...bullet, y: localY(pool, bullet) })
     if (hits.length > 0 && bullet.explode > 0) {
-      burst(particleSystem, { x: bullet.x, y: bullet.y ?? BULLET_HEIGHT, z: bullet.z }, scaleHex(bullet.color, BULLET_BRIGHTNESS), 30, 4)
+      burst(particleSystem, { x: bullet.x, y: localY(pool, bullet), z: bullet.z }, scaleHex(bullet.color, BULLET_BRIGHTNESS), 30, 4)
       if (onExplode) onExplode(bullet.x, bullet.z, bullet.explode, bullet.color)
       for (const target of targets) {
         if (target.mesh.userData.dying || hits.some((h) => h.id === target.id)) continue
@@ -126,7 +136,7 @@ export function updateBullets(pool, dt, { monsters, obstacles, particleSystem, h
       retire(slot)
       continue
     }
-    slot.mesh.position.set(bullet.x, bullet.y ?? BULLET_HEIGHT, bullet.z)
+    slot.mesh.position.set(bullet.x, localY(pool, bullet), bullet.z)
   }
   return hitAny
 }

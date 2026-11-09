@@ -41,10 +41,10 @@ export const CRAZY_ENEMIES = [
     id: 'boogle',
     name: 'Boogle',
     unlock: 5,
-    stats: { shape: 'octahedron', size: 1.2, color: 0xcfd8ff, edgeColor: 0xffffff, speed: 2.6, hp: 45, damage: 8, radius: 0.5, accessory: 'halo', attackRange: 10, specials: ['barrage', 'blink'], specialIntervals: { barrage: 4.2, blink: 7 } },
+    stats: { shape: 'octahedron', size: 1.2, color: 0xcfd8ff, edgeColor: 0xffffff, speed: 2.0, hp: 20, damage: 3, radius: 0.5, accessory: 'halo', attackRange: 10, specials: ['barrage', 'blink'], specialIntervals: { barrage: 8, blink: 14 } }, // a gentle ghost: frail, slow, and its tricks come round rarely
     boss: {
       id: 'boss_boogle', name: 'PHANTOM PRINCE', title: 'Rather Dead, Quite Rude', specials: ['barrage', 'blink', 'lure', 'summon'], score: 1800,
-      stats: { shape: 'octahedron', size: 3.8, color: 0xb9c6ff, edgeColor: 0xffffff, speed: 2.4, hp: 1200, damage: 17, radius: 1.5, accessory: 'halo', attackRange: 12 },
+      stats: { shape: 'octahedron', size: 3.8, color: 0xb9c6ff, edgeColor: 0xffffff, speed: 2.2, hp: 850, damage: 11, radius: 1.5, accessory: 'halo', attackRange: 12 },
       lines: ['Boooo. Oh, you are not scared. Let me try that again. BOOOOO.', 'I died of embarrassment in the year 1203. It still stings.', 'Come closer. I will haunt you personally.'],
     },
   },
@@ -126,7 +126,7 @@ const ON_HIT = {
   bumble: { status: 'poison', seconds: 2.5 },
   snapper: { status: 'slow', seconds: 1.8, factor: 0.7 },
   sporeling: { status: 'weaken', seconds: 3 },
-  boogle: { status: 'drain', amount: 3 },
+  boogle: { status: 'drain', amount: 1 },
   kablooma: null,
   icicle: { status: 'slow', seconds: 2, factor: 0.6 },
   prickle: { status: 'poison', seconds: 3 },

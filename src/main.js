@@ -254,6 +254,7 @@ import { createPoisonPool, lobPoison, resetPoison, updatePoison } from './hazard
 import { createProjectilePool, destroyProjectilesNear, fireProjectile, resetProjectiles, updateProjectiles } from './projectiles.js'
 import { inRingBand, onBeam, puddleTargets, rainZones, ringAngles, wallOrbs } from './logic/signatures.js'
 import { CRAZY_TYPE_IDS } from './logic/crazyEnemies.js'
+import { CHECKPOINT_KEY, RESPAWN_IFRAMES, SANCTUM_SPOT, parseCheckpoint, respawnSpot, saveSpotAt, serializeCheckpoint, shouldSave } from './logic/checkpoint.js'
 import { beamHits, crystalChange, refundWithTip, stealAmount } from './logic/shadyGuests.js'
 import { createShockwavePool, resetShockwaves, spawnShockwave, updateShockwaves } from './shockwave.js'
 import { createPopupPool, resetPopups, showPopup, updatePopups } from './popups.js'
@@ -921,7 +922,8 @@ function createGame() {
   // this same array, stay in sync without it ever being reassigned.
   const obstacles = lab ? [...arena.propObstacles, ...arena.gateObstacles] : [...arena.propObstacles]
 
-  const player = new Player({ spawn: lab ? { x: labFloor.floor.start.x, z: labFloor.floor.start.z } : { x: 0, z: 0 }, obstacles, particleSystem })
+  const savedSpot = worldMode ? loadCheckpoint() : null // a Wilds run picks up at the last save point
+  const player = new Player({ spawn: lab ? { x: labFloor.floor.start.x, z: labFloor.floor.start.z } : savedSpot ? { x: savedSpot.x, z: savedSpot.z } : { x: 0, z: 0 }, obstacles, particleSystem })
   scene.add(player.mesh)
 
   const game = {
@@ -943,7 +945,7 @@ function createGame() {
     chestSpawnerState: createPodSpawnerState(),
     pickups: [], // power-ups lying on the ground, waiting to be walked over
     pickupSpawnerState: createPodSpawnerState(),
-    world: worldMode ? createWorldState() : null, // the free roam world's streamed chunks, live monsters and kill memory
+    world: worldMode ? createWorldState(savedSpot) : null, // the free roam world's streamed chunks, live monsters and kill memory
     cutscene: null, // { boss, mesh, dir, state } while a boss intro is playing; freezes gameplay
     score: 0,
     chainState: createChainState(), // the current kill-chain count/multiplier (src/logic/tricks.js)
@@ -1830,8 +1832,50 @@ function saveSkystars(caught) {
   }
 }
 
-function createWorldState() {
+// The Wilds' save point (the Sanctum or a village): saved the moment you walk in, and where you get up if you fall.
+function loadCheckpoint() {
+  try {
+    return parseCheckpoint(localStorage.getItem(CHECKPOINT_KEY))
+  } catch (_) {
+    return null
+  }
+}
+function saveCheckpoint(spot) {
+  try {
+    localStorage.setItem(CHECKPOINT_KEY, serializeCheckpoint(spot))
+    noteSaved()
+  } catch (_) {
+    // not remembered between sessions; still the respawn point for this run
+  }
+}
+
+// Gets the player back up at the Wilds' save point with full health: used when HP hits zero and after a fall off the world.
+function respawnAtCheckpoint(game, now, { toast = true, heal = true } = {}) {
+  const { player, world: w } = game
+  const spot = respawnSpot(w.checkpoint)
+  const groundY = heightAt(spot.x, spot.z)
+  player.position.x = spot.x
+  player.position.z = spot.z
+  player.mesh.position.set(spot.x, groundY, spot.z)
+  player.falling = false
+  player.vel = { x: 0, z: 0 }
+  if (heal) player.hp = player.maxHp
+  player.invulnerableUntil = Math.max(player.invulnerableUntil, now + RESPAWN_IFRAMES)
+  player.slowUntil = player.weakUntil = player.poisonUntil = -Infinity // shake off every status
+  w.jump = createJumpState()
+  w.groundY = groundY
+  w.camGround = groundY
+  w.talkingTo = null
+  resetProjectiles(projectilePool) // no stray orbs waiting for you
+  burst(particleSystem, { x: spot.x, y: groundY + 0.8, z: spot.z }, 0xfff27a, 40, 4, 1)
+  spawnShockwave(shockwavePool, spot.x, spot.z, 5, 0xfff27a)
+  sfx.play('waveCleared', { x: spot.x, z: spot.z })
+  if (toast) questUi.showToast(`YOU GOT BACK UP AT ${spot.name.toUpperCase()}`)
+}
+
+function createWorldState(savedSpot = null) {
   return {
+    checkpoint: savedSpot, // the last save point you walked into ({ id, name, x, z }), or null before the first
     starsCaught: loadSkystars(), // skystar ids caught on the hilltops
     chunks: new Map(), // chunk key -> { content, obstacles, treasure: [meshes] }
     live: new Map(), // monster id -> mesh, so a camp is never spawned twice
@@ -2225,6 +2269,14 @@ function stepWorld(game, now, dt = 0) {
     document.body.classList.toggle('in-sanctum', inSanctum)
   }
   if (inSanctum && dt > 0 && game.player.hp > 0) game.player.hp = Math.min(game.player.maxHp, game.player.hp + 9 * dt)
+
+  // The Sanctum and every village are save points: step in and your progress is saved; fall and you get up here.
+  const saveSpot = saveSpotAt(p.x, p.z, villages())
+  if (dt > 0 && game.player.hp > 0 && shouldSave(w.checkpoint, saveSpot)) {
+    w.checkpoint = saveSpot
+    saveCheckpoint(saveSpot)
+    questUi.showToast(`PROGRESS SAVED  ·  ${saveSpot.name.toUpperCase()}`)
+  }
 
   // Walking into a new biome names it.
   const biome = biomeAt(p.x, p.z)
@@ -3659,6 +3711,8 @@ function gameFrame(timestamp) {
     spawnShockwave(shockwavePool, game.player.position.x, game.player.position.z, 5, 0xfff27a)
     showLootToast(hud, { title: 'SKILL', name: 'Downed But Determined', blurb: 'You got back up!' })
   }
+  // The Wilds never end your run: at zero HP you get back up at the last save point.
+  if (started && game.world && game.player.hp <= 0) respawnAtCheckpoint(game, elapsedSeconds)
   const gameState = game.labyrinth?.won ? 'won' : evaluateGameState({ playerHp: game.player.hp })
   winScreen.style.display = gameState === 'won' ? 'flex' : 'none'
   if (game.labyrinth) updateFloorChip(game)
@@ -3869,6 +3923,7 @@ function gameFrame(timestamp) {
     player.startFalling()
   }
   if (player.falling && player.updateFalling(gameplayDelta, elapsedSeconds)) {
+    if (game.world && player.hp > 0) respawnAtCheckpoint(game, elapsedSeconds, { toast: false, heal: false }) // hurt, but back at the save point rather than the middle of the world
     triggerShake(shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
     triggerDamageFlash(hud)
     sfx.play('playerHurt', { x: player.position.x, z: player.position.z })
