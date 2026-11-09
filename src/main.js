@@ -1,4 +1,4 @@
-import './saveSync.js' // first: loads the device save file into localStorage before anything reads it
+import { noteSaved } from './saveSync.js' // first: loads the device save file into localStorage before anything reads it
 import '@fontsource/sora/400.css'
 import '@fontsource/sora/600.css'
 import '@fontsource/sora/800.css'
@@ -50,7 +50,7 @@ import { createTouchControls, isTouchDevice } from './touch.js'
 import { sandboxToggleItem, sandboxTopUp } from './logic/sandbox.js'
 import { createAudio } from './audio.js'
 import { createMonsterMesh } from './characters.js'
-import { GRAPHICS_LABELS, getGraphicsStyle, nextGraphicsStyle, setGraphicsStyle } from './graphicsStyle.js'
+import { GRAPHICS_LABELS, getGraphicsStyle, nextGraphicsStyle, setGraphicsStyle, setWildsLook } from './graphicsStyle.js'
 import { updateFace3D } from './face3d.js'
 import { animateAlive } from './alive.js'
 import { loadHighScore, saveHighScore } from './highScore.js'
@@ -60,7 +60,7 @@ import { createGlider, updateGlider } from './glider.js'
 import { createNpc, setNpcMarker, updateNpc, TALK_RANGE } from './npcs.js'
 import { createQuestUi } from './questUi.js'
 import { acceptQuest, claimQuest, createQuestLog, npcDialog, npcMarker, questEvent, questsToClaim } from './logic/quests.js'
-import { BIOMES, BOSS_RESPAWN_SECONDS, SANCTUM_RADIUS, UNLOAD_RADIUS, WATER_LEVEL, WORLD_RADIUS, biomeAt, canRespawn, chunkContent, chunkKey, diffChunks, groundColorAt, heightAt, ruins, villageById, villages } from './logic/world.js'
+import { BIOMES, BOSS_RESPAWN_SECONDS, SANCTUM_RADIUS, SKYSTAR_CATCH_RADIUS, SKYSTAR_REWARD, UNLOAD_RADIUS, WATER_LEVEL, WORLD_RADIUS, biomeAt, canRespawn, chunkContent, chunkKey, dayName, diffChunks, groundColorAt, heightAt, ruins, skystars, villageById, villages } from './logic/world.js'
 import { createMusic } from './music.js'
 import { createSfx } from './sfx.js'
 import { jellyHit, updateJelly } from './jelly.js'
@@ -807,7 +807,7 @@ function updateShake(shake, deltaSeconds) {
 // doesn't leak GPU resources.
 function disposeObject3D(object) {
   object.traverse((child) => {
-    if (child.geometry) child.geometry.dispose()
+    if (child.geometry && !child.geometry.userData.shared) child.geometry.dispose() // shared = cached creature bodies
     if (child.material) {
       const materials = Array.isArray(child.material) ? child.material : [child.material]
       materials.forEach((material) => {
@@ -899,6 +899,7 @@ function createGame() {
   const lab = gameMode === 'labyrinth'
   const worldMode = gameMode === 'world'
   setArenaRadius(worldMode ? WORLD_RADIUS : SUNDECK_RADIUS)
+  setWildsLook(worldMode) // the Wilds' monsters are always Realist creatures
   document.body.classList.toggle('world', worldMode)
   const labFloor = lab ? buildLabyrinthFloor(0) : null
   if (!lab) setMonsterNavigator(null)
@@ -1809,8 +1810,28 @@ function despawnPod(game, pod) {
 // finishes.
 // ---- The Wilds (free roam): a streamed world. Chunks of scenery, monsters and treasure come alive around the
 // player (logic/world.js decides what is in each) and are dropped again when they fall far behind. ----------
+// The skystars caught on this device (they stay caught between runs).
+const SKYSTAR_KEY = 'slashbattle:skystars'
+function loadSkystars() {
+  try {
+    const list = JSON.parse(localStorage.getItem(SKYSTAR_KEY) ?? '[]')
+    return new Set(Array.isArray(list) ? list : [])
+  } catch (_) {
+    return new Set()
+  }
+}
+function saveSkystars(caught) {
+  try {
+    localStorage.setItem(SKYSTAR_KEY, JSON.stringify([...caught]))
+    noteSaved()
+  } catch (_) {
+    // not remembered; still caught for this run
+  }
+}
+
 function createWorldState() {
   return {
+    starsCaught: loadSkystars(), // skystar ids caught on the hilltops
     chunks: new Map(), // chunk key -> { content, obstacles, treasure: [meshes] }
     live: new Map(), // monster id -> mesh, so a camp is never spawned twice
     killed: new Map(), // monster id -> when you slew it (a camp respawns after a while)
@@ -2013,7 +2034,7 @@ function unloadWorldChunk(game, key) {
 const biomeBanner = document.getElementById('biome-banner')
 const minimap = document.getElementById('minimap')
 let minimapBase = null
-function drawMinimap(game) {
+function drawMinimap(game, now = 0) {
   if (!minimap) return
   const ctx = minimap.getContext('2d')
   const size = minimap.width
@@ -2084,6 +2105,20 @@ function drawMinimap(game) {
     ctx.fill()
     ctx.stroke()
   }
+  // Skystars still to catch: little white stars on the peaks.
+  for (const star of skystars()) {
+    if (game.world?.starsCaught.has(star.id)) continue
+    const [x, y] = at(star.x, star.z)
+    ctx.fillStyle = '#fff6c0'
+    ctx.beginPath()
+    for (let k = 0; k < 8; k++) {
+      const r = k % 2 ? 1.6 : 4
+      const a = (k / 8) * Math.PI * 2
+      ctx.lineTo(x + Math.sin(a) * r, y - Math.cos(a) * r)
+    }
+    ctx.closePath()
+    ctx.fill()
+  }
   for (const c of game.chests) {
     if (c.userData.opened) continue
     const [x, y] = at(c.position.x, c.position.z)
@@ -2106,10 +2141,45 @@ function drawMinimap(game) {
   ctx.stroke()
   ctx.fill()
   ctx.restore()
+  // The time of day, and how many skystars are caught.
+  const caught = game.world?.starsCaught.size ?? 0
+  ctx.font = '600 11px Sora, sans-serif'
+  ctx.textBaseline = 'bottom'
+  ctx.fillStyle = 'rgba(16, 10, 36, 0.7)'
+  ctx.fillRect(0, size - 17, size, 17)
+  ctx.fillStyle = '#fff6d8'
+  ctx.textAlign = 'left'
+  ctx.fillText(dayName(now), 6, size - 3)
+  ctx.textAlign = 'right'
+  ctx.fillText(`\u2605 ${caught}/${skystars().length}`, size - 6, size - 3)
+}
+
+// Catching a skystar: standing on (or gliding right over) a hilltop star.
+function stepSkystars(game, now) {
+  const w = game.world
+  const p = game.player.position
+  for (const star of skystars()) {
+    if (w.starsCaught.has(star.id)) continue
+    if (Math.hypot(p.x - star.x, p.z - star.z) > SKYSTAR_CATCH_RADIUS) continue
+    if (Math.abs(w.groundY - star.y) > 3.5) continue
+    w.starsCaught.add(star.id)
+    saveSkystars(w.starsCaught)
+    game.arena.world.setSkystarsCaught(w.starsCaught)
+    game.inventory = addCrystals(game.inventory, SKYSTAR_REWARD)
+    const at = { x: star.x, y: star.y + 1.8 - w.groundY, z: star.z }
+    burst(particleSystem, at, 0xfff1a8, 40, 6)
+    burst(particleSystem, at, 0xffffff, 16, 3)
+    sfx.play('chestOpen', { x: star.x, z: star.z })
+    questUi.showToast(`SKYSTAR CAUGHT ${w.starsCaught.size}/${skystars().length}  +${SKYSTAR_REWARD} CRYSTALS`)
+  }
 }
 
 function stepWorld(game, now, dt = 0) {
   const w = game.world
+  if (!w.starsShown) {
+    w.starsShown = true
+    game.arena.world.setSkystarsCaught(w.starsCaught)
+  }
   const p = game.player.position
   const { load, unload } = diffChunks(new Set(w.chunks.keys()), p.x, p.z)
   for (const key of unload) unloadWorldChunk(game, key)
@@ -2167,7 +2237,8 @@ function stepWorld(game, now, dt = 0) {
     }
   }
   biomeBanner?.classList.toggle('show', now < w.bannerUntil)
-  if (dt > 0) drawMinimap(game)
+  if (dt > 0) stepSkystars(game, now)
+  if (dt > 0) drawMinimap(game, now)
 }
 
 function spawnMonster(game, type, { at = null, effectOptions, hpScale = 1, facePlayer = false } = {}) {

@@ -125,8 +125,8 @@ slashbattle/
     logic/cutscene.js  # the boss-intro cutscene timeline (enter -> talk -> title -> done), concierge intro line
     logic/hitstop.js   # hitstop freeze state (triggerHitstop / stepHitstop)
     logic/status.js    # freeze / slow / Time Warp rules (applyFreeze, statusTimeScale; bosses are slowed, not frozen)
-    graphicsStyle.js   # the saved monster look ('jelly' | 'shard'), picked on the start card
-    shardStyle.js      # the Shardfall-like look: skin-textured rim-lit body, cream eyes, horns
+    graphicsStyle.js   # the saved monster look ('jelly' | 'shard' = Realist), picked on the start card; the Wilds force creatures
+    beasts.js          # the Realist creatures: one baked, hide-textured, rim-lit creature body per monster type
     logic/hudText.js   # HUD phrasing (enemiesLeftText)
     logic/tricks.js    # kill trick names (nameTrick) and the chain multiplier (stepChain)
     logic/announcements.js # the resort PA lines (wave start/cleared, boss incoming, low hp, ambush)
@@ -789,9 +789,8 @@ applied in `bullets.js`), **Glacial Burst** (`glacier`: freezes everything in a 
 `destroyProjectilesNear`, +30% speed). Frozen monsters do nothing and wear an ice shell (`updateFrozenLook`); bosses are only
 slowed (`logic/status.js`: `applyFreeze`, `applySlow`, `statusTimeScale`, which `updateMonster` applies to its `dt`).
 The start card's **Graphics** button (`src/graphicsStyle.js`, `localStorage` `slashbattle:graphics`) switches monsters between
-the Jelly look and the Shardfall look (`src/shardStyle.js`, used by `characters.js`'s `createMonsterMesh`: a skin-textured,
-bump-mapped body with a fresnel rim light, smooth round bodies, plain cream eyes (red for bosses), no mouth, bone horns on
-bosses and boxy monsters). It applies to monsters created after the choice, so pick it before starting a run.
+the Jelly look and **Realist** (see Realist creatures below). It applies to monsters created after the choice, so pick it before
+starting a run. The Wilds always use Realist creatures (`setWildsLook`, set by `createGame`; `useCreatures()` decides).
 
 ## Up / down aiming
 Bullets are 3D (`logic/bullets.js`: `y`, `vy`, `slope`; `BULLET_START_Y` 0.7 is the muzzle). `main.js`'s `aimSlopeFor` sets
@@ -801,9 +800,30 @@ level. `combat.js`, Frost Lance and Fan Blast use it. A target's `y0..y1` (from 
 a shot aimed over or under a monster misses it; a bullet that sinks below y = 0 is spent.
 
 ## Realist creatures
-`src/creatures.js` (Realist style only) grows creature parts on a monster's body: `creatureKind` picks crawler (six jointed legs),
-walker (feet + clawed arms, for boxes / cylinders) or floater (flapping fins, pointy or winged shapes); every creature also gets
-a tail, bone spikes down its back (more on bosses), angry brows on its eyes and a toothed maw riding the jelly. Each group is
-baked into one vertex-coloured mesh with one shared material, and `userData.creature.update(dt, speed, time)` (called from
-`alive.js`) swings legs / arms / tail / fins by how fast the monster moves. `test/creatures.test.js` builds every monster type
-with a stub canvas.
+`src/beasts.js` gives every monster type (and every boss) its own creature, built the way Shardfall builds its monsters
+but with SlashBattle's own designs: lumpy noise-sculpted blobs (`blob`, normals welded so they're seamless), tapering limbs,
+jointed legs, cones, rounded boxes, rings and lathed shapes (robes, caps, flames, funnels, barrels) are baked by `forge()`
+into ONE vertex-coloured geometry per type (cached, `geometry.userData.shared`, so `disposeObject3D` leaves it alone).
+`createBeastMaterial` is a hide-textured, bump-mapped standard material with a fresnel rim, plus vertex attributes the shader
+reads: `aGlow` (eyes, blisters, cores, embers glow in their own colour) and `aWig` / `aWigX` (legs step with the walk, driven
+by `createBeastAnimator`'s `uWalkT` / `uWalkA` from the monster's real speed; wings, fins, tails, tendrils, flames and orbiting
+debris sway on the clock). Every creature looks cross (slit-pupil cream eyes, heavy brows, a toothed maw). Regular monsters'
+boss forms reuse their design plus `bossDressing` (red eyes, horns, a spiked ridge); the original seven bosses have their own
+(King Gloop's crowned slime, Doctor Wobble's brain in a frame on tentacles, the Cone Father's hooded robe, Madam Mayhem's
+scythe arms, Omega Jello's many eyes...). Designs are in unit space (ground at y = -1, front +z) and scaled by size / 2.
+The body is a **rigid** jelly (`createJellyBody(..., { rigid, baseScale, bob })`): `updateJelly` turns the same hit / inflate
+springs into a whole-body squash about the feet instead of per-vertex wobble, and floaters bob. Creatures have no face3d; the
+mirror shield is still added (it cracks), the other accessories are part of the creature. `test/beasts.test.js` builds every
+type with a stub canvas.
+
+## The Wilds: roads, skystars, day and night, rock
+Borrowed from Shardfall's open world. `logic/world.js`: **roads** (`roads()`, `roadPaths()`, `roadDistance`, `onRoad`) wind
+from the Sanctum's clearing to every village and on to each village's nearest ruin (noise-bent, a grid index for lookups);
+props and grass stay off them, wayside lanterns and fingerposts stand beside them and the odd windmill sits on the verge
+(`roadLantern`, `signpost`, `windmill` models). `worldArena.js`'s `createRoads` drapes them as dirt ribbons (fading edges)
+over a soft dirt underlay in `groundColorAt`. **Skystars** (`skystars()`): star spirits on the tallest hilltops, each with a
+fog-ignoring beam of light; reach one (`main.js`'s `stepSkystars`) for `SKYSTAR_REWARD` crystals; caught ones are saved in
+`localStorage` `slashbattle:skystars` (a save key) and shown on the minimap (with the time of day). **Day and night**
+(`daylight(t)`, `dayName(t)`, `DAY_SECONDS` 480): the world's update warms / brightens the key light by day and turns it a dim
+moonlit blue by night, darkening the fog and sky and bringing out stars and fireflies. The ground turns to bare **rock** on
+steep slopes and high ground, with a per-biome cap on the peaks (`ROCK`), and is bump-mapped by its grit texture.

@@ -1,6 +1,6 @@
 // The graphics style for monsters, picked on the start card and remembered on this
-// device: 'jelly' (SlashBattle's glossy candy jellies) or 'shard' (a Shardfall-like
-// look: textured, rim-lit bodies with plain cream eyes and horns).
+// device: 'jelly' (SlashBattle's glossy candy jellies) or 'shard', shown as "Realist"
+// (real creatures: src/beasts.js). The Wilds always use the creatures.
 export const GRAPHICS_STYLES = ['jelly', 'shard']
 export const GRAPHICS_LABELS = { jelly: 'Jelly', shard: 'Realist' }
 const KEY = 'slashbattle:graphics'
@@ -30,4 +30,15 @@ export function setGraphicsStyle(next) {
 
 export function nextGraphicsStyle(current = style) {
   return GRAPHICS_STYLES[(GRAPHICS_STYLES.indexOf(current) + 1) % GRAPHICS_STYLES.length]
+}
+
+// The Wilds (free roam) always draw monsters as creatures, whatever the saved style.
+let wilds = false
+export function setWildsLook(on) {
+  wilds = !!on
+}
+
+// Should monsters be built as Realist creatures right now?
+export function useCreatures() {
+  return wilds || style === 'shard'
 }

@@ -17,9 +17,8 @@ import {
 } from './config.js'
 import { createFace3D } from './face3d.js'
 import { createJellyBody } from './jelly.js'
-import { getGraphicsStyle } from './graphicsStyle.js'
-import { addHorns, createShardMaterial, restyleFace, smoothGeometry } from './shardStyle.js'
-import { addCreatureParts } from './creatures.js'
+import { useCreatures } from './graphicsStyle.js'
+import { beastGeometry, beastLook, createBeastAnimator, createBeastMaterial, hasBeast } from './beasts.js'
 import { PLAYER_FACE, pickFaceOptions } from './logic/faceOptions.js'
 import { WEAPONS, weaponBase } from './logic/items.js'
 import { applyWeaponPose } from './weaponAnim.js'
@@ -847,33 +846,44 @@ function addRings(group, stats, y) {
   }
 }
 
+// The Realist look: the type's own creature (src/beasts.js), one baked mesh on a rigid jelly
+// (it squashes and stretches as a whole). Returns the group and its body centre height.
+function createCreatureBody(type, stats) {
+  const look = beastLook(type)
+  const material = createBeastMaterial({ rim: look.rim, roughness: look.rough, metalness: look.metal, emissive: stats.boss ? new THREE.Color(stats.color).multiplyScalar(0.05) : 0 })
+  const scale = (stats.size / 2) * 1.08
+  const group = createJellyBody(beastGeometry(type, stats.color), material, stats.edgeColor, 0, { rigid: true, baseScale: scale, bob: look.float })
+  group.userData.creature = createBeastAnimator(material)
+  return { group, bodyCenterY: scale }
+}
+
 export function createMonsterMesh(type, rng = Math.random) {
   const stats = MONSTER_TYPES[type]
-  const shard = getGraphicsStyle() === 'shard'
-  let geometry = GEOMETRY_BUILDERS[stats.shape](stats.size)
-  if (shard && (stats.shape === 'sphere' || stats.shape === 'icosahedron')) geometry = smoothGeometry(geometry)
-  const material = shard ? createShardMaterial(stats.color, { rim: stats.boss ? 0.65 : 0.5 }) : createJellyMaterial(stats.color)
-  const bodyCenterY = monsterBodyCenterY(stats, geometry)
-  const group = createJellyBody(geometry, material, stats.edgeColor, bodyCenterY)
+  const creature = useCreatures() && hasBeast(type)
+  let group
+  let bodyCenterY
+  if (creature) {
+    ;({ group, bodyCenterY } = createCreatureBody(type, stats))
+    group.userData.jelly.body.castShadow = true
+  } else {
+    const geometry = GEOMETRY_BUILDERS[stats.shape](stats.size)
+    const material = createJellyMaterial(stats.color)
+    bodyCenterY = monsterBodyCenterY(stats, geometry)
+    group = createJellyBody(geometry, material, stats.edgeColor, bodyCenterY)
+    group.userData.jelly.body.castShadow = true
 
-  const { body } = group.userData.jelly
-  body.castShadow = true
-
-  const face = createFace3D({
-    shape: stats.shape,
-    size: stats.size,
-    bodyCenterY,
-    bodyColor: stats.color,
-    options: pickFaceOptions(rng),
-    faceTypeScale: FACE_SCALE_BY_TYPE[type] ?? 1,
-  })
-  group.add(face.group)
-  group.userData.face3d = face
-  if (shard) {
-    restyleFace(face, !!stats.boss)
-    if (stats.boss || stats.shape === 'box') addHorns(group, geometry, bodyCenterY, stats.size)
-    group.userData.creature = addCreatureParts(group, { stats, face, bodyCenterY })
+    const face = createFace3D({
+      shape: stats.shape,
+      size: stats.size,
+      bodyCenterY,
+      bodyColor: stats.color,
+      options: pickFaceOptions(rng),
+      faceTypeScale: FACE_SCALE_BY_TYPE[type] ?? 1,
+    })
+    group.add(face.group)
+    group.userData.face3d = face
   }
+  const { body } = group.userData.jelly
 
   const chaseIndicator = createIndicatorSprite('!')
   const searchIndicator = createIndicatorSprite('?')
@@ -900,13 +910,17 @@ export function createMonsterMesh(type, rng = Math.random) {
     group.userData.telegraph = ring
   }
 
-  if (stats.accessory === 'limbs') addLimbs(group, stats)
+  // The mirror is a gameplay shield (it cracks), so creatures carry it too; their other
+  // add-ons (limbs, wings, claws, caps, fuses...) are part of the creature itself.
   if (stats.accessory === 'mirror') addMirror(group, stats, bodyCenterY)
-  if (stats.accessory === 'lure') addLure(group, stats)
-  if (stats.accessory === 'spikes') addSpikes(group, stats, bodyCenterY)
-  if (stats.accessory === 'eelBody') addEelBody(group, stats, bodyCenterY)
-  const crazyAccessory = { wings: addWings, claws: addClaws, cap: addCap, halo: addHalo, fuse: addFuse, icicles: addIcicles, flame: addFlame, horn: addHorn, rings: addRings }[stats.accessory]
-  if (crazyAccessory) crazyAccessory(group, stats, bodyCenterY)
+  if (!creature) {
+    if (stats.accessory === 'limbs') addLimbs(group, stats)
+    if (stats.accessory === 'lure') addLure(group, stats)
+    if (stats.accessory === 'spikes') addSpikes(group, stats, bodyCenterY)
+    if (stats.accessory === 'eelBody') addEelBody(group, stats, bodyCenterY)
+    const crazyAccessory = { wings: addWings, claws: addClaws, cap: addCap, halo: addHalo, fuse: addFuse, icicles: addIcicles, flame: addFlame, horn: addHorn, rings: addRings }[stats.accessory]
+    if (crazyAccessory) crazyAccessory(group, stats, bodyCenterY)
+  }
 
   group.userData.body = body
   group.userData.type = type

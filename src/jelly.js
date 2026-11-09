@@ -30,7 +30,11 @@ import { jellyOffset, springStep } from './logic/jelly.js'
 // a 3D face feature (src/face3d.js) attached to the same group can
 // evaluate the same jellyOffset at its own original anchor position and
 // ride the wobbling surface instead of floating or sinking.
-export function createJellyBody(geometry, material, edgeColor, restY = 0) {
+// `rigid`: a body that is too detailed to deform per vertex (the Realist creatures): the same
+// springs drive a whole-body squash / stretch through its scale instead, pivoting on its feet
+// (its geometry must stand on y = 0), and `baseScale` is its resting scale. `bob` lifts a
+// floating body up and down.
+export function createJellyBody(geometry, material, edgeColor, restY = 0, { rigid = false, baseScale = 1, bob = 0 } = {}) {
   const group = new THREE.Group()
 
   const body = new THREE.Mesh(geometry, material)
@@ -69,12 +73,20 @@ export function createJellyBody(geometry, material, edgeColor, restY = 0) {
     z: position.getZ(bottomIndex),
   }
 
+  if (rigid) {
+    body.scale.setScalar(baseScale)
+    edges.visible = false
+  }
+
   group.userData.jelly = {
     body,
     edges,
     restY,
     bottomPoint,
-    originalPositions: Float32Array.from(position.array),
+    rigid,
+    baseScale,
+    bob,
+    originalPositions: rigid ? null : Float32Array.from(position.array),
     idlePhase: Math.random() * Math.PI * 2,
     bulge: { value: 0, velocity: 0 },
     hit: { value: 0, velocity: 0 },
@@ -109,6 +121,20 @@ export function updateJelly(jellyBody, dt, time, { speed = 0, moveDir = { x: 0, 
     hit: jelly.hit.value,
   }
   jelly.params = params
+
+  if (jelly.rigid) {
+    // The same splat / inflate jellyOffset applies per vertex, as one scale about the feet
+    // (gentler, so a creature squashes rather than flattens), plus a slow breath.
+    const k = 0.35
+    const h = jelly.hit.value
+    const breath = Math.sin(time * JELLY_IDLE_SPEED * 0.6 + jelly.idlePhase) * 0.025
+    const sx = h >= 0 ? 1 + h * 0.5 * k : 1 - h * k
+    const sy = (h >= 0 ? 1 - h * k : 1 - h * k) * (1 + breath - jelly.bulge.value * 0.15)
+    const s = jelly.baseScale
+    jelly.body.scale.set(s * sx, s * sy, s * sx)
+    jelly.body.position.y = jelly.restY + (jelly.bob ? (1 + Math.sin(time * 2.1 + jelly.idlePhase)) * jelly.bob * s : 0)
+    return
+  }
 
   const position = jelly.body.geometry.attributes.position
   const original = jelly.originalPositions

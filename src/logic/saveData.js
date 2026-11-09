@@ -4,7 +4,7 @@
 
 export const SAVE_VERSION = 1
 // Everything that should follow you between browsers. (Not session-only keys like ctxReload.)
-export const SAVE_KEYS = ['slashbattle:profile', 'slashbattle:highscore', 'slashbattle:music-muted', 'slashbattle:brightness']
+export const SAVE_KEYS = ['slashbattle:profile', 'slashbattle:highscore', 'slashbattle:music-muted', 'slashbattle:brightness', 'slashbattle:skystars']
 // When this browser's copy was last changed (ms since epoch); compared against the device file.
 export const SAVED_AT_KEY = 'slashbattle:savedAt'
 export const MAX_SAVE_BYTES = 1_000_000

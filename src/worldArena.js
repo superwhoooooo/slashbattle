@@ -7,7 +7,7 @@
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { HEMI_LIGHT_INTENSITY, KEY_LIGHT_OFFSET, KEY_LIGHT_SHADOW_EXTENT, SHADOW_MAP_SIZE, SKY_RADIUS } from './config.js'
-import { BIOMES, LAKES, WATER_LEVEL, WORLD_RADIUS, biomeAt, groundColorAt, heightAt, mulberry32 } from './logic/world.js'
+import { BIOMES, LAKES, WATER_LEVEL, WORLD_RADIUS, ROAD_WIDTH, biomeAt, daylight, groundColorAt, heightAt, mulberry32, roadPaths, skystars } from './logic/world.js'
 
 // Stand-in for a logic/levels.js entry, so the sky/environment-map code can treat the world like a place.
 export const WORLD_LEVEL = {
@@ -210,6 +210,45 @@ const MODELS = {
     ],
     glow: [part(cyl(0.85, 0.85, 0.05, 12), 0x6df0ff, { y: 0.9 }), part(ico(0.2, 1), 0xffc870, { y: 2.3 })],
   }),
+  // Beside the roads: a crooked wayside lantern on a post, a fingerpost sign, and the odd windmill.
+  roadLantern: () => ({
+    lit: [
+      part(cyl(0.08, 0.13, 2.6, 6), 0x5a4030, { y: 1.3, rz: 0.04 }),
+      part(box(0.9, 0.08, 0.08), 0x5a4030, { x: 0.38, y: 2.55 }),
+      part(cyl(0.02, 0.02, 0.35, 4), 0x2a2030, { x: 0.75, y: 2.35 }),
+      part(cone(0.24, 0.22, 4), 0x2a2030, { x: 0.75, y: 2.2, ry: Math.PI / 4 }),
+      part(dodeca(0.28), 0x6a6878, { y: 0.1, sy: 0.5 }),
+    ],
+    glow: [part(box(0.2, 0.26, 0.2), 0xffc870, { x: 0.75, y: 1.97 }), part(ico(0.34, 1), 0xffa850, { x: 0.75, y: 1.97 })],
+  }),
+  signpost: () => ({
+    lit: [
+      part(box(0.18, 2.6, 0.18), 0x6a4a3a, { y: 1.3 }),
+      part(box(1.3, 0.32, 0.07), 0x9a7a5a, { x: 0.45, y: 2.2, ry: 0.15 }),
+      part(cone(0.16, 0.25, 3), 0x9a7a5a, { x: 1.18, y: 2.2, rz: -Math.PI / 2, ry: 0.15 }),
+      part(box(1.1, 0.3, 0.07), 0x8a6a4a, { x: -0.35, y: 1.75, ry: 2.6 }),
+      part(cone(0.15, 0.22, 3), 0x8a6a4a, { x: -0.95, y: 1.75, rz: Math.PI / 2, ry: 2.6 }),
+    ],
+    glow: [],
+  }),
+  windmill: () => {
+    const sails = []
+    for (let k = 0; k < 4; k++) {
+      const a = (k * Math.PI) / 2 + 0.3
+      sails.push(part(box(0.7, 4.6, 0.06), 0xe6dccb, { x: Math.sin(a) * 2.5, y: 8.2 + Math.cos(a) * 2.5, z: 1.75, rz: -a }))
+      sails.push(part(box(0.1, 5.0, 0.1), 0x5a3d2a, { x: Math.sin(a) * 2.5, y: 8.2 + Math.cos(a) * 2.5, z: 1.8, rz: -a }))
+    }
+    return {
+      lit: [
+        part(cyl(1.2, 1.7, 7.2, 10), 0xd8cdb4, { y: 3.6 }),
+        part(cone(1.75, 2.0, 10), 0x7a3a4a, { y: 8.2 }),
+        part(box(0.9, 1.5, 0.2), 0x4a3020, { y: 0.75, z: 1.62 }),
+        part(cyl(0.25, 0.25, 0.8, 8), 0x4a3020, { y: 8.2, z: 1.4, rx: Math.PI / 2 }),
+        ...sails,
+      ],
+      glow: [part(box(0.5, 0.6, 0.05), 0xffc870, { y: 4.6, z: 1.42 }), part(box(0.5, 0.6, 0.05), 0xffc870, { x: 1.3, y: 3, z: 0.6, ry: 1.1 })],
+    }
+  },
   lampPost: () => ({
     lit: [part(cyl(0.07, 0.12, 3.2, 6), 0x3a3550, { y: 1.6 }), part(cyl(0.22, 0.22, 0.12, 8), 0x3a3550, { y: 3.28 }), part(box(0.5, 0.1, 0.5), 0x3a3550, { y: 0.05 })],
     glow: [part(ico(0.32, 1), 0xffd990, { y: 3.65 }), part(ico(0.55, 1), 0xffb860, { y: 3.65 })],
@@ -412,6 +451,22 @@ function createGroundDetail() {
   return texture
 }
 
+// Bare rock on steep slopes and high ground, and each biome's own cap on the tallest peaks (snow in
+// Frostveil, pale crystal in the dunes, black basalt in the Emberwaste...). [r, g, b] 0-1.
+const ROCK = {
+  sanctum: { rock: [0.42, 0.4, 0.58], peak: [0.82, 0.8, 0.96] },
+  whisperwood: { rock: [0.27, 0.31, 0.34], peak: [0.7, 0.84, 0.8] },
+  amethyst: { rock: [0.4, 0.28, 0.48], peak: [0.92, 0.78, 0.96] },
+  frostveil: { rock: [0.42, 0.5, 0.6], peak: [0.97, 0.99, 1] },
+  emberwaste: { rock: [0.15, 0.09, 0.09], peak: [0.08, 0.05, 0.06] },
+  gloomfen: { rock: [0.27, 0.29, 0.22], peak: [0.58, 0.62, 0.52] },
+}
+const smoothstep = (a, b, v) => {
+  const t = Math.min(1, Math.max(0, (v - a) / (b - a)))
+  return t * t * (3 - 2 * t)
+}
+
+let groundDetail = null
 function createGround() {
   const size = WORLD_RADIUS * 2
   const segments = 220
@@ -429,15 +484,35 @@ function createGround() {
       z *= WORLD_RADIUS / d
       pos.setXYZ(i, x, 0, z)
     }
-    pos.setY(i, heightAt(x, z))
-    const [r, g, b] = groundColorAt(x, z)
+    const h = heightAt(x, z)
+    pos.setY(i, h)
+    let [r, g, b] = groundColorAt(x, z)
+    // Steepness from the neighbouring heights: cliffs and hillsides turn to rock, high ground too.
+    const slope = Math.hypot(heightAt(x + 1.5, z) - heightAt(x - 1.5, z), heightAt(x, z + 1.5) - heightAt(x, z - 1.5)) / 3
+    const look = ROCK[biomeAt(x, z)]
+    const grain = 0.85 + 0.3 * Math.abs(Math.sin(x * 0.7 + z * 0.3) * Math.sin(z * 0.9 - x * 0.2))
+    const rocky = Math.max(smoothstep(0.42, 0.85, slope), smoothstep(13, 20, h) * 0.85)
+    if (rocky > 0) {
+      r += (look.rock[0] * grain - r) * rocky
+      g += (look.rock[1] * grain - g) * rocky
+      b += (look.rock[2] * grain - b) * rocky
+    }
+    const cap = smoothstep(21, 27, h) * (1 - smoothstep(0.9, 1.4, slope) * 0.6)
+    if (cap > 0) {
+      r += (look.peak[0] - r) * cap
+      g += (look.peak[1] - g) * cap
+      b += (look.peak[2] - b) * cap
+    }
     colors[i * 3] = r
     colors[i * 3 + 1] = g
     colors[i * 3 + 2] = b
   }
   geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3))
   geometry.computeVertexNormals() // lit like real hills, not a flat sheet
-  const ground = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ vertexColors: true, map: createGroundDetail(), roughness: 0.96, metalness: 0 }))
+  // The same grit picture colours AND bumps the ground, so it catches the light like real earth.
+  const detail = createGroundDetail()
+  groundDetail = detail
+  const ground = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ vertexColors: true, map: detail, bumpMap: detail, bumpScale: 0.6, roughness: 0.96, metalness: 0 }))
   ground.receiveShadow = true
   return ground
 }
@@ -514,7 +589,10 @@ function createSky() {
   }
   const starGeometry = new THREE.BufferGeometry()
   starGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
-  group.add(new THREE.Points(starGeometry, new THREE.PointsMaterial({ color: 0xffffff, size: 2.2, sizeAttenuation: false, fog: false, transparent: true, opacity: 0.85, depthWrite: false })))
+  const stars = new THREE.Points(starGeometry, new THREE.PointsMaterial({ color: 0xffffff, size: 2.2, sizeAttenuation: false, fog: false, transparent: true, opacity: 0.85, depthWrite: false }))
+  group.add(stars)
+  group.userData.dome = dome
+  group.userData.stars = stars
 
   // Two moons and a ringed world, low in the sky.
   const moon = (radius, color, x, y, z) => {
@@ -551,6 +629,110 @@ function createFireflies() {
   const points = new THREE.Points(geometry, material)
   points.frustumCulled = false
   return { points, base }
+}
+
+// ---- roads ---------------------------------------------------------------------------------------
+
+// The roads as ribbons of packed dirt draped over the hills: four vertices across (the outer two fade
+// to nothing so the track frays into the grass), resampled every metre and a half along each route.
+function createRoads(texture) {
+  const positions = []
+  const colors = []
+  const uvs = []
+  const index = []
+  const rand = mulberry32(313)
+  const across = [-(ROAD_WIDTH + 1.3), -ROAD_WIDTH * 0.8, ROAD_WIDTH * 0.8, ROAD_WIDTH + 1.3]
+  const alpha = [0, 0.92, 0.92, 0]
+  for (const path of roadPaths()) {
+    // Resample the polyline evenly.
+    const pts = []
+    for (let i = 0; i < path.length - 1; i++) {
+      const [ax, az] = path[i]
+      const [bx, bz] = path[i + 1]
+      const n = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / 1.5))
+      for (let k = 0; k < n; k++) pts.push([ax + ((bx - ax) * k) / n, az + ((bz - az) * k) / n])
+    }
+    pts.push(path[path.length - 1])
+    let along = 0
+    const base = positions.length / 3
+    pts.forEach(([x, z], i) => {
+      const [nx0, nz0] = pts[Math.min(pts.length - 1, i + 1)]
+      const [px0, pz0] = pts[Math.max(0, i - 1)]
+      const dx = nx0 - px0
+      const dz = nz0 - pz0
+      const len = Math.hypot(dx, dz) || 1
+      const sx = -dz / len
+      const sz = dx / len
+      if (i > 0) along += Math.hypot(x - pts[i - 1][0], z - pts[i - 1][1])
+      const wobble = (rand() - 0.5) * 0.6
+      const shade = 0.9 + rand() * 0.15
+      across.forEach((o, k) => {
+        const off = o + (k === 0 || k === 3 ? wobble : 0)
+        const vx = x + sx * off
+        const vz = z + sz * off
+        positions.push(vx, heightAt(vx, vz) + 0.07, vz)
+        const [r, g, b] = groundColorAt(vx, vz)
+        // Packed dirt, borrowing a little of the land's own colour.
+        colors.push((0.5 * 0.75 + r * 0.25) * shade, (0.41 * 0.75 + g * 0.25) * shade, (0.31 * 0.75 + b * 0.25) * shade, alpha[k])
+        uvs.push(off / 4, along / 4)
+      })
+    })
+    for (let i = 0; i < pts.length - 1; i++) {
+      for (let k = 0; k < 3; k++) {
+        const a = base + i * 4 + k
+        const b = a + 4
+        index.push(a, a + 1, b, a + 1, b + 1, b) // counter-clockwise seen from above
+      }
+    }
+  }
+  const geometry = new THREE.BufferGeometry()
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 4))
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2))
+  geometry.setIndex(index)
+  geometry.computeVertexNormals()
+  const map = texture.clone()
+  map.repeat.set(1, 1)
+  map.needsUpdate = true
+  const material = new THREE.MeshStandardMaterial({ vertexColors: true, transparent: true, depthWrite: false, map, bumpMap: map, bumpScale: 1.2, roughness: 1, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 })
+  const mesh = new THREE.Mesh(geometry, material)
+  mesh.receiveShadow = true
+  mesh.renderOrder = 1
+  return mesh
+}
+
+// ---- skystars ----------------------------------------------------------------------------------
+
+// The star spirits on the hilltops: a bright spinning star with sparks circling it, and a faint beam
+// of light rising from it that shows from far across the land (it ignores the fog), so you can find them.
+function createSkystars() {
+  const group = new THREE.Group()
+  const coreGeometry = new THREE.OctahedronGeometry(0.5, 0)
+  const sparkGeometry = new THREE.OctahedronGeometry(0.13, 0)
+  const coreMaterial = new THREE.MeshBasicMaterial({ color: new THREE.Color(2.2, 2.0, 1.3) })
+  const sparkMaterial = new THREE.MeshBasicMaterial({ color: new THREE.Color(1.8, 1.8, 2.2) })
+  const beamMaterial = new THREE.MeshBasicMaterial({ color: 0xfff1a8, transparent: true, opacity: 0.13, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, fog: false })
+  const beamGeometry = new THREE.CylinderGeometry(0.35, 0.9, 70, 10, 1, true)
+  const items = skystars().map((def) => {
+    const g = new THREE.Group()
+    g.position.set(def.x, def.y + 1.8, def.z)
+    const core = new THREE.Mesh(coreGeometry, coreMaterial)
+    core.scale.y = 1.5
+    g.add(core)
+    const sparks = new THREE.Group()
+    for (let k = 0; k < 4; k++) {
+      const spark = new THREE.Mesh(sparkGeometry, sparkMaterial)
+      spark.position.set(Math.sin((k * Math.PI) / 2) * 0.9, 0, Math.cos((k * Math.PI) / 2) * 0.9)
+      sparks.add(spark)
+    }
+    g.add(sparks)
+    const beam = new THREE.Mesh(beamGeometry, beamMaterial)
+    beam.position.y = 35
+    g.add(beam)
+    group.add(g)
+    return { def, g, core, sparks }
+  })
+  return { group, items }
 }
 
 // ---- grass --------------------------------------------------------------------------------------
@@ -662,7 +844,8 @@ function createLeafFall() {
 export function createWorldArena() {
   const group = new THREE.Group()
 
-  group.add(new THREE.HemisphereLight(WORLD_LEVEL.light.hemiSky, WORLD_LEVEL.light.hemiGround, HEMI_LIGHT_INTENSITY * 2.1))
+  const hemi = new THREE.HemisphereLight(WORLD_LEVEL.light.hemiSky, WORLD_LEVEL.light.hemiGround, HEMI_LIGHT_INTENSITY * 2.1)
+  group.add(hemi)
   const keyLight = new THREE.DirectionalLight(WORLD_LEVEL.light.key, 1.8)
   keyLight.position.set(KEY_LIGHT_OFFSET.x, KEY_LIGHT_OFFSET.y, KEY_LIGHT_OFFSET.z)
   keyLight.castShadow = true
@@ -672,6 +855,7 @@ export function createWorldArena() {
   group.add(keyLight.target)
 
   group.add(createGround(), createUnderside())
+  group.add(createRoads(groundDetail))
   const lakes = createLakes()
   group.add(lakes)
   const sky = createSky()
@@ -686,6 +870,14 @@ export function createWorldArena() {
 
   const flies = createFireflies()
   group.add(flies.points)
+  const starSpirits = createSkystars()
+  group.add(starSpirits.group)
+  // Day and night: the key light warms and brightens by day and turns a dim moonlit blue by night,
+  // the fog and sky darken, and the stars and fireflies come out.
+  const hemiBase = hemi.intensity
+  const dayKey = new THREE.Color(0xffe6c8)
+  const nightKey = new THREE.Color(0x8fa0ff)
+  let light = 1
   const grass = createGrass()
   group.add(grass.mesh)
   const drift = createLeafFall()
@@ -749,8 +941,27 @@ export function createWorldArena() {
       grass.mesh.instanceMatrix.needsUpdate = true
       if (grass.mesh.instanceColor) grass.mesh.instanceColor.needsUpdate = true
     },
+    // Hides the skystars already caught (a Set of ids).
+    setSkystarsCaught(caught) {
+      for (const s of starSpirits.items) s.g.visible = !caught.has(s.def.id)
+    },
+    // 1 by day, 0 at night (eased, so a scene change never snaps).
+    daylight: () => light,
     update(pos, time) {
       sky.position.set(pos.x, 0, pos.z)
+      light += (daylight(time) - light) * 0.05
+      keyLight.intensity = 1.8 * (0.3 + 0.75 * light)
+      keyLight.color.copy(nightKey).lerp(dayKey, light)
+      hemi.intensity = hemiBase * (0.55 + 0.55 * light)
+      sky.userData.dome.material.color.setScalar(0.45 + 0.75 * light)
+      sky.userData.stars.material.opacity = 0.3 + 0.7 * (1 - light)
+      flies.points.material.opacity = 0.55 + 0.45 * (1 - light)
+      for (const s of starSpirits.items) {
+        if (!s.g.visible) continue
+        s.core.rotation.y = time * 1.8
+        s.sparks.rotation.y = -time * 2.4
+        s.g.position.y = s.def.y + 1.8 + Math.sin(time * 2.4 + s.def.x) * 0.25
+      }
       grass.uniforms.uTime.value = time
       grass.uniforms.uPlayer.value.set(pos.x, 0, pos.z)
       // Leaves, petals, flakes and embers drift through the air around the player.
@@ -782,7 +993,7 @@ export function createWorldArena() {
       })
       drift.mesh.instanceMatrix.needsUpdate = true
       const biome = BIOMES[biomeAt(pos.x, pos.z)]
-      targetFog.set(biome.fog)
+      targetFog.set(biome.fog).multiplyScalar(0.55 + 0.6 * light)
       fog.color.lerp(targetFog, 0.03)
       flyColor.set(biome.glow)
       flies.points.material.color.lerp(flyColor, 0.05)

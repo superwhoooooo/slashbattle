@@ -169,6 +169,15 @@ export function groundColorAt(x, z) {
     const bed = [0.1, 0.28, 0.36]
     land = land.map((c, i) => mix(mix(c, sand[i] * dapple, smooth((1.3 - d) / 0.35)), bed[i], smooth((1 - d) / 0.4)))
   }
+  // Roads: packed dirt (tinted by the land it runs through), fraying into the grass at the edges.
+  const road = roadDistance(x, z)
+  if (road < ROAD_WIDTH + 1.6) {
+    const fray = (valueNoise(x * 0.35, z * 0.35, WORLD_SEED + 6) - 0.5) * 1.2
+    const t = 1 - smooth(Math.min(1, Math.max(0, (road - ROAD_WIDTH + 1.4 + fray) / 2.2)))
+    const rut = Math.abs(road - ROAD_WIDTH * 0.45) < 0.35 ? 0.85 : 1
+    const dirt = [0.5, 0.4, 0.3].map((c, i) => (c * 0.7 + color[i] * 0.3) * rut * (0.9 + dapple * 0.1))
+    land = land.map((c, i) => mix(c, dirt[i], t * 0.55)) // a soft underlay; worldArena draws the crisp track on top
+  }
   // Ruins sit on old flagstones.
   const ruin = nearestRuin(x, z, RUIN_PLATFORM_RADIUS + 4)
   if (ruin) {
@@ -516,6 +525,149 @@ export function villageLayout(village) {
   return { props, npcs }
 }
 
+// ---- roads ------------------------------------------------------------------------------------
+
+// Winding dirt roads: from the Sanctum out to every village, and from each village on to its nearest
+// ruin. Each route bends with noise along the way (never at its ends), so it meanders like a real track.
+export const ROAD_WIDTH = 3.2 // half-width of the dirt, before it frays into the grass
+const ROAD_CELL = 24
+let roadCache = null
+
+function buildRoads() {
+  const routes = []
+  const vs = villages()
+  // Every road starts at the edge of the Sanctum's central clearing, pointing at its village.
+  for (const v of vs) {
+    const d = Math.hypot(v.x, v.z) || 1
+    routes.push([{ x: (v.x / d) * 14, z: (v.z / d) * 14 }, v])
+  }
+  for (const v of vs) {
+    const near = nearestRuin(v.x, v.z, 170)
+    if (near) routes.push([v, near.ruin])
+  }
+  const segments = []
+  const paths = []
+  routes.forEach(([a, b], ri) => {
+    const len = Math.hypot(b.x - a.x, b.z - a.z)
+    const n = Math.max(2, Math.round(len / 14))
+    const nx = -(b.z - a.z) / len
+    const nz = (b.x - a.x) / len
+    let px = a.x
+    let pz = a.z
+    const path = [[a.x, a.z]]
+    paths.push(path)
+    for (let i = 1; i <= n; i++) {
+      const t = i / n
+      const bend = i === n ? 0 : (valueNoise(t * 3.1, ri * 5.3, WORLD_SEED + 77) - 0.5) * Math.min(70, len * 0.4) * Math.sin(t * Math.PI)
+      const x = a.x + (b.x - a.x) * t + nx * bend
+      const z = a.z + (b.z - a.z) * t + nz * bend
+      segments.push([px, pz, x, z])
+      path.push([x, z])
+      px = x
+      pz = z
+    }
+  })
+  // A coarse grid of which segments pass near each cell, so a lookup only checks a few.
+  const grid = new Map()
+  for (const seg of segments) {
+    const pad = ROAD_WIDTH + 4
+    const x0 = Math.floor((Math.min(seg[0], seg[2]) - pad) / ROAD_CELL)
+    const x1 = Math.floor((Math.max(seg[0], seg[2]) + pad) / ROAD_CELL)
+    const z0 = Math.floor((Math.min(seg[1], seg[3]) - pad) / ROAD_CELL)
+    const z1 = Math.floor((Math.max(seg[1], seg[3]) + pad) / ROAD_CELL)
+    for (let cx = x0; cx <= x1; cx++) {
+      for (let cz = z0; cz <= z1; cz++) {
+        const key = `${cx},${cz}`
+        if (!grid.has(key)) grid.set(key, [])
+        grid.get(key).push(seg)
+      }
+    }
+  }
+  return { segments, grid, paths }
+}
+
+// Every road as a polyline of [x, z] points (for drawing it).
+export function roadPaths() {
+  roadCache ??= buildRoads()
+  return roadCache.paths
+}
+
+// Every road segment [x1, z1, x2, z2].
+export function roads() {
+  roadCache ??= buildRoads()
+  return roadCache.segments
+}
+
+function segmentDistance(x, z, s) {
+  const dx = s[2] - s[0]
+  const dz = s[3] - s[1]
+  const l2 = dx * dx + dz * dz
+  const t = Math.max(0, Math.min(1, ((x - s[0]) * dx + (z - s[1]) * dz) / (l2 || 1)))
+  return Math.hypot(x - s[0] - dx * t, z - s[1] - dz * t)
+}
+
+// How far (x, z) is from the nearest road's centre line (Infinity when no road passes close).
+export function roadDistance(x, z) {
+  roadCache ??= buildRoads()
+  const list = roadCache.grid.get(`${Math.floor(x / ROAD_CELL)},${Math.floor(z / ROAD_CELL)}`)
+  if (!list) return Infinity
+  let best = Infinity
+  for (const seg of list) best = Math.min(best, segmentDistance(x, z, seg))
+  return best
+}
+
+// Is (x, z) on a road (plus `margin` either side)?
+export const onRoad = (x, z, margin = 0) => roadDistance(x, z) < ROAD_WIDTH + margin
+
+// ---- day and night ----------------------------------------------------------------------------
+
+// The Wilds turn from day to night and back every DAY_SECONDS. Starts in the late afternoon.
+export const DAY_SECONDS = 480
+const dayPhase = (t) => (((t / DAY_SECONDS + 0.12) % 1) + 1) % 1
+// 1 at high day, 0 in the deepest night.
+export const daylight = (t) => 0.5 + 0.5 * Math.cos(dayPhase(t) * Math.PI * 2)
+export function dayName(t) {
+  const p = dayPhase(t)
+  return p < 0.2 || p > 0.86 ? 'Day' : p < 0.34 ? 'Dusk' : p < 0.7 ? 'Night' : 'Dawn'
+}
+
+// ---- skystars ---------------------------------------------------------------------------------
+
+// Little star spirits perched on the tops of the tallest hills: climb or glide up to catch them.
+export const SKYSTAR_REWARD = 30 // crystals
+export const SKYSTAR_CATCH_RADIUS = 2.6
+let starCache = null
+export function skystars() {
+  if (starCache) return starCache
+  const tops = MOUNDS.filter((m) => m.height > 15 && Math.hypot(m.x, m.z) < WORLD_RADIUS - 40)
+    .map((m) => {
+      // Climb onto the very top (overlapping hills and the rolling land move the summit): step uphill,
+      // with ever smaller steps, until no step goes higher.
+      let best = { x: m.x, z: m.z, h: heightAt(m.x, m.z) }
+      for (const step of [6, 3, 1.5, 0.75, 0.4]) {
+        for (let moved = true, guard = 0; moved && guard < 60; guard++) {
+          moved = false
+          for (let i = 0; i < 8; i++) {
+            const a = (i / 8) * Math.PI * 2
+            const x = best.x + Math.cos(a) * step
+            const z = best.z + Math.sin(a) * step
+            const h = heightAt(x, z)
+            if (h > best.h + 1e-6) {
+              best = { x, z, h }
+              moved = true
+            }
+          }
+        }
+      }
+      return best
+    })
+    // Two hills can share one summit: keep one star per top.
+    .filter((t, i, all) => all.findIndex((o) => Math.hypot(o.x - t.x, o.z - t.z) < 6) === i)
+    .filter((t) => !lakeAt(t.x, t.z, 0.5))
+  starCache = tops.map((t, i) => ({ id: `star${i}`, x: t.x, z: t.z, y: t.h }))
+  return starCache
+}
+
 // ---- chunks -----------------------------------------------------------------------------------
 
 export const chunkCoord = (v) => Math.floor(v / CHUNK_SIZE)
@@ -548,6 +700,7 @@ export const PROP_RADIUS = {
   obsidian: 1.3, emberRock: 1.5,
   deadTree: 0.7, lanternReed: 0,
   ruinArch: 2.4,
+  roadLantern: 0.3, signpost: 0.3, windmill: 1.9,
   column: 0.8, columnBroken: 0.8, ruinWall: 2.0, shrine: 1.2, tower: 2.8, temple: 0,
   cottage: 2.9, cottageTeal: 2.9, cottageAmber: 2.9, hall: 4.2, well: 1.3, lampPost: 0.35, noticeBoard: 0.9,
 }
@@ -584,6 +737,7 @@ export function chunkContent(cx, cz) {
     if (Math.hypot(p.x, p.z) < 9) continue
     if (nearestVillage(p.x, p.z, VILLAGE_PLAZA_RADIUS + 22)) continue
     if (lakeAt(p.x, p.z, 0.35) || nearestRuin(p.x, p.z, RUIN_PLATFORM_RADIUS + 2)) continue // no trees in the water or in the ruins
+    if (onRoad(p.x, p.z, 1.5)) continue // nor on the roads
     const kind = pickWeighted(rng, biome.props)[0]
     const scale = 0.75 + rng() * 0.8
     out.props.push({ kind, x: p.x, z: p.z, scale, rot: rng() * Math.PI * 2, radius: PROP_RADIUS[kind] * scale })
@@ -592,6 +746,23 @@ export function chunkContent(cx, cz) {
   if (out.biome !== 'sanctum' && rng() < 0.12) {
     const p = place()
     if (inWorld(p) && !lakeAt(p.x, p.z, 0.5) && !nearestRuin(p.x, p.z, RUIN_PLATFORM_RADIUS + 4) && !nearestVillage(p.x, p.z, VILLAGE_PLAZA_RADIUS + 22)) out.props.push({ kind: 'ruinArch', x: p.x, z: p.z, scale: 1.2 + rng() * 0.6, rot: rng() * Math.PI * 2, radius: PROP_RADIUS.ruinArch })
+  }
+
+  // Along the roads: wayside lanterns, the odd fingerpost, and now and then a windmill on the verge
+  // where things grow (a separate random stream, so the scenery and camps above never shift).
+  const roadRng = mulberry32((Math.imul(cx, 2654435761) ^ Math.imul(cz, 40503) ^ WORLD_SEED) + 101)
+  for (let i = 0; i < 6; i++) {
+    const p = place()
+    const roll = roadRng()
+    const side = roadRng()
+    if (!inWorld(p) || nearestVillage(p.x, p.z, VILLAGE_PLAZA_RADIUS + 18) || lakeAt(p.x, p.z, 0.4) || nearestRuin(p.x, p.z, RUIN_PLATFORM_RADIUS + 3)) continue
+    const d = roadDistance(p.x, p.z)
+    if (d > ROAD_WIDTH + 1 && d < ROAD_WIDTH + 3.5) {
+      const kind = roll < 0.75 ? 'roadLantern' : 'signpost'
+      out.props.push({ kind, x: p.x, z: p.z, scale: 1, rot: side * Math.PI * 2, radius: PROP_RADIUS[kind] })
+    } else if (d > ROAD_WIDTH + 7 && d < ROAD_WIDTH + 16 && roll < 0.12 && ['whisperwood', 'gloomfen', 'amethyst'].includes(out.biome)) {
+      out.props.push({ kind: 'windmill', x: p.x, z: p.z, scale: 0.9 + side * 0.3, rot: side * Math.PI * 2, radius: PROP_RADIUS.windmill })
+    }
   }
 
   // Monsters in camps: a few per chunk, more and meaner the farther from the sanctum.
@@ -686,6 +857,7 @@ export function chunkContent(cx, cz) {
     if (Math.hypot(gx, gz) > WORLD_RADIUS - 3) continue
     if (nearestVillage(gx, gz, VILLAGE_PLAZA_RADIUS + 1)) continue // the plaza is paved
     if (lakeAt(gx, gz, 0.1) || nearestRuin(gx, gz, RUIN_PLATFORM_RADIUS - 2)) continue // no grass under water or flagstones
+    if (onRoad(gx, gz, -0.8)) continue // the road is bare dirt
     out.grass.push({ x: gx, z: gz, scale: 0.7 + grassRng() * 0.9 + patch * 0.4, rot: grassRng() * Math.PI * 2, tint: grassRng() })
   }
 
