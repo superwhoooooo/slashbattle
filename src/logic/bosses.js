@@ -360,22 +360,22 @@ export function wavesBeforeBoss(bossesDefeated) {
 // Bosses get tougher with every boss fight in a run (`bossesDefeated` = fights already won):
 // hp compounds +25% per fight, damage +15% per fight, every fight teaches it one more special
 // move it didn't have, and its special cooldowns shrink 10% per fight (floored at 40%).
-export const BOSS_HP_GROWTH = 1.25
-export const BOSS_DAMAGE_GROWTH = 1.15
+export const BOSS_HP_GROWTH = 1.12
+export const BOSS_DAMAGE_GROWTH = 1.07
 // Immunity phases: each time a boss's health first falls to one of these fractions it throws up a shield and can't be
 // hurt until its minions are beaten (or `BOSS_IMMUNITY_SECONDS` run out).
 export const BOSS_IMMUNITY_THRESHOLDS = [0.75, 0.5, 0.25]
-export const BOSS_IMMUNITY_SECONDS = 16
-export const BOSS_IMMUNITY_MINIONS = 4
+export const BOSS_IMMUNITY_SECONDS = 10
+export const BOSS_IMMUNITY_MINIONS = 2
 // Which immunity phase (0-based) a boss with `hp` of `maxHp` has just reached, or null. `done` is how many it has had.
 export function immunityPhaseReached(hp, maxHp, done) {
   if (done >= BOSS_IMMUNITY_THRESHOLDS.length) return null
   return hp <= maxHp * BOSS_IMMUNITY_THRESHOLDS[done] ? done : null
 }
 
-export const BOSS_BASE = { hp: 1.6, damage: 1.3 } // every boss starts this much tougher than its listed stats
-export const BOSS_COOLDOWN_SHRINK = 0.88
-export const BOSS_HEAD_START = 3 // a boss's first fight already counts as this many won, for its moves and cooldowns
+export const BOSS_BASE = { hp: 1.0, damage: 0.8 } // every boss starts this much tougher than its listed stats
+export const BOSS_COOLDOWN_SHRINK = 0.94
+export const BOSS_HEAD_START = 1 // a boss's first fight already counts as this many won, for its moves and cooldowns
 export const BOSS_MIN_COOLDOWN_SCALE = 0.3
 // Moves a boss can pick up on later fights, in the order it learns them (skipping ones it has).
 // `lob` is left out: it needs the Bloater's ranged-attack tuning.
