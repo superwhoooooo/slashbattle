@@ -26,6 +26,7 @@ import { BOSS_SPECIALS, stepSpecialTimer } from './logic/bosses.js'
 import { nextMonsterState } from './logic/monsterAI.js'
 import { predictPosition, RANGED_ATTACKS, smoothVelocity } from './logic/enemies.js'
 import { dampAngle } from './logic/smoothing.js'
+import { BANDIT, BURROW, SNIPE, createBurrowState, createSnipeState, fleeTarget, isBurrowed, snipeAim, stepBurrow, stepSnipe } from './logic/shadyGuests.js'
 import { statusTimeScale, TIME_WARP_FACTOR } from './logic/status.js'
 
 // The Time Warp ability slows every monster to `factor` of the clock until `until`.
@@ -139,6 +140,7 @@ const shieldedFrom = (ai) => !ai.reachAll && ((deepShield && ai.deep === true) |
 // Out of reach right now: a deep dweller, or a submerged water boss, while you're not diving.
 export function isUntouchable(monster) {
   if (monster.userData.immune === true) return true // a boss's immunity phase
+  if (monster.userData.burrowed === true) return true // a gopher tunnelling under the deck
   return deepShield && (monster.userData.deep === true || monster.userData.submerged === true)
 }
 
@@ -425,6 +427,130 @@ function stepBossSpecials(monster, ai, stats, player, obstacles, dt, events) {
   return { speed, busy: false }
 }
 
+// ---- the shady guests (logic/shadyGuests.js) -------------------------------------------------
+// Each returns true when it moved/turned the monster itself this tick (the generic chase / melee
+// is skipped), false to let the normal state machine drive it.
+function stepShady(monster, ai, stats, player, obstacles, speed, dt, events) {
+  if (stats.behavior === 'snipe') return stepPaparazzo(monster, ai, stats, player, obstacles, speed, dt, events)
+  if (stats.behavior === 'burrow') return stepGopher(monster, ai, stats, player, obstacles, speed, dt, events)
+  if (stats.behavior === 'bandit') return stepBandit(monster, ai, stats, player, obstacles, speed, dt, events)
+  return false
+}
+
+// The paparazzo's laser (characters.js's addCameraLaser) points straight out of its lens, so it
+// follows the body's turn: steady while tracking, blinking once the shot is locked.
+function setLaser(monster, phase, t) {
+  const laser = monster.userData.laser
+  if (!laser) return
+  laser.visible = phase === 'aim' || phase === 'lock'
+  if (laser.visible) laser.material.opacity = phase === 'lock' ? (Math.sin(t * 45) > 0 ? 0.95 : 0.25) : 0.5
+}
+
+// Keeps its distance, tracks a laser onto where you're heading, locks it, then flashes down the line.
+function stepPaparazzo(monster, ai, stats, player, obstacles, speed, dt, events) {
+  ai.snipe ??= createSnipeState()
+  const engaged = ai.state === 'attack' || ai.state === 'chase'
+  const aiming = ai.snipe.phase !== 'cool'
+  if (!engaged || (!aiming && ai.state !== 'attack')) {
+    // Lost you (or not in range yet): drop the shot and walk like anyone else.
+    if (aiming) ai.snipe = { phase: 'cool', t: SNIPE.cooldown * 0.5 }
+    setLaser(monster, null, 0)
+    return false
+  }
+  const x = monster.position.x
+  const z = monster.position.z
+  const dx = player.position.x - x
+  const dz = player.position.z - z
+  const distance = Math.hypot(dx, dz)
+  ai.speed = 0
+  if (ai.snipe.phase === 'cool') {
+    if (distance < SNIPE.keepAway && distance > 1e-6) {
+      steerToward(monster, { x: x - (dx / distance) * 3, z: z - (dz / distance) * 3 }, speed * 0.9, dt, obstacles)
+      ai.speed = speed * 0.9
+    } else {
+      monster.rotation.y = dampAngle(monster.rotation.y, Math.atan2(dx, dz), MONSTER_FACING_DAMPING, dt)
+    }
+  } else if (ai.snipe.phase === 'aim') {
+    // Swings the lens round to lead you; it turns quickly, but not instantly.
+    monster.rotation.y = dampAngle(monster.rotation.y, snipeAim(monster.position, player.position, ai.playerVel), 9, dt)
+  } else {
+    jellyHit(monster, -MONSTER_ATTACK_WINDUP_INFLATE_RATE * dt) // lock: holds still and puffs up
+  }
+  const step = stepSnipe(ai.snipe, dt)
+  ai.snipe = step.state
+  if (step.fire) {
+    events.push({
+      type: 'snipe',
+      x,
+      z,
+      aim: monster.rotation.y,
+      length: SNIPE.length,
+      width: SNIPE.width,
+      damage: Math.round(stats.damage * SNIPE.damageMultiplier * (ai.damageScale ?? 1)),
+    })
+    jellyHit(monster, 0.6) // the recoil
+  }
+  setLaser(monster, ai.snipe.phase, ai.snipe.t)
+  return true
+}
+
+// Walks and bites like anyone while up; every so often it digs in, tunnels after you (out of
+// reach), stops under you, erupts, and sits there dazed.
+function stepGopher(monster, ai, stats, player, obstacles, speed, dt, events) {
+  ai.burrow ??= createBurrowState()
+  if (inWaterRoom) return false // nothing to dig into
+  const x = monster.position.x
+  const z = monster.position.z
+  const engaged = ai.state === 'chase' || ai.state === 'attack'
+  const distance = Math.hypot(player.position.x - x, player.position.z - z)
+  const { state, event } = stepBurrow(ai.burrow, dt, { engaged, distance })
+  ai.burrow = state
+  if (event === 'dig' || event === 'surface') events.push({ type: 'dig', x, z })
+  else if (event === 'mark') events.push({ type: 'warn', x, z, radius: BURROW.radius, duration: BURROW.warn })
+  else if (event === 'erupt') {
+    events.push({ type: 'erupt', x, z, radius: BURROW.radius, damage: Math.round(stats.damage * BURROW.damageMultiplier * (ai.damageScale ?? 1)), balls: BURROW.balls })
+    jellyHit(monster, -0.8)
+  }
+  monster.userData.burrowed = isBurrowed(state)
+  monster.userData.dazed = state.phase === 'dazed'
+  // Sinks into the deck until only a hump of its back shows, and pops back up.
+  const sinkTo = monster.userData.burrowed ? -stats.size * BURROW.sink : 0
+  ai.leapY += (sinkTo - ai.leapY) * Math.min(1, dt * (sinkTo < 0 ? 6 : 14))
+  if (Math.abs(ai.leapY) < 0.01) ai.leapY = 0
+
+  if (state.phase === 'up') return false
+  ai.speed = 0
+  if (state.phase === 'under') {
+    steerToward(monster, player.position, speed * BURROW.speedMultiplier, dt, obstacles)
+    ai.speed = speed * BURROW.speedMultiplier
+  } else if (state.phase === 'marked') {
+    jellyHit(monster, -MONSTER_ATTACK_WINDUP_INFLATE_RATE * dt)
+  } else {
+    monster.rotation.y += dt * 5 // seeing stars
+    if (ai.indicatorElapsed === null) showIndicator(monster, 'search')
+  }
+  return true
+}
+
+// Rushes you, swipes a share of your crystals (main.js works out how many) and runs for it.
+function stepBandit(monster, ai, stats, player, obstacles, speed, dt, events) {
+  ai.bandit ??= { phase: 'hunt', t: 0 }
+  if (ai.bandit.phase === 'hunt') {
+    if (ai.state !== 'attack') return false // closing in like anyone
+    events.push({ type: 'steal' })
+    ai.bandit = { phase: 'flee', t: BANDIT.fleeTime }
+    jellyHit(monster, 0.5)
+    showIndicator(monster, 'chase')
+    return true
+  }
+  ai.bandit.t -= dt
+  const target = fleeTarget(monster.position, player.position, ARENA_RADIUS, MONSTER_PLATFORM_MARGIN + 1)
+  steerToward(monster, target, speed * BANDIT.fleeSpeedMultiplier, dt, obstacles)
+  ai.speed = speed * BANDIT.fleeSpeedMultiplier
+  if (ai.bandit.t <= 0 && !monster.userData.escaped) events.push({ type: 'escape' })
+  return true
+}
+
 // A water boss's tide: `always` ones sink at once and stay under; the rest surface for `up` seconds, sink for
 // `down`, and BREACH back up (a warning ring 0.9s ahead, then a damaging eruption, plus a ring of spines for
 // the urchin). Does nothing outside a water room. Pushes 'dive' / 'warn' / 'breach' events.
@@ -633,7 +759,7 @@ export function updateMonster(monster, player, obstacles, dt, now) {
   const events = []
 
   const ranged = RANGED_ATTACKS[ai.type]
-  if (ranged || stats.specials?.includes('lob')) {
+  if (ranged || stats.specials?.includes('lob') || stats.behavior === 'snipe') {
     ai.playerVel = smoothVelocity(ai.playerVel, ai.prevPlayerPos, player.position, dt)
     ai.prevPlayerPos = { x: player.position.x, z: player.position.z }
   }
@@ -648,6 +774,8 @@ export function updateMonster(monster, player, obstacles, dt, now) {
 
   if (busy) {
     // Mid wind-up/spin: stepBossSpecials already moved/turned it.
+  } else if (stats.behavior && stepShady(monster, ai, stats, player, obstacles, speed, dt, events)) {
+    // A shady guest's own move (sniping, tunnelling, a getaway) moved/turned it.
   } else if (ranged && ai.state === 'attack') {
     ai.speed = stepRanged(monster, ai, ranged, player, obstacles, speed, dt, events)
   } else if (ai.state === 'wander' && ai.wanderTarget) {
@@ -713,7 +841,8 @@ export function separateMonsters(monsters, player, obstacles) {
     if (monster.userData.dying || monster.userData.spawning) continue
     const radius = monster.userData.radius
 
-    pushApart(monster, radius, player.position, PLAYER_RADIUS, obstacles)
+    // A burrowed gopher passes under your feet.
+    if (!monster.userData.burrowed) pushApart(monster, radius, player.position, PLAYER_RADIUS, obstacles)
 
     for (let j = i + 1; j < monsters.length; j++) {
       const other = monsters[j]

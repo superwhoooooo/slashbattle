@@ -5,6 +5,7 @@
 // frame, so stepCrystal mutates in place rather than allocating.
 
 import { CRAZY_TYPE_IDS } from './crazyEnemies.js'
+import { SHADY_TYPE_IDS } from './shadyGuests.js'
 
 export const CRYSTAL_GROUND_Y = 0.35
 export const CRYSTAL_GRAVITY = 22
@@ -19,7 +20,7 @@ export function crystalDrops(type, isBoss = false) {
   if (isBoss) return Array(8).fill(5)
   if (type === 'grumpus') return [2, 2, 2]
   if (type === 'zippy') return [2]
-  if (type === 'bloater' || type === 'spinner' || type === 'splitter' || type === 'hopper' || type === 'angler' || type === 'urchin' || type === 'eel' || type === 'mirror' || type === 'glimmer' || CRAZY_TYPE_IDS.includes(type)) return [2, 2]
+  if (type === 'bloater' || type === 'spinner' || type === 'splitter' || type === 'hopper' || type === 'angler' || type === 'urchin' || type === 'eel' || type === 'mirror' || type === 'glimmer' || CRAZY_TYPE_IDS.includes(type) || SHADY_TYPE_IDS.includes(type)) return [2, 2]
   if (type === 'splitling') return [1]
   return [1, 1]
 }

@@ -39,6 +39,7 @@ import { waterBullet } from './logic/water.js'
 import { fireBullets } from './bullets.js'
 import { jellyHit } from './jelly.js'
 import { hasWallLineOfSight, isUntouchable } from './monster.js'
+import { BURROW, leakAmount } from './logic/shadyGuests.js'
 import { burst, shardBurst } from './particles.js'
 import { clearSwingTrail, updateSwingTrail } from './trail.js'
 
@@ -172,10 +173,19 @@ export function damageMonster(monster, damage, { fromPos, knockback = 0, obstacl
     burst(particleSystem, point, HIT_SPARK_WHITE_COLOR, HIT_SPARK_WHITE_COUNT, HIT_SPARK_WHITE_SPEED)
     return false
   }
+  // A gopher sitting dazed after an eruption takes extra damage ("Whack-a-Mole" if it dies).
+  if (monster.userData.dazed) damage = Math.round(damage * BURROW.dazedDamageMultiplier)
   const { hp, lethal } = applyDamage({ hp: monster.userData.hp }, damage)
   monster.userData.hp = hp
   monster.userData.lastHitBy = cause
   monster.userData.lastHitAmbush = ambush
+  monster.userData.lastHitDazed = monster.userData.dazed === true
+  // A Bellhop Bandit's sack leaks a few crystals with every hit that doesn't finish it (main.js drops them).
+  if (!lethal && monster.userData.stolen > 0) {
+    const spilled = leakAmount(monster.userData.stolen)
+    monster.userData.stolen -= spilled
+    monster.userData.leakPending = (monster.userData.leakPending ?? 0) + spilled
+  }
 
   if (hitstop && !(cause === 'pet' && !lethal)) {
     const isBoss = monster.userData.isBoss === true

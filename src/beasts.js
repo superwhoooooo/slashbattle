@@ -887,6 +887,93 @@ const BEASTS = {
     },
   },
 
+  // ---- the shady guests (logic/shadyGuests.js) ----
+
+  // The paparazzo: a lanky, hunched creature in a trench coat and fedora, peering down a long-lens
+  // camera held up at its right cheek (the aiming laser comes out of that lens, see characters.js).
+  paparazzo: {
+    rough: 0.55,
+    build(f, c, boss) {
+      const coat = shade(c, 0.8)
+      f.add(lathe('trench', [[0.0, 0.55], [0.42, 0.5], [0.55, 0.0], [0.62, -0.55], [0.7, -0.8]]), coat, { p: [0, -0.05, 0] })
+      f.add(rbox(0.16, 0.9, 0.06, 0.02), shade(c, 0.55), { p: [0, -0.2, 0.6], r: [-0.12, 0, 0] })
+      f.add(blob('papHead', (x, y, z) => 1 + 0.03 * lumpy(x * 2, y * 2, z * 2) + (z > 0.4 && y < 0 ? 0.25 * z : 0)), c, { p: [0, 0.82, 0.12], s: [0.42, 0.4, 0.44] })
+      eyes(f, { at: [0.15, 0.9, 0.48], size: 0.09, boss })
+      brows(f, shade(c, 0.45), { at: [0.15, 1.0, 0.46], w: 0.22 })
+      maw(f, { y: 0.66, z: 0.52, w: 0.26, h: 0.06, teeth: 3, tooth: 0.07 })
+      // Fedora with a PRESS card.
+      f.add(cyl(1, 1, 18), 0x2b2838, { p: [0, 1.2, 0.1], s: [0.62, 0.04, 0.62] })
+      f.add(cyl(0.85, 1, 16), 0x2b2838, { p: [0, 1.34, 0.1], s: [0.36, 0.26, 0.36] })
+      f.add(cyl(1, 1, 16), 0xc9a64a, { p: [0, 1.27, 0.1], s: [0.37, 0.06, 0.37] })
+      f.add(rbox(0.18, 0.11, 0.02, 0.01), 0xfff6d8, { p: [0.12, 1.34, 0.46], r: [0, 0, -0.25] })
+      // The camera: body, long lens, glinting glass, flash bulb.
+      f.add(rbox(0.5, 0.34, 0.3), 0x1d1b26, { p: [0.62, 0.22, 0.62] })
+      f.add(cyl(0.9, 1, 16), 0x1d1b26, { p: [0.67, 0.22, 0.95], r: [Math.PI / 2, 0, 0], s: [0.16, 0.42, 0.16] })
+      f.add(cyl(1, 1, 16), 0x9fd8ff, { p: [0.67, 0.22, 1.17], r: [Math.PI / 2, 0, 0], s: [0.12, 0.03, 0.12], glow: 1 })
+      f.add(rbox(0.2, 0.12, 0.1), 0xfffbe6, { p: [0.5, 0.45, 0.6], glow: 0.6 })
+      // Arms up to the camera, legs under the coat.
+      f.limb([0.45, 0.4, 0.15], [0.55, 0.05, 0.45], 0.1, 0.08, coat)
+      f.limb([0.55, 0.05, 0.45], [0.6, 0.15, 0.6], 0.08, 0.07, coat)
+      f.limb([-0.45, 0.4, 0.15], [-0.15, 0.05, 0.55], 0.1, 0.08, coat)
+      f.limb([-0.15, 0.05, 0.55], [0.38, 0.15, 0.68], 0.08, 0.07, coat)
+      f.both((s) => f.leg([s * 0.2, -0.75, 0], [s * 0.24, -0.88, 0.04], [s * 0.24, -1, 0.06], 0.1, 0x2b2838, s > 0 ? 0 : Math.PI, { lift: 0.1, stride: 0.18 }))
+      f.both((s) => f.add(rbox(0.16, 0.08, 0.28), INK, { p: [s * 0.24, -0.97, 0.12], wig: [0.1, 0.18, -1, s > 0 ? 0 : Math.PI] }))
+    },
+  },
+
+  // The gopher: a round, buck-toothed burrower with big digging claws, a dirt-smudged belly and a
+  // golf flag stuck in its head from the last hole it came up through.
+  gopher: {
+    build(f, c, boss) {
+      f.add(blob('gopher', (x, y, z) => 1 + 0.05 * lumpy(x, y, z) - (y < -0.5 ? (-y - 0.5) * 0.3 : 0)), c, { s: [0.95, 0.9, 1.0], p: [0, -0.08, 0] })
+      f.add(blob('belly', () => 1), shade(c, 1.4), { s: [0.66, 0.6, 0.4], p: [0, -0.2, 0.55] })
+      for (const [x, y, z] of [[0.3, -0.35, 0.82], [-0.2, -0.5, 0.78], [0.05, -0.15, 0.9]]) f.add(blob('dirt', (a, b, d) => 1 + 0.25 * lumpy(a * 3, b * 3, d * 3)), 0x6a4a2a, { p: [x, y, z], s: 0.1 })
+      f.add(blob('snout', () => 1), shade(c, 1.2), { p: [0, 0.12, 0.88], s: [0.32, 0.22, 0.2] })
+      f.add(sph(8), 0x3a2418, { p: [0, 0.2, 1.05], s: [0.09, 0.06, 0.05] })
+      f.both((s) => f.add(rbox(0.12, 0.2, 0.05, 0.02), 0xfffbef, { p: [s * 0.065, -0.07, 1.02] }))
+      eyes(f, { at: [0.26, 0.42, 0.78], size: 0.1, boss })
+      brows(f, shade(c, 0.45), { at: [0.26, 0.55, 0.74], w: 0.26 })
+      f.both((s) => {
+        f.add(sph(10), shade(c, 0.8), { p: [s * 0.5, 0.65, 0.1], s: [0.17, 0.17, 0.07] })
+        f.add(sph(10), 0xffb0a0, { p: [s * 0.5, 0.65, 0.14], s: [0.1, 0.1, 0.03] })
+        // Big digging paws held up in front, claws out.
+        f.limb([s * 0.6, -0.1, 0.45], [s * 0.45, -0.35, 0.85], 0.13, 0.11, shade(c, 0.85), { wig: [0.05, 0.06, 6, s], ramp: [0, 1] })
+        for (const dx of [-0.07, 0, 0.07]) f.spike([s * 0.45 + dx, -0.42, 0.92], [0, -0.7, 0.6], 0.03, 0.16, BONE, { wig: [0.05, 0.06, 6, s] })
+      })
+      fourLegs(f, shade(c, 0.6), { x: 0.42, zf: 0.25, zb: -0.4, top: -0.55, r: 0.15, lift: 0.08, stride: 0.15 })
+      // The golf flag.
+      f.add(cyl(1, 1, 6), 0xf2f2f2, { p: [-0.18, 1.15, -0.15], r: [0, 0, 0.15], s: [0.025, 0.75, 0.025] })
+      f.add(rbox(0.32, 0.2, 0.02, 0.005), 0xff4d5e, { p: [-0.05, 1.42, -0.15], wig: [0, 0, 7, 0], side: 0.08, at: (p) => Math.max(0, (p.x + 0.18) / 0.32) })
+    },
+  },
+
+  // The Bellhop Bandit: a nimble, ring-tailed creature in a burglar's mask and a bellhop's pillbox
+  // cap, a bulging loot sack slung over its back.
+  bandit: {
+    build(f, c, boss) {
+      f.add(blob('bandit', (x, y, z) => 1 + 0.04 * lumpy(x, y, z)), c, { s: [0.72, 0.78, 0.82], p: [0, -0.05, 0] })
+      f.add(blob('belly', () => 1), shade(c, 1.45), { s: [0.5, 0.55, 0.3], p: [0, -0.15, 0.55] })
+      f.add(blob('banditHead', () => 1), c, { p: [0, 0.65, 0.3], s: [0.48, 0.4, 0.45] })
+      f.add(blob('muzzle', () => 1), shade(c, 1.5), { p: [0, 0.55, 0.7], s: [0.2, 0.15, 0.18] })
+      f.add(sph(8), INK, { p: [0, 0.6, 0.86], s: [0.06, 0.045, 0.04] })
+      // The mask: a dark band across the eyes.
+      f.add(rbox(0.86, 0.17, 0.2, 0.06), 0x16141c, { p: [0, 0.74, 0.55] })
+      eyes(f, { at: [0.17, 0.75, 0.68], size: 0.08, boss })
+      f.both((s) => f.add(cone(6), shade(c, 0.8), { p: [s * 0.3, 1.0, 0.22], r: [0, 0, s * -0.3], s: [0.11, 0.22, 0.08] }))
+      // The pillbox cap.
+      f.add(cyl(0.9, 1, 16), 0xd2334a, { p: [0.05, 1.08, 0.25], r: [0, 0, -0.2], s: [0.2, 0.18, 0.2] })
+      f.add(torus(1, 0.1, 18), 0xf2c14e, { p: [0.04, 1.02, 0.25], r: [Math.PI / 2, 0, -0.2], s: 0.21, glow: 0.2 })
+      // The loot sack, a crystal glinting at its mouth.
+      f.add(blob('sack', (x, y, z) => 1 + 0.08 * lumpy(x * 2, y * 2, z * 2)), 0xc9a36a, { p: [0, 0.35, -0.75], s: [0.5, 0.55, 0.45], wig: [0.04, 0, 9, 0] })
+      f.add(cone(8), 0xa8834c, { p: [0, 0.95, -0.72], s: [0.14, 0.22, 0.14], wig: [0.04, 0, 9, 0] })
+      f.add(gem(), 0x7ff2ff, { p: [0.1, 1.1, -0.68], s: [0.07, 0.11, 0.07], glow: 1.2, wig: [0.04, 0, 9, 0] })
+      f.limb([0.35, 0.4, 0.1], [0.1, 0.95, -0.55], 0.08, 0.06, c)
+      fourLegs(f, shade(c, 0.6), { x: 0.36, zf: 0.3, zb: -0.3, top: -0.5, r: 0.11, lift: 0.16, stride: 0.26 })
+      tail(f, shade(c, 0.7), { root: [0, -0.3, -0.6], len: 0.9, r: 0.13, lift: 0.4, tip: null, sway: 0.3, speed: 4 })
+      for (let i = 0; i < 3; i++) f.add(torus(1, 0.3, 12), 0x16141c, { p: [0, -0.3 + 0.4 * ((i + 1) / 3) ** 2, -0.6 - 0.27 * (i + 1)], r: [Math.PI / 2, 0, 0], s: 0.11 - i * 0.02, wig: [0, 0, 4, 0], side: 0.3 * ((i + 1) / 3) })
+    },
+  },
+
   // ---- the original seven bosses' own forms ----
 
   // King Gloop: a huge dripping slime with bubbles rising inside it and a crown sunk in its top.

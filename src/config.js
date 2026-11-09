@@ -2,6 +2,7 @@
 // mostly cares about them; values are in world units unless noted.
 import { BOSS_MONSTER_TYPES } from './logic/bosses.js'
 import { CRAZY_TYPES } from './logic/crazyEnemies.js'
+import { SHADY_TYPES } from './logic/shadyGuests.js'
 
 export const PLAYER_RADIUS = 0.35
 export const PLAYER_BODY_RADIUS = 0.6 // icosahedron radius for the player's jelly body (visual only; PLAYER_RADIUS stays the collision radius)
@@ -61,6 +62,8 @@ export const MONSTER_TYPES = {
   // boss-only fields (attackRange, reachBonus, knockbackScale, special...).
   // Ten more regular enemies with crazy boss forms (logic/crazyEnemies.js; the bosses are in BOSS_MONSTER_TYPES).
   ...CRAZY_TYPES,
+  // Three shady guests (logic/shadyGuests.js): the paparazzo, the gopher and the Bellhop Bandit.
+  ...SHADY_TYPES,
   ...BOSS_MONSTER_TYPES,
 }
 

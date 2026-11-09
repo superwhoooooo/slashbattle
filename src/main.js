@@ -254,6 +254,7 @@ import { createPoisonPool, lobPoison, resetPoison, updatePoison } from './hazard
 import { createProjectilePool, destroyProjectilesNear, fireProjectile, resetProjectiles, updateProjectiles } from './projectiles.js'
 import { inRingBand, onBeam, puddleTargets, rainZones, ringAngles, wallOrbs } from './logic/signatures.js'
 import { CRAZY_TYPE_IDS } from './logic/crazyEnemies.js'
+import { beamHits, crystalChange, refundWithTip, stealAmount } from './logic/shadyGuests.js'
 import { createShockwavePool, resetShockwaves, spawnShockwave, updateShockwaves } from './shockwave.js'
 import { createPopupPool, resetPopups, showPopup, updatePopups } from './popups.js'
 import { createSpawnEffect, updateSpawnEffect } from './spawner.js'
@@ -2460,12 +2461,15 @@ function reflectAttack(game, info) {
 // The urchin prince's beam: a red warning line while it charges, then a bright column that hurts anything on the
 // line (a diver or a floater alike). Short-lived meshes; `kind` is 'warn' or 'beam'.
 const bossBeams = []
-function addBossBeam(event, kind, life) {
+// A paparazzo's flash is white-gold instead of the urchin's violet.
+const BEAM_PALETTES = { boss: [0xffffff, 0xdbb8ff, 0x8a3df0], flash: [0xffffff, 0xfff6c8, 0xffd36e] }
+function addBossBeam(event, kind, life, palette = 'boss') {
+  const [coreColor, midColor, outerColor] = BEAM_PALETTES[palette]
   const mid = waterRoom() ? -0.7 : 0.9 + (game?.world?.groundY ?? 0) // in water: between the surface and a diver's depth; on land: chest height
   const half = event.length / 2
   const mat = (color, opacity) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false, fog: false })
   const group = new THREE.Group()
-  const widths = kind === 'warn' ? [[0.12, 0xff3355, 0.7]] : [[0.45, 0xffffff, 0.95], [event.width, 0xdbb8ff, 0.55], [event.width * 1.8, 0x8a3df0, 0.2]]
+  const widths = kind === 'warn' ? [[0.12, 0xff3355, 0.7]] : [[Math.min(0.45, event.width * 0.6), coreColor, 0.95], [event.width, midColor, 0.55], [event.width * 1.8, outerColor, 0.2]]
   const parts = widths.map(([w, color, opacity]) => {
     const m = new THREE.Mesh(new THREE.CylinderGeometry(w, w, event.length, 12), mat(color, opacity))
     group.add(m)
@@ -2703,6 +2707,53 @@ function applyBossEvents(game, bossMesh, events, now) {
       const across = Math.abs(px * Math.cos(event.aim) - pz * Math.sin(event.aim))
       if (along > 0 && along < event.length && across <= event.width + 0.6 && player.damagePlayer(event.damage, now)) hurtPlayer = true
       triggerShake(game.shake, SHAKE_DAMAGE_MAGNITUDE * 1.5, SHAKE_DAMAGE_DURATION)
+    } else if (event.type === 'snipe') {
+      // The paparazzo's flash: hurts you on the line, and any monster standing in it too ("Photobomb").
+      addBossBeam(event, 'beam', 0.45, 'flash')
+      burst(particleSystem, { x: event.x, y: 1.2, z: event.z }, 0xfffbe6, 30, 5)
+      sfx.play('bossSlam', { x: event.x, z: event.z })
+      if (!player.hidden && playerDistance(event.x, event.z) < Infinity && beamHits(event, event.aim, event.length, event.width, player.position, 0.5) && player.damagePlayer(event.damage, now)) {
+        hurtPlayer = true
+        triggerShake(game.shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
+      }
+      for (const other of game.monsters) {
+        if (other === bossMesh || other.userData.dying || other.userData.spawning || other.userData.falling) continue
+        if (!beamHits(event, event.aim, event.length, event.width, other.position, other.userData.radius)) continue
+        damageMonster(other, event.damage, { fromPos: { x: event.x, z: event.z }, knockback: 2, obstacles: game.obstacles, particleSystem, cause: 'photobomb', hitstop: game.hitstop })
+      }
+    } else if (event.type === 'dig') {
+      // A gopher digs in (or pops back up): a spray of deck splinters and dust.
+      burst(particleSystem, { x: event.x, y: 0.3, z: event.z }, 0xc8a070, 28, 4, 1.5)
+      sfx.play('podIn', { x: event.x, z: event.z })
+    } else if (event.type === 'erupt') {
+      // A gopher bursts up under its mark: a ring that hurts and a ring of golf balls.
+      spawnShockwave(shockwavePool, event.x, event.z, event.radius, 0xf3d6ae)
+      warp.add('ripple', event.x, event.z, event.radius * 1.2, 0.6)
+      burst(particleSystem, { x: event.x, y: 0.4, z: event.z }, 0xc8a070, 44, 6, 2.5)
+      sfx.play('bossSlam', { x: event.x, z: event.z })
+      if (!player.hidden && playerDistance(event.x, event.z) <= event.radius && player.damagePlayer(event.damage, now)) hurtPlayer = true
+      const spread = (Math.PI * 2 * (event.balls - 1)) / event.balls
+      for (const { vx, vz } of fanVelocities(Math.random() * Math.PI, event.balls, spread, 7)) {
+        fireProjectile(projectilePool, { x: event.x, z: event.z, vx, vz, damage: Math.round(event.damage * 0.4), color: 0xffffff, size: 0.7 })
+      }
+    } else if (event.type === 'steal') {
+      // The Bellhop Bandit swipes a share of your crystals into its sack and runs.
+      const taken = stealAmount(game.inventory.crystals)
+      game.inventory = { ...game.inventory, crystals: game.inventory.crystals - taken }
+      bossMesh.userData.stolen = (bossMesh.userData.stolen ?? 0) + taken
+      bossMesh.userData.setSack?.(bossMesh.userData.stolen)
+      sfx.play('crystal', { x: event.x ?? bossMesh.position.x, z: event.z ?? bossMesh.position.z })
+      showPopup(popupPool, { x: player.position.x, y: 1.6, z: player.position.z }, taken > 0 ? 'SWIPED!' : 'EMPTY POCKETS', taken > 0 ? `-${taken}` : '', POPUP_RING_OUT_COLOR)
+      questUi.showToast(taken > 0 ? `THE BELLHOP BANDIT TOOK ${taken} CRYSTALS! CATCH IT!` : 'THE BELLHOP BANDIT FOUND NOTHING TO TAKE')
+    } else if (event.type === 'escape') {
+      // Got away: checks out with whatever is in its sack (main loop removes it).
+      bossMesh.userData.escaped = true
+      const pos = bossMesh.position
+      burst(particleSystem, { x: pos.x, y: 1, z: pos.z }, 0xdccfff, 40, 5)
+      shardBurst(particleSystem, { x: pos.x, y: 1, z: pos.z }, 0xc9a36a, 12, 4)
+      sfx.play('podOut', { x: pos.x, z: pos.z })
+      const lost = bossMesh.userData.stolen ?? 0
+      questUi.showToast(lost > 0 ? `THE BELLHOP BANDIT CHECKED OUT WITH ${lost} CRYSTALS` : 'THE BELLHOP BANDIT CHECKED OUT')
     } else if (event.type === 'dive') {
       burst(particleSystem, { x: event.x, y: 0.2 - fxDepthOffset(), z: event.z }, 0xbff6ff, 36, 4.5)
       sfx.play('podIn', { x: event.x, z: event.z })
@@ -2782,6 +2833,7 @@ function scoreKill(game, mesh, cause, position, now) {
     inPool: isInPool(game.arena.pools, mesh.position.x, mesh.position.z),
     ambush: mesh.userData.lastHitAmbush,
     boss: mesh.userData.isBoss,
+    whacked: mesh.userData.lastHitDazed === true && cause !== 'fall',
   })
   game.chainState = stepChain(game.chainState, now, trick.id)
   const points = Math.round(trickPoints(scoreForKill(mesh.userData.type), game.chainState.multiplier) * activeFx(game.inventory.equipped).scoreMult)
@@ -3973,6 +4025,8 @@ function gameFrame(timestamp) {
         rememberWorldKill(game, mesh, elapsedSeconds)
         scoreKill(game, mesh, mesh.userData.lastHitBy ?? 'sword', mesh.position, elapsedSeconds)
         dropCrystals(crystalSystem, mesh.position.x, mesh.position.z, crystalDrops(mesh.userData.type, mesh.userData.isBoss))
+        // A caught Bellhop Bandit spills its whole sack, plus a tip.
+        if (mesh.userData.stolen > 0) dropCrystals(crystalSystem, mesh.position.x, mesh.position.z, crystalChange(refundWithTip(mesh.userData.stolen)))
         disposeObject3D(mesh) // per-monster geometry, materials and indicator textures; also removes it from the scene
         if (SPLITS[mesh.userData.type] && mesh.userData.lastHitBy) pendingSplits.push({ type: mesh.userData.type, x: mesh.position.x, z: mesh.position.z })
         if (mesh.userData.isBoss) {
@@ -3992,6 +4046,12 @@ function gameFrame(timestamp) {
       if (mesh.userData.fallState.fallenY >= FALL_DESPAWN_DEPTH) {
         rememberWorldKill(game, mesh, elapsedSeconds)
         scoreKill(game, mesh, 'fall', { x: mesh.position.x, y: 0, z: mesh.position.z }, elapsedSeconds)
+        // A Bellhop Bandit knocked overboard: the sack (and a tip) is credited straight back.
+        if (mesh.userData.stolen > 0) {
+          const back = refundWithTip(mesh.userData.stolen)
+          game.inventory = addCrystals(game.inventory, back)
+          questUi.showToast(`SACK RECOVERED  +${back} CRYSTALS`)
+        }
         disposeObject3D(mesh)
         if (mesh.userData.isBoss) bossGone = true
         return false
@@ -4025,6 +4085,20 @@ function gameFrame(timestamp) {
     updateFrozenLook(mesh, elapsedSeconds)
     const { hitPlayer: monsterHitPlayer, events: specialEvents } = updateMonster(mesh, player, obstacles, gameplayDelta, elapsedSeconds)
     const hitPlayer = monsterHitPlayer || (specialEvents.length > 0 && applyBossEvents(game, mesh, specialEvents, elapsedSeconds))
+    if (mesh.userData.escaped) {
+      disposeObject3D(mesh) // a Bellhop Bandit that got away: gone, no kill
+      return false
+    }
+    if (mesh.userData.leakPending > 0) {
+      // Hits shake crystals loose from a bandit's sack.
+      dropCrystals(crystalSystem, mesh.position.x, mesh.position.z, crystalChange(mesh.userData.leakPending))
+      mesh.userData.leakPending = 0
+      mesh.userData.setSack?.(mesh.userData.stolen ?? 0)
+    }
+    if (mesh.userData.burrowed && Math.random() < gameplayDelta * 22) {
+      // A tunnelling gopher throws up a trail of dust behind its hump.
+      burst(particleSystem, { x: mesh.position.x, y: 0.15, z: mesh.position.z }, 0xc8a070, 3, 2.2, 1.2)
+    }
     updateJelly(mesh, gameplayDelta, elapsedSeconds, { speed: mesh.userData.speed, moveDir: mesh.userData.moveDir })
     updateFace3D(mesh, gameplayDelta, elapsedSeconds)
     animateAlive(mesh, player.position, gameplayDelta, elapsedSeconds)

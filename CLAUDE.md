@@ -34,7 +34,7 @@ Every kill is also a named trick (`src/logic/tricks.js`'s `nameTrick`,
 highest precedence first): VIP Checkout (a boss falls), Do Not Disturb
 (any other boss kill), Checkout (a fall), Cannonball (killed in a pool),
 Room Service (an ambush kill), Turndown Service (a pet zap), Wake-Up Call
-(Shockwave), or plain Slash. `damageMonster` records the last hit's
+(Shockwave), Whack-a-Mole (a dazed gopher), Photobomb (a paparazzo's flash hit another monster), or plain Slash. `damageMonster` records the last hit's
 `cause`/`ambush` on the monster so `main.js`'s `scoreKill` can name it.
 Kills within `CHAIN_WINDOW` of each other build a chain (`stepChain`)
 whose multiplier (up to `CHAIN_MAX`) scales that kill's points (never the
@@ -128,6 +128,7 @@ slashbattle/
     graphicsStyle.js   # the saved monster look ('jelly' | 'shard' = Realist), picked on the start card; the Wilds force creatures
     beasts.js          # the Realist creatures: one baked, hide-textured, rim-lit creature body per monster type
     logic/hudText.js   # HUD phrasing (enemiesLeftText)
+    logic/shadyGuests.js # the paparazzo, gopher and Bellhop Bandit: stats, wave weights, snipe/burrow state machines, steal/refund rules
     logic/tricks.js    # kill trick names (nameTrick) and the chain multiplier (stepChain)
     logic/announcements.js # the resort PA lines (wave start/cleared, boss incoming, low hp, ambush)
     logic/carpet.js    # the VIP red carpet's eased unroll fraction
@@ -827,3 +828,17 @@ fog-ignoring beam of light; reach one (`main.js`'s `stepSkystars`) for `SKYSTAR_
 (`daylight(t)`, `dayName(t)`, `DAY_SECONDS` 480): the world's update warms / brightens the key light by day and turns it a dim
 moonlit blue by night, darkening the fog and sky and bringing out stars and fireflies. The ground turns to bare **rock** on
 steep slopes and high ground, with a per-biome cap on the peaks (`ROCK`), and is bump-mapped by its grit texture.
+
+## Shady guests (ideas from Shardfall, reworked)
+`src/logic/shadyGuests.js` (pure) adds three regular enemies (in `MONSTER_TYPES` via `SHADY_TYPES`, weights via
+`shadyWeights` in `logic/waves.js`), each with a `behavior` that `monster.js`'s `stepShady` runs:
+**gopher** (wave 4, `burrow`: `stepBurrow` up -> under -> marked -> erupt -> dazed; while burrowed it is `isUntouchable`,
+sunk via `leapY` and passes under the player; `erupt` events hurt within `BURROW.radius` and fling a ring of golf balls;
+dazed it takes `dazedDamageMultiplier` damage in `damageMonster`, and a kill then is "Whack-a-Mole"; it doesn't dig in water
+rooms), **paparazzo** (wave 5, `snipe`: keeps `SNIPE.keepAway`, `stepSnipe` cool -> aim (laser leads you via `snipeAim`) ->
+lock (laser blinks) -> fire; the `snipe` event's flash beam (`beamHits`) also damages every monster in the lane, cause
+`photobomb`; its laser is `characters.js`'s `addCameraLaser`, on both looks) and the **Bellhop Bandit** (wave 6, `bandit`: no
+damage; in reach it emits `steal` (`stealAmount` of your crystals into `userData.stolen`, sack grows via `setSack`) and flees
+(`fleeTarget`) for `BANDIT.fleeTime`, then `escape` removes it with the loot; each non-lethal hit leaks `leakAmount` back
+(`leakPending`, dropped by main.js); a kill drops `refundWithTip`, a fall credits it straight back). No boss forms or Wilds
+biome entries yet. `test/shadyGuestsSim.test.js` drives all three through the real `updateMonster`.

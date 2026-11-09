@@ -14,16 +14,20 @@ import { CHAIN_MAX, CHAIN_STEP, CHAIN_WINDOW } from '../config.js'
 //   2. fall/ring-out -> "Checkout" (beats merely standing in a pool)
 //   3. in a pool     -> "Cannonball"
 //   4. ambush        -> "Room Service"
-//   5. pet zap       -> "Turndown Service"
-//   6. Shockwave     -> "Wake-Up Call"
-//   7. staff orb     -> "Magic Hour"; firearm -> "Last Call"
-//   8. anything else (a plain sword hit) -> "Slash"
-export function nameTrick({ cause, inPool = false, ambush = false, boss = false } = {}) {
+//   5. a dazed gopher -> "Whack-a-Mole"
+//   6. a paparazzo's flash hit another monster -> "Photobomb"
+//   7. pet zap       -> "Turndown Service"
+//   8. Shockwave     -> "Wake-Up Call"
+//   9. staff orb     -> "Magic Hour"; firearm -> "Last Call"
+//  10. anything else (a plain sword hit) -> "Slash"
+export function nameTrick({ cause, inPool = false, ambush = false, boss = false, whacked = false } = {}) {
   const fell = cause === 'fall'
   if (boss) return fell ? { id: 'vipCheckout', name: 'VIP Checkout' } : { id: 'doNotDisturb', name: 'Do Not Disturb' }
   if (fell) return { id: 'checkout', name: 'Checkout' }
   if (inPool) return { id: 'cannonball', name: 'Cannonball' }
   if (ambush) return { id: 'roomService', name: 'Room Service' }
+  if (whacked) return { id: 'whackAMole', name: 'Whack-a-Mole' }
+  if (cause === 'photobomb') return { id: 'photobomb', name: 'Photobomb' }
   if (cause === 'spike') return { id: 'pinCushion', name: 'Pin Cushion' }
   if (cause === 'pet') return { id: 'turndownService', name: 'Turndown Service' }
   if (cause === 'shockwave') return { id: 'wakeUpCall', name: 'Wake-Up Call' }

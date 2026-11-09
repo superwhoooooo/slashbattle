@@ -846,6 +846,118 @@ function addRings(group, stats, y) {
   }
 }
 
+// ---- the shady guests' add-ons (logic/shadyGuests.js) ----
+
+// The paparazzo's camera: a boxy body held up at one side of its face, a big lens with a glinting
+// glass, a flash bulb on top and a PRESS card in its hat band.
+function addCamera(group, stats, y) {
+  const s = stats.size
+  const dark = accessoryMaterial(0x1d1b26, 0.35, 0.5)
+  const cam = new THREE.Group()
+  const box = new THREE.Mesh(new THREE.BoxGeometry(s * 0.42, s * 0.28, s * 0.22), dark)
+  const lens = new THREE.Mesh(new THREE.CylinderGeometry(s * 0.11, s * 0.13, s * 0.22, 16), dark)
+  lens.rotation.x = Math.PI / 2
+  lens.position.set(s * 0.06, 0, s * 0.2)
+  const glass = new THREE.Mesh(new THREE.CircleGeometry(s * 0.085, 16), glowMaterial(0x9fd8ff, 0.9))
+  glass.position.set(s * 0.06, 0, s * 0.311)
+  const bulb = new THREE.Mesh(new THREE.BoxGeometry(s * 0.16, s * 0.1, s * 0.08), glowMaterial(0xfffbe6, 0.4))
+  bulb.position.set(-s * 0.1, s * 0.19, 0)
+  cam.add(box, lens, glass, bulb)
+  cam.position.set(s * 0.3, y + s * 0.12, s * 0.5)
+  group.add(cam)
+  // A little fedora with a PRESS card.
+  const hat = new THREE.Group()
+  const brim = new THREE.Mesh(new THREE.CylinderGeometry(s * 0.5, s * 0.5, s * 0.04, 20), accessoryMaterial(0x2b2838, 0.6))
+  const crown = new THREE.Mesh(new THREE.CylinderGeometry(s * 0.3, s * 0.34, s * 0.26, 16), accessoryMaterial(0x2b2838, 0.6))
+  crown.position.y = s * 0.13
+  const band = new THREE.Mesh(new THREE.CylinderGeometry(s * 0.345, s * 0.345, s * 0.06, 16), accessoryMaterial(0xc9a64a, 0.4, 0.3))
+  band.position.y = s * 0.05
+  const card = new THREE.Mesh(new THREE.BoxGeometry(s * 0.16, s * 0.1, s * 0.02), accessoryMaterial(0xfff6d8, 0.7))
+  card.position.set(s * 0.1, s * 0.12, s * 0.33)
+  card.rotation.z = -0.25
+  hat.add(brim, crown, band, card)
+  hat.position.y = y + s * 0.5
+  hat.rotation.z = 0.12
+  group.add(hat)
+  // The flash bulb pops white when it fires (monster.js leaves `snipe` on userData).
+  group.userData.animateAcc = () => {
+    const snipe = group.userData.snipe
+    bulb.material.emissiveIntensity = snipe?.phase === 'lock' ? 2.4 : snipe?.phase === 'cool' && snipe.t > 2.3 ? 4 : 0.4
+  }
+}
+
+// The paparazzo's aiming laser, both looks: a thin red line straight out of the lens along +z.
+// Hidden until it aims (monster.js's setLaser).
+function addCameraLaser(group, stats, y) {
+  const s = stats.size
+  const length = 34
+  const laser = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.035, 0.035, length, 6),
+    new THREE.MeshBasicMaterial({ color: 0xff2a4a, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }),
+  )
+  laser.rotation.x = Math.PI / 2
+  laser.position.set(s * 0.36, y + s * 0.12, s * 0.6 + length / 2)
+  laser.visible = false
+  group.add(laser)
+  group.userData.laser = laser
+}
+
+// The gopher: buck teeth, round ears, and a golf flag stuck in its head that flutters.
+function addGopher(group, stats, y) {
+  const s = stats.size
+  const toothMat = accessoryMaterial(0xfffbef, 0.3)
+  for (const side of [-1, 1]) {
+    const tooth = new THREE.Mesh(new THREE.BoxGeometry(s * 0.09, s * 0.14, s * 0.05), toothMat)
+    tooth.position.set(side * s * 0.05, y - s * 0.2, s * 0.46)
+    const ear = new THREE.Mesh(new THREE.SphereGeometry(s * 0.12, 12, 8), accessoryMaterial(new THREE.Color(stats.color).multiplyScalar(0.8)))
+    ear.scale.set(1, 1, 0.45)
+    ear.position.set(side * s * 0.32, y + s * 0.38, -s * 0.02)
+    group.add(tooth, ear)
+  }
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(s * 0.015, s * 0.015, s * 0.7, 6), accessoryMaterial(0xf2f2f2, 0.4))
+  pole.position.set(-s * 0.1, y + s * 0.65, -s * 0.12)
+  pole.rotation.z = 0.15
+  const flag = new THREE.Mesh(new THREE.PlaneGeometry(s * 0.26, s * 0.16), new THREE.MeshStandardMaterial({ color: 0xff4d5e, roughness: 0.6, side: THREE.DoubleSide }))
+  flag.position.set(-s * 0.03 + s * 0.13, y + s * 0.88, -s * 0.12)
+  group.add(pole, flag)
+  group.userData.animateAcc = (t) => {
+    flag.rotation.y = Math.sin(t * 7) * 0.35
+  }
+}
+
+// The Bellhop Bandit: a bellhop's pillbox cap, a burglar's mask across its eyes and a loot sack
+// on its back that swells with what it has stolen (userData.setSack, from main.js).
+function addSack(group, stats, y) {
+  const s = stats.size
+  const capMat = accessoryMaterial(0xd2334a, 0.5)
+  const cap = new THREE.Mesh(new THREE.CylinderGeometry(s * 0.2, s * 0.22, s * 0.18, 16), capMat)
+  cap.position.set(0, y + s * 0.7, 0)
+  cap.rotation.z = -0.2
+  const capBand = new THREE.Mesh(new THREE.TorusGeometry(s * 0.215, s * 0.02, 6, 20), accessoryMaterial(0xf2c14e, 0.3, 0.6))
+  capBand.rotation.x = Math.PI / 2
+  capBand.position.y = -s * 0.06
+  cap.add(capBand)
+  const mask = new THREE.Mesh(new THREE.TorusGeometry(s * 0.36, s * 0.06, 6, 24, Math.PI * 0.8), accessoryMaterial(0x16141c, 0.7))
+  mask.position.set(0, y + s * 0.2, 0)
+  mask.rotation.set(Math.PI / 2, 0, Math.PI * 0.1)
+  const sack = new THREE.Group()
+  const bag = new THREE.Mesh(new THREE.SphereGeometry(s * 0.3, 14, 10), accessoryMaterial(0xc9a36a, 0.9))
+  bag.scale.set(1, 1.1, 0.9)
+  const knot = new THREE.Mesh(new THREE.ConeGeometry(s * 0.1, s * 0.16, 8), accessoryMaterial(0xa8834c, 0.9))
+  knot.position.y = s * 0.34
+  const coin = new THREE.Mesh(new THREE.TorusGeometry(s * 0.07, s * 0.025, 6, 12), glowMaterial(0x7ff2ff, 0.8))
+  coin.position.set(0, 0, s * -0.27)
+  sack.add(bag, knot, coin)
+  sack.position.set(0, y + s * 0.15, -s * 0.48)
+  group.add(cap, mask, sack)
+  const setSack = (stolen) => sack.scale.setScalar(0.55 + Math.min(1, stolen / 30) * 0.9)
+  setSack(0)
+  group.userData.setSack = setSack
+  group.userData.animateAcc = (t) => {
+    sack.rotation.z = Math.sin(t * 9) * 0.15
+  }
+}
+
 // The Realist look: the type's own creature (src/beasts.js), one baked mesh on a rigid jelly
 // (it squashes and stretches as a whole). Returns the group and its body centre height.
 function createCreatureBody(type, stats) {
@@ -913,12 +1025,14 @@ export function createMonsterMesh(type, rng = Math.random) {
   // The mirror is a gameplay shield (it cracks), so creatures carry it too; their other
   // add-ons (limbs, wings, claws, caps, fuses...) are part of the creature itself.
   if (stats.accessory === 'mirror') addMirror(group, stats, bodyCenterY)
+  // The paparazzo's aiming laser is gameplay (it shows where the shot goes), so creatures carry it too.
+  if (stats.behavior === 'snipe') addCameraLaser(group, stats, bodyCenterY)
   if (!creature) {
     if (stats.accessory === 'limbs') addLimbs(group, stats)
     if (stats.accessory === 'lure') addLure(group, stats)
     if (stats.accessory === 'spikes') addSpikes(group, stats, bodyCenterY)
     if (stats.accessory === 'eelBody') addEelBody(group, stats, bodyCenterY)
-    const crazyAccessory = { wings: addWings, claws: addClaws, cap: addCap, halo: addHalo, fuse: addFuse, icicles: addIcicles, flame: addFlame, horn: addHorn, rings: addRings }[stats.accessory]
+    const crazyAccessory = { wings: addWings, claws: addClaws, cap: addCap, halo: addHalo, fuse: addFuse, icicles: addIcicles, flame: addFlame, horn: addHorn, rings: addRings, camera: addCamera, gopher: addGopher, sack: addSack }[stats.accessory]
     if (crazyAccessory) crazyAccessory(group, stats, bodyCenterY)
   }
 
