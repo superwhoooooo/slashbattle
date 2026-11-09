@@ -5,19 +5,50 @@
 //   questFor(npc, round)   - the quest this NPC offers on their `round`th request
 //   createQuestLog()       - { active: [quests with progress/status], rounds: { npcId: n }, completed }
 //   acceptQuest / questEvent / claimQuest / questsToClaim - the log's transitions (all return new state)
-import { BIOMES, OUTER_BIOMES, dangerAt, mulberry32, villageById, villageLayout, villages } from './world.js'
+import { WEAPONS } from './items.js'
+import { BIOMES, WILD_BIOMES, dangerAt, landmarks, mulberry32, villageById, villageLayout, villages } from './world.js'
 
 export const MAX_ACTIVE_QUESTS = 3
-export const QUEST_TYPES = ['slay', 'hunt', 'elite', 'gather', 'explore', 'deliver']
+const PICKED_TYPES = ['slay', 'hunt', 'elite', 'gather', 'explore', 'deliver'] // 'discover' comes from an explore roll
+export const QUEST_TYPES = [...PICKED_TYPES, 'discover']
 
-const BASE_REWARD = { slay: 18, hunt: 22, elite: 42, gather: 20, explore: 26, deliver: 32 }
+const BASE_REWARD = { slay: 18, hunt: 22, elite: 42, gather: 20, explore: 26, deliver: 32, discover: 30 }
+// Chance an 'explore' request is instead to seek out one named landmark (its own seeded stream).
+export const DISCOVER_CHANCE = 0.55
 const HEAL_FRACTION = 0.25
+// Chance (before the round / danger bonuses) that a quest of this type also rewards a weapon; elites always do.
+export const WEAPON_REWARD_CHANCE = { slay: 0.15, hunt: 0.2, elite: 1, gather: 0.1, explore: 0.15, deliver: 0.25, discover: 0.25 }
+
+// The weapon a finished quest hands over: one the player does not own yet, picked from the quest's id so it is
+// stable. Returns a weapon id, or null when the quest pays none (or every weapon is owned).
+export function questWeaponFor(quest, inventory) {
+  if (!quest?.weaponReward) return null
+  const options = Object.keys(WEAPONS).filter((id) => !inventory.weapons.includes(id))
+  if (options.length === 0) return null
+  return options[hash(`${quest.id}#pick`) % options.length]
+}
+
+// "Reward: 30 crystals + a weapon".
+export const rewardText = (q) => `${q.reward} crystals${q.weaponReward ? ' + a weapon' : ''}`
 
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1)
 const hash = (str) => {
   let h = 2166136261
   for (const c of str) h = Math.imul(h ^ c.charCodeAt(0), 16777619)
   return h >>> 0
+}
+
+// How a villager describes each kind of landmark when they send you to find one.
+const LANDMARK_HINTS = {
+  colossus: 'A giant of stone sleeps half-buried out there.',
+  circle: 'My grandmother spoke of a ring of standing stones that hums under the moon.',
+  camp: 'Raiders have dug in at an old camp, and nobody has been back.',
+  cave: 'There is a cave that answers when you shout into it.',
+  greatArch: 'An arch older than any village spans the road to nowhere.',
+  elderShroom: 'A mushroom taller than our hall glows in the dark.',
+  stormSpire: 'A black spire calls the lightning down to it.',
+  leviathan: 'The bones of something enormous lie bleaching in the sun.',
+  skyAnchor: 'A floating rock is chained to the ground, they say.',
 }
 
 // The monster types a village's own biome throws at it (for "hunt" quests).
@@ -33,7 +64,7 @@ export function questFor(npc, round = 0) {
   const scale = 1 + danger * 1.2 + round * 0.25
 
   // The first request from anyone is a gentle one; later ones can be anything.
-  const pool = round === 0 ? ['slay', 'gather', 'explore', 'deliver'] : QUEST_TYPES
+  const pool = round === 0 ? ['slay', 'gather', 'explore', 'deliver'] : PICKED_TYPES
   const type = pool[Math.floor(rng() * pool.length)]
   const quest = {
     id: `${npc.id}#${round}`,
@@ -70,7 +101,7 @@ export function questFor(npc, round = 0) {
     quest.title = 'The Fading Lanterns'
     quest.desc = `Our lanterns are fading and only crystals can feed them. Gather ${quest.need} crystals from fallen monsters.`
   } else if (type === 'explore') {
-    const options = OUTER_BIOMES.filter((b) => b !== village.biome)
+    const options = WILD_BIOMES.filter((b) => b !== village.biome)
     quest.targetBiome = options[Math.floor(rng() * options.length)]
     quest.title = 'A Far Light'
     quest.desc = `I saw a strange glow far off in ${BIOMES[quest.targetBiome].name}. Walk into ${BIOMES[quest.targetBiome].name} and come back to tell me what waits there.`
@@ -92,7 +123,30 @@ export function questFor(npc, round = 0) {
     // A longer road is worth more.
     quest.reward = Math.round(BASE_REWARD.deliver * (1 + danger) * (1 + Math.hypot(targetVillage.x - village.x, targetVillage.z - village.z) / 220))
   }
-  if (!quest.reward) quest.reward = Math.round(BASE_REWARD[type] * scale)
+  // Some 'explore' requests name a landmark to seek out instead (one within a fair walk of the village).
+  if (type === 'explore') {
+    const seekRng = mulberry32(hash(`${npc.id}#${round}#seek`))
+    const near = landmarks()
+      .map((l) => ({ l, d: Math.hypot(l.x - village.x, l.z - village.z) }))
+      .filter(({ d }) => d > 40 && d < 260)
+      .sort((a, b) => a.d - b.d)
+      .slice(0, 6)
+    if (near.length && seekRng() < DISCOVER_CHANCE) {
+      const { l, d } = near[Math.floor(seekRng() * near.length)]
+      delete quest.targetBiome
+      quest.type = 'discover'
+      quest.landmarkId = l.id
+      quest.landmarkName = l.name
+      quest.landmarkKind = l.kind
+      quest.title = `Seek ${l.name}`
+      quest.desc = `${LANDMARK_HINTS[l.kind] ?? 'There is an old wonder out there.'} Travellers call it ${l.name}, in ${BIOMES[l.biome].name}. Find it and tell me it still stands.`
+      quest.reward = Math.round(BASE_REWARD.discover * scale * (1 + d / 300))
+    }
+  }
+  if (!quest.reward) quest.reward = Math.round(BASE_REWARD[quest.type] * scale)
+  // Harder quests also pay a weapon (its own seeded stream, so nothing above shifts).
+  const weaponRng = mulberry32(hash(`${npc.id}#${round}#weapon`))
+  quest.weaponReward = weaponRng() < WEAPON_REWARD_CHANCE[quest.type] + Math.min(0.25, round * 0.08) + danger * 0.15
   return quest
 }
 
@@ -100,6 +154,7 @@ export function questFor(npc, round = 0) {
 export function questProgressText(q) {
   if (q.status === 'ready') return q.type === 'deliver' ? `Deliver to ${q.targetName}` : `Return to ${q.giverName}`
   if (q.type === 'explore') return `Reach ${BIOMES[q.targetBiome].name}`
+  if (q.type === 'discover') return `Find ${q.landmarkName}`
   if (q.type === 'deliver') return `Deliver to ${q.targetName} in ${q.targetVillageName}`
   return `${q.progress}/${q.need}`
 }
@@ -122,6 +177,7 @@ export function acceptQuest(log, quest) {
 // Applies one game event to every active quest. Events:
 //   { type: 'kill', monster, elite, biome }  { type: 'crystals', amount }
 //   { type: 'enterBiome', biome }            { type: 'talk', npcId }
+//   { type: 'discover', landmarkId, kind, biome } (arriving at a landmark)
 // Returns { log, ready } where `ready` lists the quests that just became complete.
 export function questEvent(log, event) {
   const ready = []
@@ -134,6 +190,7 @@ export function questEvent(log, event) {
       else if (q.type === 'elite' && event.elite) progress += 1
     } else if (event.type === 'crystals' && q.type === 'gather') progress += event.amount
     else if (event.type === 'enterBiome' && q.type === 'explore' && q.targetBiome === event.biome) progress = q.need
+    else if (event.type === 'discover' && q.type === 'discover' && q.landmarkId === event.landmarkId) progress = q.need
     else if (event.type === 'talk' && q.type === 'deliver' && q.targetNpc === event.npcId) progress = q.need
     if (progress === q.progress) return q
     progress = Math.min(progress, q.need)
@@ -169,6 +226,11 @@ export const AMBIENT_LINES = [
   'Rest here as long as you like. Nothing wild will cross our lamps.',
   'Every village keeps a lantern lit for travellers. Ours is lit for you.',
   'Frostveil to the east, Emberwaste to the south. Never in the same day.',
+  'Lost lanterns drift off from every village. Light one if you find it; they remember.',
+  'Touch a wayshrine by the road and it will lend you its strength for a while.',
+  'If you see a gate of light on a hilltop, jump off and fly through the rings. Mind your knees.',
+  'A peddler wanders the roads with a pack full of wonders. Bring crystals.',
+  'Old maps turn up at the landmarks. Somebody buried a lot of treasure out here.',
 ]
 export const ambientLine = (npc, salt = 0) => AMBIENT_LINES[(hash(npc.id) + salt) % AMBIENT_LINES.length]
 
@@ -184,8 +246,8 @@ export function npcDialog(log, npc) {
     const q = claims[0]
     const text = q.type === 'deliver'
       ? `A sealed letter from ${q.giverName} of ${q.villageName}! You carried it all this way. Take this for your trouble.`
-      : `You have done it. ${q.type === 'explore' ? 'So the light was real... thank you for looking.' : 'The village is safer for it.'} Here is what I promised.`
-    return { mode: 'claim', quest: q, text, buttons: [{ id: 'claim', label: `Claim ${q.reward} crystals` }] }
+      : `You have done it. ${q.type === 'explore' ? 'So the light was real... thank you for looking.' : q.type === 'discover' ? `So ${q.landmarkName} still stands... I can sleep easy now.` : 'The village is safer for it.'} Here is what I promised.`
+    return { mode: 'claim', quest: q, text, buttons: [{ id: 'claim', label: `Claim ${rewardText(q)}` }] }
   }
   const mine = activeFrom(log, npc.id)
   if (mine) {

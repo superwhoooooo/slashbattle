@@ -237,7 +237,7 @@ export function createTouchControls(input, hud) {
     },
     // Sandbox mode's menu toggle (Tab on a keyboard).
     addMenuButton(onTap, label = 'MENU') {
-      addButton(toggles, label, 'small', onTap)
+      return addButton(toggles, label, 'small', onTap)
     },
   }
 }

@@ -231,3 +231,106 @@ describe('lakes, ruins and spacing', () => {
     expect(hi).toBeGreaterThan(25)
   })
 })
+
+describe('Wilds chests', () => {
+  const allChunks = () => {
+    const out = []
+    const n = Math.ceil(WORLD_RADIUS / CHUNK_SIZE)
+    for (let cx = -n; cx <= n; cx++) for (let cz = -n; cz <= n; cz++) out.push(chunkContent(cx, cz))
+    return out
+  }
+  it('seeds plenty of chests across the continent, with unique ids', async () => {
+    const chests = allChunks().flatMap((c) => c.treasure.filter((t) => t.kind === 'chest'))
+    expect(chests.length).toBeGreaterThan(25)
+    expect(new Set(chests.map((c) => c.id)).size).toBe(chests.length)
+  })
+  it('puts a chest in every village and every ruin that has one, none inside a prop', async () => {
+    const { villages, villageLayout, ruins, ruinLayout } = await import('../src/logic/world.js')
+    const ids = new Set(allChunks().flatMap((c) => c.treasure.filter((t) => t.kind === 'chest').map((t) => t.id)))
+    for (const v of villages()) {
+      expect(villageLayout(v).treasure[0].kind).toBe('chest')
+      expect(ids.has(`${v.id}:chest`)).toBe(true)
+    }
+    for (const r of ruins()) {
+      for (const t of ruinLayout(r).treasure) if (t.kind === 'chest') expect(ids.has(t.id)).toBe(true)
+    }
+    for (const c of allChunks()) {
+      for (const t of c.treasure.filter((x) => x.id.startsWith(c.key))) {
+        if (t.kind !== 'chest') continue
+        for (const p of c.props) if (p.radius > 0) expect(Math.hypot(p.x - t.x, p.z - t.z)).toBeGreaterThan(p.radius)
+      }
+    }
+  })
+})
+
+describe('the Frontier (outer ring) and landmarks', () => {
+  it('rings the Heartland with six stranger biomes, each with its own monsters, props and landmarks', async () => {
+    const { FAR_BIOMES, WILD_BIOMES, HEARTLAND_RADIUS, ringAt } = await import('../src/logic/world.js')
+    expect(WORLD_RADIUS).toBeGreaterThan(500)
+    expect(WILD_BIOMES.length).toBe(OUTER_BIOMES.length + FAR_BIOMES.length)
+    const seen = new Set()
+    for (let a = 0; a < 360; a += 2) {
+      const r = HEARTLAND_RADIUS + 130
+      const x = Math.cos((a * Math.PI) / 180) * r
+      const z = Math.sin((a * Math.PI) / 180) * r
+      seen.add(biomeAt(x, z))
+      expect(ringAt(x, z)).toBe('far')
+    }
+    for (const id of FAR_BIOMES) {
+      expect(seen.has(id), id).toBe(true)
+      expect(BIOMES[id].monsters.length).toBeGreaterThan(3)
+      expect(BIOMES[id].landmarks.length).toBeGreaterThan(0)
+    }
+    expect(ringAt(150, 0)).toBe('heart')
+    for (const c of groundColorAt(HEARTLAND_RADIUS, 0)) expect(c).toBeGreaterThanOrEqual(0)
+  })
+
+  it('puts a village in every Frontier biome too, and roads reach them all', async () => {
+    const { FAR_BIOMES, roadDistance } = await import('../src/logic/world.js')
+    for (const id of FAR_BIOMES) expect(villages().some((v) => v.biome === id), id).toBe(true)
+    expect(villages().length).toBeGreaterThanOrEqual(15)
+    expect(new Set(villages().map((v) => v.name)).size).toBe(villages().length)
+    for (const v of villages()) expect(roadDistance(v.x, v.z)).toBeLessThan(1)
+  })
+
+  it('scatters well-spaced landmarks on level ground, each with loot and guards in its chunks', async () => {
+    const { landmarks, landmarkLayout, nearestLandmark, LANDMARK_KINDS } = await import('../src/logic/world.js')
+    const list = landmarks()
+    expect(list.length).toBeGreaterThanOrEqual(25)
+    expect(new Set(list.map((l) => l.kind)).size).toBeGreaterThanOrEqual(6)
+    for (const l of list) {
+      expect(LANDMARK_KINDS[l.kind]).toBeDefined()
+      expect(Math.hypot(l.x, l.z)).toBeLessThan(WORLD_RADIUS - 30)
+      expect(heightAt(l.x, l.z)).toBeCloseTo(l.baseHeight, 1)
+      expect(nearestLandmark(l.x + 1, l.z).landmark.id).toBe(l.id)
+      for (const o of list) if (o !== l) expect(Math.hypot(o.x - l.x, o.z - l.z)).toBeGreaterThan(l.radius + o.radius + 40)
+      const layout = landmarkLayout(l)
+      expect(landmarkLayout(l)).toEqual(layout)
+      expect(layout.treasure.length).toBeGreaterThan(0)
+      expect(layout.guards.length).toBeGreaterThan(0)
+    }
+    // A landmark's guards show up in the chunk that holds them.
+    const l = list[0]
+    const g = landmarkLayout(l).guards[0]
+    const c = chunkContent(chunkCoord(g.x), chunkCoord(g.z))
+    expect(c.monsters.some((m) => m.id === g.id)).toBe(true)
+  })
+
+  it('keeps scenery and wild camps off landmarks and ruins', async () => {
+    const { nearestSite } = await import('../src/logic/world.js')
+    for (let cx = -14; cx < 14; cx += 2) for (let cz = -14; cz < 14; cz += 2) {
+      const c = chunkContent(cx, cz)
+      for (const m of c.monsters) if (!m.id.includes(':g') && !m.boss) expect(nearestSite(m.x, m.z, 2)).toBeNull()
+    }
+  })
+
+  it('raises flat-topped mesas in Stormcrown Heights', async () => {
+    const { MESA_SITES } = await import('../src/logic/world.js')
+    const mesas = MESA_SITES()
+    expect(mesas.length).toBeGreaterThanOrEqual(4)
+    for (const m of mesas) {
+      expect(biomeAt(m.x, m.z)).toBe('stormcrown')
+      expect(heightAt(m.x, m.z)).toBeGreaterThan(6)
+    }
+  })
+})

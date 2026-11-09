@@ -1,6 +1,6 @@
 // The DOM side of villagers and quests: the dialogue panel (E near a villager), the quest tracker under the
 // score, the "E  Talk" prompt, and a toast for finished quests. Game rules live in logic/quests.js.
-import { questProgressText } from './logic/quests.js'
+import { questProgressText, rewardText } from './logic/quests.js'
 
 export function createQuestUi({ onButton, onClose }) {
   const dialog = document.getElementById('npc-dialog')
@@ -17,6 +17,22 @@ export function createQuestUi({ onButton, onClose }) {
   let buttons = []
   let trackerKey = ''
   let toastTimer = null
+  let toastBusy = false
+  const toastQueue = []
+  function nextToast() {
+    const text = toastQueue.shift()
+    if (text === undefined) {
+      toastBusy = false
+      toast.classList.remove('show')
+      return
+    }
+    toastBusy = true
+    toast.textContent = text
+    toast.classList.add('show')
+    clearTimeout(toastTimer)
+    // Longer while nothing else waits; snappier when news is piling up.
+    toastTimer = setTimeout(nextToast, toastQueue.length ? 1900 : 3000)
+  }
 
   // The panel's own clicks must not swing the weapon or dismiss anything behind it.
   for (const type of ['mousedown', 'pointerdown', 'click']) dialog.addEventListener(type, (e) => e.stopPropagation())
@@ -32,7 +48,7 @@ export function createQuestUi({ onButton, onClose }) {
     nameEl.textContent = info.npc.name
     roleEl.textContent = `${info.npc.role} of ${info.village.name}`
     textEl.textContent = info.text
-    rewardEl.textContent = info.quest && info.mode === 'offer' ? `Reward: ${info.quest.reward} crystals` : ''
+    rewardEl.textContent = info.quest && info.mode === 'offer' ? `Reward: ${rewardText(info.quest)}` : ''
     rewardEl.style.display = rewardEl.textContent ? 'block' : 'none'
     buttons = info.buttons
     buttonsEl.replaceChildren(
@@ -96,20 +112,22 @@ export function createQuestUi({ onButton, onClose }) {
           const title = document.createElement('b')
           title.textContent = q.title
           const sub = document.createElement('span')
-          sub.textContent = `${questProgressText(q)} · ${q.villageName}`
+          sub.textContent = `${questProgressText(q)} · ${q.villageName}${q.weaponReward ? ' · + weapon' : ''}`
           row.append(title, sub)
           return row
         }),
       )
     },
+    // Toasts queue up (a few at most) so two news items in the same moment are both read.
     showToast(text) {
-      toast.textContent = text
-      toast.classList.add('show')
-      clearTimeout(toastTimer)
-      toastTimer = setTimeout(() => toast.classList.remove('show'), 3200)
+      if (toastQueue.includes(text) || toast.textContent === text && toast.classList.contains('show')) return
+      toastQueue.push(text)
+      if (toastQueue.length > 4) toastQueue.splice(0, toastQueue.length - 4)
+      if (!toastBusy) nextToast()
     },
     reset() {
       close()
+      toastQueue.length = 0
       trackerKey = ''
       tracker.replaceChildren()
       tracker.classList.remove('has-quests')

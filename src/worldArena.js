@@ -17,64 +17,13 @@ export const WORLD_LEVEL = {
 }
 
 const FOG_COLOR = 0x2a2352
+const FOG_RANGE = [50, 185] // a biome's `fogRange` overrides it (misty marsh, clear salt flats)
 const MAX_PER_KIND = 500
 
 // ---- scenery models ---------------------------------------------------------------------------
 
-// One part of a model: a geometry, a colour, and where it sits. Parts are merged (with the colour baked
-// into vertex colours) into one geometry per kind, so a whole forest is a few draw calls.
-function part(geometry, color, { x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0, sx = 1, sy = 1, sz = 1 } = {}) {
-  const g = geometry.index ? geometry.toNonIndexed() : geometry
-  g.rotateX(rx)
-  g.rotateY(ry)
-  g.rotateZ(rz)
-  g.scale(sx, sy, sz)
-  g.translate(x, y, z)
-  const c = new THREE.Color(color)
-  const colors = new Float32Array(g.attributes.position.count * 3)
-  for (let i = 0; i < colors.length; i += 3) {
-    colors[i] = c.r
-    colors[i + 1] = c.g
-    colors[i + 2] = c.b
-  }
-  g.setAttribute('color', new THREE.BufferAttribute(colors, 3))
-  g.deleteAttribute('uv')
-  return g
-}
-
-// A tapered limb from point a to point b (radius ra at a, rb at b): trunks and branches that can curve and fork.
-const UP = new THREE.Vector3(0, 1, 0)
-function limb(a, b, ra, rb, color, seg = 6) {
-  const from = new THREE.Vector3(...a)
-  const to = new THREE.Vector3(...b)
-  const dir = to.clone().sub(from)
-  const g = part(new THREE.CylinderGeometry(rb, ra, dir.length(), seg), color)
-  g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(UP, dir.clone().normalize()))
-  g.translate(...from.clone().add(to).multiplyScalar(0.5).toArray())
-  return g
-}
-
-const cyl = (rt, rb, h, seg = 7) => new THREE.CylinderGeometry(rt, rb, h, seg)
-const cone = (r, h, seg = 7) => new THREE.ConeGeometry(r, h, seg)
-const ico = (r, d = 0) => new THREE.IcosahedronGeometry(r, d)
-const dodeca = (r) => new THREE.DodecahedronGeometry(r)
-const box = (w, h, d) => new THREE.BoxGeometry(w, h, d)
-const oct = (r) => new THREE.OctahedronGeometry(r)
-// A flat, pointed leaf card (a diamond), for fringes of leaves that catch the light.
-const leaf = (w, h) => new THREE.CircleGeometry(1, 4).scale(w, h, 1)
-// Scatters `n` leaf cards on a ring around (cx, cy, cz): hanging down and turned outward, in rotating shades.
-function leafFringe(n, cx, cy, cz, radius, colors, seed, drop = 0.35) {
-  const rand = mulberry32(seed)
-  const out = []
-  for (let i = 0; i < n; i++) {
-    const a = (i / n) * Math.PI * 2 + rand() * 0.5
-    const r = radius * (0.75 + rand() * 0.45)
-    const y = cy + (rand() - 0.5) * 0.9 - drop
-    out.push(part(leaf(0.2 + rand() * 0.1, 0.42 + rand() * 0.2), colors[i % colors.length], { x: cx + Math.cos(a) * r, y, z: cz + Math.sin(a) * r, rx: -0.5 - rand() * 0.6, ry: -a + Math.PI / 2, rz: (rand() - 0.5) * 0.7 }))
-  }
-  return out
-}
-const dome = (r) => new THREE.SphereGeometry(r, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2)
+import { box, cone, cyl, dodeca, dome, ico, leafFringe, limb, oct, part } from './worldModelKit.js'
+import { FRONTIER_MODELS } from './frontierModels.js'
 
 // kind -> { lit: [parts], glow: [parts] }. Lit parts are shaded stone / wood / ice; glow parts are bright
 // bulbs, crystals and caps that shine on their own (and bloom).
@@ -342,6 +291,8 @@ const MODELS = {
   }),
 }
 
+Object.assign(MODELS, FRONTIER_MODELS) // the Frontier's scenery and the landmarks (frontierModels.js)
+
 // ---- village buildings ---------------------------------------------------------------------------------
 
 // A cottage: cream walls on a stone footing, a steep pitched roof in `roof`, a chimney, a door facing +z and
@@ -460,6 +411,12 @@ const ROCK = {
   frostveil: { rock: [0.42, 0.5, 0.6], peak: [0.97, 0.99, 1] },
   emberwaste: { rock: [0.15, 0.09, 0.09], peak: [0.08, 0.05, 0.06] },
   gloomfen: { rock: [0.27, 0.29, 0.22], peak: [0.58, 0.62, 0.52] },
+  glowcap: { rock: [0.2, 0.18, 0.34], peak: [0.5, 0.7, 0.95] },
+  saltglass: { rock: [0.7, 0.64, 0.66], peak: [1, 0.96, 0.97] },
+  drowned: { rock: [0.24, 0.32, 0.3], peak: [0.5, 0.66, 0.6] },
+  stormcrown: { rock: [0.22, 0.24, 0.3], peak: [0.62, 0.7, 0.86] },
+  bonewaste: { rock: [0.46, 0.38, 0.28], peak: [0.9, 0.85, 0.74] },
+  skyshard: { rock: [0.36, 0.42, 0.56], peak: [0.85, 0.93, 1] },
 }
 const smoothstep = (a, b, v) => {
   const t = Math.min(1, Math.max(0, (v - a) / (b - a)))
@@ -469,7 +426,7 @@ const smoothstep = (a, b, v) => {
 let groundDetail = null
 function createGround() {
   const size = WORLD_RADIUS * 2
-  const segments = 220
+  const segments = Math.round(WORLD_RADIUS / 1.4) // ~2.8 units between vertices, however big the world grows
   const geometry = new THREE.PlaneGeometry(size, size, segments, segments)
   geometry.rotateX(-Math.PI / 2)
   const pos = geometry.attributes.position
@@ -489,7 +446,7 @@ function createGround() {
     let [r, g, b] = groundColorAt(x, z)
     // Steepness from the neighbouring heights: cliffs and hillsides turn to rock, high ground too.
     const slope = Math.hypot(heightAt(x + 1.5, z) - heightAt(x - 1.5, z), heightAt(x, z + 1.5) - heightAt(x, z - 1.5)) / 3
-    const look = ROCK[biomeAt(x, z)]
+    const look = ROCK[biomeAt(x, z)] ?? ROCK.sanctum
     const grain = 0.85 + 0.3 * Math.abs(Math.sin(x * 0.7 + z * 0.3) * Math.sin(z * 0.9 - x * 0.2))
     const rocky = Math.max(smoothstep(0.42, 0.85, slope), smoothstep(13, 20, h) * 0.85)
     if (rocky > 0) {
@@ -519,11 +476,27 @@ function createGround() {
 
 // Every lake's water: a translucent disc at the surface level. The lake beds dip below it, so the disc only shows
 // where the ground is under water.
+// The water's tint follows the biome around it: [colour, emissive].
+const LAKE_TINT = {
+  default: [0x2f9ad8, 0x0b3a66],
+  gloomfen: [0x3a8a5a, 0x0f3a1a],
+  drowned: [0x2a9a84, 0x0b3a34],
+  glowcap: [0x3a5aff, 0x1a1a8a],
+  saltglass: [0x5ad8e6, 0x1a6a80],
+  emberwaste: [0xd86a3a, 0x5a1a0a],
+  stormcrown: [0x4a6aa0, 0x10203a],
+  bonewaste: [0x4ab0a0, 0x0f3a34],
+}
 function createLakes() {
   const group = new THREE.Group()
-  const material = new THREE.MeshStandardMaterial({ color: 0x2f9ad8, emissive: 0x0b3a66, emissiveIntensity: 0.55, roughness: 0.12, metalness: 0.15, transparent: true, opacity: 0.66, depthWrite: false })
+  const materials = {}
+  const materialFor = (biome) => {
+    const key = LAKE_TINT[biome] ? biome : 'default'
+    materials[key] ??= new THREE.MeshStandardMaterial({ color: LAKE_TINT[key][0], emissive: LAKE_TINT[key][1], emissiveIntensity: 0.55, roughness: 0.12, metalness: 0.15, transparent: true, opacity: 0.66, depthWrite: false })
+    return materials[key]
+  }
   for (const lake of LAKES) {
-    const disc = new THREE.Mesh(new THREE.CircleGeometry(lake.radius * 1.55, 56).rotateX(-Math.PI / 2), material)
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(lake.radius * 1.55, 56).rotateX(-Math.PI / 2), materialFor(lake.biome))
     disc.position.set(lake.x, WATER_LEVEL, lake.z)
     disc.renderOrder = 2
     group.add(disc)
@@ -535,13 +508,13 @@ function createLakes() {
 function createUnderside() {
   const group = new THREE.Group()
   const rock = new THREE.Mesh(
-    new THREE.ConeGeometry(WORLD_RADIUS, 150, 56, 1, true),
+    new THREE.ConeGeometry(WORLD_RADIUS, WORLD_RADIUS * 0.45, 72, 1, true),
     new THREE.MeshStandardMaterial({ color: 0x241b3a, roughness: 1, flatShading: true, side: THREE.DoubleSide }),
   )
   rock.rotation.x = Math.PI
-  rock.position.y = -75.2
+  rock.position.y = -WORLD_RADIUS * 0.225 - 0.2
   const rim = new THREE.Mesh(
-    new THREE.RingGeometry(WORLD_RADIUS - 2.2, WORLD_RADIUS, 160),
+    new THREE.RingGeometry(WORLD_RADIUS - 2.2, WORLD_RADIUS, 320),
     new THREE.MeshBasicMaterial({ color: new THREE.Color(1.1, 0.9, 1.9), side: THREE.DoubleSide }),
   )
   rim.rotation.x = -Math.PI / 2
@@ -746,6 +719,12 @@ const GRASS_STYLE = {
   frostveil: { base: 0x5b8fa8, tip: 0xeaffff },
   emberwaste: { base: 0x2a1410, tip: 0xff9a4a },
   gloomfen: { base: 0x2a3a12, tip: 0xc6ff4a },
+  glowcap: { base: 0x1a1450, tip: 0x6ad8ff },
+  saltglass: { base: 0xb8a8b0, tip: 0xfff0f6 },
+  drowned: { base: 0x0f3a30, tip: 0x7affc8 },
+  stormcrown: { base: 0x2a3048, tip: 0xa6c0ff },
+  bonewaste: { base: 0x6a5230, tip: 0xe8d090 },
+  skyshard: { base: 0x2f4f7a, tip: 0xd6f0ff },
 }
 
 // One tuft: a fan of six bent blades, dark at the root and bright at the tip (baked into vertex colours),
@@ -826,6 +805,12 @@ const DRIFT = {
   frostveil: { colors: [0xffffff, 0xd8f4ff], dir: -1, speed: 1.3, size: 0.09, spin: 1.5 },
   emberwaste: { colors: [0xff7a3a, 0xffb060, 0xff4a1a], dir: 1, speed: 1.0, size: 0.08, spin: 3.0 },
   gloomfen: { colors: [0xc6ff4a, 0x8aff6a, 0xe0ff9a], dir: -0.35, speed: 0.5, size: 0.12, spin: 1.6 },
+  glowcap: { colors: [0x6ad8ff, 0xff6ad8, 0xb46aff, 0x6aff9a], dir: 0.35, speed: 0.4, size: 0.1, spin: 0.8 }, // spores rise
+  saltglass: { colors: [0xffffff, 0xffd6e6, 0xfff6f0], dir: -0.3, speed: 1.6, size: 0.07, spin: 4.0 }, // salt glitter on the wind
+  drowned: { colors: [0x5affd8, 0xb6ff8a], dir: 0.2, speed: 0.3, size: 0.09, spin: 1.0 }, // marsh-lights
+  stormcrown: { colors: [0xbfe0ff, 0x8fc8ff, 0xffffff], dir: -1, speed: 2.4, size: 0.06, spin: 2.0 }, // driving rain-sparks
+  bonewaste: { colors: [0xe8d090, 0xcfb880, 0xffe8b0], dir: -0.4, speed: 1.4, size: 0.08, spin: 3.2 }, // blown grit
+  skyshard: { colors: [0xd6f0ff, 0xa6d8ff, 0xffffff], dir: 0.6, speed: 0.6, size: 0.12, spin: 1.8 }, // shard motes drifting up
 }
 
 function createLeafFall() {
@@ -837,6 +822,47 @@ function createLeafFall() {
   const leaves = Array.from({ length: LEAF_COUNT }, () => ({ x: 0, y: 0, z: 0, phase: rand() * 10, spin: rand() * 2 - 1, tumble: rand() * Math.PI * 2, seed: rand(), placed: false }))
   mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(LEAF_COUNT * 3), 3)
   return { mesh, leaves, rand, lastTime: 0 }
+}
+
+// ---- sky weather: auroras and lightning ------------------------------------------------------------
+
+// Curtains of light rippling high in the sky (they ride with the sky dome); a biome's `aurora` (0-1) fades them in.
+function createAurora() {
+  const canvas = document.createElement('canvas')
+  canvas.width = 4
+  canvas.height = 128
+  const ctx = canvas.getContext('2d')
+  const gradient = ctx.createLinearGradient(0, 0, 0, 128)
+  gradient.addColorStop(0, 'rgba(255,255,255,0)')
+  gradient.addColorStop(0.55, 'rgba(255,255,255,0.35)')
+  gradient.addColorStop(0.9, 'rgba(255,255,255,1)')
+  gradient.addColorStop(1, 'rgba(255,255,255,0)')
+  ctx.fillStyle = gradient
+  ctx.fillRect(0, 0, 4, 128)
+  const map = new THREE.CanvasTexture(canvas)
+  const group = new THREE.Group()
+  const curtains = [0x5affb0, 0x6ad8ff, 0xc08aff].map((color, i) => {
+    const geometry = new THREE.PlaneGeometry(320, 60, 48, 1)
+    const material = new THREE.MeshBasicMaterial({ color, map, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false })
+    const mesh = new THREE.Mesh(geometry, material)
+    mesh.position.set((i - 1) * 50, 135 + i * 12, -170 + i * 70)
+    mesh.rotation.y = (i - 1) * 0.35
+    mesh.frustumCulled = false
+    group.add(mesh)
+    return { mesh, base: Float32Array.from(geometry.attributes.position.array), phase: i * 1.7 }
+  })
+  return { group, curtains, level: 0 }
+}
+
+// Lightning over the storm biomes: a jagged bolt that strikes somewhere out in the distance, with a flash.
+function createLightning() {
+  const points = 12
+  const geometry = new THREE.BufferGeometry()
+  geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(points * 3), 3))
+  const bolt = new THREE.Line(geometry, new THREE.LineBasicMaterial({ color: new THREE.Color(3, 3, 3.6), fog: false, transparent: true }))
+  bolt.frustumCulled = false
+  bolt.visible = false
+  return { bolt, points, next: 2, until: 0, flash: 0, rand: mulberry32(707) }
 }
 
 // ---- the arena --------------------------------------------------------------------------------
@@ -887,7 +913,12 @@ export function createWorldArena() {
   const tmpScale = new THREE.Vector3()
   const tmpPos = new THREE.Vector3()
 
-  const fog = new THREE.Fog(FOG_COLOR, 50, 185)
+  const aurora = createAurora()
+  sky.add(aurora.group)
+  const lightning = createLightning()
+  group.add(lightning.bolt)
+
+  const fog = new THREE.Fog(FOG_COLOR, FOG_RANGE[0], FOG_RANGE[1])
   const targetFog = new THREE.Color(FOG_COLOR)
   const flyColor = new THREE.Color(0xffffff)
   const matrix = new THREE.Matrix4()
@@ -945,6 +976,8 @@ export function createWorldArena() {
     setSkystarsCaught(caught) {
       for (const s of starSpirits.items) s.g.visible = !caught.has(s.def.id)
     },
+    // The last lightning strike ({ x, z, time }) over a storm biome, for anyone who wants to hear the thunder.
+    lastStrike: null,
     // 1 by day, 0 at night (eased, so a scene change never snaps).
     daylight: () => light,
     update(pos, time) {
@@ -967,7 +1000,7 @@ export function createWorldArena() {
       // Leaves, petals, flakes and embers drift through the air around the player.
       const dt = Math.min(0.1, Math.max(0, time - drift.lastTime))
       drift.lastTime = time
-      const style = DRIFT[biomeAt(pos.x, pos.z)]
+      const style = DRIFT[biomeAt(pos.x, pos.z)] ?? DRIFT.sanctum
       drift.leaves.forEach((l, i) => {
         const ground = heightAt(l.x, l.z)
         const gone = Math.hypot(l.x - pos.x, l.z - pos.z) > LEAF_RANGE || l.y < ground || l.y > ground + 14
@@ -995,6 +1028,53 @@ export function createWorldArena() {
       const biome = BIOMES[biomeAt(pos.x, pos.z)]
       targetFog.set(biome.fog).multiplyScalar(0.55 + 0.6 * light)
       fog.color.lerp(targetFog, 0.03)
+      const [fogNear, fogFar] = biome.fogRange ?? FOG_RANGE
+      fog.near += (fogNear - fog.near) * 0.02
+      fog.far += (fogFar - fog.far) * 0.02
+      // Auroras ripple in the sky over the biomes that have them (brighter by night).
+      aurora.level += ((biome.aurora ?? 0) * (0.35 + 0.65 * (1 - light)) - aurora.level) * 0.02
+      aurora.group.visible = aurora.level > 0.01
+      if (aurora.group.visible) {
+        for (const c of aurora.curtains) {
+          const arr = c.mesh.geometry.attributes.position.array
+          for (let i = 0; i < arr.length; i += 3) arr[i + 2] = c.base[i + 2] + Math.sin(c.base[i] * 0.025 + time * 0.35 + c.phase) * 18 + Math.sin(c.base[i] * 0.07 - time * 0.6) * 5
+          c.mesh.geometry.attributes.position.needsUpdate = true
+          c.mesh.material.opacity = aurora.level * (0.55 + 0.25 * Math.sin(time * 0.8 + c.phase))
+        }
+      }
+      // Lightning over the storm biomes: now and then a bolt strikes out in the distance and the land flashes.
+      if (biome.storm && time > lightning.next) {
+        const r = lightning.rand
+        lightning.next = time + 3 + r() * 7
+        lightning.until = time + 0.18
+        lightning.flash = 1
+        const a = r() * Math.PI * 2
+        const d = 60 + r() * 80
+        const bx = pos.x + Math.cos(a) * d
+        const bz = pos.z + Math.sin(a) * d
+        const ground = heightAt(bx, bz)
+        const arr = lightning.bolt.geometry.attributes.position.array
+        let jx = 0
+        let jz = 0
+        for (let i = 0; i < lightning.points; i++) {
+          const t = i / (lightning.points - 1)
+          if (i > 0 && i < lightning.points - 1) {
+            jx += (r() - 0.5) * 9
+            jz += (r() - 0.5) * 9
+          }
+          arr[i * 3] = bx + (i === lightning.points - 1 ? 0 : jx)
+          arr[i * 3 + 1] = ground + (1 - t) * 110
+          arr[i * 3 + 2] = bz + (i === lightning.points - 1 ? 0 : jz)
+        }
+        lightning.bolt.geometry.attributes.position.needsUpdate = true
+        world.lastStrike = { x: bx, z: bz, time }
+      } else if (!biome.storm && lightning.next < time) lightning.next = time + 2
+      lightning.bolt.visible = time < lightning.until
+      lightning.flash *= 0.86
+      if (lightning.flash > 0.01) {
+        hemi.intensity += hemiBase * 1.6 * lightning.flash
+        keyLight.intensity += 2.2 * lightning.flash
+      }
       flyColor.set(biome.glow)
       flies.points.material.color.lerp(flyColor, 0.05)
       flies.points.position.set(Math.round(pos.x / 8) * 8, heightAt(pos.x, pos.z), Math.round(pos.z / 8) * 8)

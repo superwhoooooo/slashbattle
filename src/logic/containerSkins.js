@@ -26,6 +26,11 @@ export const CONTAINER_SKINS = {
     chest: { body: 0xffc2dc, lid: 0xffffff, latch: 0xffd15c, stripe: 0x7ce8c8, handle: 0xff9ac4, garnish: 0xfff08a, glow: 0.2, metal: 0, rough: 0.35, extra: 'bow' },
     case: { shell: 0xffd6e8, trim: 0xff5fa8, handle: 0xffffff, wheel: 0x7ce8c8, metal: 0.05, rough: 0.3, extra: 'dots' },
   },
+  // The Wilds: carved dark wood with gold trim and a glowing violet rune gem.
+  wilds: {
+    chest: { body: 0x5a3a24, lid: 0x6b4630, latch: 0xb46bff, stripe: 0xe8b53a, handle: 0xe8b53a, garnish: 0xc88cff, glow: 0.9, metal: 0.35, rough: 0.7, extra: 'runes' },
+    case: { shell: 0x7a5a38, trim: 0xe8b53a, handle: 0xe8b53a, wheel: 0x2a1c12, metal: 0.3, rough: 0.7, extra: 'iron' },
+  },
   dungeon: {
     chest: { body: 0x6b4a2b, lid: 0x7a5533, latch: 0xc8a24a, stripe: 0x3a3a42, handle: 0x3a3a42, garnish: 0xffd76a, glow: 0.3, metal: 0.3, rough: 0.8, extra: 'iron' },
     case: { shell: 0x7a5a38, trim: 0x2e2e36, handle: 0x8a8a92, wheel: 0x1c1c22, metal: 0.2, rough: 0.8, extra: 'iron' },

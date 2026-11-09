@@ -59,8 +59,17 @@ import { GLIDE_SPEED_MULTIPLIER, createJumpState, isGliding, stepJump } from './
 import { createGlider, updateGlider } from './glider.js'
 import { createNpc, setNpcMarker, updateNpc, TALK_RANGE } from './npcs.js'
 import { createQuestUi } from './questUi.js'
-import { acceptQuest, claimQuest, createQuestLog, npcDialog, npcMarker, questEvent, questsToClaim } from './logic/quests.js'
-import { BIOMES, BOSS_RESPAWN_SECONDS, SANCTUM_RADIUS, SKYSTAR_CATCH_RADIUS, SKYSTAR_REWARD, UNLOAD_RADIUS, WATER_LEVEL, WORLD_RADIUS, biomeAt, canRespawn, chunkContent, chunkKey, dayName, diffChunks, groundColorAt, heightAt, ruins, skystars, villageById, villages } from './logic/world.js'
+import { acceptQuest, claimQuest, createQuestLog, npcDialog, npcMarker, questEvent, questsToClaim, questWeaponFor } from './logic/quests.js'
+import { BIOMES, BOSS_RESPAWN_SECONDS, SANCTUM_RADIUS, SKYSTAR_CATCH_RADIUS, SKYSTAR_REWARD, UNLOAD_RADIUS, VILLAGE_SAFE_RADIUS, WATER_LEVEL, WORLD_RADIUS, biomeAt, canRespawn, chunkContent, chunkKey, dangerAt, dayName, diffChunks, groundColorAt, heightAt, lakeAt, landmarkById, landmarks, nearestLandmark, nearestVillage, ruins, skystars, villageById, villages } from './logic/world.js'
+import { createWildsActivities } from './wildsActivities.js'
+import { createJournalUi } from './journalUi.js'
+import { LANTERN_CATCH_RADIUS, LANTERN_COUNT, lanternReward, lanternsNear } from './logic/lanterns.js'
+import { BOONS, SHRINE_RADIUS, activeBoons, boonEffects, createShrineState, foldBoons, grantBoon, shrineCharge, useShrine, wayshrines } from './logic/wayshrines.js'
+import { HEAT_TEXT, MAX_MAPS, addMap, digAt, makeTreasureMap, nearestMap } from './logic/treasure.js'
+import { createRaceState, raceCourses, raceReward, stepRace } from './logic/races.js'
+import { EVENTS, STAR_SHARD_VALUE, createEventDirector, endEvent, hordePlan, merchantName, merchantStock, meteorPlan, stepEventDirector, wandererPlan } from './logic/wildEvents.js'
+import { BESTIARY_FIRST_REWARD, JOURNAL_KEY, claimMilestone, creatureName, noteBiome, noteEvent, noteKill, noteLandmark, noteLantern, noteRace, noteShrine, noteTreasure, parseJournal, pickUnowned, readyMilestones, serializeJournal } from './logic/wildsJournal.js'
+import { formatTime } from './logic/wildsSpots.js'
 import { createMusic } from './music.js'
 import { createSfx } from './sfx.js'
 import { jellyHit, updateJelly } from './jelly.js'
@@ -966,6 +975,8 @@ function createGame() {
     applyLoadoutPets(game)
     game.player.maxHp = Math.round(PLAYER_MAX_HP + skillEffects(profile.skills).maxHp)
     game.player.hp = game.player.maxHp
+    game.world.fx = createWildsActivities()
+    game.arena.group.add(game.world.fx.group)
     stepWorld(game, 0)
     camera.position.set(player.position.x + CAMERA_OFFSET.x, CAMERA_OFFSET.y, player.position.z + CAMERA_OFFSET.z)
     return game
@@ -998,7 +1009,7 @@ function createGame() {
 // Which container look (chests, suitcases) fits the current place.
 function containerStyle(game) {
   if (game.labyrinth) return 'dungeon'
-  if (game.world) return 'neon'
+  if (game.world) return 'wilds'
   return levelAt(game.levelIndex ?? 0).props.style
 }
 
@@ -1288,7 +1299,8 @@ function dropMeteor(at, { damage = null, radius = null } = {}) {
   const glow = new THREE.Mesh(new THREE.SphereGeometry(1.4, 14, 10), new THREE.MeshBasicMaterial({ color: 0xff6a2a, transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false }))
   group.add(core, glow)
   scene.add(group)
-  meteors.push({ group, x: at.x, z: at.z, age: 0, fall: 0.7, damage, radius })
+  // On the Wilds' hills a meteor lands on the ground there, not at sea level.
+  meteors.push({ group, x: at.x, z: at.z, age: 0, fall: 0.7, damage, radius, baseY: game?.world ? heightAt(at.x, at.z) : 0 })
   spawnShockwave(shockwavePool, at.x, at.z, radius ?? METEOR_BLAST.radius, 0xff7a2e) // the landing marker
 }
 
@@ -1306,8 +1318,8 @@ function updateMeteors(game, dt) {
     const m = meteors[i]
     m.age += dt
     const t = Math.min(1, m.age / m.fall)
-    m.group.position.set(m.x - (1 - t) * 8, 0.7 + (1 - t) * (1 - t) * 30, m.z - (1 - t) * 4)
-    burst(particleSystem, m.group.position, 0xff8a3a, 2, 1.5)
+    m.group.position.set(m.x - (1 - t) * 8, (m.baseY ?? 0) + 0.7 + (1 - t) * (1 - t) * 30, m.z - (1 - t) * 4)
+    burst(particleSystem, { x: m.group.position.x, y: m.group.position.y - (game.world?.groundY ?? 0), z: m.group.position.z }, 0xff8a3a, 2, 1.5)
     if (t < 1) continue
     disposeMeteor(m)
     meteors.splice(i, 1)
@@ -1316,8 +1328,9 @@ function updateMeteors(game, dt) {
     const blastDamage = m.damage ?? def.damage
     spawnShockwave(shockwavePool, at.x, at.z, blastRadius, 0xffb454)
     warp.add('ripple', at.x, at.z, blastRadius * 1.6, 0.6)
-    burst(particleSystem, { x: at.x, y: 1, z: at.z }, 0xff7a2e, 60, 6, 1)
-    shardBurst(particleSystem, { x: at.x, y: 0.6, z: at.z }, 0xffb454, 18, 4)
+    const lift = (m.baseY ?? 0) - (game.world?.groundY ?? 0)
+    burst(particleSystem, { x: at.x, y: 1 + lift, z: at.z }, 0xff7a2e, 60, 6, 1)
+    shardBurst(particleSystem, { x: at.x, y: 0.6 + lift, z: at.z }, 0xffb454, 18, 4)
     triggerShake(game.shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
     sfx.play('bossSlam', at)
     for (const mesh of game.monsters) {
@@ -1890,7 +1903,43 @@ function createWorldState(savedSpot = null) {
     camGround: 0, // ...smoothed, for the camera
     biome: null,
     bannerUntil: 0,
+    discovered: new Set(), // landmark ids found this run (a toast names each one the first time)
+    landmark: null, // the landmark you are standing at, if any
+    lastThunder: 0,
     wasInSanctum: false,
+    // Activities (see stepActivities): the saved journal, wayshrine boons, carried treasure maps, the race
+    // in progress, the roaming-event director (created on the first step, from the clock) and its live event.
+    journal: loadJournal(),
+    journalDirty: false,
+    journalSavedAt: 0,
+    shrines: createShrineState(),
+    shrineAt: null, // the shrine you are standing at (so a sleeping one only says so once)
+    maps: [],
+    dugMaps: [],
+    race: createRaceState(),
+    events: null,
+    event: null,
+    shards: [], // star shards lying about after a Starfall: { x, z, mesh, until }
+    lanternsAt: null, // where the lit-lantern list was last rebuilt
+    lootQueue: [], // gear rewards waiting for the swap panel to be free
+    fx: null, // src/wildsActivities.js, built with the game
+  }
+}
+
+// The Wilds journal (landmarks, bestiary, lanterns, races...), kept on this device across runs.
+function loadJournal() {
+  try {
+    return parseJournal(localStorage.getItem(JOURNAL_KEY))
+  } catch (_) {
+    return parseJournal(null)
+  }
+}
+function saveJournal(journal) {
+  try {
+    localStorage.setItem(JOURNAL_KEY, serializeJournal(journal))
+    noteSaved()
+  } catch (_) {
+    // not remembered between sessions
   }
 }
 
@@ -1917,6 +1966,11 @@ const dialogInfo = (game, npc) => ({ npc: npc.def, village: villageById(npc.def.
 
 function openTalk(game, npc) {
   game.world.talkingTo = npc.def.id
+  if (npc.def.merchant) {
+    questUi.show(merchantDialog(game))
+    sfx.play('podIn', { x: npc.mesh.position.x, z: npc.mesh.position.z })
+    return
+  }
   // Being spoken to is an event of its own: a letter's recipient counts it, and the quest is ready to claim.
   worldQuestEvent(game, { type: 'talk', npcId: npc.def.id })
   questUi.show(dialogInfo(game, npc))
@@ -1927,6 +1981,7 @@ function handleDialogButton(game, id) {
   const w = game.world
   const npc = w?.npcs.get(w.talkingTo)
   if (!npc) return questUi.close()
+  if (npc.def.merchant) return handleMerchantButton(game, id)
   const dialog = npcDialog(w.quests, npc.def)
   if (id === 'accept' && dialog.mode === 'offer') {
     w.quests = acceptQuest(w.quests, dialog.quest)
@@ -1940,8 +1995,20 @@ function handleDialogButton(game, id) {
       game.inventory = addCrystals(game.inventory, quest.reward)
       game.player.hp = Math.min(game.player.maxHp, game.player.hp + game.player.maxHp * quest.heal)
       burst(particleSystem, { x: game.player.position.x, y: 1.2, z: game.player.position.z }, 0xffd15c, 40, 4.5)
-      questUi.showToast(`QUEST COMPLETE  +${quest.reward} CRYSTALS`)
+      const weaponId = questWeaponFor(quest, game.inventory)
+      questUi.showToast(`QUEST COMPLETE  +${quest.reward} CRYSTALS${weaponId ? `  +  ${WEAPONS[weaponId].name.toUpperCase()}` : ''}`)
       sfx.play('waveCleared')
+      if (weaponId) {
+        const loot = { kind: 'weapon', id: weaponId }
+        if (needsSwap(game.inventory, loot)) {
+          // Hotbar full: the usual swap panel (the game pauses) asks which weapon to give up.
+          pendingSwapLoot = loot
+          questUi.close()
+          swapPanel.show(loot, swappableIds(game.inventory, loot.kind))
+          return
+        }
+        receiveLoot(game, loot)
+      }
     }
     if (questsToClaim(w.quests, npc.def.id).length) questUi.update(dialogInfo(game, npc))
     else questUi.close()
@@ -1974,6 +2041,37 @@ function removeFrom(list, item) {
   if (i >= 0) list.splice(i, 1)
 }
 
+// Spawns one monster of the Wilds at `at`, scaled to how deep in it stands: { hpScale, danger, elite, boss, lake }.
+// A boss knows moves like a boss several fights in. Used by the chunk camps and the roaming events.
+function spawnWildMonster(game, type, at, m) {
+  const mesh = spawnMonster(game, type, { at, hpScale: m.hpScale ?? 1, effectOptions: { scale: 0.5, duration: 0.4 } })
+  mesh.userData.elite = Boolean(m.elite)
+  mesh.position.y = m.lake ? WATER_LEVEL - 0.3 : heightAt(at.x, at.z)
+  const effect = game.spawnEffects[game.spawnEffects.length - 1]
+  if (effect) effect.effect.group.position.y = mesh.position.y
+  mesh.userData.damageScale = (1 + m.danger * 1.1) * (m.elite ? 1.35 : 1)
+  mesh.userData.speedScale = 1 + m.danger * 0.18
+  if (m.lake) {
+    mesh.userData.lake = m.lake // water monsters never leave their lake
+    mesh.position.y = WATER_LEVEL - 0.3
+  }
+  if (m.boss) {
+    const stats = MONSTER_TYPES[type]
+    const fights = m.fights ?? BOSS_HEAD_START + Math.round(m.danger * 4)
+    mesh.userData.damageScale = bossDamageScale(fights)
+    mesh.userData.speedScale = 1
+    upgradeBossSpecials(mesh.userData, bossSpecialsFor(stats.specials, fights), bossCooldownScale(fights))
+  }
+  if (m.elite) {
+    const material = mesh.userData.jelly?.body?.material
+    if (material?.emissive) {
+      material.emissive.setHex(0xff3355) // elites glow a warning red
+      material.emissiveIntensity = 0.45
+    }
+  }
+  return mesh
+}
+
 function loadWorldChunk(game, cx, cz, now) {
   const w = game.world
   const content = chunkContent(cx, cz)
@@ -1997,32 +2095,8 @@ function loadWorldChunk(game, cx, cz, now) {
         at.z = o.z + (at.z - o.z) * k
       }
     }
-    const mesh = spawnMonster(game, m.type, { at, hpScale: m.hpScale, effectOptions: { scale: 0.5, duration: 0.4 } })
+    const mesh = spawnWildMonster(game, m.type, at, m)
     mesh.userData.worldId = m.id
-    mesh.userData.elite = m.elite
-    mesh.position.y = m.lake ? WATER_LEVEL - 0.3 : heightAt(at.x, at.z)
-    const effect = game.spawnEffects[game.spawnEffects.length - 1]
-    if (effect) effect.effect.group.position.y = mesh.position.y
-    mesh.userData.damageScale = (1 + m.danger * 1.1) * (m.elite ? 1.35 : 1)
-    mesh.userData.speedScale = 1 + m.danger * 0.18
-    if (m.lake) {
-      mesh.userData.lake = m.lake // water monsters never leave their lake
-      mesh.position.y = WATER_LEVEL - 0.3
-    }
-    if (m.boss) {
-      // A guardian boss: tougher the deeper in it stands (it already knows moves like a boss several fights in).
-      const fights = BOSS_HEAD_START + Math.round(m.danger * 4)
-      mesh.userData.damageScale = bossDamageScale(fights)
-      mesh.userData.speedScale = 1
-      upgradeBossSpecials(mesh.userData, bossSpecialsFor(stats.specials, fights), bossCooldownScale(fights))
-    }
-    if (m.elite) {
-      const material = mesh.userData.jelly?.body?.material
-      if (material?.emissive) {
-        material.emissive.setHex(0xff3355) // elites glow a warning red
-        material.emissiveIntensity = 0.45
-      }
-    }
     w.live.set(m.id, mesh)
   }
 
@@ -2079,13 +2153,16 @@ function unloadWorldChunk(game, key) {
 const biomeBanner = document.getElementById('biome-banner')
 const minimap = document.getElementById('minimap')
 let minimapBase = null
+// The minimap shows the land around you (MINIMAP_VIEW units to each side), not the whole continent at once:
+// the world is too big for that to stay readable. The continent's colours are painted once and panned.
+const MINIMAP_VIEW = 210
+const MINIMAP_RES = 384
 function drawMinimap(game, now = 0) {
   if (!minimap) return
   const ctx = minimap.getContext('2d')
   const size = minimap.width
   if (!minimapBase) {
-    // The continent's colours, painted once at low resolution and stretched.
-    const res = 150
+    const res = MINIMAP_RES
     const small = document.createElement('canvas')
     small.width = small.height = res
     const sctx = small.getContext('2d')
@@ -2099,20 +2176,28 @@ function drawMinimap(game, now = 0) {
           image.data.set([27, 20, 56, 255], i)
         } else {
           const [r, g, b] = groundColorAt(x, z)
-          image.data.set([Math.min(255, r * 300), Math.min(255, g * 300), Math.min(255, b * 300), 255], i)
+          // Hills read lighter, valleys darker, so the land has relief on the map.
+          const lift = 0.85 + Math.min(0.35, Math.max(0, heightAt(x, z)) * 0.012)
+          image.data.set([Math.min(255, r * 300 * lift), Math.min(255, g * 300 * lift), Math.min(255, b * 300 * lift), 255], i)
         }
       }
     }
     sctx.putImageData(image, 0, 0)
     minimapBase = small
   }
+  const p0 = game.player.position
+  const k = size / (MINIMAP_VIEW * 2)
+  const at = (x, z) => [size / 2 + (x - p0.x) * k, size / 2 + (z - p0.z) * k]
+  const onMap = ([x, y], pad = 6) => x > -pad && y > -pad && x < size + pad && y < size + pad
+  ctx.fillStyle = '#1b1438'
+  ctx.fillRect(0, 0, size, size)
   ctx.imageSmoothingEnabled = true
-  ctx.drawImage(minimapBase, 0, 0, size, size)
-  const k = size / (WORLD_RADIUS * 2)
-  const at = (x, z) => [size / 2 + x * k, size / 2 + z * k]
+  const texelsPerUnit = MINIMAP_RES / (WORLD_RADIUS * 2)
+  ctx.drawImage(minimapBase, (p0.x - MINIMAP_VIEW + WORLD_RADIUS) * texelsPerUnit, (p0.z - MINIMAP_VIEW + WORLD_RADIUS) * texelsPerUnit, MINIMAP_VIEW * 2 * texelsPerUnit, MINIMAP_VIEW * 2 * texelsPerUnit, 0, 0, size, size)
   for (const m of game.monsters) {
     if (m.userData.dying || m.userData.falling) continue
     const [x, y] = at(m.position.x, m.position.z)
+    if (!onMap([x, y])) continue
     ctx.fillStyle = m.userData.isBoss ? '#ffd15c' : '#ff4d6d'
     ctx.fillRect(x - 1.5, y - 1.5, 3, 3)
   }
@@ -2124,6 +2209,11 @@ function drawMinimap(game, now = 0) {
   }
   for (const v of villages()) {
     const [x, y] = at(v.x, v.z)
+    if (!onMap([x, y], 12)) {
+      // A pinged village off the edge of the map: an arrow on the rim points the way.
+      if (pings.has(v.id)) drawMinimapPointer(ctx, size, Math.atan2(v.z - p0.z, v.x - p0.x), '#ffd15c')
+      continue
+    }
     if (pings.has(v.id)) {
       ctx.strokeStyle = '#ffd15c'
       ctx.lineWidth = 2.5
@@ -2137,8 +2227,26 @@ function drawMinimap(game, now = 0) {
     ctx.fillRect(x - 3.5, y - 3.5, 7, 7)
     ctx.strokeRect(x - 3.5, y - 3.5, 7, 7)
   }
+  // Landmarks: a diamond each, bright once you have found it, dim until then.
+  for (const l of landmarks()) {
+    const [x, y] = at(l.x, l.z)
+    if (!onMap([x, y])) continue
+    const found = game.world?.discovered.has(l.id)
+    ctx.fillStyle = found ? `#${BIOMES[l.biome].glow.toString(16).padStart(6, '0')}` : 'rgba(255,255,255,0.35)'
+    ctx.strokeStyle = '#2a1f55'
+    ctx.lineWidth = 1.2
+    ctx.beginPath()
+    ctx.moveTo(x, y - 5)
+    ctx.lineTo(x + 4, y)
+    ctx.lineTo(x, y + 5)
+    ctx.lineTo(x - 4, y)
+    ctx.closePath()
+    ctx.fill()
+    ctx.stroke()
+  }
   for (const r of ruins()) {
     const [x, y] = at(r.x, r.z)
+    if (!onMap([x, y])) continue
     ctx.fillStyle = r.kind === 'temple' ? '#ffd15c' : '#c9b8ff'
     ctx.strokeStyle = '#2a1f55'
     ctx.lineWidth = 1.2
@@ -2154,6 +2262,7 @@ function drawMinimap(game, now = 0) {
   for (const star of skystars()) {
     if (game.world?.starsCaught.has(star.id)) continue
     const [x, y] = at(star.x, star.z)
+    if (!onMap([x, y])) continue
     ctx.fillStyle = '#fff6c0'
     ctx.beginPath()
     for (let k = 0; k < 8; k++) {
@@ -2167,9 +2276,13 @@ function drawMinimap(game, now = 0) {
   for (const c of game.chests) {
     if (c.userData.opened) continue
     const [x, y] = at(c.position.x, c.position.z)
+    if (!onMap([x, y])) continue
     ctx.fillStyle = '#ffd15c'
     ctx.fillRect(x - 2.5, y - 2.5, 5, 5)
   }
+  drawActivityMarks(ctx, game, at, onMap, size, now)
+  // The Sanctum is always findable: an arrow on the rim when it is off the map.
+  if (!onMap(at(0, 0), -10)) drawMinimapPointer(ctx, size, Math.atan2(-p0.z, -p0.x), '#c9b8ff')
   const p = game.player
   const [px, py] = at(p.position.x, p.position.z)
   ctx.save()
@@ -2199,6 +2312,27 @@ function drawMinimap(game, now = 0) {
   ctx.fillText(`\u2605 ${caught}/${skystars().length}`, size - 6, size - 3)
 }
 
+// A little arrowhead on the minimap's rim pointing toward something off the edge (angle in map space: atan2(dz, dx)).
+function drawMinimapPointer(ctx, size, angle, color) {
+  const r = size / 2 - 9
+  const x = size / 2 + Math.cos(angle) * r
+  const y = size / 2 + Math.sin(angle) * r
+  ctx.save()
+  ctx.translate(x, y)
+  ctx.rotate(angle)
+  ctx.fillStyle = color
+  ctx.strokeStyle = '#241b3a'
+  ctx.lineWidth = 1.5
+  ctx.beginPath()
+  ctx.moveTo(7, 0)
+  ctx.lineTo(-4, 5)
+  ctx.lineTo(-4, -5)
+  ctx.closePath()
+  ctx.stroke()
+  ctx.fill()
+  ctx.restore()
+}
+
 // Catching a skystar: standing on (or gliding right over) a hilltop star.
 function stepSkystars(game, now) {
   const w = game.world
@@ -2216,6 +2350,564 @@ function stepSkystars(game, now) {
     burst(particleSystem, at, 0xffffff, 16, 3)
     sfx.play('chestOpen', { x: star.x, z: star.z })
     questUi.showToast(`SKYSTAR CAUGHT ${w.starsCaught.size}/${skystars().length}  +${SKYSTAR_REWARD} CRYSTALS`)
+  }
+}
+
+// ---- Wilds activities: lanterns, wayshrines, treasure maps, sky-ring races, roaming events and the journal ------
+// (rules in logic/lanterns.js, wayshrines.js, treasure.js, races.js, wildEvents.js, wildsJournal.js; the look in
+// src/wildsActivities.js). stepActivities runs from stepWorld every live frame.
+const wildsStatus = document.getElementById('wilds-status')
+let wildsStatusKey = ''
+const MERCHANT_ID = 'merchant'
+const DISCOVER_REWARD = 10 // crystals for reaching a landmark this run...
+const DISCOVER_REWARD_FIRST = 25 // ...or for the first time ever
+// A world height as the effect layers see it (they ride up with the player: see applyFxDepth).
+const fxY = (game, worldY) => worldY - (game.world?.groundY ?? 0)
+const hexColor = (c) => `#${c.toString(16).padStart(6, '0')}`
+
+const journalUi = createJournalUi({ onClose: () => input.clear() })
+function openJournal(game) {
+  const w = game.world
+  const boons = activeBoons(w.shrines, timer.getElapsed()).map((b) => `${BOONS[b.id].name} ${Math.ceil(b.left)}s`).join(', ')
+  journalUi.show(w.journal, { discovered: w.discovered.size, maps: w.maps.length, boons })
+}
+
+// Updates the journal, and pays out any milestone it just reached (crystals now, gear through the loot queue).
+function setJournal(game, next) {
+  const w = game.world
+  w.journal = next
+  w.journalDirty = true
+  let reached = false
+  for (const m of readyMilestones(w.journal)) {
+    reached = true
+    w.journal = claimMilestone(w.journal, m.id)
+    game.inventory = addCrystals(game.inventory, m.crystals)
+    questUi.showToast(`MILESTONE: ${m.title.toUpperCase()}  +${m.crystals} CRYSTALS${m.loot ? `  +  A NEW ${m.loot.toUpperCase()}` : ''}`)
+    if (m.loot) {
+      const id = pickUnowned(m.loot, game.inventory, m.id)
+      if (id) w.lootQueue.push({ kind: m.loot, id })
+    }
+    sfx.play('waveCleared')
+  }
+  if (reached) flushJournal(game, true)
+}
+function flushJournal(game, force = false, now = null) {
+  const w = game.world
+  if (!w?.journalDirty) return
+  if (!force && now !== null && now - w.journalSavedAt < 4) return
+  saveJournal(w.journal)
+  w.journalDirty = false
+  if (now !== null) w.journalSavedAt = now
+}
+
+// Hands over a piece of gear won out in the Wilds (the swap panel asks when that kind's slots are full).
+function giveWildsLoot(game, loot) {
+  if (loot.kind === 'pet' && !sandbox && !isDragon(PETS[loot.id])) setProfile(addToCollection(profile, [loot.id]))
+  if (needsSwap(game.inventory, loot)) {
+    pendingSwapLoot = loot
+    questUi.close()
+    swapPanel.show(loot, swappableIds(game.inventory, loot.kind))
+    return
+  }
+  receiveLoot(game, loot)
+}
+
+// A creature felled in the Wilds goes in the bestiary; the first of its kind ever pays a little.
+function noteWildsKill(game, type) {
+  const w = game.world
+  const { journal, first } = noteKill(w.journal, type)
+  setJournal(game, journal)
+  if (!first) return
+  game.inventory = addCrystals(game.inventory, BESTIARY_FIRST_REWARD)
+  questUi.showToast(`NEW BESTIARY ENTRY: ${creatureName(type).toUpperCase()}  +${BESTIARY_FIRST_REWARD} CRYSTALS`)
+}
+
+// ---- lost lanterns ----
+function stepLanterns(game) {
+  const w = game.world
+  const p = game.player.position
+  for (const l of lanternsNear(p.x, p.z, LANTERN_CATCH_RADIUS)) {
+    if (w.journal.lanterns.includes(l.id)) continue
+    const ground = heightAt(l.x, l.z)
+    if (Math.abs(w.groundY - ground) > 3.5) continue
+    setJournal(game, noteLantern(w.journal, l.id).journal)
+    const total = w.journal.lanterns.length
+    const reward = lanternReward(total)
+    game.inventory = addCrystals(game.inventory, reward)
+    burst(particleSystem, { x: l.x, y: fxY(game, ground + 1.3), z: l.z }, l.color, 26, 3.5)
+    burst(particleSystem, { x: l.x, y: fxY(game, ground + 1.3), z: l.z }, 0xffe2a0, 12, 1.5, 0.6)
+    sfx.play('crystal', { x: l.x, z: l.z })
+    questUi.showToast(`LANTERN LIT ${total}/${LANTERN_COUNT}  +${reward} CRYSTALS`)
+    w.lanternsAt = null
+  }
+  if (!w.lanternsAt || Math.hypot(w.lanternsAt.x - p.x, w.lanternsAt.z - p.z) > 12) {
+    w.lanternsAt = { x: p.x, z: p.z }
+    const unlit = lanternsNear(p.x, p.z, 120).filter((l) => !w.journal.lanterns.includes(l.id))
+    unlit.sort((a, b) => Math.hypot(a.x - p.x, a.z - p.z) - Math.hypot(b.x - p.x, b.z - p.z))
+    w.fx.setLanterns(unlit)
+  }
+}
+
+// ---- wayshrines ----
+function stepShrines(game, now) {
+  const w = game.world
+  const p = game.player.position
+  let at = null
+  for (const s of wayshrines()) {
+    const d = Math.hypot(s.x - p.x, s.z - p.z)
+    if (d < 200) w.fx.setShrineCharge(s.id, shrineCharge(w.shrines, s.id, now))
+    if (d < SHRINE_RADIUS && !w.jump.air) at = s
+  }
+  if ((at?.id ?? null) === w.shrineAt) return
+  w.shrineAt = at?.id ?? null
+  if (!at) return
+  const used = useShrine(w.shrines, at, now)
+  if (!used.boon) {
+    questUi.showToast('THE WAYSHRINE SLEEPS. COME BACK LATER')
+    return
+  }
+  w.shrines = used.state
+  const def = BOONS[used.boon]
+  if (def.heal) game.player.hp = Math.min(game.player.maxHp, game.player.hp + game.player.maxHp * def.heal)
+  setJournal(game, noteShrine(w.journal))
+  const ground = heightAt(at.x, at.z)
+  burst(particleSystem, { x: at.x, y: fxY(game, ground + 3), z: at.z }, def.color, 40, 4.5)
+  spawnShockwave(shockwavePool, p.x, p.z, 5, def.color)
+  sfx.play('chestOpen', { x: at.x, z: at.z })
+  questUi.showToast(`WAYSHRINE: ${def.name.toUpperCase()} (${def.duration}s)  ·  ${def.blurb.toUpperCase()}`)
+}
+
+// ---- treasure maps ----
+function grantTreasureMap(game, key, origin, from) {
+  const w = game.world
+  const map = makeTreasureMap(key, origin, from)
+  if (w.dugMaps.includes(map.id) || w.maps.some((m) => m.id === map.id)) return false
+  if (w.maps.length >= MAX_MAPS) {
+    questUi.showToast('YOUR MAP CASE IS FULL: DIG ONE UP FIRST')
+    return false
+  }
+  w.maps = addMap(w.maps, map, w.dugMaps)
+  questUi.showToast(`TREASURE MAP (${from.toUpperCase()}): DIG INSIDE THE GOLD CIRCLE ON YOUR MAP`)
+  return true
+}
+
+function stepTreasure(game, now) {
+  const w = game.world
+  const p = game.player.position
+  const near = nearestMap(w.maps, p.x, p.z)
+  if (!near) return null
+  if (near.distance < 10 && now > (w.sparkleAt ?? 0)) {
+    w.sparkleAt = now + 0.55
+    burst(particleSystem, { x: near.map.x, y: fxY(game, heightAt(near.map.x, near.map.z) + 0.3), z: near.map.z }, 0xffd15c, 5, 1.6, 0.4)
+  }
+  const chestNear = game.chests.some((c) => !c.userData.opened && Math.hypot(c.position.x - p.x, c.position.z - p.z) < CHEST_INTERACT_RANGE)
+  if (input.wasChestPressed() && !chestNear && !w.jump.air && !game.player.hidden && game.player.hp > 0) {
+    const map = w.maps.find((m) => Math.hypot(m.hintX - p.x, m.hintZ - p.z) < m.hintRadius + 6)
+    if (map) digTreasure(game, map)
+  }
+  return near
+}
+
+function digTreasure(game, map) {
+  const w = game.world
+  const p = game.player.position
+  const result = digAt(map, p.x, p.z)
+  burst(particleSystem, { x: p.x, y: 0.3, z: p.z }, 0x8a6a4a, 18, 3)
+  if (!result.found) {
+    sfx.play('hit', { x: p.x, z: p.z })
+    questUi.showToast(`NOTHING HERE...  ${HEAT_TEXT[result.heat]}`)
+    return
+  }
+  w.maps = w.maps.filter((m) => m !== map)
+  w.dugMaps.push(map.id)
+  const before = game.chests.length
+  trySpawnChest(game, { at: { x: map.x, z: map.z }, cost: 0 })
+  if (game.chests.length > before) game.chests[game.chests.length - 1].position.y = heightAt(map.x, map.z)
+  game.inventory = addCrystals(game.inventory, map.reward)
+  setJournal(game, noteTreasure(w.journal))
+  spawnShockwave(shockwavePool, map.x, map.z, 4, 0xffd15c)
+  burst(particleSystem, { x: map.x, y: fxY(game, heightAt(map.x, map.z) + 0.6), z: map.z }, 0xffd15c, 50, 5)
+  shardBurst(particleSystem, { x: map.x, y: fxY(game, heightAt(map.x, map.z) + 0.6), z: map.z }, 0x8a6a4a, 14, 3)
+  sfx.play('chestOpen', { x: map.x, z: map.z })
+  questUi.showToast(`TREASURE!  +${map.reward} CRYSTALS AND A FREE CHEST (F)`)
+}
+
+// ---- sky-ring races ----
+function stepRaces(game, now) {
+  const w = game.world
+  const p = game.player.position
+  const out = stepRace(w.race, { x: p.x, y: w.groundY, z: p.z, now })
+  w.race = out.state
+  for (const e of out.events) {
+    if (e.type === 'start') {
+      questUi.showToast(`RACE: ${e.course.name.toUpperCase()}  ·  ${e.course.rings.length} RINGS  ·  JUMP OFF AND GLIDE!`)
+      sfx.play('announcement')
+      spawnShockwave(shockwavePool, p.x, p.z, 4, 0x7ae8ff)
+    } else if (e.type === 'ring') {
+      const course = raceCourses().find((c) => c.id === w.race.active?.id) ?? null
+      const ring = course?.rings[e.index - 1]
+      if (ring) burst(particleSystem, { x: ring.x, y: fxY(game, ring.y), z: ring.z }, 0xffd15c, 22, 4)
+      sfx.play('crystal', { x: p.x, z: p.z })
+    } else if (e.type === 'finish') {
+      const note = noteRace(w.journal, e.course.id, e.time)
+      setJournal(game, note.journal)
+      const reward = raceReward(e.medal, note.first)
+      game.inventory = addCrystals(game.inventory, reward)
+      burst(particleSystem, { x: p.x, y: 1.2, z: p.z }, e.medal === 'gold' ? 0xffd15c : e.medal === 'silver' ? 0xdfe6f0 : 0xe0a070, 50, 5)
+      sfx.play('waveCleared')
+      questUi.showToast(`${e.medal.toUpperCase()}!  ${e.course.name.toUpperCase()} IN ${formatTime(e.time)}${note.best && !note.first ? '  ·  NEW BEST' : ''}  +${reward} CRYSTALS`)
+    } else if (e.type === 'fail') {
+      questUi.showToast(e.reason === 'time' ? `OUT OF TIME: ${e.course.name.toUpperCase()}  ·  TRY AGAIN FROM THE GATE` : 'RACE ABANDONED')
+    }
+  }
+  w.fx.setRace(w.race.active)
+}
+
+// ---- roaming events ----
+// A spot `min`..`max` from (x, z) on dry land, or null.
+function spotAround(x, z, min, max, tries = 12) {
+  for (let i = 0; i < tries; i++) {
+    const a = Math.random() * Math.PI * 2
+    const d = min + Math.random() * (max - min)
+    const sx = x + Math.cos(a) * d
+    const sz = z + Math.sin(a) * d
+    if (Math.hypot(sx, sz) > WORLD_RADIUS - 12 || lakeAt(sx, sz, 0.3)) continue
+    return { x: sx, z: sz }
+  }
+  return null
+}
+
+function startWildEvent(game, kind, now, danger) {
+  const w = game.world
+  const p = game.player.position
+  const ev = { kind, startedAt: now, endsAt: now + EVENTS[kind].duration, danger }
+  if (kind === 'horde') {
+    ev.plan = hordePlan(Math.random, biomeAt(p.x, p.z), danger)
+    ev.endsAt = now + ev.plan.timeLimit
+    ev.rush = 0
+    ev.nextRushAt = now + 1.5
+    ev.meshes = []
+    questUi.showToast('AMBUSH! THEY ARE CLOSING IN  ·  BEAT THEM ALL FOR A BOUNTY')
+    sfx.play('announcement')
+  } else if (kind === 'meteors') {
+    ev.drops = meteorPlan(Math.random, p, 14).map((d) => ({ ...d, at: now + d.at, done: false }))
+    ev.endsAt = ev.drops[ev.drops.length - 1].at + 5
+    ev.shards = 0
+    questUi.showToast('STARFALL! GRAB THE STAR SHARDS WHERE THEY LAND')
+    sfx.play('announcement')
+  } else if (kind === 'merchant') {
+    const at = spotAround(p.x, p.z, 8, 13) ?? { x: p.x + 5, z: p.z }
+    ev.name = merchantName(`${w.events.count}#${Math.floor(now)}`)
+    ev.stock = merchantStock(`${w.events.count}#${Math.floor(now)}`, game.inventory, danger)
+    ev.sold = []
+    ev.npc = createNpc({ id: MERCHANT_ID, merchant: true, name: ev.name, role: 'Travelling merchant', color: 0xffc46b, x: at.x, z: at.z, villageId: null })
+    scene.add(ev.npc.mesh)
+    w.npcs.get(MERCHANT_ID) && disposeObject3D(w.npcs.get(MERCHANT_ID).mesh)
+    w.npcs.set(MERCHANT_ID, ev.npc)
+    burst(particleSystem, { x: at.x, y: fxY(game, heightAt(at.x, at.z) + 1), z: at.z }, 0xffc46b, 30, 3)
+    questUi.showToast(`A TRAVELLING MERCHANT, ${ev.name.toUpperCase()}, HAS SET UP NEARBY  ·  E TO TRADE`)
+  } else if (kind === 'wanderer') {
+    ev.plan = wandererPlan(Math.random, danger)
+    const at = spotAround(p.x, p.z, 28, 36) ?? spotAround(p.x, p.z, 16, 24)
+    if (!at) return
+    ev.mesh = spawnWildMonster(game, ev.plan.type, at, { boss: true, fights: ev.plan.fights, danger, hpScale: 1 + danger * 1.2 })
+    questUi.showToast(`A WANDERING TITAN: ${ev.plan.name} ROAMS NEARBY!  ·  BOUNTY +${ev.plan.reward}`)
+    sfx.play('bossSlam', at)
+  }
+  w.event = ev
+}
+
+function finishWildEvent(game, now, { seen = true } = {}) {
+  const w = game.world
+  if (seen) setJournal(game, noteEvent(w.journal))
+  w.event = null
+  w.events = endEvent(w.events, now)
+}
+
+const isDown = (game, mesh) => !game.monsters.includes(mesh) || mesh.userData.dying || mesh.userData.falling || mesh.userData.hp <= 0
+
+function updateWildEvent(game, now) {
+  const w = game.world
+  const ev = w.event
+  const p = game.player.position
+  if (ev.kind === 'horde') {
+    const alive = ev.meshes.filter((m) => !isDown(game, m)).length
+    if (ev.rush === 1 && alive <= 1) ev.nextRushAt = Math.min(ev.nextRushAt, now + 1.5)
+    if (ev.rush < ev.plan.waves.length && now >= ev.nextRushAt) {
+      for (const type of ev.plan.waves[ev.rush]) {
+        const at = spotAround(p.x, p.z, 12, 18)
+        if (!at) continue
+        const elite = Math.random() < ev.plan.eliteChance
+        const mesh = spawnWildMonster(game, type, at, { danger: ev.danger, elite, hpScale: (1 + ev.danger * 1.4) * (elite ? 2.4 : 1) })
+        mesh.userData.facing = Math.atan2(p.x - at.x, p.z - at.z)
+        ev.meshes.push(mesh)
+      }
+      ev.rush += 1
+      ev.nextRushAt = now + 16
+      sfx.play('bossSlam', { x: p.x, z: p.z })
+    }
+    if (ev.rush >= ev.plan.waves.length && alive === 0) {
+      game.inventory = addCrystals(game.inventory, ev.plan.reward)
+      const at = spotAround(p.x, p.z, 3, 5) ?? { x: p.x + 3, z: p.z }
+      const before = game.chests.length
+      trySpawnChest(game, { at, cost: 0 })
+      if (game.chests.length > before) game.chests[game.chests.length - 1].position.y = heightAt(at.x, at.z)
+      burst(particleSystem, { x: p.x, y: 1.2, z: p.z }, 0xffd15c, 50, 5)
+      sfx.play('waveCleared')
+      questUi.showToast(`AMBUSH BEATEN!  +${ev.plan.reward} CRYSTALS AND A FREE CHEST`)
+      finishWildEvent(game, now)
+    } else if (now > ev.endsAt) {
+      questUi.showToast('THE AMBUSHERS SCATTER... NO BOUNTY THIS TIME')
+      finishWildEvent(game, now, { seen: false })
+    }
+  } else if (ev.kind === 'meteors') {
+    for (const d of ev.drops) {
+      if (d.done || now < d.at) continue
+      d.done = true
+      dropMeteor({ x: d.x, z: d.z }, { damage: 70, radius: 3.6 })
+      w.shards.push({ x: d.x, z: d.z, appearAt: now + 0.75, until: now + 75, mesh: null, ground: 0 })
+    }
+    if (now > ev.endsAt) {
+      questUi.showToast('THE STARFALL PASSES')
+      finishWildEvent(game, now)
+    }
+  } else if (ev.kind === 'merchant') {
+    const far = Math.hypot(ev.npc.mesh.position.x - p.x, ev.npc.mesh.position.z - p.z) > 220
+    if ((now > ev.endsAt || far) && w.talkingTo !== MERCHANT_ID) {
+      if (!far) burst(particleSystem, { x: ev.npc.mesh.position.x, y: fxY(game, ev.npc.mesh.position.y + 1), z: ev.npc.mesh.position.z }, 0xffc46b, 30, 3)
+      disposeObject3D(ev.npc.mesh)
+      w.npcs.delete(MERCHANT_ID)
+      if (!far) questUi.showToast('THE MERCHANT PACKS UP AND MOVES ON')
+      finishWildEvent(game, now, { seen: ev.sold.length > 0 })
+    }
+  } else if (ev.kind === 'wanderer') {
+    const mesh = ev.mesh
+    if (!mesh) return finishWildEvent(game, now, { seen: false })
+    const down = mesh.userData.dying || mesh.userData.falling || mesh.userData.hp <= 0
+    if (down) {
+      game.inventory = addCrystals(game.inventory, ev.plan.reward)
+      questUi.showToast(`TITAN FELLED: ${ev.plan.name}  ·  +${ev.plan.reward} CRYSTALS`)
+      sfx.play('waveCleared')
+      finishWildEvent(game, now)
+    } else if (!game.monsters.includes(mesh)) {
+      finishWildEvent(game, now, { seen: false })
+    } else if (now > ev.endsAt && Math.hypot(mesh.position.x - p.x, mesh.position.z - p.z) > 70) {
+      dropWorldMonster(game, mesh)
+      questUi.showToast(`${ev.plan.name} WANDERS OFF INTO THE WILDS`)
+      finishWildEvent(game, now, { seen: false })
+    }
+  }
+}
+
+function stepWildEvents(game, now) {
+  const w = game.world
+  const p = game.player.position
+  w.events ??= createEventDirector(now)
+  const safe = Math.hypot(p.x, p.z) < SANCTUM_RADIUS + 20 || Boolean(nearestVillage(p.x, p.z, VILLAGE_SAFE_RADIUS + 10))
+  const danger = dangerAt(p.x, p.z)
+  const out = stepEventDirector(w.events, { now, safe, busy: Boolean(w.race.active) || Boolean(lakeAt(p.x, p.z, 0.3)) || game.player.hp <= 0, danger })
+  w.events = out.state
+  if (out.start) startWildEvent(game, out.start, now, danger)
+  if (w.event) updateWildEvent(game, now)
+  else if (w.events.active) w.events = endEvent(w.events, now) // an event that never got going (no room for it)
+  // Star shards: they twinkle where the meteors fell until you pick them up (or a while passes).
+  w.shards = w.shards.filter((sh) => {
+    if (!sh.mesh) {
+      if (now < sh.appearAt) return true
+      sh.ground = heightAt(sh.x, sh.z)
+      sh.mesh = w.fx.addShard(sh.x, sh.ground + 0.8, sh.z)
+    }
+    w.fx.animateShard(sh.mesh, now, sh.ground)
+    const take = Math.hypot(sh.x - p.x, sh.z - p.z) < 2 && Math.abs(w.groundY - sh.ground) < 3 && game.player.hp > 0
+    if (!take && now < sh.until) return true
+    w.fx.removeShard(sh.mesh)
+    if (take) {
+      game.inventory = addCrystals(game.inventory, STAR_SHARD_VALUE)
+      if (w.event?.kind === 'meteors') w.event.shards += 1
+      burst(particleSystem, { x: sh.x, y: fxY(game, sh.ground + 0.8), z: sh.z }, 0xfff1a8, 18, 3)
+      sfx.play('crystal', { x: sh.x, z: sh.z })
+    }
+    return false
+  })
+}
+
+// ---- the travelling merchant's shop (the villager dialogue panel) ----
+function merchantDialog(game) {
+  const ev = game.world.event
+  const goods = ev.stock.filter((g) => !ev.sold.includes(g.id))
+  return {
+    npc: ev.npc.def,
+    village: { name: 'the open road' },
+    mode: 'shop',
+    text: goods.length
+      ? `Wares for the wandering soul! Gear, maps, tonics... You have ${game.inventory.crystals} crystals to spend.`
+      : 'Sold out! You have a good eye, traveller. Safe roads.',
+    buttons: [...goods.map((g) => ({ id: `buy:${g.id}`, label: `${g.label} · ${g.price}` })), { id: 'close', label: 'Farewell' }],
+  }
+}
+
+function handleMerchantButton(game, id) {
+  const w = game.world
+  const ev = w.event
+  if (!id.startsWith('buy:') || ev?.kind !== 'merchant') return questUi.close()
+  const good = ev.stock.find((g) => `buy:${g.id}` === id)
+  if (!good || ev.sold.includes(good.id)) return
+  if (game.inventory.crystals < good.price) {
+    questUi.showToast(`NOT ENOUGH CRYSTALS (${good.price} NEEDED)`)
+    return
+  }
+  if (good.kind === 'map' && w.maps.length >= MAX_MAPS) {
+    questUi.showToast('YOUR MAP CASE IS FULL: DIG ONE UP FIRST')
+    return
+  }
+  game.inventory = spendCrystals(game.inventory, good.price).inventory
+  ev.sold.push(good.id)
+  sfx.play('chestOpen', { x: ev.npc.mesh.position.x, z: ev.npc.mesh.position.z })
+  if (good.kind === 'map') grantTreasureMap(game, `merchant#${w.events.count}#${Math.floor(ev.startedAt)}`, game.player.position, ev.name)
+  else if (good.kind === 'boon') {
+    w.shrines = grantBoon(w.shrines, good.itemId, timer.getElapsed())
+    questUi.showToast(`${BOONS[good.itemId].name.toUpperCase()}: ${BOONS[good.itemId].blurb.toUpperCase()}`)
+  } else if (good.kind === 'heal') {
+    game.player.hp = game.player.maxHp
+    questUi.showToast('DELICIOUS. FULLY HEALED')
+  } else {
+    giveWildsLoot(game, { kind: good.kind, id: good.itemId })
+    if (swapPanel.isOpen()) return
+  }
+  questUi.update(merchantDialog(game))
+}
+
+// ---- the status chips under the score: race clock, event, treasure heat, boons ----
+function updateWildsStatus(game, now, treasure) {
+  const w = game.world
+  const chips = []
+  const race = w.race.active
+  if (race) {
+    const course = raceCourses().find((c) => c.id === race.id)
+    chips.push(['#7ae8ff', `<b>RACE</b> ${course.name} · RING ${race.next + 1}/${course.rings.length} · ${formatTime(now - race.startedAt)} / ${formatTime(course.limit)}`])
+  }
+  const ev = w.event
+  if (ev?.kind === 'horde') {
+    const left = ev.meshes.filter((m) => !isDown(game, m)).length + (ev.rush < ev.plan.waves.length ? ev.plan.waves[ev.rush].length : 0)
+    chips.push(['#ff6b6b', `<b>AMBUSH</b> ${left} left · ${Math.max(0, Math.ceil(ev.endsAt - now))}s`])
+  } else if (ev?.kind === 'meteors') chips.push(['#ffb454', `<b>STARFALL</b> ${ev.shards} star shard${ev.shards === 1 ? '' : 's'}`])
+  else if (ev?.kind === 'merchant') chips.push(['#ffc46b', `<b>MERCHANT</b> ${ev.name} · ${Math.max(0, Math.ceil(ev.endsAt - now))}s`])
+  else if (ev?.kind === 'wanderer' && ev.mesh) chips.push(['#ffd15c', `<b>TITAN</b> ${ev.plan.name} · ${Math.round(Math.hypot(ev.mesh.position.x - game.player.position.x, ev.mesh.position.z - game.player.position.z))}m`])
+  if (treasure) {
+    const m = treasure.map
+    const inCircle = Math.hypot(m.hintX - game.player.position.x, m.hintZ - game.player.position.z) < m.hintRadius + 6
+    chips.push(['#ffd15c', inCircle ? `<b>TREASURE</b> ${digAt(m, game.player.position.x, game.player.position.z).heat === 'here' ? HEAT_TEXT.here : `${HEAT_TEXT[digAt(m, game.player.position.x, game.player.position.z).heat]} · F digs`}` : `<b>MAP</b> ${w.maps.length} treasure map${w.maps.length === 1 ? '' : 's'} · gold circle on the minimap`])
+  }
+  for (const b of activeBoons(w.shrines, now)) chips.push([hexColor(BOONS[b.id].color), `<b>${BOONS[b.id].name}</b> ${Math.ceil(b.left)}s`])
+  const html = chips.map(([c, text]) => `<div class="ws-chip" style="--c:${c}">${text}</div>`).join('')
+  if (html === wildsStatusKey) return
+  wildsStatusKey = html
+  if (wildsStatus) wildsStatus.innerHTML = html
+}
+
+function stepActivities(game, now) {
+  const w = game.world
+  if (!w.fx) return
+  if (w.lootQueue.length && !swapPanel.isOpen()) giveWildsLoot(game, w.lootQueue.shift())
+  stepLanterns(game)
+  stepShrines(game, now)
+  const treasure = stepTreasure(game, now)
+  stepRaces(game, now)
+  stepWildEvents(game, now)
+  w.fx.update(now, game.player.position)
+  updateWildsStatus(game, now, treasure)
+  flushJournal(game, false, now)
+}
+
+// Minimap marks for the activities: shrines, race gates, nearby unlit lanterns, treasure circles, the merchant,
+// a roaming titan, and the landmark a quest sends you to.
+function drawActivityMarks(ctx, game, at, onMap, size, now) {
+  const w = game.world
+  if (!w) return
+  const p0 = game.player.position
+  for (const s of wayshrines()) {
+    const [x, y] = at(s.x, s.z)
+    if (!onMap([x, y])) continue
+    ctx.globalAlpha = shrineCharge(w.shrines, s.id, now) >= 1 ? 1 : 0.35
+    ctx.fillStyle = hexColor(BOONS[s.boon].color)
+    ctx.strokeStyle = '#241b3a'
+    ctx.lineWidth = 1.2
+    ctx.beginPath()
+    ctx.arc(x, y, 3.2, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.stroke()
+  }
+  ctx.globalAlpha = 1
+  for (const c of raceCourses()) {
+    const [x, y] = at(c.start.x, c.start.z)
+    if (!onMap([x, y])) continue
+    ctx.strokeStyle = '#7ae8ff'
+    ctx.lineWidth = 2
+    ctx.beginPath()
+    ctx.arc(x, y, 4.5, 0, Math.PI * 2)
+    ctx.stroke()
+  }
+  if (w.race.active) {
+    const course = raceCourses().find((c) => c.id === w.race.active.id)
+    const ring = course.rings[w.race.active.next]
+    const [x, y] = at(ring.x, ring.z)
+    ctx.fillStyle = '#ffd15c'
+    ctx.beginPath()
+    ctx.arc(x, y, 3, 0, Math.PI * 2)
+    ctx.fill()
+  }
+  // Unlit lanterns only show once you are fairly close: they are for finding, not for a checklist.
+  ctx.fillStyle = '#ffb35c'
+  for (const l of lanternsNear(p0.x, p0.z, 55)) {
+    if (w.journal.lanterns.includes(l.id)) continue
+    const [x, y] = at(l.x, l.z)
+    ctx.fillRect(x - 1.5, y - 1.5, 3, 3)
+  }
+  ctx.setLineDash([4, 3])
+  for (const m of w.maps) {
+    const [x, y] = at(m.hintX, m.hintZ)
+    const r = m.hintRadius * (size / (MINIMAP_VIEW * 2))
+    if (!onMap([x, y], r)) {
+      drawMinimapPointer(ctx, size, Math.atan2(m.hintZ - p0.z, m.hintX - p0.x), '#ffd15c')
+      continue
+    }
+    ctx.strokeStyle = '#ffd15c'
+    ctx.lineWidth = 2
+    ctx.beginPath()
+    ctx.arc(x, y, r, 0, Math.PI * 2)
+    ctx.stroke()
+  }
+  ctx.setLineDash([])
+  const ev = w.event
+  const target = ev?.kind === 'merchant' ? { x: ev.npc.mesh.position.x, z: ev.npc.mesh.position.z, color: '#ffc46b' } : ev?.kind === 'wanderer' && ev.mesh ? { x: ev.mesh.position.x, z: ev.mesh.position.z, color: '#ffd15c' } : null
+  if (target) {
+    const [x, y] = at(target.x, target.z)
+    if (!onMap([x, y])) drawMinimapPointer(ctx, size, Math.atan2(target.z - p0.z, target.x - p0.x), target.color)
+    else {
+      ctx.fillStyle = target.color
+      ctx.strokeStyle = '#241b3a'
+      ctx.lineWidth = 1.5
+      ctx.beginPath()
+      ctx.arc(x, y, 4.5, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.stroke()
+    }
+  }
+  // A landmark a quest wants you to find: a gold ring, or an arrow on the rim.
+  for (const q of w.quests.active) {
+    if (q.type !== 'discover' || q.status !== 'active') continue
+    const l = landmarkById(q.landmarkId)
+    if (!l) continue
+    const [x, y] = at(l.x, l.z)
+    if (!onMap([x, y], 12)) {
+      drawMinimapPointer(ctx, size, Math.atan2(l.z - p0.z, l.x - p0.x), '#ffd15c')
+      continue
+    }
+    ctx.strokeStyle = '#ffd15c'
+    ctx.lineWidth = 2.5
+    ctx.beginPath()
+    ctx.arc(x, y, 9, 0, Math.PI * 2)
+    ctx.stroke()
   }
 }
 
@@ -2251,7 +2943,7 @@ function stepWorld(game, now, dt = 0) {
   let nearestDistance = Infinity
   for (const npc of w.npcs.values()) {
     const d = dt > 0 ? updateNpc(npc, dt, now, p) : Math.hypot(npc.mesh.position.x - p.x, npc.mesh.position.z - p.z)
-    setNpcMarker(npc, npcMarker(w.quests, npc.def))
+    setNpcMarker(npc, npc.def.merchant ? 'offer' : npcMarker(w.quests, npc.def))
     if (d < nearestDistance) {
       nearest = npc
       nearestDistance = d
@@ -2284,13 +2976,42 @@ function stepWorld(game, now, dt = 0) {
     w.biome = biome
     w.bannerUntil = now + 3.2
     worldQuestEvent(game, { type: 'enterBiome', biome })
+    if (biome !== 'sanctum' && dt > 0) {
+      const note = noteBiome(w.journal, biome)
+      if (note.first) setJournal(game, note.journal)
+    }
     if (biomeBanner) {
       biomeBanner.textContent = BIOMES[biome].name
       biomeBanner.style.setProperty('--biome-glow', `#${BIOMES[biome].glow.toString(16).padStart(6, '0')}`)
     }
   }
+  // Reaching a landmark names it (the first time this run it counts as a discovery).
+  const lm = nearestLandmark(p.x, p.z)?.landmark ?? null
+  if (lm?.id !== w.landmark?.id) {
+    w.landmark = lm
+    if (lm && !w.discovered.has(lm.id)) {
+      w.discovered.add(lm.id)
+      // A first-ever discovery pays more; every landmark found this run hides a treasure map.
+      const note = noteLandmark(w.journal, lm.id)
+      const reward = note.first ? DISCOVER_REWARD_FIRST : DISCOVER_REWARD
+      game.inventory = addCrystals(game.inventory, reward)
+      questUi.showToast(`${note.first ? 'NEW DISCOVERY' : 'DISCOVERED'}: ${lm.name.toUpperCase()}  ·  ${w.discovered.size}/${landmarks().length}  +${reward} CRYSTALS`)
+      sfx.play('chestOpen', { x: lm.x, z: lm.z })
+      if (dt > 0) setJournal(game, note.journal)
+      grantTreasureMap(game, lm.id, lm, lm.name)
+    }
+    // Arriving at a landmark (every time) is what a 'Seek ...' quest waits for.
+    if (lm) worldQuestEvent(game, { type: 'discover', landmarkId: lm.id, kind: lm.kind, biome: lm.biome })
+  }
+  // Thunder follows a lightning strike over the storm biomes.
+  const strike = game.arena.world.lastStrike
+  if (strike && strike.time !== w.lastThunder) {
+    w.lastThunder = strike.time
+    sfx.play('bossSlam', { x: strike.x, z: strike.z })
+  }
   biomeBanner?.classList.toggle('show', now < w.bannerUntil)
   if (dt > 0) stepSkystars(game, now)
+  if (dt > 0) stepActivities(game, now)
   if (dt > 0) drawMinimap(game, now)
 }
 
@@ -2879,7 +3600,10 @@ function trickToneForId(trickId) {
 // same trick/points on the big screen-space HUD sticker.
 function scoreKill(game, mesh, cause, position, now) {
   tutorialEvent('kill')
-  if (game.world) worldQuestEvent(game, { type: 'kill', monster: mesh.userData.type, elite: Boolean(mesh.userData.elite), biome: biomeAt(position.x, position.z) })
+  if (game.world) {
+    worldQuestEvent(game, { type: 'kill', monster: mesh.userData.type, elite: Boolean(mesh.userData.elite), biome: biomeAt(position.x, position.z) })
+    noteWildsKill(game, mesh.userData.type)
+  }
   const trick = nameTrick({
     cause,
     inPool: isInPool(game.arena.pools, mesh.position.x, mesh.position.z),
@@ -3170,6 +3894,10 @@ function advanceFloor(game) {
 // the scene.
 function disposeGame(target) {
   target.world?.npcs.forEach((npc) => disposeObject3D(npc.mesh))
+  if (target.world?.journalDirty) saveJournal(target.world.journal)
+  journalUi?.close()
+  wildsStatusKey = ''
+  if (wildsStatus) wildsStatus.innerHTML = ''
   questUi?.reset()
   disposeObject3D(target.arena.group)
   disposeObject3D(target.player.mesh)
@@ -3413,6 +4141,12 @@ window.addEventListener('keydown', (event) => {
   else if (event.code === 'Escape' && !swapPanel.isOpen() && !event.hubClosed) togglePause()
 })
 touchControls?.addMenuButton(togglePause, 'PAUSE')
+// The Wilds journal (U on a keyboard); the button only shows in the Wilds.
+const journalButton = touchControls?.addMenuButton(() => {
+  if (journalUi.isOpen()) journalUi.close()
+  else if (game?.world && !questUi.isOpen()) openJournal(game)
+}, 'JOURNAL')
+journalButton?.classList.add('wilds-only')
 
 // Full screen (touch button). iPhone Safari has no Fullscreen API for pages, so there
 // the button explains Add to Home Screen, which the meta tags below make fullscreen.
@@ -3765,7 +4499,9 @@ function gameFrame(timestamp) {
   // is 0 for the frame(s) a freeze covers (or a fraction of deltaSeconds
   // the frame it ends partway through, so no time is lost overall).
   // The Tab power-up menu pauses the world (freeze the frame, still render).
-  if (loadoutOpen() || swapPanel.isOpen() || hub.isOpen() || questUi.isOpen()) {
+  // U opens the Wilds journal (it freezes the game like the other panels).
+  if (game.world && input.wasPressed('KeyU') && !questUi.isOpen() && !swapPanel.isOpen() && !hub.isOpen()) openJournal(game)
+  if (loadoutOpen() || swapPanel.isOpen() || hub.isOpen() || questUi.isOpen() || journalUi.isOpen()) {
     renderMenuBackdrop(timestamp, MENU_FROZEN_FPS)
     input.endFrame()
     return
@@ -3861,7 +4597,8 @@ function gameFrame(timestamp) {
       : null
   player.aimSlope = WEAPONS[selectedWeaponId(game.inventory)].gun ? aimSlopeFor(player, game) : 0
   const petFx = petEffects(game.inventory.pets, profile.pets)
-  const perk = activeFx(game.inventory.equipped)
+  // In the Wilds, wayshrine boons (and the merchant's tonics) fold into the same effect set.
+  const perk = game.world ? foldBoons(activeFx(game.inventory.equipped), boonEffects(game.world.shrines, elapsedSeconds)) : activeFx(game.inventory.equipped)
   // Skill-tree vitals: max HP (a raise heals by the same amount) and longer i-frames.
   const wantMaxHp = Math.round(PLAYER_MAX_HP + perk.maxHp)
   if (player.maxHp !== wantMaxHp) {

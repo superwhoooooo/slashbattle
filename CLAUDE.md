@@ -108,7 +108,9 @@ slashbattle/
     logic/enemies.js   # the late enemies' rules (ranged attacks, splitting, poison) + enemyScale difficulty ramp
     logic/sandbox.js   # pure sandbox item toggling + top-up
     logic/world.js     # the Wilds: biomes, seeded chunk content (props/monsters/treasure), chunk streaming rules
-    worldArena.js      # the Wilds' look: biome-painted ground, twilight sky, instanced scenery, fireflies
+    worldArena.js      # the Wilds' look: biome-painted ground, twilight sky, auroras/lightning, instanced scenery, fireflies
+    worldModelKit.js   # part/limb/primitive helpers the Wilds' scenery models are merged from
+    frontierModels.js  # models for the Frontier biomes' scenery and the landmarks
     logic/quests.js    # villager quests: generation, the quest log, dialogue (pure)
     logic/jump.js      # the Wilds' jump physics (pure)
     npcs.js            # the villagers: the player's jelly model in pastel colours, name tags, quest markers
@@ -216,7 +218,7 @@ lollipops and gumdrops. A restart
 returns to the first place.
 
 ## The Wilds (free roam world)
-Pick it on the start card (button or O). A vast mystical floating continent (`WORLD_RADIUS` 320) instead of the
+Pick it on the start card (button or O). A vast mystical floating continent (`WORLD_RADIUS` 560) instead of the
 sundeck: no waves, no levels, you just roam. `createGame` calls `config.js`'s `setArenaRadius(WORLD_RADIUS)` (ARENA_RADIUS
 is a live `let` binding, so every clamp, fall and spawn ring follows; the sundeck/labyrinth reset it to 48) and builds
 `src/worldArena.js`'s `createWorldArena()`. `src/logic/world.js` (pure, seeded by `WORLD_SEED`) holds the rules:
@@ -229,27 +231,47 @@ chance (elites glow red, 2.4x hp). `chunkContent(cx, cz)` deterministically seed
 `UNLOAD_RADIUS`. `main.js`'s `stepWorld` applies it: scenery goes into per-kind InstancedMeshes
 (`arena.world.setProps`), solid props join `game.obstacles`, camp monsters spawn through `spawnMonster` (remembered in
 `game.world.live`; a slain camp member stays dead for `RESPAWN_SECONDS`), monsters left far behind are dropped, a biome
-banner names each biome you enter, and a minimap (`#minimap`) shows the continent, monsters and chests. Random pod/chest/perk
+banner names each biome you enter, and a minimap (`#minimap`) shows the land within `MINIMAP_VIEW` (210) of you (rim arrows
+point to the Sanctum and to quest villages off the map), monsters, chests, villages, ruins, landmarks and skystars. Random pod/chest/perk
 spawners are off (`game.world` set); treasure comes from the chunks. The edge has no wall: walk off it and you fall.
 
-**Hills.** `heightAt(x, z)` (pure, in `logic/world.js`) is the ground height: broad swells, finer bumps and ~18 big seeded
+**Heartland and Frontier.** The five biomes above form the Heartland ring; past a meandering border near `HEARTLAND_RADIUS`
+(300) lies the **Frontier** (`FAR_BIOMES`, `ringAt` = 'far'), six stranger biomes: Glowcap Hollow (giant glowing mushrooms,
+misty), Saltglass Flats (white salt crust, salt pillars, clear long views), the Drowned Reach (mangroves, sunken columns, extra
+lakes via the biome's `lakes`), Stormcrown Heights (slate cairns, lightning rods, flat-topped **mesas** via `mesas`, lightning
+strikes with thunder via `storm`), the Bonewaste (ribcages, skulls, bone spikes) and the Skyshard Expanse (floating islands,
+hovering crystal shards, aurora). Optional biome fields: `fogRange`, `aurora`, `storm`, `density`, `lakes`, `mesas`,
+`landmarks`. `OUTER_BIOMES` is still the Heartland five; `WILD_BIOMES` is all eleven (explore quests pick from it).
+worldArena.js keys its per-biome looks (`ROCK`, `GRASS_STYLE`, `DRIFT`, `LAKE_TINT`) by biome id, falling back to the
+sanctum's. Hills, lakes, villages and sites are bucketed in a coarse grid (`makeGrid`) so `heightAt` stays cheap.
+
+**Landmarks.** `landmarks()` seeds ~40 named sights (`LANDMARK_KINDS`: colossus head + hand, stone circle, monster camp, cave
+mound, great arch, and the Frontier's elder shroom, thunder spire, leviathan skeleton and sky anchor), each biome favouring its
+own (`BIOMES[id].landmarks`). `landmarkLayout(lm)` returns props / treasure / guards like `ruinLayout` (a `blocker` prop is an
+invisible obstacle with no model). Ruins and landmarks are both "sites" (`sites()`, `nearestSite`): the ground is levelled
+under them, scenery / grass / wild camps keep off, and `chunkContent` streams their props, loot and guards (`siteId`).
+Reaching one shows "DISCOVERED: name" (per run, `game.world.discovered`) and feeds a `{ type: 'discover', landmarkId, kind,
+biome }` quest event (no quest uses it yet). They show as diamonds on the minimap. Roads run from each village to its nearest
+landmark too, and Frontier villages connect to the nearest village closer in (a branching network).
+
+**Hills.** `heightAt(x, z)` (pure, in `logic/world.js`) is the ground height: broad swells, finer bumps and ~84 big seeded
 mounds, levelled flat in the Sanctum, at the rim and under every village plaza. The ground mesh, props and grass sit on it,
 and `main.js` lifts the player, monsters, chests/pods/pickups and pets onto it (`pets` via a `groundLift` they carry). The
 particle / projectile / shockwave / bullet / crystal layers ride up with the player (`world.groundY`, `applyFxDepth`), and the
 camera follows a smoothed `camGround`.
 
 **Higher hills, lakes, ruins.** The mounds are tall (peaks of 26-36 units, big enough to launch a paraglider from; overlapping hills
-merge with `max`). `LAKES` (7, on low ground, away from villages) dip the ground to `LAKE_BED` below `WATER_LEVEL`; `worldArena.js`
+merge with `max`). `LAKES` (~24, on low ground, away from villages) dip the ground to `LAKE_BED` below `WATER_LEVEL`; `worldArena.js`
 draws a translucent water disc per lake, wading is slower, and `lakeAt` keeps props/grass/land monsters out. Each lake holds
 urchins, eels and anglers (`WATER_MONSTERS`; chunk monster entries with `lake: {x,z,radius}`, clamped in main.js so they
-never leave it, floating at the surface). `ruins()` seeds ~12 Zelda-style sites on levelled flagstones: **temples** (a ring of
+never leave it, floating at the surface). `ruins()` seeds ~30 Zelda-style sites on levelled flagstones: **temples** (a ring of
 columns, broken walls, a central shrine, a chest, and a guardian **boss** from `BOSSES` plus two elites; the boss respawns
 after `BOSS_RESPAWN_SECONDS`), **watchtowers** (a chest, an elite and guards) and lone **shrines** (a power-up and a suitcase).
 `ruinLayout(ruin)` returns props / treasure / guards; ruins show as triangles on the minimap (gold = boss temple). Villages
-are at least `VILLAGE_MIN_SEPARATION` (150) apart.
+are at least `VILLAGE_MIN_SEPARATION` (135) apart.
 
-**Villages and quests.** `villages()` seeds ~9 villages (a guaranteed starter just outside the Sanctum, at least one in every
-biome); `villageLayout(v)` places a hall, cottages, a well, lamp posts, a notice board and three villagers. Villages are safe
+**Villages and quests.** `villages()` seeds ~20 villages (a guaranteed starter just outside the Sanctum, at least one in every
+biome of both rings, unique names); `villageLayout(v)` places a hall, cottages, a well, lamp posts, a notice board and three villagers. Villages are safe
 (`VILLAGE_SAFE_RADIUS`: no wild monsters). Villagers (`src/npcs.js`) are built with `createPlayerMesh()`, so they look like the
 player, each in their own pastel; they amble about, face you, and wear a marker ('!' request, '...' open, '?' to collect).
 Press E near one (when no suitcase is in reach) to talk: the game freezes while the dialogue (`src/questUi.js`) is open.
@@ -258,6 +280,12 @@ elite, gather crystals, walk into another biome, or deliver a letter to a villag
 advances them from kills / crystals / entering a biome / talking, and up to `MAX_ACTIVE_QUESTS` (3) can be open. Rewards are
 crystals plus a heal; a villager's next request is new each time. The tracker sits under the score and the minimap shows
 villages, with a gold ring where a quest wants you.
+
+**Chests in the Wilds.** They use the `wilds` container skin (carved dark wood, gold bands, glowing violet rune gem; `chests.js`'s
+`runes` extra) instead of the cooler. They were rare (10% of far chunks, and the village/lake filter also dropped ruin chests);
+now `WILD_CHEST_CHANCE` (30%) of chunks beyond 20 units hold one (kept off roads and out of props), every village has one
+(`villageLayout(v).treasure`) and ruin chests are never filtered. Quests: harder ones (`quest.weaponReward`; elites always) also
+pay a weapon you don't own (`questWeaponFor`); a full hotbar opens the swap panel. The dialogue, tracker and toast mention it.
 
 ## Labyrinth map
 Pick it on the start card (button or K). `src/logic/maze.js` (pure) builds a seeded 7x7 maze per

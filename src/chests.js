@@ -199,6 +199,36 @@ export function createChest(point, cost, style = 'resort') {
       loop.rotation.y = Math.PI / 2
       loop.rotation.z = side * 0.4
     }
+  } else if (skin.extra === 'runes') {
+    // Mystical: gold bands and corner studs, a domed lid with a glowing rune gem, and runes glowing on the front.
+    const gold = plastic(skin.stripe, skin.stripe, 0.12, { metal: 0.8, rough: 0.3 })
+    for (const x of [-0.45, 0.45]) {
+      const band = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.62, 0.84), gold)
+      band.position.set(x, 0.3, 0)
+      group.add(band)
+      onLid(new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.27, 0.88), gold), x, 0.13, 0)
+    }
+    const dome = onLid(new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 1.2, 14, 1, false, 0, Math.PI), plastic(skin.lid, 0, 0, skin)), 0, 0.26, 0)
+    dome.rotation.z = Math.PI / 2
+    dome.rotation.y = Math.PI / 2
+    dome.scale.set(0.36, 1, 1)
+    const stud = new THREE.SphereGeometry(0.045, 8, 6)
+    for (const x of [-0.58, 0.58]) for (const y of [0.04, 0.56]) {
+      const st = new THREE.Mesh(stud, gold)
+      st.position.set(x, y, 0.4)
+      group.add(st)
+    }
+    const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.09, 0), glowMat(skin.latch))
+    gem.scale.y = 1.4
+    gem.position.set(0, 0.34, 0.47)
+    group.add(gem)
+    const rune = glowMat(skin.latch)
+    for (const [x, y, w, h, r] of [[-0.28, 0.3, 0.1, 0.02, 0.6], [-0.28, 0.3, 0.1, 0.02, -0.6], [0.28, 0.3, 0.02, 0.14, 0], [0.28, 0.3, 0.1, 0.02, 0], [-0.28, 0.18, 0.12, 0.02, 0], [0.28, 0.18, 0.02, 0.1, 0]]) {
+      const bar = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.012), rune)
+      bar.position.set(x, y, 0.406)
+      bar.rotation.z = r
+      group.add(bar)
+    }
   } else if (skin.extra === 'iron') {
     // Iron straps and rivets, like an old dungeon strongbox.
     const iron = plastic(skin.stripe, 0, 0, skin)

@@ -30,7 +30,7 @@ describe('quest generation', () => {
     const npc = allNpcs()[0]
     for (const q of [0, 1, 2].map((r) => questFor(npc, r))) expect(q.need).toBeLessThan(45)
     const early = allNpcs().map((n) => questFor(n, 0).type)
-    expect(early.every((t) => ['slay', 'gather', 'explore', 'deliver'].includes(t))).toBe(true)
+    expect(early.every((t) => ['slay', 'gather', 'explore', 'deliver', 'discover'].includes(t))).toBe(true)
     const slay = allNpcs().find((n) => questFor(n, 0).type === 'slay')
     if (slay) expect(questFor(slay, 0).reward).toBeGreaterThan(0)
   })
@@ -113,5 +113,38 @@ describe('villager dialogue', () => {
     for (const n of allNpcs().slice(1, 4)) log = acceptQuest(log, questFor(n, 0))
     expect(log.active.length).toBe(MAX_ACTIVE_QUESTS)
     expect(npcDialog(log, npc).mode).toBe('full')
+  })
+})
+
+import { WEAPON_REWARD_CHANCE, questWeaponFor, rewardText } from '../src/logic/quests.js'
+import { createInventory } from '../src/logic/inventory.js'
+import { WEAPONS } from '../src/logic/items.js'
+
+describe('weapon quest rewards', () => {
+  const quests = () => allNpcs().flatMap((npc) => [0, 1, 2, 3].map((r) => questFor(npc, r)))
+  it('every elite quest and some others pay a weapon, never every quest', () => {
+    const all = quests()
+    const elites = all.filter((q) => q.type === 'elite')
+    expect(elites.length).toBeGreaterThan(0)
+    expect(elites.every((q) => q.weaponReward)).toBe(true)
+    const withWeapon = all.filter((q) => q.weaponReward)
+    expect(withWeapon.length).toBeGreaterThan(elites.length)
+    expect(withWeapon.length).toBeLessThan(all.length)
+    expect(WEAPON_REWARD_CHANCE.elite).toBe(1)
+  })
+  it('picks a stable weapon the player does not own', () => {
+    const q = quests().find((x) => x.weaponReward)
+    const inv = createInventory()
+    const id = questWeaponFor(q, inv)
+    expect(WEAPONS[id]).toBeTruthy()
+    expect(inv.weapons).not.toContain(id)
+    expect(questWeaponFor(q, inv)).toBe(id)
+    expect(rewardText(q)).toContain('a weapon')
+  })
+  it('pays no weapon when the quest has none or everything is owned', () => {
+    const q = quests().find((x) => x.weaponReward)
+    const none = quests().find((x) => !x.weaponReward)
+    expect(questWeaponFor(none, createInventory())).toBeNull()
+    expect(questWeaponFor(q, { ...createInventory(), weapons: Object.keys(WEAPONS) })).toBeNull()
   })
 })
