@@ -19,9 +19,9 @@ import { predictPosition } from './enemies.js'
 // Stats in MONSTER_TYPES' shape. `behavior` picks the state machine in monster.js; `accessory`
 // the add-ons in characters.js (the Realist creatures are in beasts.js).
 export const SHADY_TYPES = {
-  paparazzo: { shape: 'cylinder', size: 1.2, color: 0x4a4466, edgeColor: 0xd4ccff, speed: 2.1, hp: 45, damage: 16, radius: 0.5, attackRange: 15, noMelee: true, behavior: 'snipe', accessory: 'camera' },
-  gopher: { shape: 'dodecahedron', size: 1.25, color: 0xb57c45, edgeColor: 0xf3d6ae, speed: 2.2, hp: 75, damage: 13, radius: 0.55, behavior: 'burrow', accessory: 'gopher' },
-  bandit: { shape: 'octahedron', size: 1.0, color: 0x7a5fae, edgeColor: 0xdccfff, speed: 4.4, hp: 60, damage: 1, radius: 0.45, attackRange: 1.3, noMelee: true, behavior: 'bandit', accessory: 'sack', knockbackScale: 0.8 },
+  paparazzo: { shape: 'cylinder', size: 1.2, color: 0x4a4466, edgeColor: 0xd4ccff, speed: 1.9, hp: 32, damage: 9, radius: 0.5, attackRange: 15, noMelee: true, behavior: 'snipe', accessory: 'camera' },
+  gopher: { shape: 'dodecahedron', size: 1.25, color: 0xb57c45, edgeColor: 0xf3d6ae, speed: 2.0, hp: 50, damage: 8, radius: 0.55, behavior: 'burrow', accessory: 'gopher' },
+  bandit: { shape: 'octahedron', size: 1.0, color: 0x7a5fae, edgeColor: 0xdccfff, speed: 3.8, hp: 40, damage: 1, radius: 0.45, attackRange: 1.3, noMelee: true, behavior: 'bandit', accessory: 'sack', knockbackScale: 0.8 },
 }
 export const SHADY_TYPE_IDS = Object.keys(SHADY_TYPES)
 export const SHADY_SCORES = { paparazzo: 210, gopher: 200, bandit: 260 }
@@ -42,7 +42,7 @@ export const SNIPE = {
   keepAway: 8, // backs off when you come closer than this
   aim: 1.5, // seconds the laser tracks you
   lock: 0.45, // seconds it holds still (blinking) before the flash: your cue to sidestep
-  cooldown: 2.6, // seconds between shots
+  cooldown: 4, // seconds between shots
   firstDelay: 1.2,
   lead: 0.5, // aims where you'll be this many seconds from now
   length: 34,
@@ -89,7 +89,7 @@ export const BURROW = {
   maxUnder: 4.5, // seconds it tunnels before coming up wherever it got to
   speedMultiplier: 2.1, // it's quicker underground
   closeEnough: 1.0, // stops right under you
-  warn: 0.85, // seconds the ring shows before it erupts: move!
+  warn: 1.2, // seconds the ring shows before it erupts: move!
   radius: 2.6, // eruption radius
   damageMultiplier: 1.2,
   balls: 8, // golf balls flung out in a ring

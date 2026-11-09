@@ -121,7 +121,7 @@ import { signatureFor } from './signatures.js'
 // Each regular one also carries its own signature attack (a smaller version of its boss's idea).
 // The regular ones are buffed on top of the numbers above: tougher, harder-hitting, a bit quicker, and their moves come
 // round sooner.
-export const CRAZY_BUFF = { hp: 1.15, damage: 1.05, speed: 1.0, cooldown: 0.92 }
+export const CRAZY_BUFF = { hp: 0.7, damage: 0.65, speed: 0.9, cooldown: 1.4 }
 const ON_HIT = {
   bumble: { status: 'poison', seconds: 2.5 },
   snapper: { status: 'slow', seconds: 1.8, factor: 0.7 },
@@ -144,8 +144,8 @@ const buffed = (e) => {
     speed: +(e.stats.speed * CRAZY_BUFF.speed).toFixed(2),
     specialIntervals: intervals,
     onHit: ON_HIT[e.id], // a status it inflicts on every hit (poison, slow, weaken, drain, stun)
-    trueFraction: e.id === 'kablooma' ? 0.3 : 0.2, // the share of its damage armour can't reduce
-    signature: signature && { ...signature, interval: signature.interval * CRAZY_BUFF.cooldown, damageMultiplier: (signature.damageMultiplier ?? 0.6) * 1.0 },
+    trueFraction: e.id === 'kablooma' ? 0.15 : 0.1, // the share of its damage armour can't reduce
+    signature: signature && { ...signature, interval: signature.interval * CRAZY_BUFF.cooldown, damageMultiplier: (signature.damageMultiplier ?? 0.6) * 0.6 },
   }
 }
 export const CRAZY_TYPES = Object.fromEntries(CRAZY_ENEMIES.map((e) => [e.id, buffed(e)]))

@@ -2339,7 +2339,7 @@ function spawnMonster(game, type, { at = null, effectOptions, hpScale = 1, faceP
     // doesn't just melt them.
     if (CRAZY_TYPE_IDS.includes(type)) {
       const fx = activeFx(game.inventory.equipped)
-      mesh.userData.hp = mesh.userData.maxHp = Math.round(mesh.userData.maxHp * Math.min(1.5, Math.max(1, fx.damage / Math.max(0.55, fx.cooldown))))
+      mesh.userData.hp = mesh.userData.maxHp = Math.round(mesh.userData.maxHp * Math.min(1.15, Math.max(1, fx.damage / Math.max(0.55, fx.cooldown))))
     }
   }
   scene.add(mesh)

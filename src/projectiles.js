@@ -34,7 +34,8 @@ export function fireProjectile(pool, { x, z, vx, vz, damage, color = 0xff5a7a, s
   const slot = pool.slots.find((s) => !s.active)
   if (!slot) return
   slot.active = true
-  slot.data = { x, z, vx, vz, life: ORB_LIFE, damage, radius: ORB_RADIUS * size }
+  // The layer rides the player's jumps and hills, so an orb remembers the height it was fired at.
+  slot.data = { x, z, vx, vz, life: ORB_LIFE, damage, radius: ORB_RADIUS * size, layerY: pool.group.position.y }
   slot.mesh.material.color.setHex(color)
   slot.mesh.scale.setScalar(size)
   slot.mesh.position.set(x, ORB_HEIGHT, z)
@@ -57,7 +58,7 @@ export function updateProjectiles(pool, dt, player, now, arenaRadius, blockers =
       slot.mesh.visible = false
       continue
     }
-    slot.mesh.position.set(slot.data.x, ORB_HEIGHT, slot.data.z)
+    slot.mesh.position.set(slot.data.x, ORB_HEIGHT + slot.data.layerY - pool.group.position.y, slot.data.z)
     slot.mesh.rotation.y += dt * 5
   }
   return hitPlayer
