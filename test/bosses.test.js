@@ -93,12 +93,18 @@ describe('wavesBeforeBoss / bossHpScale', () => {
     expect([0, 1, 2, 3].map(wavesBeforeBoss)).toEqual([1, 2, 3, 4])
   })
 
-  it('warms up over the first three boss fights, then runs at full strength', () => {
-    expect(bossEase(0).hp).toBeLessThan(0.6 * BOSS_BASE.hp + 1e-9)
-    expect(bossEase(0).hp).toBeLessThan(bossEase(1).hp)
-    expect(bossEase(1).hp).toBeLessThan(bossEase(2).hp)
-    expect(bossEase(2).hp).toBeLessThan(bossEase(3).hp)
-    for (const n of [3, 4, 9]) expect(bossEase(n)).toEqual(BOSS_BASE)
+  it('gives every fight full hp but soft hits', () => {
+    for (const n of [0, 3, 9]) expect(bossEase(n)).toEqual(BOSS_BASE)
+    expect(BOSS_BASE.hp).toBeGreaterThanOrEqual(1)
+    expect(BOSS_BASE.damage).toBeLessThan(0.6)
+  })
+
+  it('caps a fast boss to a fair pace early on, loosening each fight', async () => {
+    const { bossSpeedScale } = await import('../src/logic/bosses.js')
+    expect(bossSpeedScale(1.5, 0)).toBe(1) // the Cone Father keeps his pace
+    expect(2.6 * bossSpeedScale(2.6, 0)).toBeCloseTo(1.8)
+    expect(bossSpeedScale(2.6, 3)).toBeGreaterThan(bossSpeedScale(2.6, 0))
+    expect(bossSpeedScale(2.6, 20)).toBe(1)
   })
 
   it('throws up fewer shields and enrages less in the opening fights', async () => {
@@ -110,18 +116,20 @@ describe('wavesBeforeBoss / bossHpScale', () => {
     expect(immunityPhaseReached(50, 100, 0, [0.5])).toBe(0)
     expect(immunityPhaseReached(10, 100, 1, [0.5])).toBeNull()
     expect(bossEnrage(0).damage).toBeLessThan(bossEnrage(5).damage)
+    expect(bossEnrage(5).damage).toBeLessThanOrEqual(1.05)
   })
 
   it('makes later boss fights tougher', () => {
-    expect(bossHpScale(0)).toBeLessThan(BOSS_BASE.hp) // the opener is a warm-up
+    expect(bossHpScale(0)).toBeCloseTo(BOSS_BASE.hp)
     expect(bossHpScale(3)).toBeCloseTo(1.12 ** 3 * BOSS_BASE.hp)
-    expect(bossHpScale(4) / bossHpScale(3)).toBeCloseTo(1.12) // +12% every fight once the easing ends
+    expect(bossHpScale(4) / bossHpScale(3)).toBeCloseTo(1.12) // +12% every fight
     expect(bossHpScale(7)).toBeGreaterThan(bossHpScale(3))
   })
 
   it('hits harder every fight', () => {
-    expect(bossDamageScale(3)).toBeCloseTo(1.07 ** 3 * BOSS_BASE.damage)
+    expect(bossDamageScale(3)).toBeCloseTo(1.05 ** 3 * BOSS_BASE.damage)
     expect(bossDamageScale(5)).toBeGreaterThan(bossDamageScale(4))
+    expect(bossDamageScale(100)).toBe(0.8) // never past the cap
   })
 
   it('attacks more often every fight, down to a floor', () => {

@@ -589,11 +589,13 @@ fields are `attackRange`/`reachBonus` (so big bodies can still hit and be hit),
 `faceLayout.js`'s `bodySurfaceDistance`, so faces sit right on them, and a
 body's resting height comes off its bounding box. A run shuffles the seven
 (`shuffleBossOrder`), so all appear before any repeats. Every boss fight makes
-the next one tougher (the first three fights are a warm-up: `bossEase` scales `BOSS_BASE` (1.0x hp, 0.8x damage) by `BOSS_WARMUP` [0.55, 0.7, 0.85]; `BOSS_HEAD_START` is 0; the opening fights also get fewer immunity shields (`immunityThresholdsFor`) and a milder enrage (`bossEnrage`)): hp compounds
-+25% per fight won (`bossHpScale`), damage +15% (`bossDamageScale`, applied to
-melee and specials alike), each fight teaches the boss one more special it
-lacks from `BOSS_EXTRA_SPECIALS` (`bossSpecialsFor`), and special cooldowns
-shrink 10% per fight down to 40% (`bossCooldownScale`). `main.js` applies these
+the next one tougher, but bosses are tuned to be long, showy fights rather than one-shot machines: full listed hp from the
+first fight (`BOSS_BASE` 1.0x hp) but soft hits (0.45x damage), growing +5% per fight and capped at `BOSS_DAMAGE_CAP` (0.8x);
+hp compounds +12% per fight (`bossHpScale`); `BOSS_HEAD_START` 1 gives every boss one extra special from its first fight
+(`bossSpecialsFor`, from `BOSS_EXTRA_SPECIALS`), plus one more per fight won; special cooldowns shrink 6% per fight
+(`bossCooldownScale`); `bossSpeedScale` caps a fast boss at the Cone Father's pace (1.8) in the opener, the cap rising 0.15 per
+fight; the opening fights get fewer immunity shields (`immunityThresholdsFor`) and the enrage (`bossEnrage`) adds speed and
+attack rate but almost no damage. `main.js` applies these
 at spawn via `monster.js`'s `upgradeBossSpecials` (per-boss `ai.specials` /
 `ai.specialIntervalScale`).
 
@@ -717,7 +719,7 @@ ability bar, pet icons, chest prompt, loot toast) is in `hud.js`.
 
 ## Recent tuning notes
 - Waves: 4 enemies on wave 1, +4 per wave, faster trickle (`waves.js`); in the labyrinth half of spawns bring a second monster.
-- Bosses: `bossEase` no longer softens the opening fights; `BOSS_HEAD_START` makes even the first boss use extra specials.
+- Bosses: full hp, soft hits (`BOSS_BASE.damage` 0.45, capped growth), an extra special from the start, fast bosses speed-capped early.
 - Labyrinth walls block melee, bullets and pets (`monster.js`'s `hasWallLineOfSight` / `isInsideWall`).
 - Ghost Form fades the player (`main.js`'s `setGhostLook`) and counts as hidden for monster perception.
 - Pause menu has a "Main menu" button (reloads to the start card).

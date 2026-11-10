@@ -358,10 +358,11 @@ export function wavesBeforeBoss(bossesDefeated) {
 }
 
 // Bosses get tougher with every boss fight in a run (`bossesDefeated` = fights already won):
-// hp compounds +25% per fight, damage +15% per fight, every fight teaches it one more special
-// move it didn't have, and its special cooldowns shrink 10% per fight (floored at 40%).
+// hp compounds +12% per fight, damage +5% per fight (capped at BOSS_DAMAGE_CAP), every fight teaches it one
+// more special move it didn't have (one extra from the start), and its special cooldowns shrink 6% per fight.
 export const BOSS_HP_GROWTH = 1.12
-export const BOSS_DAMAGE_GROWTH = 1.07
+export const BOSS_DAMAGE_GROWTH = 1.05
+export const BOSS_DAMAGE_CAP = 0.8 // boss damage never grows past this multiple of its listed stat
 // Immunity phases: each time a boss's health first falls to one of these fractions it throws up a shield and can't be
 // hurt until its minions are beaten (or `BOSS_IMMUNITY_SECONDS` run out).
 export const BOSS_IMMUNITY_THRESHOLDS = [0.75, 0.5, 0.25]
@@ -382,13 +383,23 @@ export function immunityThresholdsFor(bossesDefeated) {
 }
 
 // How hard a boss enrages at half health: gentler in the opening fights.
+// Enrage is about more attacks and more speed, barely about harder hits.
 export function bossEnrage(bossesDefeated) {
-  return bossesDefeated < 2 ? { speed: 1.15, interval: 0.85, damage: 1.1 } : { speed: 1.3, interval: 0.65, damage: 1.2 }
+  return bossesDefeated < 2 ? { speed: 1.1, interval: 0.8, damage: 1 } : { speed: 1.2, interval: 0.7, damage: 1.05 }
 }
 
-export const BOSS_BASE = { hp: 1.0, damage: 0.8 } // every boss starts this much tougher than its listed stats
+// Bosses move at most this fast in the first fight (about the Cone Father's pace), and the cap rises a
+// little each fight, so the zippy ones (Zipzilla, Zippy Zoomer...) don't outrun you in the opener.
+export const BOSS_SPEED_CAP = 1.8
+export const BOSS_SPEED_CAP_GROWTH = 0.15
+export function bossSpeedScale(speed, bossesDefeated) {
+  const cap = BOSS_SPEED_CAP + BOSS_SPEED_CAP_GROWTH * Math.max(0, bossesDefeated)
+  return speed > cap ? cap / speed : 1
+}
+
+export const BOSS_BASE = { hp: 1.0, damage: 0.45 } // a boss's first fight: full listed hp, but its hits land soft
 export const BOSS_COOLDOWN_SHRINK = 0.94
-export const BOSS_HEAD_START = 0 // a boss's first fight already counts as this many won, for its moves and cooldowns
+export const BOSS_HEAD_START = 1 // a boss's first fight already counts as this many won, for its moves and cooldowns
 export const BOSS_MIN_COOLDOWN_SCALE = 0.3
 // Moves a boss can pick up on later fights, in the order it learns them (skipping ones it has).
 // `lob` is left out: it needs the Bloater's ranged-attack tuning.
@@ -399,7 +410,7 @@ export function bossHpScale(bossesDefeated) {
 }
 
 export function bossDamageScale(bossesDefeated) {
-  return BOSS_DAMAGE_GROWTH ** bossesDefeated * bossEase(bossesDefeated).damage
+  return Math.min(BOSS_DAMAGE_CAP, BOSS_DAMAGE_GROWTH ** bossesDefeated * bossEase(bossesDefeated).damage)
 }
 
 // Multiplier on every special's cooldown for this fight: lower = attacks more often.
@@ -413,12 +424,10 @@ export function bossSpecialsFor(specials, bossesDefeated) {
   return [...specials, ...extras]
 }
 
-// The first few boss fights of a run go easier (a warm-up), reaching BOSS_BASE by the fourth boss;
-// after that the per-fight growth makes each one a lot harder. Returns multipliers for hp and damage.
-export const BOSS_WARMUP = [0.55, 0.7, 0.85]
-export function bossEase(bossesDefeated) {
-  const k = BOSS_WARMUP[bossesDefeated] ?? 1
-  return { hp: BOSS_BASE.hp * k, damage: BOSS_BASE.damage * k }
+// No hp warm-up any more (bosses should feel like bosses); the opener is kept fair by soft hits
+// (BOSS_BASE.damage), a speed cap and fewer shields instead. Returns multipliers for hp and damage.
+export function bossEase() {
+  return BOSS_BASE
 }
 
 // Special-move timer: counts `timer` down by dt and, when it reaches 0,

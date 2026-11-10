@@ -211,7 +211,7 @@ import {
   updateInventoryHud,
 } from './hud.js'
 import { Input } from './input.js'
-import { bossEnrage, immunityThresholdsFor, BOSS_HEAD_START, BOSS_IMMUNITY_MINIONS, BOSS_IMMUNITY_SECONDS, BOSS_IMMUNITY_THRESHOLDS, bossById, immunityPhaseReached, bossCooldownScale, bossDamageScale, bossHpScale, bossSpecialsFor } from './logic/bosses.js'
+import { bossEnrage, bossSpeedScale, immunityThresholdsFor, BOSS_HEAD_START, BOSS_IMMUNITY_MINIONS, BOSS_IMMUNITY_SECONDS, BOSS_IMMUNITY_THRESHOLDS, bossById, immunityPhaseReached, bossCooldownScale, bossDamageScale, bossHpScale, bossSpecialsFor } from './logic/bosses.js'
 import { fanVelocities } from './logic/projectiles.js'
 import { clampToPlatform, isOnPlatform, resolveArenaMove, spawnPointNearPlayer } from './logic/arena.js'
 import { crystalDrops } from './logic/crystals.js'
@@ -2102,7 +2102,7 @@ function spawnWildMonster(game, type, at, m) {
     mesh.userData.damageScale = bossDamageScale(fights)
     mesh.userData.bossFights = fights
     mesh.userData.immunityThresholds = immunityThresholdsFor(fights)
-    mesh.userData.speedScale = 1
+    mesh.userData.speedScale = bossSpeedScale(stats.speed, fights)
     upgradeBossSpecials(mesh.userData, bossSpecialsFor(stats.specials, fights), bossCooldownScale(fights))
   }
   if (m.elite) {
@@ -3140,6 +3140,7 @@ function startBossCutscene(game) {
   const fights = game.waveState.bossesDefeated
   mesh.userData.damageScale = bossDamageScale(fights)
   mesh.userData.bossFights = fights
+  mesh.userData.speedScale = bossSpeedScale(boss.stats.speed, fights)
   mesh.userData.immunityThresholds = immunityThresholdsFor(fights)
   upgradeBossSpecials(mesh.userData, bossSpecialsFor(boss.stats.specials, fights + BOSS_HEAD_START), bossCooldownScale(fights + BOSS_HEAD_START))
   const dx = player.position.x - at.x
