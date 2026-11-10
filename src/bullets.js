@@ -54,7 +54,10 @@ export function createBulletPool() {
 // any that don't fit in the pool.
 // The layer this pool sits in rides the player's jumps and hills, so a bullet remembers the layer
 // height it was fired at (`layerY`) and stays at that height in the world instead of bobbing with you.
-const localY = (pool, bullet) => (bullet.y ?? BULLET_HEIGHT) + (bullet.layerY ?? pool.group.position.y) - pool.group.position.y
+// In the Wilds the pool has a `groundAt(x, z)` (the terrain height): a shot then hugs the terrain, keeping the height
+// above the ground it was fired at (`lift`, a jump's height), so it neither sinks into a hill nor sails over it.
+const layerOf = (pool, bullet) => (pool.groundAt && bullet.lift != null ? pool.groundAt(bullet.x, bullet.z) + bullet.lift : (bullet.layerY ?? pool.group.position.y))
+const localY = (pool, bullet) => (bullet.y ?? BULLET_HEIGHT) + layerOf(pool, bullet) - pool.group.position.y
 
 export function fireBullets(pool, bullets) {
   for (const bullet of bullets) {
@@ -62,6 +65,7 @@ export function fireBullets(pool, bullets) {
     if (!slot) return
     slot.active = true
     bullet.layerY = pool.group.position.y
+    if (pool.groundAt) bullet.lift = bullet.layerY - pool.groundAt(bullet.x, bullet.z)
     slot.data = bullet
     slot.mesh.material.color.setHex(bullet.color).multiplyScalar(BULLET_BRIGHTNESS)
     slot.mesh.scale.setScalar(bullet.radius)
@@ -92,7 +96,7 @@ export function updateBullets(pool, dt, { monsters, obstacles, particleSystem, h
     if (!slot.active) continue
     const bullet = slot.data
     const from = { x: bullet.x, z: bullet.z }
-    const launchY = bullet.layerY ?? pool.group.position.y
+    const launchY = layerOf(pool, bullet)
     for (const t of targets) {
       t.y0 = t.w0 - launchY
       t.y1 = t.w1 - launchY

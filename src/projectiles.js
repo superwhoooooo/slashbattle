@@ -12,6 +12,9 @@ const ORB_RADIUS = 0.32
 const ORB_HEIGHT = 0.7
 const ORB_LIFE = 3.2
 
+// In the Wilds `pool.groundAt` makes an orb hug the terrain (see bullets.js) instead of flying into a hill.
+const orbLayer = (pool, d) => (pool.groundAt && d.lift != null ? pool.groundAt(d.x, d.z) + d.lift : d.layerY)
+
 export function createProjectilePool() {
   const group = new THREE.Group()
   const geometry = new THREE.IcosahedronGeometry(ORB_RADIUS, 1)
@@ -35,7 +38,8 @@ export function fireProjectile(pool, { x, z, vx, vz, damage, color = 0xff5a7a, s
   if (!slot) return
   slot.active = true
   // The layer rides the player's jumps and hills, so an orb remembers the height it was fired at.
-  slot.data = { x, z, vx, vz, life: ORB_LIFE, damage, radius: ORB_RADIUS * size, layerY: pool.group.position.y }
+  const layerY = pool.group.position.y
+  slot.data = { x, z, vx, vz, life: ORB_LIFE, damage, radius: ORB_RADIUS * size, layerY, lift: pool.groundAt ? layerY - pool.groundAt(x, z) : null }
   slot.mesh.material.color.setHex(color)
   slot.mesh.scale.setScalar(size)
   slot.mesh.position.set(x, ORB_HEIGHT, z)
@@ -58,7 +62,7 @@ export function updateProjectiles(pool, dt, player, now, arenaRadius, blockers =
       slot.mesh.visible = false
       continue
     }
-    slot.mesh.position.set(slot.data.x, ORB_HEIGHT + slot.data.layerY - pool.group.position.y, slot.data.z)
+    slot.mesh.position.set(slot.data.x, ORB_HEIGHT + orbLayer(pool, slot.data) - pool.group.position.y, slot.data.z)
     slot.mesh.rotation.y += dt * 5
   }
   return hitPlayer

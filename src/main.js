@@ -564,10 +564,18 @@ function swishEelTail(mesh, time) {
     pivot.rotation.y = amp * Math.sin(time * freq - i * 0.9)
   })
 }
+// Holding Shift sprints (a water room keeps Shift for diving).
+const SHIFT_SPRINT_MULTIPLIER = 1.5
+function holdSprinting() {
+  return !waterRoom() && !game?.player?.hidden && (input.isDown('ShiftLeft') || input.isDown('ShiftRight'))
+}
 function applyFxDepth() {
   const ground = game?.world?.groundY ?? 0 // on hills, shots / sparks / rings / crystals ride up with the player
   crystalSystem.mesh.position.y = ground
   const y = fxDepthOffset() + ground
+  const hug = game?.world ? heightAt : null // shots follow the hills instead of flying into them
+  bulletPool.groundAt = hug
+  projectilePool.groundAt = hug
   for (const group of [particleSystem.group, projectilePool.group, shockwavePool.group, bulletPool.group]) group.position.y = y
 }
 
@@ -4611,7 +4619,7 @@ function gameFrame(timestamp) {
   if (!sandbox && game.inventory.pets.some((id) => !profile.collection.includes(id))) {
     setProfile(addToCollection(profile, game.inventory.pets))
   }
-  player.speedMultiplier = petFx.speedMultiplier * perk.speed * (elapsedSeconds < player.sprintUntil ? SPRINT_SPEED_MULTIPLIER : 1) * (elapsedSeconds < (player.whirlUntil ?? -Infinity) ? 1.3 : 1) * player.speedFactor(elapsedSeconds)
+  player.speedMultiplier = petFx.speedMultiplier * perk.speed * (holdSprinting() ? SHIFT_SPRINT_MULTIPLIER : 1) * (elapsedSeconds < player.sprintUntil ? SPRINT_SPEED_MULTIPLIER : 1) * (elapsedSeconds < (player.whirlUntil ?? -Infinity) ? 1.3 : 1) * player.speedFactor(elapsedSeconds)
   if (player.stepStatus(elapsedSeconds)) burst(particleSystem, { x: player.position.x, y: 1.1, z: player.position.z }, STATUS_COLORS.poison, 3, 1.5)
   if (game.world) {
     const jump = game.world.jump

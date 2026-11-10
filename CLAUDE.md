@@ -56,6 +56,7 @@ record.
 - [ / ] — cycle the scope / ammo of the rifle in your hands (J opens the Gunsmith)
 - Shift (or E with no suitcase near) — in a water room: dive / surface
 - 1-5 — pick a weapon from the hotbar (melee or firearm)
+- Shift — hold to sprint (1.5x speed; in a water room it dives instead)
 - Q / Z / X / C / V — use your abilities, in the order you found them
 - 0 — toggle first-person view (pointer-locked mouse look; W moves along the view, every weapon aims where you look; Esc or 0 exits)
 - N — open the Dragon Den (customize your dragons' scale and breath); in the Wilds (free roam) N shoots/swings instead and Space jumps (`logic/jump.js`: a plain hop, not an ability); Space again in the air opens the paraglider (`src/glider.js`: slow steady sink, 1.7x speed; Space folds it); E near a villager talks

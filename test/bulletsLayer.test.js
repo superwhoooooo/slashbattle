@@ -34,4 +34,17 @@ describe('bullets and the jump layer', () => {
     expect(slot.active).toBe(true)
     expect(worldY(pool, slot)).toBeGreaterThan(2.5)
   })
+
+  it('on hills a shot hugs the terrain instead of sinking into a rising slope', () => {
+    const pool = createBulletPool()
+    pool.groundAt = (x, z) => 5 + z * 0.5 // a steady slope up along +z
+    pool.group.position.y = 5 // you stand at the bottom of it
+    fireBullets(pool, makeBullets(WEAPONS.staff, { x: 0, z: 0, aimAngle: 0 }))
+    const slot = pool.slots.find((s) => s.active)
+    for (let i = 0; i < 20; i++) updateBullets(pool, 1 / 60, opts)
+    const z = slot.data.z
+    expect(z).toBeGreaterThan(1)
+    expect(worldY(pool, slot)).toBeGreaterThan(pool.groundAt(0, z)) // above the slope there, not buried in it
+    expect(worldY(pool, slot)).toBeLessThan(pool.groundAt(0, z) + 2)
+  })
 })
