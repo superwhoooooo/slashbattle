@@ -30,7 +30,7 @@ export const CRAZY_ENEMIES = [
     id: 'sporeling',
     name: 'Sporeling',
     unlock: 3,
-    stats: { shape: 'cone', size: 1.4, color: 0xe0527a, edgeColor: 0xffc0d0, speed: 1.6, hp: 85, damage: 9, radius: 0.6, accessory: 'cap', attackRange: 9, specials: ['barrage'], specialIntervals: { barrage: 5 } },
+    stats: { shape: 'cone', size: 1.4, color: 0xe0527a, edgeColor: 0xffc0d0, speed: 1.6, hp: 85, damage: 9, radius: 0.6, accessory: 'cap', attackRange: 9, noMelee: true }, // no touch damage: it only shoots (RANGED_ATTACKS.sporeling)
     boss: {
       id: 'boss_sporeling', name: 'GRAND SHROOMBAH', title: 'Mushroom for Improvement', specials: ['barrage', 'summon', 'spin', 'leap'], score: 1700,
       stats: { shape: 'cone', size: 4.2, color: 0xd03a6a, edgeColor: 0xffc0d0, speed: 1.9, hp: 1300, damage: 17, radius: 1.8, accessory: 'cap', attackRange: 12 },

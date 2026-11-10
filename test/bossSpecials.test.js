@@ -245,3 +245,40 @@ describe('the mirror enemy', () => {
     expect(Math.abs(slow.rotation.y)).toBeLessThan(Math.abs(quick.rotation.y))
   })
 })
+
+describe('no touch-free damage', () => {
+  // Strips specials and signatures so only the plain melee path could hurt the player.
+  function plain(id, x, z) {
+    const m = fakeBoss(id, x, z)
+    m.userData.specials = []
+    m.userData.specialTimers = {}
+    m.userData.signatureTimer = Infinity
+    m.userData.state = 'attack'
+    m.userData.stateEnteredAt = 0
+    return m
+  }
+
+  it('long-range casters never land a melee hit from across the deck', () => {
+    for (const id of ['sporeling', 'boogle', 'boss_sporeling', 'boss_boogle', 'boss_wispy']) {
+      const player = fakePlayer(0, 8)
+      run(plain(id, 0, 0), player, 4)
+      expect(player.hits, id).toEqual([])
+    }
+  })
+
+  it('the Sporeling just shoots three small orbs', () => {
+    const spore = plain('sporeling', 0, 0)
+    const player = fakePlayer(0, 7)
+    const shots = run(spore, player, 6).filter((e) => e.type === 'shoot')
+    expect(shots.length).toBeGreaterThan(0)
+    expect(shots[0].count).toBe(3)
+    expect(shots[0].damage).toBeLessThan(MONSTER_TYPES.sporeling.damage)
+    expect(player.hits).toEqual([])
+  })
+
+  it('a monster right next to you still hits', () => {
+    const player = fakePlayer(0, 1)
+    run(plain('blobbo', 0, 0), player, 3)
+    expect(player.hits.length).toBeGreaterThan(0)
+  })
+})

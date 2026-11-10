@@ -15,6 +15,8 @@
 export const RANGED_ATTACKS = {
   bloater: { kind: 'lob', interval: 3.4, flight: 1.0, puddleRadius: 2.1, puddleLife: 4.5, tick: 0.6, keepAway: 6, windup: 0.6 },
   spinner: { kind: 'shoot', interval: 2.1, count: 3, spread: 0.5, speed: 8.5, orbSize: 0.6, keepAway: 4, windup: 0.4, spins: true },
+  // The Sporeling: no melee and no boss moves, just a little puff of 3 small spore shots at you.
+  sporeling: { kind: 'shoot', interval: 2.6, count: 3, spread: 0.35, speed: 7, orbSize: 0.4, keepAway: 5, windup: 0.5, damageMultiplier: 0.5 },
   // The boss versions: the same trick, bigger.
   boss_bloater: { kind: 'lob', interval: 3.0, flight: 1.0, puddleRadius: 3.2, puddleLife: 5.5, tick: 0.6, keepAway: 7, windup: 0.6 },
   boss_spinner: { kind: 'shoot', interval: 1.8, count: 5, spread: 0.8, speed: 9, orbSize: 0.9, keepAway: 5, windup: 0.4, spins: true },

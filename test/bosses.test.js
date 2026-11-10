@@ -185,8 +185,20 @@ describe('signature attacks', () => {
   it('gives each new regular enemy a signature and at least two moves', async () => {
     const { CRAZY_TYPES } = await import('../src/logic/crazyEnemies.js')
     for (const [id, stats] of Object.entries(CRAZY_TYPES)) {
+      if (id === 'sporeling') continue // deliberately simple: just its 3-shot puff
       expect(stats.signature, id).toBeTruthy()
     }
+  })
+
+  it('keeps the Sporeling simple: no melee, no boss moves, three small shots', async () => {
+    const { CRAZY_TYPES } = await import('../src/logic/crazyEnemies.js')
+    const { RANGED_ATTACKS } = await import('../src/logic/enemies.js')
+    const spore = CRAZY_TYPES.sporeling
+    expect(spore.noMelee).toBe(true)
+    expect(spore.specials ?? []).toEqual([])
+    expect(spore.signature).toBeFalsy()
+    expect(RANGED_ATTACKS.sporeling).toMatchObject({ kind: 'shoot', count: 3 })
+    expect(RANGED_ATTACKS.sporeling.orbSize).toBeLessThan(RANGED_ATTACKS.spinner.orbSize)
   })
 })
 

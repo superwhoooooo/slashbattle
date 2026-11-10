@@ -724,6 +724,7 @@ ability bar, pet icons, chest prompt, loot toast) is in `hud.js`.
 - Ghost Form fades the player (`main.js`'s `setGhostLook`) and counts as hidden for monster perception.
 - Pause menu has a "Main menu" button (reloads to the start card).
 - New weapons borrow a base weapon's model/swing/fx via `items.js`'s `WEAPON_BASE`/`weaponBase`.
+- Melee only lands within arm's reach (`monster.js`'s `MELEE_REACH_SLACK`: radius + 2.5, center to center), so long-range casters (attackRange 9-14) never hurt you just for being near; only their visible shots do.
 
 ## Profile, hub, skill tree (per device)
 `src/logic/profile.js` (pure) + `src/profile.js` (localStorage `slashbattle:profile`, try/catch) hold what
@@ -769,7 +770,7 @@ Grumpus Maximus, Duke Bloatsworth, Spinner Supreme, Splitzilla, Sir Reflectalot,
 
 ## The ten crazy enemies
 `src/logic/crazyEnemies.js` (pure data) adds ten regular enemies, each with a CRAZY boss form: **Bumblo** (wings, charges) ->
-Queen Bumbletron, **Snapper** (claws, spins) -> King Crabulon, **Sporeling** (mushroom cap, spore orbs) -> Grand Shroombah,
+Queen Bumbletron, **Snapper** (claws, spins) -> King Crabulon, **Sporeling** (mushroom cap; no melee, no specials, no signature: just `RANGED_ATTACKS.sporeling`, a puff of 3 small half-damage orbs) -> Grand Shroombah,
 **Boogle** (halo, ghost orbs) -> Phantom Prince, **Kablooma** (lit fuse, leaps) -> Big Kaboom, **Icicle** (ice shards,
 slides) -> Blizzard Baron, **Prickle Pete** (spins) -> General Cactus, **Wispy** (flame, blinks) -> Will-o-the-Whimsy,
 **Drillbit** (spinning drill, charges) -> Drillzilla, **Twister** (whirling rings, spins) -> Cyclone CEO. A regular one has one

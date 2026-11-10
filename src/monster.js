@@ -29,6 +29,9 @@ import { dampAngle } from './logic/smoothing.js'
 import { BANDIT, BURROW, SNIPE, createBurrowState, createSnipeState, fleeTarget, isBurrowed, snipeAim, stepBurrow, stepSnipe } from './logic/shadyGuests.js'
 import { statusTimeScale, TIME_WARP_FACTOR } from './logic/status.js'
 
+// How far past its own body a monster's melee swing can reach (center to center: radius + this).
+export const MELEE_REACH_SLACK = 2.5
+
 // The Time Warp ability slows every monster to `factor` of the clock until `until`.
 export const timeWarp = { until: -Infinity, factor: TIME_WARP_FACTOR }
 export function setTimeWarp(until, factor = TIME_WARP_FACTOR) {
@@ -631,7 +634,7 @@ function stepRanged(monster, ai, ranged, player, obstacles, speed, dt, events) {
   if (ai.rangedTimer > 0) return moved
   // The faster they're scaled up, the sooner the next shot.
   ai.rangedTimer = ranged.interval / Math.max(1, 0.5 + ai.speedScale * 0.5)
-  const damage = Math.round(MONSTER_TYPES[ai.type].damage * ai.damageScale)
+  const damage = Math.max(1, Math.round(MONSTER_TYPES[ai.type].damage * (ranged.damageMultiplier ?? 1) * ai.damageScale))
 
   if (ranged.kind === 'lob') {
     const lead = predictPosition(player.position, ai.playerVel, ranged.flight)
@@ -798,7 +801,10 @@ export function updateMonster(monster, player, obstacles, dt, now) {
     monster.rotation.y = dampAngle(monster.rotation.y, Math.atan2(dx, dz), MONSTER_FACING_DAMPING, dt)
     ai.speed = 0
 
-    if (!stats.noMelee && ai.attackCooldown.ready(now)) {
+    // A melee hit needs the player within arm's reach. Casters that stop far off (attackRange 9-14: ghosts,
+    // wisps, mushrooms...) never land an invisible "melee" hit from across the deck; only their real shots hurt.
+    const inReach = Math.hypot(dx, dz) <= (stats.radius ?? 0.6) + MELEE_REACH_SLACK
+    if (!stats.noMelee && inReach && ai.attackCooldown.ready(now)) {
       ai.windUpElapsed = (ai.windUpElapsed ?? 0) + dt
       // Feeds the jelly hit spring a little inflate every frame of the
       // telegraph, so the body visibly puffs up as it charges the hit;

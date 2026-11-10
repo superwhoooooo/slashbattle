@@ -49,7 +49,6 @@ export const SIGNATURES = {
 Object.assign(SIGNATURES, {
   bumble: { label: 'STINGER BURST', kind: 'ring', interval: 7, windup: 0.6, color: 0xffd23a, damageMultiplier: 0.5, count: 8, rings: 1, twist: 0, stagger: 0, speed: 8, size: 0.6 },
   snapper: { label: 'CLAW CLACK', kind: 'wall', interval: 8, windup: 0.7, color: 0xff8a6a, damageMultiplier: 0.5, count: 5, gap: 1, spacing: 1, speed: 8, sideways: true },
-  sporeling: { label: 'SPORE POOFS', kind: 'puddles', interval: 8, windup: 0.8, color: 0xff9ad0, damageMultiplier: 0.4, count: 3, radius: 1.6, life: 5, layout: 'scatter' },
   boogle: { label: 'BOO!', kind: 'rain', interval: 13, windup: 0.9, color: 0xdfe6ff, damageMultiplier: 0.4, count: 1, delay: 0.9, radius: 2.2, mode: 'player' },
   kablooma: { label: 'FUSE POP', kind: 'nova', interval: 8, windup: 0.9, color: 0xff8a3a, damageMultiplier: 0.8, radii: [3, 6], gap: 0.4 },
   icicle: { label: 'ICE VOLLEY', kind: 'shotgun', interval: 6, windup: 0.5, color: 0x9fe8ff, damageMultiplier: 0.5, count: 5, spread: 0.5, speed: 11, mirror: false },
