@@ -62,7 +62,7 @@ export function stepBullet(bullet, dt, targets) {
   const hits = []
   if (!alive) return { alive, hits }
   bullet.y = (bullet.y ?? BULLET_START_Y) + (bullet.vy ?? 0) * dt
-  if (bullet.y < 0 || bullet.y > BULLET_MAX_Y) return { alive: false, hits }
+  if (bullet.y < (bullet.minY ?? 0) || bullet.y > BULLET_MAX_Y) return { alive: false, hits } // minY: the Wilds' terrain check takes over
   for (const target of targets) {
     if (bullet.hitIds.has(target.id)) continue
     // A target with a vertical extent (y0..y1) is missed by a shot flying over or under it.

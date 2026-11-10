@@ -122,6 +122,7 @@ export function updatePlayerAttack(
           z: player.position.z + Math.cos(player.facing) * muzzle,
           aimAngle: player.facing,
           slope: player.aimSlope ?? 0, // up / down aim (main.js sets it from the look pitch or the cursor)
+          ...(player.aimStartY != null ? { startY: player.aimStartY } : {}), // first person: leaves from the eye, along the crosshair's ray
           damageMultiplier: computeDamage(damageMultiplier, { ambush }),
           knockbackMultiplier,
           ambush,

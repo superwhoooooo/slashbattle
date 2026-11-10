@@ -573,8 +573,9 @@ function applyFxDepth() {
   const ground = game?.world?.groundY ?? 0 // on hills, shots / sparks / rings / crystals ride up with the player
   crystalSystem.mesh.position.y = ground
   const y = fxDepthOffset() + ground
-  const hug = game?.world ? heightAt : null // shots follow the hills instead of flying into them
-  bulletPool.groundAt = hug
+  const hug = game?.world ? heightAt : null // enemy orbs, and third-person shots, follow the hills instead of flying into them
+  bulletPool.groundAt = firstPerson ? null : hug // first-person shots fly the crosshair's straight ray
+  bulletPool.terrainAt = hug
   projectilePool.groundAt = hug
   for (const group of [particleSystem.group, projectilePool.group, shockwavePool.group, bulletPool.group]) group.position.y = y
 }
@@ -702,11 +703,32 @@ const aimNdc = new THREE.Vector2()
 function screenAimAngle(player, clientX, clientY) {
   aimNdc.set((clientX / window.innerWidth) * 2 - 1, -(clientY / window.innerHeight) * 2 + 1)
   aimRaycaster.setFromCamera(aimNdc, camera)
-  if (!aimRaycaster.ray.intersectPlane(aimPlane, aimPoint)) return null
+  if (game?.world) {
+    // On the hills the cursor points at the terrain itself: march the ray down onto the ground.
+    if (!rayOntoTerrain(aimRaycaster.ray, aimPoint)) return null
+  } else if (!aimRaycaster.ray.intersectPlane(aimPlane, aimPoint)) return null
   const dx = aimPoint.x - player.position.x
   const dz = aimPoint.z - player.position.z
   if (Math.hypot(dx, dz) < 0.3) return null
   return Math.atan2(dx, dz)
+}
+
+// Marches a ray until it dips below the Wilds' terrain (at bullet height); false if it never does.
+function rayOntoTerrain(ray, out) {
+  const { origin, direction } = ray
+  if (direction.y >= -1e-4) return false
+  let t = 0
+  for (let i = 0; i < 400; i++) {
+    t += i < 60 ? 1 : 3
+    const x = origin.x + direction.x * t
+    const y = origin.y + direction.y * t
+    const z = origin.z + direction.z * t
+    if (y <= heightAt(x, z) + 0.7) {
+      out.set(x, y, z)
+      return true
+    }
+  }
+  return false
 }
 
 function mouseAimAngle(player) {
@@ -722,7 +744,7 @@ const aimProject = new THREE.Vector3()
 const TOUCH_AIM_REACH = 220 // px from the player the stick's full push points at
 function touchAimAngle(player) {
   if (!input.touchAim.aiming) return null
-  aimProject.set(player.position.x, 0.7, player.position.z).project(camera)
+  aimProject.set(player.position.x, 0.7 + (game?.world?.groundY ?? 0), player.position.z).project(camera)
   const sx = (aimProject.x * 0.5 + 0.5) * window.innerWidth
   const sy = (-aimProject.y * 0.5 + 0.5) * window.innerHeight
   return screenAimAngle(player, sx + input.touchAim.dx * TOUCH_AIM_REACH, sy + input.touchAim.dy * TOUCH_AIM_REACH)
@@ -734,12 +756,19 @@ function touchAimAngle(player) {
 // something floating or swimming), otherwise they fly level.
 const FP_CONVERGE = 20
 const FP_EYE_HEIGHT = 1.5
+const FP_MUZZLE = 0.9 // combat.js's muzzle offset: the shot starts this far ahead of the eye
 const aimSphere = new THREE.Sphere()
 const aimHit = new THREE.Vector3()
 function aimSlopeFor(player, game) {
+  player.aimStartY = null
   if (firstPerson) {
-    const eye = waterRoom() ? BULLET_START_Y : FP_EYE_HEIGHT // underwater the eye is at the swimmer's depth
-    return clampSlope((eye + Math.tan(fpPitch) * FP_CONVERGE - BULLET_START_Y) / FP_CONVERGE)
+    // Like Shardfall: on land the shot leaves from the eye and flies straight along the view ray, so it lands
+    // exactly on the crosshair at every distance. Underwater the eye sits at the swimmer's depth (the old converge).
+    if (!waterRoom()) {
+      player.aimStartY = FP_EYE_HEIGHT + Math.tan(fpPitch) * FP_MUZZLE
+      return clampSlope(Math.tan(fpPitch))
+    }
+    return clampSlope((BULLET_START_Y + Math.tan(fpPitch) * FP_CONVERGE - BULLET_START_Y) / FP_CONVERGE)
   }
   if (input.touchMode || !input.mouse.moved) return 0
   aimNdc.set((input.mouse.x / window.innerWidth) * 2 - 1, -(input.mouse.y / window.innerHeight) * 2 + 1)
@@ -757,7 +786,8 @@ function aimSlopeFor(player, game) {
     const distance = aimHit.distanceTo(aimRaycaster.ray.origin)
     if (distance < bestDistance) {
       bestDistance = distance
-      best = { y: aimSphere.center.y - layerY, x: mesh.position.x, z: mesh.position.z }
+      // a hugging shot's height is measured from the ground under it, so use the monster's height above its own ground
+      best = { y: game.world ? aimSphere.center.y - mesh.position.y - (layerY - heightAt(player.position.x, player.position.z)) : aimSphere.center.y - layerY, x: mesh.position.x, z: mesh.position.z }
     }
   }
   if (!best) return 0
@@ -1617,7 +1647,7 @@ function activateAbility(game, slot, now) {
       knockback: 1.2,
       bullet: { speed: 24, life: 0.6, radius: 0.26, pierce: 1, explode: 0, color: 0xff5fa8 },
     }
-    fireBullets(bulletPool, makeBullets(fan, { x: player.position.x, z: player.position.z, aimAngle: player.facing, slope: player.aimSlope ?? 0, damageMultiplier: elapsedDamageMultiplier(player, now) }))
+    fireBullets(bulletPool, makeBullets(fan, { x: player.position.x, z: player.position.z, aimAngle: player.facing, slope: player.aimSlope ?? 0, startY: player.aimStartY != null ? FP_EYE_HEIGHT : BULLET_START_Y, damageMultiplier: elapsedDamageMultiplier(player, now) }))
     burst(particleSystem, center, 0xff5fa8, 20, 3)
   } else if (used.abilityId === 'dizzy') {
     const def = ABILITIES.dizzy
@@ -1661,7 +1691,7 @@ function activateAbility(game, slot, now) {
       knockback: 1.4,
       bullet: { speed: 30, life: 0.8, radius: 0.9, pierce: 99, explode: 0, color: 0x9fe4ff, freeze: def.freeze },
     }
-    fireBullets(bulletPool, makeBullets(lance, { x: player.position.x, z: player.position.z, aimAngle: player.facing, slope: player.aimSlope ?? 0, damageMultiplier: elapsedDamageMultiplier(player, now) }))
+    fireBullets(bulletPool, makeBullets(lance, { x: player.position.x, z: player.position.z, aimAngle: player.facing, slope: player.aimSlope ?? 0, startY: player.aimStartY != null ? FP_EYE_HEIGHT : BULLET_START_Y, damageMultiplier: elapsedDamageMultiplier(player, now) }))
     burst(particleSystem, center, 0xbfeaff, 26, 4)
     streak(player.position, { x: player.position.x + Math.sin(player.facing) * 12, z: player.position.z + Math.cos(player.facing) * 12 }, 0xbfeaff, 14)
     warp.add('ripple', player.position.x + Math.sin(player.facing) * 2, player.position.z + Math.cos(player.facing) * 2, 3, 0.4)
@@ -4603,7 +4633,11 @@ function gameFrame(timestamp) {
     : WEAPONS[selectedWeaponId(game.inventory)].gun
       ? mouseAimAngle(player)
       : null
-  player.aimSlope = WEAPONS[selectedWeaponId(game.inventory)].gun ? aimSlopeFor(player, game) : 0
+  if (WEAPONS[selectedWeaponId(game.inventory)].gun) player.aimSlope = aimSlopeFor(player, game)
+  else {
+    player.aimSlope = 0
+    player.aimStartY = null
+  }
   const petFx = petEffects(game.inventory.pets, profile.pets)
   // In the Wilds, wayshrine boons (and the merchant's tonics) fold into the same effect set.
   const perk = game.world ? foldBoons(activeFx(game.inventory.equipped), boonEffects(game.world.shrines, elapsedSeconds)) : activeFx(game.inventory.equipped)

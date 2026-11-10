@@ -56,7 +56,8 @@ export function createBulletPool() {
 // height it was fired at (`layerY`) and stays at that height in the world instead of bobbing with you.
 // In the Wilds the pool has a `groundAt(x, z)` (the terrain height): a shot then hugs the terrain, keeping the height
 // above the ground it was fired at (`lift`, a jump's height), so it neither sinks into a hill nor sails over it.
-const layerOf = (pool, bullet) => (pool.groundAt && bullet.lift != null ? pool.groundAt(bullet.x, bullet.z) + bullet.lift : (bullet.layerY ?? pool.group.position.y))
+// (`bullet.ground` is that function, kept per bullet: first-person shots set none and fly the crosshair's straight ray.)
+const layerOf = (pool, bullet) => (bullet.ground && bullet.lift != null ? bullet.ground(bullet.x, bullet.z) + bullet.lift : (bullet.layerY ?? pool.group.position.y))
 const localY = (pool, bullet) => (bullet.y ?? BULLET_HEIGHT) + layerOf(pool, bullet) - pool.group.position.y
 
 export function fireBullets(pool, bullets) {
@@ -65,7 +66,11 @@ export function fireBullets(pool, bullets) {
     if (!slot) return
     slot.active = true
     bullet.layerY = pool.group.position.y
-    if (pool.groundAt) bullet.lift = bullet.layerY - pool.groundAt(bullet.x, bullet.z)
+    if (pool.terrainAt) bullet.minY = -Infinity // on hills the terrain (below) spends it, so it can fly down into a valley
+    if (pool.groundAt) {
+      bullet.ground = pool.groundAt
+      bullet.lift = bullet.layerY - pool.groundAt(bullet.x, bullet.z)
+    }
     slot.data = bullet
     slot.mesh.material.color.setHex(bullet.color).multiplyScalar(BULLET_BRIGHTNESS)
     slot.mesh.scale.setScalar(bullet.radius)
@@ -135,6 +140,12 @@ export function updateBullets(pool, dt, { monsters, obstacles, particleSystem, h
         if (Math.hypot(target.x - bullet.x, target.z - bullet.z) > bullet.explode + target.radius) continue
         damageMonster(target.mesh, bulletDamage(bullet).damage * 0.6, { fromPos: { x: bullet.x, z: bullet.z }, knockback: bullet.knockback, obstacles, particleSystem, cause: bullet.cause, ambush: bullet.ambush, hitstop })
       }
+    }
+    // A straight shot (first person) that meets a rising hill is spent against it instead of flying on inside it.
+    if (alive && pool.terrainAt && layerOf(pool, bullet) + (bullet.y ?? BULLET_HEIGHT) < pool.terrainAt(bullet.x, bullet.z) - 0.1) {
+      if (particleSystem) burst(particleSystem, { x: bullet.x, y: localY(pool, bullet), z: bullet.z }, scaleHex(bullet.color, BULLET_BRIGHTNESS), 6, 2)
+      retire(slot)
+      continue
     }
     if (!alive || !isOnPlatform(bullet, arenaRadius + 6)) {
       retire(slot)
