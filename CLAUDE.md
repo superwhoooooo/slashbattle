@@ -219,7 +219,12 @@ obstacles in `game.obstacles`, and re-bakes the environment map. Each level's
 `props.style` picks its own prop models from `src/props.js`'s `PROP_STYLES`
 (`feature` replaces the umbrellas, `seat` the loungers): ice crystal clusters and
 snow mounds, volcanic spires and lava rocks, neon pylons and speaker boxes,
-lollipops and gumdrops. A restart
+lollipops and gumdrops. The move is a **hyperspace jump** (`logic/levelTransition.js`'s pure
+timeline: `wait` 1.6s of play, then the world freezes for the `charge` (star streaks in the next place's
+sky colours, a rising `hyperspace` sound, a lurch), a full-white `hold` behind which `changeLevel` swaps
+the place, and a `reveal` where the camera swoops down from `cameraLift` above while a "NOW ARRIVING"
+boarding-pass card shows the new name and one of its sign lines, with an `arrive` boom). `src/levelTransition.js`
+draws it (a 2D canvas + DOM card); `main.js`'s `runLevelTransition` drives it. The sandbox's level jumps stay instant. A restart
 returns to the first place.
 
 ## The Wilds (free roam world)

@@ -22,6 +22,8 @@ import {
   spikeState,
 } from './logic/maze.js'
 import { levelAt, levelIndexAfterBosses } from './logic/levels.js'
+import { createTransition, stepTransition, TRANSITION } from './logic/levelTransition.js'
+import { createTransitionOverlay } from './levelTransition.js'
 import { iconImg } from './icons.js'
 import { PICKUP_RADIUS, createPerkPickup, updatePerkPickup } from './pickups.js'
 import { createLoadoutPanel } from './loadout.js'
@@ -448,6 +450,7 @@ scene.add(particleSystem.group)
 const swingTrail = createSwingTrail(SWORD_BLADE_COLOR)
 scene.add(swingTrail.mesh)
 const popupPool = createPopupPool()
+const transitionOverlay = createTransitionOverlay() // the hyperspace jump between places
 scene.add(popupPool.group)
 const crystalSystem = createCrystalSystem()
 scene.add(crystalSystem.mesh)
@@ -3787,6 +3790,51 @@ function changeLevel(game, levelIndex) {
   return level
 }
 
+// Steps the hyperspace jump to the next place. Returns true while the world is frozen for it (the
+// caller then just renders): the charge, the swap behind the white flash, and the camera's swoop down.
+function runLevelTransition(game, deltaSeconds, elapsedSeconds) {
+  const before = game.levelTransition
+  const { state, frame, swapNow, arriveNow } = stepTransition(before, deltaSeconds)
+  game.levelTransition = state
+  transitionOverlay.draw(frame, deltaSeconds)
+  const level = levelAt(state.levelIndex)
+  if (before.t < TRANSITION.wait && state.t >= TRANSITION.wait) {
+    sfx.play('hyperspace')
+    triggerShake(game.shake, 0.3, 1.2)
+  }
+  if (swapNow) {
+    changeLevel(game, state.levelIndex)
+    attractAllCrystals(crystalSystem) // nothing left behind on the old deck
+  }
+  if (arriveNow) {
+    const signs = level.props?.signTexts ?? level.signTexts ?? []
+    transitionOverlay.arrive(level, signs.length ? `"${signs[Math.floor(Math.random() * signs.length)]}"` : '')
+    sfx.play('arrive')
+  }
+  if (frame.done) {
+    game.levelTransition = null
+    transitionOverlay.draw(null, 0)
+    return false
+  }
+  if (!frame.frozen) return false
+
+  // Frozen: the camera rises through the charge and swoops back down onto the new place.
+  const { player } = game
+  const offset = player.hidden ? HIDDEN_CAMERA_OFFSET : CAMERA_OFFSET
+  const lift = frame.phase === 'charge' ? 0 : frame.camLift
+  cameraTarget.set(player.position.x + offset.x, offset.y + lift, player.position.z + offset.z + lift * 0.35)
+  if (frame.phase === 'hold') camera.position.copy(cameraTarget) // hidden by the white: jump straight up there
+  else camera.position.lerp(cameraTarget, 1 - Math.exp(-(frame.phase === 'charge' ? 2 : 9) * deltaSeconds))
+  if (frame.phase === 'charge') camera.position.z -= deltaSeconds * 6 // a lurch forward into the jump
+  const shakeOffset = updateShake(game.shake, deltaSeconds)
+  camera.position.x += shakeOffset.x
+  camera.position.y += shakeOffset.y
+  camera.lookAt(player.position.x, 1, player.position.z)
+  updateArena(game.arena, player.position, elapsedSeconds)
+  updateParticles(particleSystem, deltaSeconds)
+  return true
+}
+
 // Chests and suitcases already standing around when the place changes are rebuilt in the new
 // place's look (same spot, same price). A suitcase someone is hiding in is left alone.
 function reskinContainers(game) {
@@ -4265,6 +4313,7 @@ function restartGame() {
   if (waterState.diving) setFirstPerson(false)
   disposeGame(game)
   game = createGame()
+  transitionOverlay.reset()
   resetWater()
   resetParticles(particleSystem)
   resetPopups(popupPool)
@@ -4548,6 +4597,11 @@ function gameFrame(timestamp) {
     input.endFrame()
     return
   }
+  if (game.levelTransition && runLevelTransition(game, deltaSeconds, elapsedSeconds)) {
+    composer.render()
+    input.endFrame()
+    return
+  }
   const { state: nextHitstop, scale: hitstopScale } = stepHitstop(game.hitstop, deltaSeconds)
   game.hitstop = nextHitstop
   const gameplayDelta = deltaSeconds * hitstopScale
@@ -4593,7 +4647,12 @@ function gameFrame(timestamp) {
         showWaveClearedBanner(hud, bonus, { lead: bossBeforeStep.name, text: 'DEFEATED - ONE MORE BOSS GUARDS THE GATE' })
       }
     } else {
-      const nextLevel = changeLevel(game, levelIndexAfterBosses(game.bossesDefeated))
+      // The next place arrives through a hyperspace jump (logic/levelTransition.js): a moment of play,
+      // then streaks, a white flash (the place swaps behind it) and a swoop down onto the new deck.
+      const nextIndex = levelIndexAfterBosses(game.bossesDefeated)
+      const nextLevel = levelAt(nextIndex)
+      game.levelTransition = createTransition(nextIndex)
+      transitionOverlay.begin(nextLevel)
       showWaveClearedBanner(hud, bonus, { lead: bossBeforeStep.name, text: `DEFEATED - NEXT STOP: ${nextLevel.name.toUpperCase()}` })
     }
     sfx.play('waveCleared')

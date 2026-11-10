@@ -206,6 +206,20 @@ const VOICES = {
       tone(ctx, destination, 'sine', freq, time + i * CHIME_NOTE_GAP, CHIME_NOTE_DURATION, CHIME_PEAK, { attack: 0.005 })
     })
   },
+  // The hyperspace jump spooling up: a rising noise roar under a climbing saw whine (about 1.2s).
+  hyperspace: (ctx, destination, noiseBuffer, time) => {
+    noise(ctx, destination, noiseBuffer, time, 1.3, 0.28, 'bandpass', 300, { attack: 0.9, frequencyEnd: 4200, q: 1.2 })
+    tone(ctx, destination, 'sawtooth', 90, time, 1.25, 0.07, { attack: 1.0, freqEnd: 900 })
+    tone(ctx, destination, 'sine', 180, time, 1.25, 0.12, { attack: 1.0, freqEnd: 1400 })
+  },
+  // Dropping out of hyperspace onto the new place: a soft boom and a bright rising shimmer.
+  arrive: (ctx, destination, noiseBuffer, time) => {
+    tone(ctx, destination, 'sine', 120, time, 0.6, 0.45, { attack: 0.005, freqEnd: 45 })
+    noise(ctx, destination, noiseBuffer, time, 0.7, 0.2, 'highpass', 2500, { attack: 0.01, frequencyEnd: 8000 })
+    ;[784, 988, 1175, 1568].forEach((freq, i) => {
+      tone(ctx, destination, 'triangle', freq, time + 0.18 + i * 0.08, 0.5, 0.09, { attack: 0.01 })
+    })
+  },
   // A soft PA chime just before an announcement banner shows.
   announcement: (ctx, destination, noiseBuffer, time) => {
     tone(ctx, destination, 'sine', ANNOUNCEMENT_FREQ, time, ANNOUNCEMENT_DURATION, ANNOUNCEMENT_PEAK, { attack: 0.02 })
