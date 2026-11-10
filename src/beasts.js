@@ -39,7 +39,8 @@ const lumpy = (x, y, z) =>
 // into grain: a handful of large shapes and soft shading, very little fine grit.
 export const SKINS = ['hide', 'fuzz', 'shell', 'metal', 'cloth']
 // How strongly each skin bumps the surface (too much reads as noise on a small creature).
-const SKIN_BUMP = { hide: 0.3, fuzz: 0.22, shell: 0.35, metal: 0.12, cloth: 0.1 }
+const SKIN_BUMP = { hide: 0.16, fuzz: 0.12, shell: 0.13, metal: 0.07, cloth: 0.06 }
+const SKIN_WASH = 0.45 // how much of the painted pattern is washed out (0 = full strength)
 const skinTextures = new Map()
 
 function paintSkin(kind) {
@@ -113,30 +114,50 @@ function paintSkin(kind) {
       x.stroke()
     }
   } else if (kind === 'shell') {
-    blots(30, 30, 90, 0.5, 0.1)
-    // armour plates: a staggered grid of rounded plates, each bevelled (light top, dark bottom)
-    const cols = 6
-    const rows = 6
-    const w = size / cols
-    const h = size / rows
-    for (let j = 0; j < rows; j++) {
-      for (let i = -1; i <= cols; i++) {
-        const px = (i + (j % 2) / 2) * w + 5
-        const py = j * h + 5
-        const g = x.createLinearGradient(0, py, 0, py + h - 10)
-        g.addColorStop(0, 'rgba(255,255,255,0.18)')
-        g.addColorStop(0.5, 'rgba(255,255,255,0)')
-        g.addColorStop(1, 'rgba(0,0,0,0.18)')
+    blots(30, 40, 110, 0.5, 0.08)
+    // tortoise-shell scutes: a honeycomb of big, softly domed hexagons with shallow grooves
+    // between them and faint growth rings, rather than hard-edged bricks
+    const R = size / 6.5 // hexagon radius
+    const dx = Math.sqrt(3) * R
+    const dy = 1.5 * R
+    const hex = (cx, cy, rad) => {
+      x.beginPath()
+      for (let k = 0; k < 6; k++) {
+        const a = Math.PI / 6 + (k * Math.PI) / 3
+        const px = cx + Math.cos(a) * rad
+        const py = cy + Math.sin(a) * rad
+        if (k === 0) x.moveTo(px, py)
+        else x.lineTo(px, py)
+      }
+      x.closePath()
+    }
+    for (let j = -1; j <= Math.ceil(size / dy) + 1; j++) {
+      for (let i = -1; i <= Math.ceil(size / dx) + 1; i++) {
+        const cx = i * dx + (j % 2 ? dx / 2 : 0)
+        const cy = j * dy
+        // the dome: light in the middle, darker toward the groove
+        const g = x.createRadialGradient(cx, cy - R * 0.15, R * 0.1, cx, cy, R)
+        g.addColorStop(0, 'rgba(255,255,255,0.16)')
+        g.addColorStop(0.7, 'rgba(255,255,255,0)')
+        g.addColorStop(1, 'rgba(0,0,0,0.14)')
         x.fillStyle = g
-        x.beginPath()
-        x.roundRect(px, py, w - 10, h - 10, 18)
+        hex(cx, cy, R * 0.97)
         x.fill()
-        x.strokeStyle = 'rgba(0,0,0,0.35)'
-        x.lineWidth = 4
+        // a couple of faint growth rings
+        x.lineWidth = 1.5
+        for (const k of [0.55, 0.78]) {
+          x.strokeStyle = `rgba(0,0,0,${0.05 + r() * 0.04})`
+          hex(cx, cy, R * k)
+          x.stroke()
+        }
+        // the groove: soft, not a black outline
+        x.lineWidth = 5
+        x.strokeStyle = 'rgba(0,0,0,0.13)'
+        hex(cx, cy, R)
         x.stroke()
       }
     }
-    grit(400, 0.06)
+    grit(250, 0.05)
   } else if (kind === 'metal') {
     // brushed panels with seams and rivets
     for (let i = 0; i < 500; i++) {
@@ -179,6 +200,10 @@ function paintSkin(kind) {
     }
     grit(500, 0.05)
   }
+  // Keep it a light touch: wash the pattern toward white so the creature's own colours and shape
+  // lead and the skin only adds a little surface detail.
+  x.fillStyle = `rgba(237,237,237,${SKIN_WASH})`
+  x.fillRect(0, 0, size, size)
   const texture = new THREE.CanvasTexture(canvas)
   texture.wrapS = texture.wrapT = THREE.RepeatWrapping
   texture.colorSpace = THREE.SRGBColorSpace
@@ -1270,7 +1295,7 @@ export function beastGeometry(type, color) {
 // Which skin each creature wears (a boss form wears its regular form's); everything else is scaly hide.
 const SKIN_OF = {
   bumble: 'fuzz', gopher: 'fuzz', splitter: 'fuzz', splitling: 'fuzz', twister: 'fuzz',
-  grumpus: 'shell', snapper: 'shell', kablooma: 'shell', icicle: 'shell', urchin: 'shell', prickle: 'shell', hopper: 'shell',
+  grumpus: 'shell', snapper: 'shell', kablooma: 'shell', icicle: 'shell', urchin: 'shell', prickle: 'shell', hopper: 'fuzz',
   drillbit: 'metal', mirror: 'metal', boss_wobble: 'metal',
   paparazzo: 'cloth', bandit: 'cloth', boss_conefather: 'cloth', boss_mayhem: 'cloth',
 }
