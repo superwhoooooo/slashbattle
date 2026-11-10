@@ -217,7 +217,7 @@ describe('the new enemies', () => {
     const events = run(glimmer, player, 2)
     const blink = events.find((e) => e.type === 'blink')
     expect(blink).toBeTruthy()
-    expect(Math.hypot(blink.to.x - 5, blink.to.z)).toBeLessThan(5)
+    expect(Math.hypot(blink.to.x - 5, blink.to.z)).toBeLessThan(6) // close, but not on top of you
   })
   it('a diving player is seen from only a short way off', () => {
     const grumpus = fakeBoss('blobbo', 0, 0)

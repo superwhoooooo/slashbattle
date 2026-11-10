@@ -93,16 +93,20 @@ describe('wavesBeforeBoss / bossHpScale', () => {
     expect([0, 1, 2, 3].map(wavesBeforeBoss)).toEqual([1, 2, 3, 4])
   })
 
-  it('gives every fight full hp but soft hits', () => {
-    for (const n of [0, 3, 9]) expect(bossEase(n)).toEqual(BOSS_BASE)
-    expect(BOSS_BASE.hp).toBeGreaterThanOrEqual(1)
-    expect(BOSS_BASE.damage).toBeLessThan(0.6)
+  it('tunes the first two fights for a staff-only player, then full hp and soft hits', async () => {
+    const { BOSS_STARTER } = await import('../src/logic/bosses.js')
+    for (const n of [0, 1]) expect(bossEase(n)).toEqual(BOSS_STARTER)
+    for (const n of [2, 3, 9]) expect(bossEase(n)).toEqual(BOSS_BASE)
+    expect(BOSS_STARTER.hp).toBeLessThan(BOSS_BASE.hp)
+    expect(BOSS_STARTER.damage).toBeLessThanOrEqual(0.3)
+    expect(BOSS_BASE.damage).toBeLessThan(0.5)
   })
 
   it('caps a fast boss to a fair pace early on, loosening each fight', async () => {
     const { bossSpeedScale } = await import('../src/logic/bosses.js')
     expect(bossSpeedScale(1.5, 0)).toBe(1) // the Cone Father keeps his pace
     expect(2.6 * bossSpeedScale(2.6, 0)).toBeCloseTo(1.8)
+    expect(bossSpeedScale(2.6, 1)).toBe(bossSpeedScale(2.6, 0)) // still capped in the second fight
     expect(bossSpeedScale(2.6, 3)).toBeGreaterThan(bossSpeedScale(2.6, 0))
     expect(bossSpeedScale(2.6, 20)).toBe(1)
   })
@@ -110,7 +114,8 @@ describe('wavesBeforeBoss / bossHpScale', () => {
   it('throws up fewer shields and enrages less in the opening fights', async () => {
     const { immunityThresholdsFor, immunityPhaseReached, bossEnrage, BOSS_IMMUNITY_THRESHOLDS } = await import('../src/logic/bosses.js')
     expect(immunityThresholdsFor(0)).toEqual([0.5])
-    expect(immunityThresholdsFor(1)).toHaveLength(2)
+    expect(immunityThresholdsFor(1)).toEqual([0.5])
+    expect(immunityThresholdsFor(2)).toHaveLength(2)
     expect(immunityThresholdsFor(5)).toEqual(BOSS_IMMUNITY_THRESHOLDS)
     expect(immunityPhaseReached(70, 100, 0, [0.5])).toBeNull()
     expect(immunityPhaseReached(50, 100, 0, [0.5])).toBe(0)
@@ -120,7 +125,7 @@ describe('wavesBeforeBoss / bossHpScale', () => {
   })
 
   it('makes later boss fights tougher', () => {
-    expect(bossHpScale(0)).toBeCloseTo(BOSS_BASE.hp)
+    expect(bossHpScale(0)).toBeLessThan(BOSS_BASE.hp) // a starter fight
     expect(bossHpScale(3)).toBeCloseTo(1.12 ** 3 * BOSS_BASE.hp)
     expect(bossHpScale(4) / bossHpScale(3)).toBeCloseTo(1.12) // +12% every fight
     expect(bossHpScale(7)).toBeGreaterThan(bossHpScale(3))
@@ -129,7 +134,8 @@ describe('wavesBeforeBoss / bossHpScale', () => {
   it('hits harder every fight', () => {
     expect(bossDamageScale(3)).toBeCloseTo(1.05 ** 3 * BOSS_BASE.damage)
     expect(bossDamageScale(5)).toBeGreaterThan(bossDamageScale(4))
-    expect(bossDamageScale(100)).toBe(0.8) // never past the cap
+    expect(bossDamageScale(100)).toBe(0.6) // never past the cap
+    expect(bossDamageScale(1)).toBeLessThan(bossDamageScale(2))
   })
 
   it('attacks more often every fight, down to a floor', () => {
@@ -141,7 +147,7 @@ describe('wavesBeforeBoss / bossHpScale', () => {
   it('learns one new special per fight won, never a duplicate', () => {
     expect(bossSpecialsFor(['slam', 'summon'], 0)).toEqual(['slam', 'summon'])
     const later = bossSpecialsFor(['slam', 'summon'], 3)
-    expect(later).toEqual(['slam', 'summon', 'barrage', 'charge', 'blink'])
+    expect(later).toEqual(['slam', 'summon', 'barrage', 'charge', 'spin']) // blink is learned last
     const all = bossSpecialsFor(['slam'], 99)
     expect(new Set(all).size).toBe(all.length)
     expect(all).not.toContain('lob')

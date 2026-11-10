@@ -27,7 +27,7 @@ export const BOSS_SPECIALS = {
   charge: { interval: 6, windup: 0, duration: 1.2, speedMultiplier: 2.6 },
   summon: { interval: 22, firstDelay: 6, windup: 0.6, count: 2, maxMinions: 4 },
   slam: { interval: 7, windup: 0.9, radius: 6.5, damageMultiplier: 1.3 },
-  blink: { interval: 6.5, windup: 0.5, distance: 3.5 },
+  blink: { interval: 13, windup: 0.9, distance: 5.5 }, // rare, well telegraphed, and never right on top of you
   barrage: { interval: 5, windup: 0.7, count: 5, spread: 0.9, speed: 9, damageMultiplier: 0.6 },
   spin: { interval: 9, windup: 0.8, duration: 2.2, tickInterval: 0.45, radiusBonus: 2.4, damageMultiplier: 0.7 },
   //   leap - crouch, then jump onto the player's spot and land with a stomp (`range` is how far
@@ -357,12 +357,15 @@ export function wavesBeforeBoss(bossesDefeated) {
   return bossesDefeated + 1
 }
 
-// Bosses get tougher with every boss fight in a run (`bossesDefeated` = fights already won):
-// hp compounds +12% per fight, damage +5% per fight (capped at BOSS_DAMAGE_CAP), every fight teaches it one
-// more special move it didn't have (one extra from the start), and its special cooldowns shrink 6% per fight.
+// Bosses get tougher with every boss fight in a run (`bossesDefeated` = fights already won). The first
+// BOSS_STARTER_FIGHTS fights are tuned for a player who may only have the starting Wizard Staff (BOSS_STARTER); from
+// then on BOSS_BASE applies: hp compounds +12% per fight, damage +5% per fight (capped at BOSS_DAMAGE_CAP), every fight
+// teaches it one more special move it didn't have (one extra from the start), and its special cooldowns shrink 6% per
+// fight.
 export const BOSS_HP_GROWTH = 1.12
 export const BOSS_DAMAGE_GROWTH = 1.05
-export const BOSS_DAMAGE_CAP = 0.8 // boss damage never grows past this multiple of its listed stat
+export const BOSS_DAMAGE_CAP = 0.6 // boss damage never grows past this multiple of its listed stat
+export const BOSS_STARTER_FIGHTS = 2
 // Immunity phases: each time a boss's health first falls to one of these fractions it throws up a shield and can't be
 // hurt until its minions are beaten (or `BOSS_IMMUNITY_SECONDS` run out).
 export const BOSS_IMMUNITY_THRESHOLDS = [0.75, 0.5, 0.25]
@@ -374,36 +377,36 @@ export function immunityPhaseReached(hp, maxHp, done, thresholds = BOSS_IMMUNITY
   return hp <= maxHp * thresholds[done] ? done : null
 }
 
-// The opening fights throw up fewer shields: one at half health in the first fight, two in the
-// second, then all three.
+// The two starter fights throw up one shield (at half health), the third two, then all three.
 export function immunityThresholdsFor(bossesDefeated) {
-  if (bossesDefeated <= 0) return [0.5]
-  if (bossesDefeated === 1) return [0.6, 0.3]
+  if (bossesDefeated < BOSS_STARTER_FIGHTS) return [0.5]
+  if (bossesDefeated === BOSS_STARTER_FIGHTS) return [0.6, 0.3]
   return BOSS_IMMUNITY_THRESHOLDS
 }
 
-// How hard a boss enrages at half health: gentler in the opening fights.
-// Enrage is about more attacks and more speed, barely about harder hits.
+// How hard a boss enrages at half health: gentle in the starter fights.
 export function bossEnrage(bossesDefeated) {
-  return bossesDefeated < 2 ? { speed: 1.1, interval: 0.8, damage: 1 } : { speed: 1.2, interval: 0.7, damage: 1.05 }
+  return bossesDefeated < BOSS_STARTER_FIGHTS ? { speed: 1.1, interval: 0.85, damage: 1 } : { speed: 1.2, interval: 0.7, damage: 1.05 }
 }
 
-// Bosses move at most this fast in the first fight (about the Cone Father's pace), and the cap rises a
-// little each fight, so the zippy ones (Zipzilla, Zippy Zoomer...) don't outrun you in the opener.
+// Bosses move at most about the Cone Father's pace in the starter fights, so the zippy ones (Zipzilla, Zippy
+// Zoomer...) don't outrun a staff-only player; after that the cap rises each fight.
 export const BOSS_SPEED_CAP = 1.8
 export const BOSS_SPEED_CAP_GROWTH = 0.15
 export function bossSpeedScale(speed, bossesDefeated) {
-  const cap = BOSS_SPEED_CAP + BOSS_SPEED_CAP_GROWTH * Math.max(0, bossesDefeated)
+  const cap = BOSS_SPEED_CAP + BOSS_SPEED_CAP_GROWTH * Math.max(0, bossesDefeated - (BOSS_STARTER_FIGHTS - 1))
   return speed > cap ? cap / speed : 1
 }
 
-export const BOSS_BASE = { hp: 1.0, damage: 0.45 } // a boss's first fight: full listed hp, but its hits land soft
+// The starter fights: 80% of the listed hp and very soft hits. After them: full hp, soft hits.
+export const BOSS_STARTER = { hp: 0.8, damage: 0.3 }
+export const BOSS_BASE = { hp: 1.0, damage: 0.4 }
 export const BOSS_COOLDOWN_SHRINK = 0.94
 export const BOSS_HEAD_START = 1 // a boss's first fight already counts as this many won, for its moves and cooldowns
 export const BOSS_MIN_COOLDOWN_SCALE = 0.3
 // Moves a boss can pick up on later fights, in the order it learns them (skipping ones it has).
 // `lob` is left out: it needs the Bloater's ranged-attack tuning.
-export const BOSS_EXTRA_SPECIALS = ['barrage', 'charge', 'slam', 'blink', 'spin', 'leap', 'summon']
+export const BOSS_EXTRA_SPECIALS = ['barrage', 'slam', 'charge', 'spin', 'summon', 'leap', 'blink'] // blink last: teleporting is learned late
 
 export function bossHpScale(bossesDefeated) {
   return BOSS_HP_GROWTH ** bossesDefeated * bossEase(bossesDefeated).hp
@@ -424,10 +427,9 @@ export function bossSpecialsFor(specials, bossesDefeated) {
   return [...specials, ...extras]
 }
 
-// No hp warm-up any more (bosses should feel like bosses); the opener is kept fair by soft hits
-// (BOSS_BASE.damage), a speed cap and fewer shields instead. Returns multipliers for hp and damage.
-export function bossEase() {
-  return BOSS_BASE
+// Hp / damage multipliers for this fight: the starter tuning for the first BOSS_STARTER_FIGHTS, then BOSS_BASE.
+export function bossEase(bossesDefeated = BOSS_STARTER_FIGHTS) {
+  return bossesDefeated < BOSS_STARTER_FIGHTS ? BOSS_STARTER : BOSS_BASE
 }
 
 // Special-move timer: counts `timer` down by dt and, when it reaches 0,

@@ -47,7 +47,7 @@ import { playBulletTrail, playHitFx, playWeaponFx } from './weaponFx.js'
 import { clampTargetToRange, inCircle } from './logic/warp.js'
 import { createSandboxPanel } from './sandbox.js'
 import { createTutorialPanel } from './tutorial.js'
-import { advanceTutorial, createTutorial, tutorialDone } from './logic/tutorial.js'
+import { advanceTutorial, createTutorial, currentStep, skipTutorialStep, tutorialDone } from './logic/tutorial.js'
 import { createTouchControls, isTouchDevice } from './touch.js'
 import { sandboxToggleItem, sandboxTopUp } from './logic/sandbox.js'
 import { createAudio } from './audio.js'
@@ -509,6 +509,7 @@ function setFirstPerson(on) {
   if (on === firstPerson) return
   firstPerson = on
   fpCrosshair.style.display = on ? 'block' : 'none'
+  if (on) tutorialEvent('firstPerson')
   if (on) {
     fpYaw = game.player.facing
     fpPitch = 0
@@ -1150,6 +1151,7 @@ function selectWeapon(game, slot) {
   const next = selectWeaponSlot(game.inventory, slot)
   if (next.selected === game.inventory.selected) return
   game.inventory = next
+  tutorialEvent('weapon')
   setPlayerWeapon(game.player.mesh, selectedWeaponId(next))
   // Cancel any swing in flight (it was animating the old model).
   game.attackState.swingElapsed = null
@@ -1465,6 +1467,7 @@ function activateAbility(game, slot, now) {
   const used = useAbility(game.inventory, slot, now, activeFx(game.inventory.equipped).haste)
   if (!used.abilityId) return
   game.inventory = used.inventory
+  tutorialEvent('ability')
   const { player } = game
   const center = { x: player.position.x, y: 0.8, z: player.position.z }
 
@@ -3645,7 +3648,9 @@ function trickToneForId(trickId) {
 // points (with the chain shown alongside once it's past 1x), and the
 // same trick/points on the big screen-space HUD sticker.
 function scoreKill(game, mesh, cause, position, now) {
-  tutorialEvent('kill')
+  tutorialEvent('kill', 1, mesh.userData.type)
+  if (mesh.userData.isBoss) tutorialEvent('bossKill')
+  if (mesh.userData.lastHitAmbush) tutorialEvent('ambush')
   if (game.world) {
     worldQuestEvent(game, { type: 'kill', monster: mesh.userData.type, elite: Boolean(mesh.userData.elite), biome: biomeAt(position.x, position.z) })
     noteWildsKill(game, mesh.userData.type)
@@ -3658,6 +3663,7 @@ function scoreKill(game, mesh, cause, position, now) {
     whacked: mesh.userData.lastHitDazed === true && cause !== 'fall',
   })
   game.chainState = stepChain(game.chainState, now, trick.id)
+  if (game.chainState.multiplier > 1) tutorialEvent('chain')
   const points = Math.round(trickPoints(scoreForKill(mesh.userData.type), game.chainState.multiplier) * activeFx(game.inventory.equipped).scoreMult)
   game.score += points
   const killHeal = activeFx(game.inventory.equipped).killHeal
@@ -4028,9 +4034,9 @@ const freePlay = () => sandbox || tutorial
 // No waves at all: the sandbox, the tutorial and the free roam world.
 const noWaves = () => freePlay() || Boolean(game?.world)
 
-function tutorialEvent(type, amount) {
+function tutorialEvent(type, amount, target) {
   if (!tutorial) return
-  const result = advanceTutorial(tutorialState, { type, amount })
+  const result = advanceTutorial(tutorialState, { type, amount, target })
   tutorialState = result.state
   if (result.completed) sfx.play('waveCleared')
 }
@@ -4039,24 +4045,78 @@ function startTutorial() {
   tutorial = true
   document.body.classList.add('tutorial')
   loadoutPanel.setOpen(false)
-  tutorialPanel = createTutorialPanel({ touch: touchDevice, onExit: () => window.location.reload() })
+  tutorialPanel = createTutorialPanel({
+    touch: touchDevice,
+    onExit: () => window.location.reload(),
+    onNext: () => tutorialEvent('next'),
+    onSkip: () => {
+      tutorialState = skipTutorialStep(tutorialState)
+    },
+  })
   tutorialPanel.setVisible(true)
 }
 
-// Called every frame in tutorial mode: feeds movement / hiding in, and sets up each step's props once.
+// Live (not dying) monsters of `type` in the tutorial room.
+function tutorialAlive(type) {
+  return game.monsters.filter((m) => !m.userData.dying && (type == null || m.userData.type === type)).length
+}
+
+// Keeps at least `count` practice monsters of `type` around.
+function tutorialKeep(type, count) {
+  for (let n = tutorialAlive(type); n < count; n++) spawnMonster(game, type, { facePlayer: true })
+}
+
+// A softened boss for the tutorial: about 40% hp, one shield at half health, its own moves and signature.
+function spawnTutorialBoss() {
+  const mesh = spawnMonster(game, 'boss_blobbo', { hpScale: 0.4, facePlayer: true })
+  mesh.userData.damageScale = bossDamageScale(0)
+  mesh.userData.bossFights = 0
+  mesh.userData.immunityThresholds = [0.5]
+}
+
+// Called every frame in tutorial mode: feeds movement / sprinting / hiding in, gives each step what
+// it needs once (a weapon, an ability, a pet, a chest...), and keeps practice targets around.
 function stepTutorial() {
   const p = game.player
-  if (tutorialLastPos) tutorialEvent('move', Math.hypot(p.position.x - tutorialLastPos.x, p.position.z - tutorialLastPos.z))
+  if (tutorialLastPos) {
+    const moved = Math.hypot(p.position.x - tutorialLastPos.x, p.position.z - tutorialLastPos.z)
+    tutorialEvent('move', moved)
+    if (holdSprinting()) tutorialEvent('sprint', moved)
+  }
   tutorialLastPos = { x: p.position.x, z: p.position.z }
   if (p.hidden) tutorialEvent('hide')
+  let step = currentStep(tutorialState)
+  // Shift / first person have no touch control: skip those steps on a phone.
+  while (step?.desktopOnly && touchDevice) {
+    tutorialState = skipTutorialStep(tutorialState)
+    step = currentStep(tutorialState)
+  }
+  const id = step?.id
+  const inv = game.inventory
   if (tutorialSetupStep !== tutorialState.step) {
     tutorialSetupStep = tutorialState.step
-    if (tutorialState.step === 2) spawnMonster(game, 'blobbo', { facePlayer: true })
-    if (tutorialState.step === 3) trySpawnPod(game)
-    if (tutorialState.step === 4) trySpawnChest(game, { cost: 0 })
+    if (id === 'weapon' && !inv.weapons.includes('sword')) receiveLoot(game, { kind: 'weapon', id: 'sword' })
+    if (id === 'chain') tutorialKeep('blobbo', 3)
+    if (id === 'hide') trySpawnPod(game)
+    if (id === 'chest') trySpawnChest(game, { cost: 0 })
+    if (id === 'ability' && !inv.abilities.includes('shockwave')) receiveLoot(game, { kind: 'ability', id: 'shockwave' })
+    if (id === 'powerup') trySpawnPerkPickup(game)
+    if (id === 'pet' && !game.pets.some((pet) => pet.def.id === 'ember')) receiveLoot(game, { kind: 'pet', id: 'ember' })
+    if (id === 'mirror') spawnMonster(game, 'mirror', { facePlayer: true })
+    if (id === 'bloater') spawnMonster(game, 'bloater', { facePlayer: true })
+    if (id === 'boss') spawnTutorialBoss()
   }
-  // Keep a practice target around until it is beaten.
-  if (tutorialState.step === 2 && !game.monsters.some((m) => !m.userData.dying)) spawnMonster(game, 'blobbo', { facePlayer: true })
+  // Keep each step's targets around until it is done.
+  if (id === 'kill' || id === 'crystals') tutorialKeep('blobbo', 1)
+  if (id === 'chain' || id === 'pet') tutorialKeep('blobbo', 2)
+  if (id === 'hide' || id === 'ambush') {
+    tutorialKeep('blobbo', 1)
+    if (!p.hidden && game.pods.length === 0) trySpawnPod(game)
+  }
+  if (id === 'powerup' && game.pickups.length === 0) trySpawnPerkPickup(game)
+  if (id === 'mirror') tutorialKeep('mirror', 1)
+  if (id === 'bloater') tutorialKeep('bloater', 1)
+  if (id === 'boss' && !game.monsters.some((m) => m.userData.isBoss && !m.userData.dying)) spawnTutorialBoss()
   tutorialPanel.render(tutorialState)
 }
 
@@ -4142,6 +4202,7 @@ function toggleMenu() {
   if (!started || game.player.hp <= 0 || swapPanel.isOpen() || hub.isOpen()) return
   loadoutPanel.refresh(game.inventory)
   loadoutPanel.toggle()
+  tutorialEvent('loadout')
 }
 window.addEventListener('keydown', (event) => {
   if (event.code !== 'Tab') return
@@ -4686,7 +4747,10 @@ function gameFrame(timestamp) {
   game.chestSpawnerState = nextChestSpawnerState
   if (chestSpawnNow && !game.world) trySpawnChest(game)
 
-  if (input.wasPressed('KeyL')) autoShoot = !autoShoot
+  if (input.wasPressed('KeyL')) {
+    autoShoot = !autoShoot
+    tutorialEvent('autoShoot')
+  }
   setAutoShoot(hud, autoShoot)
   // Touch: the aim stick aims any weapon (melee swings toward it too); the
   // mouse only aims ranged ones.
@@ -4887,7 +4951,10 @@ function gameFrame(timestamp) {
       shake: (amount) => triggerShake(shake, SHAKE_HIT_MAGNITUDE * amount, SHAKE_HIT_DURATION),
     })
   }
-  if (ambushHit) showAmbushBanner(hud)
+  if (ambushHit) {
+    showAmbushBanner(hud)
+    tutorialEvent('ambush')
+  }
   if (hitAny) {
     triggerShake(shake, SHAKE_HIT_MAGNITUDE, SHAKE_HIT_DURATION)
     sfx.play('hit', { x: player.position.x, z: player.position.z })
@@ -5167,6 +5234,7 @@ function gameFrame(timestamp) {
   if (collected > 0) {
     const gained = Math.max(1, Math.round(collected * petFx.crystalMultiplier * perk.crystal))
     game.inventory = addCrystals(game.inventory, gained)
+    tutorialEvent('crystal', gained)
     if (game.world) worldQuestEvent(game, { type: 'crystals', amount: gained })
     sfx.play('crystal')
   }
@@ -5187,6 +5255,7 @@ function gameFrame(timestamp) {
     burst(particleSystem, { x: pickup.position.x, y: 1, z: pickup.position.z }, 0xffffff, 18, 3.5)
     sfx.play('chestOpen', { x: pickup.position.x, z: pickup.position.z })
     receiveLoot(game, { kind: 'powerup', id: pickup.userData.id })
+    tutorialEvent('powerup')
     disposeObject3D(pickup)
     return false
   })

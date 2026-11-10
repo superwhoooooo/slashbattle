@@ -514,10 +514,18 @@
       #tutorial-panel { position: fixed; top: 76px; left: 50%; transform: translateX(-50%); width: min(380px, calc(100vw - 32px)); padding: 12px 16px; display: none; z-index: 6; pointer-events: auto; font-size: 13px; }
       #tutorial-panel h3 { margin: 0 0 4px; font-size: 14px; }
       #tutorial-panel p { margin: 0 0 8px; color: var(--muted, #5b6b80); line-height: 1.35; }
-      #tutorial-panel ol { margin: 0 0 8px; padding-left: 20px; font-size: 12px; color: #9aa6b5; }
-      #tutorial-panel li.now { color: var(--ink); font-weight: 700; }
-      #tutorial-panel li.done { color: var(--teal); text-decoration: line-through; }
+      #tutorial-panel { width: min(420px, calc(100vw - 32px)); top: 96px; }
+      body.touch #tutorial-panel { top: 8px; }
+      #tutorial-panel .tut-chapters { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 8px; }
+      #tutorial-panel .tut-chapters span { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 999px; background: rgba(26,36,51,0.06); color: #9aa6b5; }
+      #tutorial-panel .tut-chapters span.now { background: var(--butter); color: var(--ink); }
+      #tutorial-panel .tut-chapters span.done { color: var(--teal); text-decoration: line-through; }
+      #tutorial-panel p.tut-why { font-size: 12px; border-left: 3px solid var(--teal); padding-left: 8px; color: var(--ink); opacity: 0.8; }
+      #tutorial-panel .tut-bar { height: 6px; border-radius: 3px; background: rgba(26,36,51,0.08); margin: 0 0 8px; overflow: hidden; }
+      #tutorial-panel .tut-bar i { display: block; height: 100%; background: var(--teal); transition: width 0.2s; }
+      #tutorial-panel .tut-buttons { display: flex; gap: 6px; flex-wrap: wrap; }
       #tutorial-panel button { font: inherit; font-weight: 700; padding: 5px 12px; border-radius: 8px; border: 2px solid var(--teal); background: #fff; color: var(--teal); cursor: pointer; }
+      #tutorial-panel button.primary { background: var(--teal); color: #fff; }
       body.touch #tutorial-panel { top: 8px; width: min(300px, 50vw); font-size: 11px; padding: 8px 10px; }
       #hub-open-btn { font: inherit; font-weight: 700; padding: 8px 18px; border-radius: 10px; border: 2px solid var(--butter); background: #fff; color: var(--ink); cursor: pointer; }
       #hub-open-btn:hover { background: var(--butter); }

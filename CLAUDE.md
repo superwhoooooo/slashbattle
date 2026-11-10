@@ -589,13 +589,13 @@ fields are `attackRange`/`reachBonus` (so big bodies can still hit and be hit),
 `faceLayout.js`'s `bodySurfaceDistance`, so faces sit right on them, and a
 body's resting height comes off its bounding box. A run shuffles the seven
 (`shuffleBossOrder`), so all appear before any repeats. Every boss fight makes
-the next one tougher, but bosses are tuned to be long, showy fights rather than one-shot machines: full listed hp from the
-first fight (`BOSS_BASE` 1.0x hp) but soft hits (0.45x damage), growing +5% per fight and capped at `BOSS_DAMAGE_CAP` (0.8x);
-hp compounds +12% per fight (`bossHpScale`); `BOSS_HEAD_START` 1 gives every boss one extra special from its first fight
-(`bossSpecialsFor`, from `BOSS_EXTRA_SPECIALS`), plus one more per fight won; special cooldowns shrink 6% per fight
-(`bossCooldownScale`); `bossSpeedScale` caps a fast boss at the Cone Father's pace (1.8) in the opener, the cap rising 0.15 per
-fight; the opening fights get fewer immunity shields (`immunityThresholdsFor`) and the enrage (`bossEnrage`) adds speed and
-attack rate but almost no damage. `main.js` applies these
+the next one tougher. The first `BOSS_STARTER_FIGHTS` (2) fights are tuned for a player who may only have the starting
+Wizard Staff (`BOSS_STARTER`: 0.8x hp, 0.3x damage, one shield, mild enrage, speed capped at the Cone Father's 1.8 by
+`bossSpeedScale`); from the third on, `BOSS_BASE` (1.0x hp, 0.4x damage) applies with hp +12% per fight (`bossHpScale`), damage
++5% per fight capped at `BOSS_DAMAGE_CAP` (0.6x), two shields then three (`immunityThresholdsFor`), a stronger enrage
+(`bossEnrage`) and a speed cap rising 0.15 per fight. `BOSS_HEAD_START` 1 gives every boss one extra special from its first
+fight (`bossSpecialsFor`, from `BOSS_EXTRA_SPECIALS`; blink is learned last), plus one more per fight won; special cooldowns
+shrink 6% per fight (`bossCooldownScale`). `blink` is rare (13s), telegraphed (0.9s) and lands 5.5 away. `main.js` applies these
 at spawn via `monster.js`'s `upgradeBossSpecials` (per-boss `ai.specials` /
 `ai.specialIntervalScale`).
 
@@ -719,7 +719,7 @@ ability bar, pet icons, chest prompt, loot toast) is in `hud.js`.
 
 ## Recent tuning notes
 - Waves: 4 enemies on wave 1, +4 per wave, faster trickle (`waves.js`); in the labyrinth half of spawns bring a second monster.
-- Bosses: full hp, soft hits (`BOSS_BASE.damage` 0.45, capped growth), an extra special from the start, fast bosses speed-capped early.
+- Bosses: the first two fights are tuned for a staff-only player (`BOSS_STARTER`); later ones scale from `BOSS_BASE` (soft hits, damage capped at 0.6x); blinks are rare.
 - Labyrinth walls block melee, bullets and pets (`monster.js`'s `hasWallLineOfSight` / `isInsideWall`).
 - Ghost Form fades the player (`main.js`'s `setGhostLook`) and counts as hidden for monster perception.
 - Pause menu has a "Main menu" button (reloads to the start card).
@@ -737,7 +737,17 @@ when the start card is dismissed), and skill / power-up levels. T banks the run'
 Skill tree look: `src/skillIcons.js` draws each node as a monochrome SVG line icon chosen by the skill's first `per` field (the `icon` emoji in `logic/skills.js` is no longer shown), with rank pips instead of "0/5". The loadout bar (slots + starting pets) shows on every hub page, not just Loadout.
 
 ## Tutorial mode
-Press G (or the Tutorial button) on the start card: no waves, god mode, and a checklist card (`src/tutorial.js`) driven by `src/logic/tutorial.js`'s `TUTORIAL_STEPS` (move, swing, kill a practice Blobbo, hide in a suitcase, open a free chest). `main.js`'s `tutorialEvent` feeds events in (`scoreKill`, `openChestNow`, the swing start, `stepTutorial` for movement/hiding); `freePlay()` is `sandbox || tutorial` wherever waves are skipped.
+Press G (or the Tutorial button) on the start card: no waves, god mode, and a card (`src/tutorial.js`) driven by
+`src/logic/tutorial.js`'s `TUTORIAL_STEPS`, grouped into `TUTORIAL_CHAPTERS`: Basics (move, sprint, cast, pop a jelly, grab
+crystals), Combat tricks (switch weapons, kill chain, hide, ambush, auto-shoot, first person), Gear (free chest, an ability, a
+power-up, the Tab menu, fighting with a pet), Enemies (a Mirror, a Bloater, a softened Mega Blobbo boss with one shield) and The
+big picture (read-and-Continue cards on waves/score, the hub, and the other places). Each step has a `hint` (how), `touch`, and
+`why` (the rule behind it); `target` limits a kill step to one monster type, `desktopOnly` steps are skipped on touch, and the
+card has Skip step (`skipTutorialStep`). `main.js`'s `tutorialEvent(type, amount, target)` is fed from the real code paths
+(`scoreKill`: kill / bossKill / ambush / chain; `selectWeapon`, `activateAbility`, crystal pickup, power-up pickup,
+`toggleMenu`, `setFirstPerson`, the L toggle, the melee ambush hit); `stepTutorial` feeds move / sprint / hide, grants each
+step's gear once (sword, Shockwave, Ember) and keeps its targets, pods and pickups around. `freePlay()` is `sandbox || tutorial`
+wherever waves are skipped.
 
 ## Pet limit and pet upgrades
 You carry one pet at a time (`MAX_PETS` and the pet slot limits are 1, so the skill tree's pet-slot skill has no effect). Pets level up (1-5) with banked crystals on the Loadout page's Upgrade buttons (`logic/profile.js`'s `buyPetLevel`, `profile.pets`, cost `PET_UPGRADE_COST` x level). `items.js`'s `petBoost` (+30% power per level: damage, healing, magnet reach, guard reduction) and `petRate` (+8% speed per level) are applied in `pets.js`'s `updatePets` and `petEffects(ids, levels)`.
