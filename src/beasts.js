@@ -10,6 +10,7 @@
 //             (uWalkT / uWalkA), while wings, fins, tails, tendrils and flames sway on the clock.
 // Bosses are their regular form with a boss dressing: red eyes, horns, a spiked ridge.
 import * as THREE from 'three'
+import { WALK_AMP, createMotionState, stepMotion } from './logic/creatureMotion.js'
 
 const TAU = Math.PI * 2
 const BONE = 0xe7dcc2
@@ -32,53 +33,172 @@ const lumpy = (x, y, z) =>
 
 // ---- textures ------------------------------------------------------------------------------
 
-let hideTexture = null
-// A near-white hide: mottled blotches, rows of small overlapping scales and fine grit. It is
-// tinted by the vertex colours and doubles as the bump map, so every creature has a skin.
-function getHideTexture() {
-  if (hideTexture) return hideTexture
+// Shardfall-style skins: a few near-white painted textures, tinted by the vertex colours and
+// doubling as the bump map. Each creature picks one (`skin` in its design, else SKIN_OF, else
+// 'hide'). The patterns are BIG and bold so they still read at play distance instead of turning
+// into grain: a handful of large shapes and soft shading, very little fine grit.
+export const SKINS = ['hide', 'fuzz', 'shell', 'metal', 'cloth']
+// How strongly each skin bumps the surface (too much reads as noise on a small creature).
+const SKIN_BUMP = { hide: 0.3, fuzz: 0.22, shell: 0.35, metal: 0.12, cloth: 0.1 }
+const skinTextures = new Map()
+
+function paintSkin(kind) {
   const size = 512
   const canvas = document.createElement('canvas')
   canvas.width = canvas.height = size
   const x = canvas.getContext('2d')
-  let seed = 9
+  let seed = 9 + SKINS.indexOf(kind) * 7919
   const r = () => (seed = (seed * 16807) % 2147483647) / 2147483647
-  x.fillStyle = '#ececec'
+  x.fillStyle = '#ededed'
   x.fillRect(0, 0, size, size)
+  // soft mottling: large faint blotches, light and dark
   const blots = (n, min, max, darkShare, alpha) => {
     for (let i = 0; i < n; i++) {
-      x.fillStyle = `rgba(${r() < darkShare ? '0,0,0' : '255,255,255'},${r() * alpha})`
-      x.beginPath()
-      x.arc(r() * size, r() * size, min + r() * (max - min), 0, TAU)
-      x.fill()
+      const px = r() * size
+      const py = r() * size
+      const rad = min + r() * (max - min)
+      const g = x.createRadialGradient(px, py, 0, px, py, rad)
+      const c = r() < darkShare ? '0,0,0' : '255,255,255'
+      g.addColorStop(0, `rgba(${c},${r() * alpha})`)
+      g.addColorStop(1, `rgba(${c},0)`)
+      x.fillStyle = g
+      // wrap so the texture tiles without seams
+      for (const dx of [0, -size, size]) for (const dy of [0, -size, size]) x.fillRect(px - rad + dx, py - rad + dy, rad * 2, rad * 2)
     }
   }
-  blots(150, 14, 50, 0.6, 0.08)
-  x.lineWidth = 2
-  const rows = 24
-  for (let j = 0; j <= rows; j++) {
-    for (let i = 0; i <= rows; i++) {
-      x.strokeStyle = `rgba(0,0,0,${0.05 + r() * 0.08})`
+  const grit = (n, alpha) => {
+    for (let i = 0; i < n; i++) {
+      x.fillStyle = `rgba(${r() < 0.5 ? '0,0,0' : '255,255,255'},${r() * alpha})`
+      x.fillRect(r() * size, r() * size, 2, 2)
+    }
+  }
+  if (kind === 'hide') {
+    blots(40, 30, 90, 0.6, 0.12)
+    // big overlapping scales: each a shaded half-disc with a dark lower rim and a light upper edge
+    const rows = 12
+    const w = size / rows
+    for (let j = 0; j <= rows; j++) {
+      for (let i = -1; i <= rows; i++) {
+        const cx = (i + (j % 2) / 2) * w + w / 2
+        const cy = j * w * 0.75
+        const g = x.createRadialGradient(cx, cy - w * 0.1, w * 0.05, cx, cy, w * 0.55)
+        g.addColorStop(0, 'rgba(255,255,255,0.10)')
+        g.addColorStop(0.75, 'rgba(0,0,0,0.0)')
+        g.addColorStop(1, 'rgba(0,0,0,0.16)')
+        x.fillStyle = g
+        x.beginPath()
+        x.arc(cx, cy, w * 0.55, 0, Math.PI)
+        x.fill()
+        x.strokeStyle = `rgba(0,0,0,${0.16 + r() * 0.08})`
+        x.lineWidth = 3
+        x.beginPath()
+        x.arc(cx, cy, w * 0.55, 0.15, Math.PI - 0.15)
+        x.stroke()
+      }
+    }
+    grit(300, 0.06)
+  } else if (kind === 'fuzz') {
+    blots(50, 30, 80, 0.5, 0.12)
+    // soft tufts of fur: short curved strokes in clumps, all leaning one way
+    for (let i = 0; i < 2600; i++) {
+      const px = r() * size
+      const py = r() * size
+      const len = 6 + r() * 10
+      const lean = 0.5 + (r() - 0.5) * 0.6
+      x.strokeStyle = `rgba(${r() < 0.55 ? '0,0,0' : '255,255,255'},${0.05 + r() * 0.1})`
+      x.lineWidth = 1.5 + r()
       x.beginPath()
-      x.arc(((i + (j % 2) / 2) * size) / rows, (j * size) / rows, size / (rows * 2), 0, Math.PI)
+      x.moveTo(px, py)
+      x.quadraticCurveTo(px + Math.cos(lean) * len * 0.5, py + len * 0.4, px + Math.cos(lean) * len, py + len)
       x.stroke()
     }
+  } else if (kind === 'shell') {
+    blots(30, 30, 90, 0.5, 0.1)
+    // armour plates: a staggered grid of rounded plates, each bevelled (light top, dark bottom)
+    const cols = 6
+    const rows = 6
+    const w = size / cols
+    const h = size / rows
+    for (let j = 0; j < rows; j++) {
+      for (let i = -1; i <= cols; i++) {
+        const px = (i + (j % 2) / 2) * w + 5
+        const py = j * h + 5
+        const g = x.createLinearGradient(0, py, 0, py + h - 10)
+        g.addColorStop(0, 'rgba(255,255,255,0.18)')
+        g.addColorStop(0.5, 'rgba(255,255,255,0)')
+        g.addColorStop(1, 'rgba(0,0,0,0.18)')
+        x.fillStyle = g
+        x.beginPath()
+        x.roundRect(px, py, w - 10, h - 10, 18)
+        x.fill()
+        x.strokeStyle = 'rgba(0,0,0,0.35)'
+        x.lineWidth = 4
+        x.stroke()
+      }
+    }
+    grit(400, 0.06)
+  } else if (kind === 'metal') {
+    // brushed panels with seams and rivets
+    for (let i = 0; i < 500; i++) {
+      x.strokeStyle = `rgba(${r() < 0.5 ? '0,0,0' : '255,255,255'},${r() * 0.07})`
+      x.lineWidth = 1
+      const py = r() * size
+      x.beginPath()
+      x.moveTo(0, py)
+      x.lineTo(size, py + (r() - 0.5) * 6)
+      x.stroke()
+    }
+    const panels = 4
+    const w = size / panels
+    x.strokeStyle = 'rgba(0,0,0,0.4)'
+    x.lineWidth = 3
+    for (let i = 0; i <= panels; i++) {
+      x.beginPath(); x.moveTo(i * w, 0); x.lineTo(i * w, size); x.stroke()
+      x.beginPath(); x.moveTo(0, i * w); x.lineTo(size, i * w); x.stroke()
+    }
+    for (let j = 0; j < panels; j++) {
+      for (let i = 0; i < panels; i++) {
+        for (const [ox, oy] of [[10, 10], [w - 10, 10], [10, w - 10], [w - 10, w - 10]]) {
+          x.fillStyle = 'rgba(0,0,0,0.35)'
+          x.beginPath(); x.arc(i * w + ox + 1, j * w + oy + 1, 4, 0, TAU); x.fill()
+          x.fillStyle = 'rgba(255,255,255,0.5)'
+          x.beginPath(); x.arc(i * w + ox, j * w + oy, 3, 0, TAU); x.fill()
+        }
+      }
+    }
+    blots(20, 40, 100, 0.6, 0.1) // grime
+  } else {
+    // cloth: a coarse weave and soft folds
+    blots(24, 50, 120, 0.7, 0.12)
+    const step = 8
+    for (let i = 0; i < size; i += step) {
+      x.fillStyle = 'rgba(0,0,0,0.06)'
+      x.fillRect(i, 0, step / 2, size)
+      x.fillStyle = 'rgba(255,255,255,0.05)'
+      x.fillRect(0, i, size, step / 2)
+    }
+    grit(500, 0.05)
   }
-  blots(1000, 1, 3, 0.5, 0.18)
-  hideTexture = new THREE.CanvasTexture(canvas)
-  hideTexture.wrapS = hideTexture.wrapT = THREE.RepeatWrapping
-  hideTexture.colorSpace = THREE.SRGBColorSpace
-  hideTexture.anisotropy = 8
-  hideTexture.userData.shared = true // never disposed with a monster
-  return hideTexture
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping
+  texture.colorSpace = THREE.SRGBColorSpace
+  texture.anisotropy = 8
+  texture.userData.shared = true // never disposed with a monster
+  return texture
+}
+
+function getSkinTexture(kind = 'hide') {
+  const k = SKINS.includes(kind) ? kind : 'hide'
+  if (!skinTextures.has(k)) skinTextures.set(k, paintSkin(k))
+  return skinTextures.get(k)
 }
 
 // ---- the material --------------------------------------------------------------------------
 
 // One material per monster (the hit flash and spawn fade change its colours), all sharing one
 // shader program. Returns it with `userData.beast` = the uniforms update() drives.
-export function createBeastMaterial({ rim = 0.5, roughness = 0.62, metalness = 0, emissive = 0 } = {}) {
-  const hide = getHideTexture()
+export function createBeastMaterial({ rim = 0.5, roughness = 0.62, metalness = 0, emissive = 0, skin = 'hide' } = {}) {
+  const hide = getSkinTexture(skin)
   const material = new THREE.MeshStandardMaterial({
     color: 0xffffff,
     vertexColors: true,
@@ -86,7 +206,7 @@ export function createBeastMaterial({ rim = 0.5, roughness = 0.62, metalness = 0
     metalness,
     map: hide,
     bumpMap: hide,
-    bumpScale: 0.6,
+    bumpScale: SKIN_BUMP[skin] ?? SKIN_BUMP.hide,
     emissive: new THREE.Color(emissive),
   })
   material.userData.baseEmissive = material.emissive.clone() // the hit flash fades back to this
@@ -1136,29 +1256,75 @@ export function beastGeometry(type, color) {
   const geometry = f.done()
   geometry.translate(0, 1, 0)
   geometry.computeBoundingSphere()
+  // How far a walking foot sweeps (in unit space), so steps can match the ground covered.
+  const wig = geometry.attributes.aWig
+  let legB = 0
+  for (let i = 0; i < wig.count; i++) if (wig.getZ(i) < 0) legB = Math.max(legB, Math.abs(wig.getY(i)))
+  geometry.userData.legB = legB
   geometry.userData.shared = true // never disposed with a monster
   geometries.set(key, geometry)
   return geometry
 }
 
 // Look settings for a type: how much it bobs, its rim glow, roughness and metalness.
-export function beastLook(type) {
+// Which skin each creature wears (a boss form wears its regular form's); everything else is scaly hide.
+const SKIN_OF = {
+  bumble: 'fuzz', gopher: 'fuzz', splitter: 'fuzz', splitling: 'fuzz', twister: 'fuzz',
+  grumpus: 'shell', snapper: 'shell', kablooma: 'shell', icicle: 'shell', urchin: 'shell', prickle: 'shell', hopper: 'shell',
+  drillbit: 'metal', mirror: 'metal', boss_wobble: 'metal',
+  paparazzo: 'cloth', bandit: 'cloth', boss_conefather: 'cloth', boss_mayhem: 'cloth',
+}
+export function beastSkin(type) {
   const d = designFor(type) ?? {}
-  return { float: d.float ?? 0, rim: d.rim ?? (d.boss ? 0.62 : 0.5), rough: d.rough ?? 0.62, metal: d.metal ?? 0 }
+  const base = BEASTS[type]?.like ?? BOSS_OF[type]
+  return d.skin ?? SKIN_OF[type] ?? (base ? SKIN_OF[base] : undefined) ?? 'hide'
 }
 
-// The per-monster animation driver: walking legs step faster the faster it goes and settle
-// when it stops; everything else sways on its own clock.
-export function createBeastAnimator(material) {
+export function beastLook(type) {
+  const d = designFor(type) ?? {}
+  return { float: d.float ?? 0, rim: d.rim ?? (d.boss ? 0.62 : 0.5), rough: d.rough ?? 0.62, metal: d.metal ?? 0, skin: beastSkin(type) }
+}
+
+// The per-monster animation driver, moving like Shardfall's creatures (logic/creatureMotion.js):
+// legs step with the ground actually covered (no skating), the body bobs with each footfall, leans
+// into its run and banks into turns, legless ones crawl with a squash-and-stretch pulse, and an idle
+// creature breathes. Call update() after updateJelly() (it layers on top of the hit squash).
+export function createBeastAnimator(material, geometry) {
   const u = material.userData.beast
-  let amount = 0
+  const legB = geometry?.userData.legB ?? 0
+  const state = createMotionState(Math.random() * 6.28)
+  let lastX = null
+  let lastZ = null
   return {
-    update(dt, speed, time) {
-      const moving = Math.min(1, speed / 2)
-      amount += (moving - amount) * (1 - Math.exp(-8 * dt))
-      u.uWalkA.value = amount
-      u.uWalkT.value += dt * (4 + speed * 2.6)
+    update(dt, speed, time, mesh) {
       u.uTime.value += dt
+      const jelly = mesh?.userData.jelly
+      if (!jelly) {
+        // no body to read (tests): fall back to a clock-driven walk
+        u.uWalkA.value = Math.min(1, speed / 2)
+        u.uWalkT.value += dt * (4 + speed * 2.6)
+        return
+      }
+      const x = mesh.position.x
+      const z = mesh.position.z
+      const dx = lastX === null ? 0 : x - lastX
+      const dz = lastZ === null ? 0 : z - lastZ
+      lastX = x
+      lastZ = z
+      const scale = jelly.baseScale
+      const m = stepMotion(state, { dx, dz, dt, facing: mesh.rotation.y, reach: legB * scale * WALK_AMP })
+      u.uWalkT.value = m.phase
+      u.uWalkA.value = m.amp
+      const body = jelly.body
+      // squash layers: crawl pulse (legless) and breath, both keeping volume roughly constant
+      const sy = (1 - m.crawl) * (1 + m.breath)
+      const sxz = 1 / Math.sqrt(Math.max(0.5, sy))
+      body.scale.x *= sxz
+      body.scale.z *= sxz
+      body.scale.y *= sy
+      body.position.y += m.bob * scale * 2
+      body.rotation.x = m.lean
+      body.rotation.z = m.bank
     },
   }
 }

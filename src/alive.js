@@ -43,7 +43,11 @@ export function animateAlive(mesh, target, dt, time) {
     face.eyes.right.group.scale.y = open
   }
 
-  data.creature?.update(dt, data.speed ?? 0, time) // Realist style: legs, arms, tail and fins
+  if (data.creature) {
+    // Realist style: steps, stride bob, lean, bank, crawl and breath (beasts.js), instead of the jelly hop
+    data.creature.update(dt, data.speed ?? 0, time, mesh)
+    return
+  }
 
   // Bounce along while moving; settle back to the ground when still.
   const moving = Math.min(1, (data.speed ?? 0) / 3)

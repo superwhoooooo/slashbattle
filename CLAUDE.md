@@ -584,8 +584,7 @@ fields are `attackRange`/`reachBonus` (so big bodies can still hit and be hit),
 `faceLayout.js`'s `bodySurfaceDistance`, so faces sit right on them, and a
 body's resting height comes off its bounding box. A run shuffles the seven
 (`shuffleBossOrder`), so all appear before any repeats. Every boss fight makes
-the next one tougher (there is no warm-up: `bossEase` is `BOSS_BASE` (1.6x hp, 1.3x damage) from the first fight, so even Orbital Resort's boss is brutal,
-and `BOSS_HEAD_START` (3) gives every boss three fights' worth of extra moves and faster cooldowns from the start): hp compounds
+the next one tougher (the first three fights are a warm-up: `bossEase` scales `BOSS_BASE` (1.0x hp, 0.8x damage) by `BOSS_WARMUP` [0.55, 0.7, 0.85]; `BOSS_HEAD_START` is 0; the opening fights also get fewer immunity shields (`immunityThresholdsFor`) and a milder enrage (`bossEnrage`)): hp compounds
 +25% per fight won (`bossHpScale`), damage +15% (`bossDamageScale`, applied to
 melee and specials alike), each fight teaches the boss one more special it
 lacks from `BOSS_EXTRA_SPECIALS` (`bossSpecialsFor`), and special cooldowns
@@ -864,14 +863,14 @@ a shot aimed over or under a monster misses it; a bullet that sinks below y = 0 
 but with SlashBattle's own designs: lumpy noise-sculpted blobs (`blob`, normals welded so they're seamless), tapering limbs,
 jointed legs, cones, rounded boxes, rings and lathed shapes (robes, caps, flames, funnels, barrels) are baked by `forge()`
 into ONE vertex-coloured geometry per type (cached, `geometry.userData.shared`, so `disposeObject3D` leaves it alone).
-`createBeastMaterial` is a hide-textured, bump-mapped standard material with a fresnel rim, plus vertex attributes the shader
+`createBeastMaterial` is a skin-textured, bump-mapped standard material (Shardfall-style painted skins, `SKINS`: big bold scaly `hide`, `fuzz`, armour-plate `shell`, riveted `metal`, `cloth`; `beastSkin(type)` / `SKIN_OF` picks one, boss forms wear their regular form's) with a fresnel rim, plus vertex attributes the shader
 reads: `aGlow` (eyes, blisters, cores, embers glow in their own colour) and `aWig` / `aWigX` (legs step with the walk, driven
 by `createBeastAnimator`'s `uWalkT` / `uWalkA` from the monster's real speed; wings, fins, tails, tendrils, flames and orbiting
 debris sway on the clock). Every creature looks cross (slit-pupil cream eyes, heavy brows, a toothed maw). Regular monsters'
 boss forms reuse their design plus `bossDressing` (red eyes, horns, a spiked ridge); the original seven bosses have their own
 (King Gloop's crowned slime, Doctor Wobble's brain in a frame on tentacles, the Cone Father's hooded robe, Madam Mayhem's
 scythe arms, Omega Jello's many eyes...). Designs are in unit space (ground at y = -1, front +z) and scaled by size / 2.
-The body is a **rigid** jelly (`createJellyBody(..., { rigid, baseScale, bob })`): `updateJelly` turns the same hit / inflate
+Creatures move like Shardfall's (`logic/creatureMotion.js`'s `stepMotion`, driven by `createBeastAnimator`): steps follow the ground actually covered (`legB`, a foot's reach, is read off the geometry), the body bobs per footfall, leans into runs and banks into turns, legless ones crawl with a squash pulse, and idle ones breathe. The body is a **rigid** jelly (`createJellyBody(..., { rigid, baseScale, bob })`): `updateJelly` turns the same hit / inflate
 springs into a whole-body squash about the feet instead of per-vertex wobble, and floaters bob. Creatures have no face3d; the
 mirror shield is still added (it cracks), the other accessories are part of the creature. `test/beasts.test.js` builds every
 type with a stub canvas.

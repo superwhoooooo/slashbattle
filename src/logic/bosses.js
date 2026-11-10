@@ -368,14 +368,27 @@ export const BOSS_IMMUNITY_THRESHOLDS = [0.75, 0.5, 0.25]
 export const BOSS_IMMUNITY_SECONDS = 10
 export const BOSS_IMMUNITY_MINIONS = 2
 // Which immunity phase (0-based) a boss with `hp` of `maxHp` has just reached, or null. `done` is how many it has had.
-export function immunityPhaseReached(hp, maxHp, done) {
-  if (done >= BOSS_IMMUNITY_THRESHOLDS.length) return null
-  return hp <= maxHp * BOSS_IMMUNITY_THRESHOLDS[done] ? done : null
+export function immunityPhaseReached(hp, maxHp, done, thresholds = BOSS_IMMUNITY_THRESHOLDS) {
+  if (done >= thresholds.length) return null
+  return hp <= maxHp * thresholds[done] ? done : null
+}
+
+// The opening fights throw up fewer shields: one at half health in the first fight, two in the
+// second, then all three.
+export function immunityThresholdsFor(bossesDefeated) {
+  if (bossesDefeated <= 0) return [0.5]
+  if (bossesDefeated === 1) return [0.6, 0.3]
+  return BOSS_IMMUNITY_THRESHOLDS
+}
+
+// How hard a boss enrages at half health: gentler in the opening fights.
+export function bossEnrage(bossesDefeated) {
+  return bossesDefeated < 2 ? { speed: 1.15, interval: 0.85, damage: 1.1 } : { speed: 1.3, interval: 0.65, damage: 1.2 }
 }
 
 export const BOSS_BASE = { hp: 1.0, damage: 0.8 } // every boss starts this much tougher than its listed stats
 export const BOSS_COOLDOWN_SHRINK = 0.94
-export const BOSS_HEAD_START = 1 // a boss's first fight already counts as this many won, for its moves and cooldowns
+export const BOSS_HEAD_START = 0 // a boss's first fight already counts as this many won, for its moves and cooldowns
 export const BOSS_MIN_COOLDOWN_SCALE = 0.3
 // Moves a boss can pick up on later fights, in the order it learns them (skipping ones it has).
 // `lob` is left out: it needs the Bloater's ranged-attack tuning.
@@ -400,13 +413,12 @@ export function bossSpecialsFor(specials, bossesDefeated) {
   return [...specials, ...extras]
 }
 
-// The first few boss fights of a run go easy: the opener has well under
-// half the hp and hits much softer, easing back to full strength by the
-// fourth boss. Returns multipliers for hp and damage.
+// The first few boss fights of a run go easier (a warm-up), reaching BOSS_BASE by the fourth boss;
+// after that the per-fight growth makes each one a lot harder. Returns multipliers for hp and damage.
+export const BOSS_WARMUP = [0.55, 0.7, 0.85]
 export function bossEase(bossesDefeated) {
-  // No warm-up any more: even the opening fight (Orbital Resort) is BOSS_BASE tougher, and it starts with BOSS_HEAD_START
-  // fights' worth of extra moves and faster cooldowns.
-  return BOSS_BASE
+  const k = BOSS_WARMUP[bossesDefeated] ?? 1
+  return { hp: BOSS_BASE.hp * k, damage: BOSS_BASE.damage * k }
 }
 
 // Special-move timer: counts `timer` down by dt and, when it reaches 0,

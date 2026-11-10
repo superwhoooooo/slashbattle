@@ -209,7 +209,7 @@ import {
   updateInventoryHud,
 } from './hud.js'
 import { Input } from './input.js'
-import { BOSS_HEAD_START, BOSS_IMMUNITY_MINIONS, BOSS_IMMUNITY_SECONDS, BOSS_IMMUNITY_THRESHOLDS, bossById, immunityPhaseReached, bossCooldownScale, bossDamageScale, bossHpScale, bossSpecialsFor } from './logic/bosses.js'
+import { bossEnrage, immunityThresholdsFor, BOSS_HEAD_START, BOSS_IMMUNITY_MINIONS, BOSS_IMMUNITY_SECONDS, BOSS_IMMUNITY_THRESHOLDS, bossById, immunityPhaseReached, bossCooldownScale, bossDamageScale, bossHpScale, bossSpecialsFor } from './logic/bosses.js'
 import { fanVelocities } from './logic/projectiles.js'
 import { clampToPlatform, isOnPlatform, resolveArenaMove, spawnPointNearPlayer } from './logic/arena.js'
 import { crystalDrops } from './logic/crystals.js'
@@ -2097,6 +2097,8 @@ function spawnWildMonster(game, type, at, m) {
     const stats = MONSTER_TYPES[type]
     const fights = m.fights ?? BOSS_HEAD_START + Math.round(m.danger * 4)
     mesh.userData.damageScale = bossDamageScale(fights)
+    mesh.userData.bossFights = fights
+    mesh.userData.immunityThresholds = immunityThresholdsFor(fights)
     mesh.userData.speedScale = 1
     upgradeBossSpecials(mesh.userData, bossSpecialsFor(stats.specials, fights), bossCooldownScale(fights))
   }
@@ -3134,6 +3136,8 @@ function startBossCutscene(game) {
   // Every boss fight makes the next one tougher: more hp (above), harder hits, extra moves, shorter cooldowns.
   const fights = game.waveState.bossesDefeated
   mesh.userData.damageScale = bossDamageScale(fights)
+  mesh.userData.bossFights = fights
+  mesh.userData.immunityThresholds = immunityThresholdsFor(fights)
   upgradeBossSpecials(mesh.userData, bossSpecialsFor(boss.stats.specials, fights + BOSS_HEAD_START), bossCooldownScale(fights + BOSS_HEAD_START))
   const dx = player.position.x - at.x
   const dz = player.position.z - at.z
@@ -3161,7 +3165,7 @@ function labSpotClear(game, at) {
 function startImmunity(game, mesh, phase) {
   const ud = mesh.userData
   ud.immunityDone = phase + 1
-  ud.hp = Math.max(ud.hp, Math.ceil(ud.maxHp * BOSS_IMMUNITY_THRESHOLDS[phase])) // the blow that crossed the line doesn't carry on through
+  ud.hp = Math.max(ud.hp, Math.ceil(ud.maxHp * (ud.immunityThresholds ?? BOSS_IMMUNITY_THRESHOLDS)[phase])) // the blow that crossed the line doesn't carry on through
   ud.immune = true
   ud.immuneLeft = BOSS_IMMUNITY_SECONDS
   ud.immuneGrace = 1.5
@@ -4895,16 +4899,17 @@ function gameFrame(timestamp) {
 
     // Immunity phases: at 75 / 50 / 25% health a boss throws up a shield, calls minions, and can't be hurt until they are beaten.
     if (mesh.userData.isBoss && !mesh.userData.spawning && !mesh.userData.immune) {
-      const phase = immunityPhaseReached(mesh.userData.hp, mesh.userData.maxHp, mesh.userData.immunityDone ?? 0)
+      const phase = immunityPhaseReached(mesh.userData.hp, mesh.userData.maxHp, mesh.userData.immunityDone ?? 0, mesh.userData.immunityThresholds)
       if (phase !== null) startImmunity(game, mesh, phase)
     }
     if (mesh.userData.immune) stepImmunity(game, mesh, gameplayDelta, elapsedSeconds)
     // Phase two: at half health a boss ENRAGES: faster, its moves come round sooner, and it fires its signature at once.
     if (mesh.userData.isBoss && !mesh.userData.phase2 && !mesh.userData.spawning && mesh.userData.hp <= mesh.userData.maxHp * 0.5) {
       mesh.userData.phase2 = true
-      mesh.userData.speedScale = (mesh.userData.speedScale ?? 1) * 1.3
-      mesh.userData.specialIntervalScale = (mesh.userData.specialIntervalScale ?? 1) * 0.65
-      mesh.userData.damageScale = (mesh.userData.damageScale ?? 1) * 1.2
+      const rage = bossEnrage(mesh.userData.bossFights ?? 99)
+      mesh.userData.speedScale = (mesh.userData.speedScale ?? 1) * rage.speed
+      mesh.userData.specialIntervalScale = (mesh.userData.specialIntervalScale ?? 1) * rage.interval
+      mesh.userData.damageScale = (mesh.userData.damageScale ?? 1) * rage.damage
       mesh.userData.signatureTimer = Math.min(mesh.userData.signatureTimer ?? 0, 0.6)
       const material = mesh.userData.jelly?.body?.material
       if (material?.emissive) {

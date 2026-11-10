@@ -93,13 +93,27 @@ describe('wavesBeforeBoss / bossHpScale', () => {
     expect([0, 1, 2, 3].map(wavesBeforeBoss)).toEqual([1, 2, 3, 4])
   })
 
-  it('gives full strength from the very first boss fight', () => {
-    for (const n of [0, 1, 2, 3]) expect(bossEase(n)).toEqual(BOSS_BASE)
-    expect(BOSS_BASE.hp).toBeGreaterThanOrEqual(1)
+  it('warms up over the first three boss fights, then runs at full strength', () => {
+    expect(bossEase(0).hp).toBeLessThan(0.6 * BOSS_BASE.hp + 1e-9)
+    expect(bossEase(0).hp).toBeLessThan(bossEase(1).hp)
+    expect(bossEase(1).hp).toBeLessThan(bossEase(2).hp)
+    expect(bossEase(2).hp).toBeLessThan(bossEase(3).hp)
+    for (const n of [3, 4, 9]) expect(bossEase(n)).toEqual(BOSS_BASE)
+  })
+
+  it('throws up fewer shields and enrages less in the opening fights', async () => {
+    const { immunityThresholdsFor, immunityPhaseReached, bossEnrage, BOSS_IMMUNITY_THRESHOLDS } = await import('../src/logic/bosses.js')
+    expect(immunityThresholdsFor(0)).toEqual([0.5])
+    expect(immunityThresholdsFor(1)).toHaveLength(2)
+    expect(immunityThresholdsFor(5)).toEqual(BOSS_IMMUNITY_THRESHOLDS)
+    expect(immunityPhaseReached(70, 100, 0, [0.5])).toBeNull()
+    expect(immunityPhaseReached(50, 100, 0, [0.5])).toBe(0)
+    expect(immunityPhaseReached(10, 100, 1, [0.5])).toBeNull()
+    expect(bossEnrage(0).damage).toBeLessThan(bossEnrage(5).damage)
   })
 
   it('makes later boss fights tougher', () => {
-    expect(bossHpScale(0)).toBe(BOSS_BASE.hp) // the opener is a real fight
+    expect(bossHpScale(0)).toBeLessThan(BOSS_BASE.hp) // the opener is a warm-up
     expect(bossHpScale(3)).toBeCloseTo(1.12 ** 3 * BOSS_BASE.hp)
     expect(bossHpScale(4) / bossHpScale(3)).toBeCloseTo(1.12) // +12% every fight once the easing ends
     expect(bossHpScale(7)).toBeGreaterThan(bossHpScale(3))

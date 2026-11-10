@@ -75,4 +75,16 @@ describe('Realist creatures', () => {
     expect(createMonsterMesh('blobbo').userData.creature).toBeDefined()
     setWildsLook(false)
   })
+
+  it('gives each creature a Shardfall-style skin, boss forms wearing their regular form\'s', async () => {
+    const { MONSTER_TYPES } = await import('../src/config.js')
+    const { SKINS, beastSkin, beastLook } = await import('../src/beasts.js')
+    for (const type of Object.keys(MONSTER_TYPES)) expect(SKINS, type).toContain(beastSkin(type))
+    expect(beastSkin('blobbo')).toBe('hide')
+    expect(beastSkin('bumble')).toBe('fuzz')
+    expect(beastSkin('drillbit')).toBe('metal')
+    expect(beastSkin('boss_bumble')).toBe('fuzz')
+    expect(beastLook('grumpus').skin).toBe('shell')
+    expect(new Set(Object.keys(MONSTER_TYPES).map(beastSkin)).size).toBe(SKINS.length) // every skin is used
+  })
 })

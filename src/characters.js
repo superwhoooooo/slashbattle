@@ -962,10 +962,11 @@ function addSack(group, stats, y) {
 // (it squashes and stretches as a whole). Returns the group and its body centre height.
 function createCreatureBody(type, stats) {
   const look = beastLook(type)
-  const material = createBeastMaterial({ rim: look.rim, roughness: look.rough, metalness: look.metal, emissive: stats.boss ? new THREE.Color(stats.color).multiplyScalar(0.05) : 0 })
+  const material = createBeastMaterial({ rim: look.rim, roughness: look.rough, metalness: look.metal, skin: look.skin, emissive: stats.boss ? new THREE.Color(stats.color).multiplyScalar(0.05) : 0 })
   const scale = (stats.size / 2) * 1.08
-  const group = createJellyBody(beastGeometry(type, stats.color), material, stats.edgeColor, 0, { rigid: true, baseScale: scale, bob: look.float })
-  group.userData.creature = createBeastAnimator(material)
+  const geometry = beastGeometry(type, stats.color)
+  const group = createJellyBody(geometry, material, stats.edgeColor, 0, { rigid: true, baseScale: scale, bob: look.float })
+  group.userData.creature = createBeastAnimator(material, geometry)
   return { group, bodyCenterY: scale }
 }
 
