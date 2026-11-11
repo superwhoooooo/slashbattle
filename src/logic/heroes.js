@@ -101,7 +101,7 @@ export const HEROES = [
   {
     id: 'plague', name: 'Plague Doctor', cost: 600,
     blurb: 'The cure is worse. That is the idea.',
-    stats: { damageTaken: 0.95, regen: 0.4 }, trait: { id: 'contagion', name: 'Contagion', desc: 'Monsters you kill leave a bubbling poison puddle for 3 s that hits every monster in it for 0.5x damage every 0.5 s. Monsters the poison kills leave puddles too.' },
+    stats: { damageTaken: 0.95, regen: 0.4 }, trait: { id: 'contagion', name: 'Contagion', desc: 'Monsters you kill leave a pool of plague ooze for 3 s that hits every monster in it for 0.5x damage every 0.5 s. Monsters the poison kills leave puddles too.' },
     gear: ['plagueHat', 'beak', 'longCape', 'lantern'],
     mask: true,
     skins: [
@@ -157,6 +157,103 @@ export const HEROES = [
       skin('nebula', 'Nebula', 0xff4fa3, 0x3a1a5a, 0x1a1030, 0x6fe3ff, 80),
       skin('null', 'Null', 0xe8e8f0, 0x8a8aa0, 0x2a2a3a, 0x2a2a3a, 120),
       skin('rift', 'Rift', 0x0e3a3a, 0x061818, 0x6fe3d6, 0xff4fa3, 200),
+    ],
+  },
+  {
+    id: 'lifeguard', name: 'Lifeguard Lou', cost: 150,
+    blurb: 'On duty since the resort opened. Has never once sat down.',
+    stats: { maxHp: 20, speed: 1.05 }, trait: { id: 'whistle', name: 'Rescue Whistle', desc: 'Drop below 30% health and you blow the whistle: monsters within 6 m are hurled back and hit for 1x, and you heal 25. Once every 30 s.' },
+    gear: ['visor', 'whistle', 'floatRing'],
+    skins: [
+      skin('red', 'On Duty', 0xff6a4d, 0xfff4e0, 0xffffff, 0xffd15c),
+      skin('teal', 'Pool Deck', 0x19b5a5, 0xffffff, 0xff6a4d, 0xffffff, 80),
+      skin('night', 'Night Shift', 0x2c3a5c, 0x18203a, 0xffd15c, 0x6fe3d6, 120),
+      skin('gold', 'Hall of Fame', 0xe8b84a, 0xfff4e0, 0x8a3f12, 0xfff0a0, 200),
+    ],
+  },
+  {
+    id: 'bellhop', name: 'Bellhop Max', cost: 150,
+    blurb: 'Carries your bags, your tips, and a grudge.',
+    stats: { crystal: 1.1, speed: 1.08 }, trait: { id: 'tipjar', name: 'Tip Jar', desc: 'Once your kill chain reaches 3, every kill in it drops an extra crystal (two at x5 and up).' },
+    gear: ['pillbox', 'tray'],
+    skins: [
+      skin('classic', 'Lobby Red', 0xc8452f, 0x8a1c1c, 0xffd15c, 0xfff0c0),
+      skin('emerald', 'Emerald Suite', 0x2f8f74, 0x14503f, 0xffd15c, 0xd8fff0, 80),
+      skin('royal', 'Royal Purple', 0x6a3aa8, 0x3a1a5a, 0xffc94a, 0xffe9a0, 120),
+      skin('penthouse', 'Penthouse', 0x1a1a24, 0x0a0a10, 0xe8e2d0, 0xffd15c, 200),
+    ],
+  },
+  {
+    id: 'storm', name: 'Storm Acolyte', cost: 400,
+    blurb: 'Hums faintly. Hair stands up when they walk in.',
+    stats: { cooldown: 0.95, crit: 0.03 }, trait: { id: 'static', name: 'Static Charge', desc: 'Every 6th hit arcs lightning into the 3 nearest monsters within 7 m for 1x damage.' },
+    gear: ['rod', 'crystals'],
+    skins: [
+      skin('charge', 'Charged', 0x4a7fc0, 0x2c4a78, 0xdff2ff, 0xfff27a),
+      skin('violet', 'Violet Arc', 0x8a5ac8, 0x3a1a5a, 0xe8d8ff, 0xd8a8ff, 80),
+      skin('red', 'Red Sprite', 0xc8452f, 0x5a1010, 0xffd36e, 0xff8a6a, 120),
+      skin('ion', 'Ionized', 0xe8f6ff, 0x8aa8c8, 0x2a2a3a, 0x6fe3ff, 200),
+    ],
+  },
+  {
+    id: 'bone', name: 'Bone Caller', cost: 400,
+    blurb: 'Nothing that dies nearby stays quiet.',
+    stats: { maxHp: -5, regen: 0.3 }, trait: { id: 'corpse', name: 'Bone Burst', desc: 'Monsters you kill burst into bone shards that hit everything within 3 m for 0.6x. A burst kill bursts too.' },
+    gear: ['skull', 'ribs', 'cape'],
+    mask: true,
+    skins: [
+      skin('grave', 'Gravekeeper', 0x24222c, 0x17151c, 0xe6e0cc, 0x6fffc8),
+      skin('ember', 'Pyre', 0x3a1a14, 0x1a0c0a, 0xe8d9c0, 0xff7a2f, 80),
+      skin('frost', 'Frost Crypt', 0x3a4a6a, 0x1c2840, 0xeaf6ff, 0x9fd8ff, 120),
+      skin('gilded', 'Gilded Tomb', 0x2a2414, 0x14100a, 0xffc94a, 0xff4fa3, 200),
+    ],
+  },
+  {
+    id: 'dj', name: 'DJ Bass Drop', cost: 400,
+    blurb: 'Resident DJ of the Neon Nightclub. The drop is a weapon.',
+    stats: { speed: 1.05, cooldown: 0.95 }, trait: { id: 'bassdrop', name: 'Bass Drop', desc: 'Every 8 s your next hit drops the bass: a shockwave hits everything within 4 m for 1x and knocks it back.' },
+    gear: ['headphones', 'shades'],
+    skins: [
+      skin('neon', 'Neon', 0xff4fa3, 0x2a1848, 0x1a1030, 0x6fe3ff),
+      skin('lime', 'Acid', 0x9ae04a, 0x1a2a10, 0x20202e, 0xfff27a, 80),
+      skin('chrome', 'Chrome', 0xc8d0dc, 0x5a6070, 0x20202e, 0xff4fa3, 120),
+      skin('sunset', 'Sunset Set', 0xff9a3a, 0x8a3f12, 0x2a1014, 0xc77dff, 200),
+    ],
+  },
+  {
+    id: 'hex', name: 'Hex Witch', cost: 600,
+    blurb: 'Every grudge she ever held still works.',
+    stats: { crit: 0.05 }, trait: { id: 'hex', name: 'Hexed', desc: 'Your hits curse monsters for 4 s: cursed monsters take 15% more damage from everything, pets and traits included.' },
+    gear: ['witchHat', 'crystals'],
+    skins: [
+      skin('night', 'Nightshade', 0x43245e, 0x2d1740, 0x9ae04a, 0xa8ff5a),
+      skin('swamp', 'Bog', 0x4a5a2a, 0x1a2a10, 0xc8a050, 0xffd36e, 80),
+      skin('candy', 'Candy Coven', 0xff9ab8, 0x8a3a5a, 0xffffff, 0xff4fa3, 120),
+      skin('ash', 'Ashen', 0x5a5a60, 0x24222c, 0xc9c2b4, 0xff6a6a, 200),
+    ],
+  },
+  {
+    id: 'echo', name: 'Echo Twin', cost: 600,
+    blurb: 'There were always two of them. Check again.',
+    stats: { speed: 1.08, damage: 0.95, cooldown: 0.92 }, trait: { id: 'echo', name: 'Echo Self', desc: 'A ghostly twin trails you. Every 3rd hit echoes 0.4 s later for 60% damage.' },
+    gear: ['echo', 'hood'],
+    skins: [
+      skin('mist', 'Mist', 0x3a3a50, 0x20202e, 0x9ab0d0, 0xaabfff),
+      skin('rose', 'Rose Echo', 0xc87aa8, 0x5a2a5a, 0xffe0f0, 0xffb0e0, 80),
+      skin('void', 'Void Echo', 0x14141e, 0x0a0a10, 0xc77dff, 0xc77dff, 120),
+      skin('gold', 'Gilded Echo', 0xe8c56a, 0x8a6a2a, 0xfff4c0, 0xfff0a0, 200),
+    ],
+  },
+  {
+    id: 'clock', name: 'Clockwork Sage', cost: 900,
+    blurb: 'Late for nothing. Has checked.',
+    stats: { haste: 0.85, speed: 0.96 }, trait: { id: 'rewind', name: 'Rewind', desc: 'A blow that would knock you out instead winds you back 3 s: your spot and health from then (at least 30%). Once every 45 s.' },
+    gear: ['topHat', 'monocle', 'gear'],
+    skins: [
+      skin('brass', 'Brass', 0x7a5a24, 0x3a2a10, 0xe9c46a, 0x8ae8ff),
+      skin('silver', 'Silverwork', 0x8a9aa8, 0x2a2a3a, 0xdfe6f5, 0x6fe3d6, 80),
+      skin('copper', 'Copperpot', 0xb05a2a, 0x3a1a0c, 0xffb547, 0xfff27a, 120),
+      skin('midnight', 'Midnight Hour', 0x1c2440, 0x0e1220, 0xffc94a, 0xff4fa3, 200),
     ],
   },
 ]
@@ -240,6 +337,17 @@ export function buySkin(profile, heroId, skinId) {
 
 // Marksman: +0 at point blank up to +50% at 14 m.
 export const marksmanBonus = (distance) => 1 + 0.5 * Math.min(1, Math.max(0, distance) / 14)
+// Tip Jar: extra crystals for a kill at chain length `count`.
+export const tipJarCrystals = (count) => (count >= 5 ? 2 : count >= 3 ? 1 : 0)
+export const STATIC_EVERY = 6 // hits per Static Charge arc
+export const ECHO_EVERY = 3 // hits per echo
+export const HEX_BONUS = 1.15
+// Rewind: the snapshot from ~3 s back, with at least 30% health.
+export function rewindTarget(history, now, maxHp) {
+  const past = history.find((h) => now - h.t <= 3.2) ?? history[history.length - 1]
+  if (!past) return null
+  return { x: past.x, z: past.z, hp: Math.max(past.hp, Math.ceil(maxHp * 0.3)) }
+}
 // Molten Core: +10% per stack, up to 5.
 export const moltenBonus = (stacks) => 1 + 0.1 * Math.min(5, Math.max(0, stacks))
 export const FOCUS_DELAY = 0.8 // seconds standing still before Inner Focus kicks in

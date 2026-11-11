@@ -84,27 +84,80 @@ const PUDDLE_FRAGMENT = `
   }
 `
 
-export function createPoisonPool() {
+// The Plague Doctor's Contagion puddle (style 'plague'): not the bloater's green acid but a pool of
+// dark violet plague ooze -- smoky churning murk, veins of sickly light (the skin's glow colour)
+// crawling through it and pulsing, and a ring of rune dashes slowly turning around the rim.
+const PLAGUE_FRAGMENT = `
+  uniform float uTime;
+  uniform float uFade;
+  uniform float uSeed;
+  uniform vec3 uGlow;
+  varying vec2 vP;
+
+  float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7)) + uSeed) * 43758.5453); }
+  float noise(vec2 p) {
+    vec2 i = floor(p), f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash(i), hash(i + vec2(1, 0)), f.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), f.x), f.y);
+  }
+  float fbm(vec2 p) { return noise(p) * 0.55 + noise(p * 2.1 + 3.7) * 0.3 + noise(p * 4.3 - 1.3) * 0.15; }
+
+  void main() {
+    float r = length(vP);
+    float a = atan(vP.y, vP.x);
+    float edge = 0.9 + 0.05 * sin(a * 7.0 - uTime * 0.9 + uSeed) + 0.03 * sin(a * 13.0 + uTime * 1.4);
+    float inside = 1.0 - smoothstep(edge - 0.06, edge, r);
+    float ring = 0.0;
+    // Rune ring: short dashes on a circle just outside the ooze, turning slowly.
+    float rr = abs(r - 0.97);
+    float dash = step(0.45, fract((a + uTime * 0.35) * 18.0 / 6.2832));
+    ring = (1.0 - smoothstep(0.012, 0.03, rr)) * dash;
+    if (inside <= 0.0 && ring <= 0.0) discard;
+
+    vec2 q = vP * 2.4;
+    float smoke = fbm(q + vec2(uTime * 0.25, -uTime * 0.18) + fbm(q * 1.3 - uTime * 0.12));
+    vec3 col = mix(vec3(0.05, 0.02, 0.08), vec3(0.22, 0.08, 0.26), smoke);
+    // Glowing veins: thin ridges of the noise field, crawling and pulsing.
+    float v = abs(fbm(q * 1.6 + vec2(-uTime * 0.3, uTime * 0.22)) - 0.5);
+    float vein = 1.0 - smoothstep(0.0, 0.035, v);
+    float pulse = 0.6 + 0.4 * sin(uTime * 4.0 + r * 9.0);
+    col += uGlow * vein * pulse * 0.9;
+    // A sickly glow welling up in the middle.
+    col += uGlow * 0.22 * (1.0 - smoothstep(0.0, 0.7, r)) * (0.7 + 0.3 * sin(uTime * 2.5));
+    col = mix(col, uGlow * 1.1, ring * (1.0 - inside));
+    float alpha = max(inside * (0.82 + 0.1 * vein), ring * 0.85);
+    gl_FragColor = vec4(min(col, vec3(1.0)), alpha * uFade);
+  }
+`
+
+export function createPoisonPool({ style = 'bloater', glow = 0xd2ff5a } = {}) {
+  const plague = style === 'plague'
+  const glowColor = new THREE.Color(glow)
   const group = new THREE.Group()
   const discGeometry = new THREE.CircleGeometry(1, 48)
   const ringGeometry = new THREE.RingGeometry(0.9, 1, 36)
   const globGeometry = new THREE.IcosahedronGeometry(0.35, 2)
   const bubbleGeometry = new THREE.SphereGeometry(1, 12, 8)
-  const bubbleMaterial = new THREE.MeshStandardMaterial({ color: 0xc8ff7a, roughness: 0.08, metalness: 0, transparent: true, opacity: 0.55, depthWrite: false })
-  const dropMaterial = new THREE.MeshStandardMaterial({ color: POISON_COLOR, roughness: 0.15, metalness: 0, emissive: 0x1a4a08 })
+  // A plague puddle's "bubbles" are glowing wisps that rise and fade; its splash is dark ooze.
+  const bubbleMaterial = plague
+    ? new THREE.MeshBasicMaterial({ color: glowColor, transparent: true, opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending })
+    : new THREE.MeshStandardMaterial({ color: 0xc8ff7a, roughness: 0.08, metalness: 0, transparent: true, opacity: 0.55, depthWrite: false })
+  const dropMaterial = plague
+    ? new THREE.MeshStandardMaterial({ color: 0x2a1030, roughness: 0.2, metalness: 0, emissive: 0x14061a })
+    : new THREE.MeshStandardMaterial({ color: POISON_COLOR, roughness: 0.15, metalness: 0, emissive: 0x1a4a08 })
   const slots = []
   for (let i = 0; i < POOL_SIZE; i++) {
     const disc = new THREE.Mesh(
       discGeometry,
       new THREE.ShaderMaterial({
-        uniforms: { uTime: { value: 0 }, uFade: { value: 1 }, uSeed: { value: Math.random() * 100 } },
+        uniforms: { uTime: { value: 0 }, uFade: { value: 1 }, uSeed: { value: Math.random() * 100 }, uGlow: { value: glowColor } },
         vertexShader: PUDDLE_VERTEX,
-        fragmentShader: PUDDLE_FRAGMENT,
+        fragmentShader: plague ? PLAGUE_FRAGMENT : PUDDLE_FRAGMENT,
         transparent: true,
         depthWrite: false,
       }),
     )
-    const ring = new THREE.Mesh(ringGeometry, new THREE.MeshBasicMaterial({ color: POISON_COLOR, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false }))
+    const ring = new THREE.Mesh(ringGeometry, new THREE.MeshBasicMaterial({ color: plague ? glowColor : POISON_COLOR, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false }))
     const glob = new THREE.Mesh(globGeometry, new THREE.MeshStandardMaterial({ color: POISON_COLOR, emissive: 0x2c6a0c, roughness: 0.12, metalness: 0 }))
     disc.rotation.x = ring.rotation.x = -Math.PI / 2
     disc.position.y = 0.05
@@ -123,7 +176,7 @@ export function createPoisonPool() {
     }
     slots.push({ disc, ring, glob, bubbles, drops, splash: 0, data: null })
   }
-  return { group, slots, geometries: [discGeometry, ringGeometry, globGeometry, bubbleGeometry], materials: [bubbleMaterial, dropMaterial] }
+  return { group, slots, plague, glowColor, geometries: [discGeometry, ringGeometry, globGeometry, bubbleGeometry], materials: [bubbleMaterial, dropMaterial] }
 }
 
 function hideSlot(slot) {
@@ -202,8 +255,16 @@ export function updatePoison(pool, dt, player, now) {
         const grow = t < 0.88 ? Math.sin((t / 0.88) * Math.PI * 0.5) : 0
         const s = b.size * grow * Math.min(1.4, p.radius * 0.5) * fade * spread
         b.mesh.visible = s > 0.005
-        b.mesh.position.set(p.x + Math.cos(b.angle) * b.dist * p.radius * 0.85, 0.06 + s * 0.4, p.z + Math.sin(b.angle) * b.dist * p.radius * 0.85)
-        b.mesh.scale.set(s, s * 0.75, s)
+        if (pool.plague) {
+          // Wisps: thin glowing puffs that float up out of the ooze, stretch and thin out.
+          const w = b.size * 1.3 * Math.min(1.4, p.radius * 0.5) * fade * spread * (1 - t)
+          b.mesh.visible = w > 0.005
+          b.mesh.position.set(p.x + Math.cos(b.angle) * b.dist * p.radius * 0.8, 0.1 + t * 1.6, p.z + Math.sin(b.angle) * b.dist * p.radius * 0.8)
+          b.mesh.scale.set(w * 0.7, w * 2.2, w * 0.7)
+        } else {
+          b.mesh.position.set(p.x + Math.cos(b.angle) * b.dist * p.radius * 0.85, 0.06 + s * 0.4, p.z + Math.sin(b.angle) * b.dist * p.radius * 0.85)
+          b.mesh.scale.set(s, s * 0.75, s)
+        }
         if (t > 0.97) { // re-roll where the next one rises
           b.angle = Math.random() * Math.PI * 2
           b.dist = 0.15 + Math.random() * 0.6
@@ -224,6 +285,14 @@ export function updatePoison(pool, dt, player, now) {
     if (hit && !player.diving && player.damagePlayer(p.damage, now)) hurt = true // poison sits on the surface
   }
   return hurt
+}
+
+// Retints a plague pool's veins, rim and wisps (the Plague Doctor's skin glow).
+export function setPoisonGlow(pool, color) {
+  if (!pool.glowColor || pool.glowColor.getHex() === color) return
+  pool.glowColor.set(color) // shared by every disc's uGlow uniform
+  for (const slot of pool.slots) slot.ring.material.color.set(color)
+  pool.materials[0].color?.set(color)
 }
 
 export function resetPoison(pool) {

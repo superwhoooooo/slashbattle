@@ -72,3 +72,18 @@ describe('heroes', () => {
     expect(moltenBonus(9)).toBeCloseTo(1.5)
   })
 })
+
+describe('new hero traits', () => {
+  it('tip jar pays from a 3-chain, more from 5', async () => {
+    const { tipJarCrystals } = await import('../src/logic/heroes.js')
+    expect([1, 2, 3, 4, 5, 9].map(tipJarCrystals)).toEqual([0, 0, 1, 1, 2, 2])
+  })
+  it('rewind goes back about 3 s with at least 30% health', async () => {
+    const { rewindTarget } = await import('../src/logic/heroes.js')
+    const history = [0, 0.25, 0.5, 1, 2, 3].map((t) => ({ t: 10 + t, x: t, z: 0, hp: 5 }))
+    const back = rewindTarget(history, 13.1, 100)
+    expect(back.x).toBe(0) // 3.1 s ago
+    expect(back.hp).toBe(30)
+    expect(rewindTarget([], 5, 100)).toBe(null)
+  })
+})

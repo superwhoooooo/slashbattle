@@ -29,7 +29,7 @@ import { PICKUP_RADIUS, createPerkPickup, updatePerkPickup } from './pickups.js'
 import { createLoadoutPanel } from './loadout.js'
 import { createHub } from './hub.js'
 import { dressPlayer } from './heroGear.js'
-import { FOCUS_DELAY, HEROES, heroById, heroEffects, heroLook as lookForProfile, marksmanBonus, moltenBonus } from './logic/heroes.js'
+import { ECHO_EVERY, FOCUS_DELAY, HEROES, HEX_BONUS, STATIC_EVERY, heroById, heroEffects, heroLook as lookForProfile, marksmanBonus, moltenBonus, rewindTarget, tipJarCrystals } from './logic/heroes.js'
 import { loadProfile, saveProfile } from './profile.js'
 import { createScope } from './scope.js'
 import { SCOPES, AMMO, rifleSetup as riflePicks, stepSteady, tuneRifle } from './logic/rifles.js'
@@ -265,7 +265,7 @@ import { Player } from './player.js'
 import { createBulletPool, fireBullets, resetBullets, updateBullets } from './bullets.js'
 import { createScratchLayer, showScratch } from './scratch.js'
 import { makeBullets } from './logic/bullets.js'
-import { createPoisonPool, lobPoison, resetPoison, updatePoison } from './hazards.js'
+import { createPoisonPool, lobPoison, resetPoison, setPoisonGlow, updatePoison } from './hazards.js'
 import { createProjectilePool, destroyProjectilesNear, fireProjectile, resetProjectiles, updateProjectiles } from './projectiles.js'
 import { inRingBand, onBeam, puddleTargets, rainZones, ringAngles, wallOrbs } from './logic/signatures.js'
 import { CRAZY_TYPE_IDS } from './logic/crazyEnemies.js'
@@ -476,7 +476,7 @@ const poisonPool = createPoisonPool()
 scene.add(poisonPool.group)
 // The Plague Doctor's Contagion puddles: the same bubbling poison look, but they only hurt monsters
 // (main.js's heroState.clouds does the damage), so they're stepped against a player nobody can reach.
-const contagionPool = createPoisonPool()
+const contagionPool = createPoisonPool({ style: 'plague' })
 scene.add(contagionPool.group)
 const NOBODY = { hidden: true, diving: false, position: { x: 0, z: 0 }, damagePlayer: () => false }
 const shockwavePool = createShockwavePool()
@@ -941,7 +941,12 @@ const heroFx = () => heroEffects(heroProfile().hero)
 const heroLook = () => lookForProfile(heroProfile())
 const heroTrait = () => heroById(heroProfile().hero).trait.id
 let heroNow = 0 // elapsed seconds, for the damage hooks
-const heroState = { stillSince: 0, molten: 0, moltenUntil: -Infinity, lastHp: null, slipUntil: -Infinity, clouds: [], auraNext: 0 }
+const heroState = {
+  stillSince: 0, molten: 0, moltenUntil: -Infinity, lastHp: null, slipUntil: -Infinity, clouds: [], auraNext: 0,
+  hits: 0, // own hits landed (Static Charge / Echo Self counters)
+  pending: [], // trait effects queued from inside damageMonster, run next frame: { at, run }
+  whistleReady: 0, bassReadyAt: 0, rewindReady: 0, history: [], historyNext: 0,
+}
 // Trait damage itself (cause 'hero'), pets and hazards don't trigger or get boosted by traits.
 const TRAIT_EXCLUDED = new Set(['pet', 'photobomb', 'spike', 'hero', 'fall'])
 // What traits measure "0.5x damage" against: the weapon in hand with your damage bonuses.
@@ -951,19 +956,37 @@ function heroBaseDamage() {
 }
 setDamageHooks({
   amount(monster, damage, cause) {
-    if (!game || TRAIT_EXCLUDED.has(cause)) return damage
+    if (!game) return damage
     const trait = heroTrait()
+    // Hexed monsters take more from everything (pets and trait damage too).
+    const hexed = trait === 'hex' && heroNow < (monster.userData.hexUntil ?? -Infinity)
+    if (TRAIT_EXCLUDED.has(cause)) return hexed ? Math.round(damage * HEX_BONUS) : damage
     const p = game.player.position
     let scale = 1
     if (trait === 'focus' && heroNow - heroState.stillSince >= FOCUS_DELAY) scale *= 1.3
     if (trait === 'marksman') scale *= marksmanBonus(Math.hypot(monster.position.x - p.x, monster.position.z - p.z))
     if (trait === 'molten' && heroNow < heroState.moltenUntil) scale *= moltenBonus(heroState.molten)
     if (trait === 'chill' && isFrozen(monster.userData, heroNow)) scale *= 1.2
+    if (hexed) scale *= HEX_BONUS
     return scale === 1 ? damage : Math.round(damage * scale)
   },
   hit(monster, damage, cause, lethal) {
-    if (!game || lethal || TRAIT_EXCLUDED.has(cause)) return
+    if (!game || TRAIT_EXCLUDED.has(cause)) return
     const trait = heroTrait()
+    heroState.hits++
+    const at = { x: monster.position.x, z: monster.position.z }
+    // These run next frame (queued), so a trait never re-enters damageMonster from inside it.
+    if (trait === 'static' && heroState.hits % STATIC_EVERY === 0) heroState.pending.push({ at: heroNow, run: () => staticArc(at) })
+    if (trait === 'echo' && heroState.hits % ECHO_EVERY === 0 && !lethal) heroState.pending.push({ at: heroNow + 0.4, run: () => echoHit(monster, damage) })
+    if (trait === 'bassdrop' && heroNow >= heroState.bassReadyAt) {
+      heroState.bassReadyAt = heroNow + 8
+      heroState.pending.push({ at: heroNow, run: () => bassDrop(at) })
+    }
+    if (lethal) return
+    if (trait === 'hex') {
+      if (heroNow >= (monster.userData.hexUntil ?? -Infinity)) burst(particleSystem, { x: at.x, y: 1.2, z: at.z }, heroLook().glow, 8, 1.5, 0.8)
+      monster.userData.hexUntil = heroNow + 4
+    }
     if (trait === 'kindling' && Math.random() < 0.2) monster.userData.burn = { until: heroNow + 3, next: heroNow + 1, dps: 0.4 * heroBaseDamage() }
     if (trait === 'chill' && Math.random() < 0.15) applyFreeze(monster.userData, heroNow, 1.2)
   },
@@ -977,8 +1000,70 @@ function redressHero() {
   dressPlayer(game.player.mesh, look)
   game.player.mesh.userData.heroKey = key
 }
-const heroHurt = (mesh, amount) =>
-  damageMonster(mesh, Math.max(1, Math.round(amount)), { fromPos: game.player.position, obstacles: game.obstacles, particleSystem, cause: 'hero' })
+const heroHurt = (mesh, amount, knockback = 0, fromPos = game.player.position) =>
+  damageMonster(mesh, Math.max(1, Math.round(amount)), { fromPos, knockback, obstacles: game.obstacles, particleSystem, cause: 'hero' })
+const alive = (mesh) => !mesh.userData.dying && !mesh.userData.spawning && !mesh.userData.falling && game.monsters.includes(mesh)
+// Static Charge: lightning from where the hit landed into the 3 nearest monsters within 7 m.
+function staticArc(from) {
+  const glow = heroLook().glow
+  const targets = heroTargets(from.x, from.z, 7)
+    .sort((a, b) => Math.hypot(a.position.x - from.x, a.position.z - from.z) - Math.hypot(b.position.x - from.x, b.position.z - from.z))
+    .slice(0, 3)
+  for (const mesh of targets) {
+    // A jagged trail of sparks from the hit to the target, then a flash on it.
+    for (let i = 1; i <= 6; i++) {
+      const t = i / 6
+      burst(particleSystem, { x: from.x + (mesh.position.x - from.x) * t + (Math.random() - 0.5) * 0.5, y: 1 + (Math.random() - 0.5) * 0.4, z: from.z + (mesh.position.z - from.z) * t + (Math.random() - 0.5) * 0.5 }, glow, 2, 0.6)
+    }
+    column(mesh.position.x, mesh.position.z, glow, 2.5, 5)
+    heroHurt(mesh, heroBaseDamage())
+  }
+}
+// Echo Self: the twin's copy of a hit, 0.4 s late.
+function echoHit(mesh, damage) {
+  if (!alive(mesh)) return
+  burst(particleSystem, { x: mesh.position.x, y: 1, z: mesh.position.z }, heroLook().glow, 12, 2.2, 0.4)
+  heroHurt(mesh, damage * 0.6)
+}
+// Bass Drop: a shockwave from the hit, hurting and shoving everything within 4 m.
+function bassDrop(at) {
+  const glow = heroLook().glow
+  spawnShockwave(shockwavePool, at.x, at.z, 4, glow)
+  warp.add('ripple', at.x, at.z, 5, 0.5)
+  triggerShake(game.shake, SHAKE_HIT_MAGNITUDE, SHAKE_HIT_DURATION)
+  sfx.play('bossSlam', at)
+  for (const mesh of heroTargets(at.x, at.z, 4)) heroHurt(mesh, heroBaseDamage(), 2.5, at)
+}
+// Clockwork Sage's Rewind and Lifeguard Lou's whistle: called before the game decides you're down.
+function heroRescue(now) {
+  const player = game.player
+  const trait = heroTrait()
+  if (trait === 'rewind' && player.hp <= 0 && now >= heroState.rewindReady) {
+    // No history yet (just picked, or frozen in a cutscene): rewind in place.
+    const back = rewindTarget(heroState.history, now, player.maxHp) ?? { x: player.position.x, z: player.position.z, hp: Math.ceil(player.maxHp * 0.3) }
+    heroState.rewindReady = now + 45
+    burst(particleSystem, { x: player.position.x, y: 0.8, z: player.position.z }, heroLook().glow, 30, 3, 0.6)
+    player.position = { x: back.x, z: back.z }
+    player.mesh.position.x = back.x
+    player.mesh.position.z = back.z
+    player.hp = back.hp
+    player.invulnerableUntil = Math.max(player.invulnerableUntil, now + 1.5)
+    spawnShockwave(shockwavePool, back.x, back.z, 3, heroLook().glow)
+    warp.add('swirl', back.x, back.z, 3, 0.7)
+    showLootToast(hud, { title: 'REWIND', name: 'Clockwork Sage', blurb: 'Not yet. Wound back 3 seconds.' })
+  }
+  if (trait === 'whistle' && player.hp > 0 && player.hp < player.maxHp * 0.3 && now >= heroState.whistleReady) {
+    heroState.whistleReady = now + 30
+    const at = { x: player.position.x, z: player.position.z }
+    spawnShockwave(shockwavePool, at.x, at.z, 6, heroLook().glow)
+    warp.add('ripple', at.x, at.z, 6.5, 0.6)
+    burst(particleSystem, { x: at.x, y: 1.4, z: at.z }, 0xffffff, 24, 4, 0.5)
+    sfx.play('announcement', at)
+    for (const mesh of heroTargets(at.x, at.z, 6)) heroHurt(mesh, heroBaseDamage(), 4, at)
+    player.hp = Math.min(player.maxHp, player.hp + 25)
+    showLootToast(hud, { title: 'RESCUE WHISTLE', name: 'Lifeguard Lou', blurb: 'Everybody out of the pool!' })
+  }
+}
 const heroTargets = (x, z, radius) =>
   game.monsters.filter((m) => !m.userData.dying && !m.userData.spawning && !m.userData.falling && Math.hypot(m.position.x - x, m.position.z - z) < radius + (m.userData.radius ?? 0.5))
 function onHeroDash(start, now) {
@@ -993,9 +1078,26 @@ function onHeroDash(start, now) {
 function onHeroKill(mesh, position) {
   const trait = heroTrait()
   if (trait === 'lucky' && Math.random() < 0.12) dropCrystals(crystalSystem, position.x, position.z, [5])
+  if (trait === 'tipjar') {
+    const tip = tipJarCrystals(game.chainState.count)
+    if (tip) dropCrystals(crystalSystem, position.x, position.z, Array(tip).fill(1))
+  }
+  if (trait === 'corpse') {
+    const at = { x: position.x, z: position.z }
+    heroState.pending.push({
+      at: heroNow + 0.08,
+      run: () => {
+        burst(particleSystem, { x: at.x, y: 0.7, z: at.z }, heroLook().trim, 22, 5, 0.3)
+        burst(particleSystem, { x: at.x, y: 0.7, z: at.z }, heroLook().glow, 10, 3, 0.4)
+        spawnShockwave(shockwavePool, at.x, at.z, 3, heroLook().trim)
+        for (const mesh of heroTargets(at.x, at.z, 3)) heroHurt(mesh, 0.6 * heroBaseDamage(), 1, at)
+      },
+    })
+  }
   if (trait === 'contagion' && heroState.clouds.length < 10) {
     // A splash of poison where it died; anything that dies in the puddle leaves one of its own.
     heroState.clouds.push({ x: position.x, z: position.z, until: heroNow + 3, next: heroNow + 0.25 })
+    setPoisonGlow(contagionPool, heroLook().glow)
     lobPoison(contagionPool, { x: position.x, z: position.z, tx: position.x, tz: position.z, flight: 0.001, radius: 2.2, life: 3, tick: 99, damage: 0 })
   }
 }
@@ -1013,6 +1115,18 @@ function stepHeroTraits(now, dt) {
     heroState.moltenUntil = now + 6
   }
   heroState.lastHp = player.hp
+  // Queued trait effects (static arcs, echoes, bass drops, bone bursts).
+  if (heroState.pending.length) {
+    const due = heroState.pending.filter((p) => now >= p.at)
+    heroState.pending = heroState.pending.filter((p) => now < p.at)
+    for (const p of due) p.run()
+  }
+  // Rewind keeps ~3.5 s of where you were and how healthy you were.
+  if (trait === 'rewind' && now >= heroState.historyNext && player.hp > 0 && !player.falling) {
+    heroState.historyNext = now + 0.25
+    heroState.history.push({ t: now, x: player.position.x, z: player.position.z, hp: player.hp })
+    while (heroState.history.length && now - heroState.history[0].t > 3.5) heroState.history.shift()
+  }
   // Kindling burns.
   for (const mesh of game.monsters) {
     const burn = mesh.userData.burn
@@ -1029,7 +1143,7 @@ function stepHeroTraits(now, dt) {
     if (now >= cloud.until) return false
     if (now >= cloud.next) {
       cloud.next += 0.5
-      burst(particleSystem, { x: cloud.x, y: 0.3, z: cloud.z }, 0x8fe02e, 5, 1.2, 0.6)
+      burst(particleSystem, { x: cloud.x, y: 0.3, z: cloud.z }, heroLook().glow, 5, 1.2, 0.6)
       for (const mesh of heroTargets(cloud.x, cloud.z, 2.2)) heroHurt(mesh, 0.5 * heroBaseDamage())
     }
     return true
@@ -1125,6 +1239,10 @@ function createGame() {
   heroState.clouds = []
   heroState.lastHp = null
   heroState.molten = 0
+  heroState.pending = []
+  heroState.history = []
+  heroState.hits = 0
+  heroState.whistleReady = heroState.bassReadyAt = heroState.rewindReady = 0
 
   const game = {
     arena,
@@ -4745,6 +4863,7 @@ function gameFrame(timestamp) {
   warp.update(deltaSeconds, timer.getElapsed())
   const elapsedSeconds = timer.getElapsed()
 
+  if (started && game.player.hp < game.player.maxHp * 0.3) heroRescue(elapsedSeconds)
   // Downed But Determined: back up at half HP, once per revive the skill tree grants.
   if (started && !sandbox && game.player.hp <= 0 && (game.revivesUsed ?? 0) < activeFx(game.inventory.equipped).revive) {
     game.revivesUsed = (game.revivesUsed ?? 0) + 1

@@ -932,16 +932,20 @@ The bullet layer rides the player's jumps and hills (`applyFxDepth`), so `bullet
 fired at (`layerY`) and draws / hit-tests it at that world height (`localY`); a shot no longer bobs up and down while you jump.
 
 ## Heroes and skins
-Inspired by Shardfall's roster. `src/logic/heroes.js` (pure) lists 12 heroes (The Guest, Ember Squire, Thorn Warden, Gale
-Runner, Prospector Pip, Frost Novice, Star Monk, Plague Doctor, Moon Hunter, Forge Titan, Sun Paladin, Void Walker), each
+Inspired by Shardfall's roster. `src/logic/heroes.js` (pure) lists 20 heroes (The Guest, Ember Squire, Thorn Warden, Gale
+Runner, Prospector Pip, Lifeguard Lou, Bellhop Max, Frost Novice, Star Monk, Storm Acolyte, Bone Caller, DJ Bass Drop, Plague
+Doctor, Moon Hunter, Forge Titan, Hex Witch, Echo Twin, Sun Paladin, Void Walker, Clockwork Sage), each
 with stat tweaks in the skills effect shape (plus a hero-only `dash` cooldown multiplier), one trait and four skins (body /
 cloak / trim / glow colours; the first is free). Heroes and skins are bought with banked crystals and saved in the profile
 (`hero`, `heroesOwned`, `heroSkins`, `skinsOwned`; `normalizeHeroFields`). `src/heroGear.js`'s `dressPlayer` recolours the
 jelly and builds the gear from primitives (hats, beak mask, capes, halos, horns, wings, lantern...; `mask` hides the face),
 and `icons.js`'s `heroIconUrl` renders portraits for the hub's Heroes page (Y, or the start card's button). `main.js`:
 `activeFx` folds in `heroEffects`; traits run through `combat.js`'s `setDamageHooks` (damage scaling / on-hit procs,
-skipping trait damage itself, cause 'hero') and `stepHeroTraits` (burns, contagion puddles -- a second, monster-only `hazards.js` pool, `contagionPool`, and a kill in one spawns another -- radiance aura, bramble regen,
-molten stacks, gear animation, re-dressing when the pick changes).
+skipping trait damage itself, cause 'hero') and `stepHeroTraits` (burns, contagion puddles -- a second, monster-only `hazards.js` pool in its own 'plague' style (violet ooze, glowing veins in the skin's glow, a rune rim, rising wisps), `contagionPool`, and a kill in one spawns another -- radiance aura, bramble regen,
+molten stacks, gear animation, re-dressing when the pick changes). Trait effects that would re-enter `damageMonster` (Static
+Charge arcs, Echo Self repeats, Bass Drop, Bone Burst) are queued in `heroState.pending` and run next frame; `heroRescue` (Rewind,
+Rescue Whistle) runs before the revive / game-over checks. Sandbox hero picks are session-only (`sandboxHeroPick`), and only the
+Guest gets the jelly movement stretch.
 
 ## Speed and rendering (Shardfall comparison)
 `PLAYER_SPEED` is 6.5 (zippy 5, so no regular chaser outruns you). The medium preset has bloom off (`bloom` in

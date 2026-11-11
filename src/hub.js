@@ -666,7 +666,7 @@ export function createHub({ getProfile, setProfile, getDragons, setDragons, getR
     wrap.appendChild(detail)
 
     const grid = el('div', 'hero-grid')
-    for (const hero of HEROES) {
+    for (const hero of [...HEROES].sort((a, b) => a.cost - b.cost)) {
       const have = ownsHero(profile, hero.id)
       const isPlaying = profile.hero === hero.id
       const card = el('button', `hero-card${isPlaying ? ' playing' : ''}${hero.id === viewing.id ? ' viewing' : ''}${have ? '' : ' locked'}`)
