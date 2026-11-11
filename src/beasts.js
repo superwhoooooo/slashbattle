@@ -33,15 +33,43 @@ const lumpy = (x, y, z) =>
 
 // ---- textures ------------------------------------------------------------------------------
 
-// Shardfall-style skins: a few near-white painted textures, tinted by the vertex colours and
-// doubling as the bump map. Each creature picks one (`skin` in its design, else SKIN_OF, else
+// Shardfall-style skins: a few near-white painted textures, tinted by the vertex colours, each
+// with a matching relief map (paintRelief) that the bump map carves into the surface. Each creature picks one (`skin` in its design, else SKIN_OF, else
 // 'hide'). The patterns are BIG and bold so they still read at play distance instead of turning
 // into grain: a handful of large shapes and soft shading, very little fine grit.
 export const SKINS = ['hide', 'fuzz', 'shell', 'metal', 'cloth']
-// How strongly each skin bumps the surface (too much reads as noise on a small creature).
-const SKIN_BUMP = { hide: 0.16, fuzz: 0.12, shell: 0.13, metal: 0.07, cloth: 0.06 }
+// How deep each skin's relief (paintRelief) is carved into the surface, in world units (the
+// material swaps in the older, world-space bump formula: see BUMP_WORLD).
+const SKIN_BUMP = { hide: 0.045, fuzz: 0.03, shell: 0.05, metal: 0.04, cloth: 0.03 }
+
+// three r151+ normalizes the surface derivatives in perturbNormalArb, which makes bumpScale a
+// height per SCREEN PIXEL: dents fade away on a creature a few dozen pixels tall. Shardfall
+// (three r149) uses the old form, where the relief is a real height on the surface and reads the
+// same at any distance. This is that old form, swapped in for the creatures only.
+const BUMP_WORLD = `#ifdef USE_BUMPMAP
+uniform sampler2D bumpMap;
+uniform float bumpScale;
+vec2 dHdxy_fwd() {
+  vec2 dSTdx = dFdx( vBumpMapUv );
+  vec2 dSTdy = dFdy( vBumpMapUv );
+  float Hll = bumpScale * texture2D( bumpMap, vBumpMapUv ).x;
+  float dBx = bumpScale * texture2D( bumpMap, vBumpMapUv + dSTdx ).x - Hll;
+  float dBy = bumpScale * texture2D( bumpMap, vBumpMapUv + dSTdy ).x - Hll;
+  return vec2( dBx, dBy );
+}
+vec3 perturbNormalArb( vec3 surf_pos, vec3 surf_norm, vec2 dHdxy, float faceDirection ) {
+  vec3 vSigmaX = dFdx( surf_pos.xyz );
+  vec3 vSigmaY = dFdy( surf_pos.xyz );
+  vec3 R1 = cross( vSigmaY, surf_norm );
+  vec3 R2 = cross( surf_norm, vSigmaX );
+  float fDet = dot( vSigmaX, R1 ) * faceDirection;
+  vec3 vGrad = sign( fDet ) * ( dHdxy.x * R1 + dHdxy.y * R2 );
+  return normalize( abs( fDet ) * surf_norm - vGrad );
+}
+#endif`
 const SKIN_WASH = 0.45 // how much of the painted pattern is washed out (0 = full strength)
 const skinTextures = new Map()
+const reliefTextures = new Map()
 
 function paintSkin(kind) {
   const size = 512
@@ -218,6 +246,192 @@ function getSkinTexture(kind = 'hide') {
   return skinTextures.get(k)
 }
 
+// The skins' relief: a separate grey height map (mid grey = the surface, darker = pressed in,
+// lighter = raised) that the bump map reads, so scale rims, shell grooves, panel seams and the
+// weave are carved INTO the creature (Shardfall's indented look) rather than just painted on. It
+// is drawn at full contrast (the colour map's wash doesn't touch it) and softened a little so the
+// grooves have sloped walls that catch the light.
+function paintRelief(kind) {
+  const size = 512
+  const canvas = document.createElement('canvas')
+  canvas.width = canvas.height = size
+  const x = canvas.getContext('2d')
+  let seed = 31 + SKINS.indexOf(kind) * 6271
+  const r = () => (seed = (seed * 16807) % 2147483647) / 2147483647
+  const wrap = (draw) => {
+    for (const dx of [0, -size, size]) for (const dy of [0, -size, size]) draw(dx, dy)
+  }
+  x.fillStyle = '#808080'
+  x.fillRect(0, 0, size, size)
+  // broad, shallow dents and swells so the surface isn't perfectly even
+  const dents = (n, min, max, depth) => {
+    for (let i = 0; i < n; i++) {
+      const px = r() * size
+      const py = r() * size
+      const rad = min + r() * (max - min)
+      const c = r() < 0.6 ? '0,0,0' : '255,255,255'
+      wrap((dx, dy) => {
+        const g = x.createRadialGradient(px + dx, py + dy, 0, px + dx, py + dy, rad)
+        g.addColorStop(0, `rgba(${c},${depth * (0.5 + r() * 0.5)})`)
+        g.addColorStop(1, `rgba(${c},0)`)
+        x.fillStyle = g
+        x.fillRect(px + dx - rad, py + dy - rad, rad * 2, rad * 2)
+      })
+    }
+  }
+  const pits = (n, rad, depth) => {
+    for (let i = 0; i < n; i++) {
+      const px = r() * size
+      const py = r() * size
+      const g = x.createRadialGradient(px, py, 0, px, py, rad)
+      g.addColorStop(0, `rgba(0,0,0,${depth})`)
+      g.addColorStop(1, 'rgba(0,0,0,0)')
+      x.fillStyle = g
+      x.fillRect(px - rad, py - rad, rad * 2, rad * 2)
+    }
+  }
+  if (kind === 'hide') {
+    dents(18, 40, 110, 0.25)
+    // overlapping scales, drawn top row first so each lower row overlaps the one above: every
+    // scale is a raised dome falling to a deep groove along its free (lower) rim
+    const rows = 12
+    const w = size / rows
+    for (let j = 0; j <= rows; j++) {
+      for (let i = -1; i <= rows; i++) {
+        const cx = (i + (j % 2) / 2) * w + w / 2
+        const cy = j * w * 0.75
+        const g = x.createRadialGradient(cx, cy - w * 0.15, w * 0.05, cx, cy, w * 0.58)
+        g.addColorStop(0, '#d8d8d8')
+        g.addColorStop(0.6, '#a0a0a0')
+        g.addColorStop(0.85, '#505050')
+        g.addColorStop(1, '#202020')
+        x.fillStyle = g
+        x.beginPath()
+        x.arc(cx, cy, w * 0.58, 0, Math.PI)
+        x.fill()
+      }
+    }
+    pits(400, 2.5, 0.35)
+  } else if (kind === 'fuzz') {
+    dents(30, 30, 90, 0.3)
+    // clumps of fur: raised tufts with dark partings between them
+    for (let i = 0; i < 2200; i++) {
+      const px = r() * size
+      const py = r() * size
+      const len = 7 + r() * 12
+      const lean = 0.5 + (r() - 0.5) * 0.6
+      const up = r() < 0.55
+      x.strokeStyle = up ? `rgba(255,255,255,${0.2 + r() * 0.25})` : `rgba(0,0,0,${0.25 + r() * 0.3})`
+      x.lineWidth = up ? 2.5 + r() * 1.5 : 1.5 + r()
+      x.lineCap = 'round'
+      x.beginPath()
+      x.moveTo(px, py)
+      x.quadraticCurveTo(px + Math.cos(lean) * len * 0.5, py + len * 0.4, px + Math.cos(lean) * len, py + len)
+      x.stroke()
+    }
+  } else if (kind === 'shell') {
+    dents(12, 50, 120, 0.2)
+    const R = size / 6.5
+    const dx = Math.sqrt(3) * R
+    const dy = 1.5 * R
+    const hex = (cx, cy, rad) => {
+      x.beginPath()
+      for (let k = 0; k < 6; k++) {
+        const a = Math.PI / 6 + (k * Math.PI) / 3
+        if (k === 0) x.moveTo(cx + Math.cos(a) * rad, cy + Math.sin(a) * rad)
+        else x.lineTo(cx + Math.cos(a) * rad, cy + Math.sin(a) * rad)
+      }
+      x.closePath()
+    }
+    for (let j = -1; j <= Math.ceil(size / dy) + 1; j++) {
+      for (let i = -1; i <= Math.ceil(size / dx) + 1; i++) {
+        const cx = i * dx + (j % 2 ? dx / 2 : 0)
+        const cy = j * dy
+        // a domed scute...
+        const g = x.createRadialGradient(cx, cy, R * 0.05, cx, cy, R)
+        g.addColorStop(0, '#d0d0d0')
+        g.addColorStop(0.75, '#909090')
+        g.addColorStop(1, '#606060')
+        x.fillStyle = g
+        hex(cx, cy, R)
+        x.fill()
+        // ...with stepped growth rings...
+        x.lineWidth = 2.5
+        for (const k of [0.45, 0.68, 0.86]) {
+          x.strokeStyle = 'rgba(0,0,0,0.35)'
+          hex(cx, cy, R * k)
+          x.stroke()
+        }
+        // ...set in a deep groove
+        x.lineWidth = 9
+        x.strokeStyle = '#1a1a1a'
+        hex(cx, cy, R)
+        x.stroke()
+      }
+    }
+    pits(200, 2, 0.3)
+  } else if (kind === 'metal') {
+    // flat plates, sunken seams, raised rivets, and a few dings
+    const panels = 4
+    const w = size / panels
+    x.strokeStyle = '#202020'
+    x.lineWidth = 6
+    for (let i = 0; i <= panels; i++) {
+      x.beginPath(); x.moveTo(i * w, 0); x.lineTo(i * w, size); x.stroke()
+      x.beginPath(); x.moveTo(0, i * w); x.lineTo(size, i * w); x.stroke()
+    }
+    for (let j = 0; j < panels; j++) {
+      for (let i = 0; i < panels; i++) {
+        for (const [ox, oy] of [[12, 12], [w - 12, 12], [12, w - 12], [w - 12, w - 12]]) {
+          const px = i * w + ox
+          const py = j * w + oy
+          const g = x.createRadialGradient(px - 1, py - 1, 0, px, py, 6)
+          g.addColorStop(0, '#ffffff')
+          g.addColorStop(0.7, '#c0c0c0')
+          g.addColorStop(1, 'rgba(128,128,128,0)')
+          x.fillStyle = g
+          x.beginPath(); x.arc(px, py, 6, 0, TAU); x.fill()
+        }
+      }
+    }
+    pits(14, 14, 0.4)
+  } else {
+    // cloth: raised over-under weave threads with sunken gaps between
+    dents(16, 60, 130, 0.3)
+    const step = 8
+    for (let j = 0; j < size; j += step) {
+      for (let i = 0; i < size; i += step) {
+        const over = ((i + j) / step) % 2 === 0
+        x.fillStyle = over ? '#b8b8b8' : '#909090'
+        x.fillRect(i + 1, j + 1, step - 2, step - 2)
+      }
+    }
+    x.fillStyle = 'rgba(0,0,0,0.2)'
+    for (let i = 0; i < size; i += step) {
+      x.fillRect(i, 0, 1, size)
+      x.fillRect(0, i, size, 1)
+    }
+  }
+  // soften so every groove has a sloped wall (the bump reads slopes, not steps)
+  const soft = document.createElement('canvas')
+  soft.width = soft.height = size
+  const s = soft.getContext('2d')
+  s.filter = 'blur(1.5px)'
+  wrap((dx, dy) => s.drawImage(canvas, dx, dy))
+  const texture = new THREE.CanvasTexture(soft)
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping
+  texture.colorSpace = THREE.NoColorSpace
+  texture.anisotropy = 8
+  texture.userData.shared = true
+  return texture
+}
+
+function getReliefTexture(kind = 'hide') {
+  const k = SKINS.includes(kind) ? kind : 'hide'
+  if (!reliefTextures.has(k)) reliefTextures.set(k, paintRelief(k))
+  return reliefTextures.get(k)
+}
+
 // ---- the material --------------------------------------------------------------------------
 
 // One material per monster (the hit flash and spawn fade change its colours), all sharing one
@@ -230,7 +444,7 @@ export function createBeastMaterial({ rim = 0.5, roughness = 0.62, metalness = 0
     roughness,
     metalness,
     map: hide,
-    bumpMap: hide,
+    bumpMap: getReliefTexture(skin),
     bumpScale: SKIN_BUMP[skin] ?? SKIN_BUMP.hide,
     emissive: new THREE.Color(emissive),
   })
@@ -258,7 +472,7 @@ export function createBeastMaterial({ rim = 0.5, roughness = 0.62, metalness = 0
       )
     shader.fragmentShader =
       'varying float vGlow;\nuniform float uRim;\n' +
-      shader.fragmentShader.replace(
+      shader.fragmentShader.replace('#include <bumpmap_pars_fragment>', BUMP_WORLD).replace(
         '#include <emissivemap_fragment>',
         `#include <emissivemap_fragment>
         totalEmissiveRadiance += diffuseColor.rgb * vGlow;

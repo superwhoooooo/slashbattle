@@ -882,7 +882,7 @@ a shot aimed over or under a monster misses it; a bullet that sinks below y = 0 
 but with SlashBattle's own designs: lumpy noise-sculpted blobs (`blob`, normals welded so they're seamless), tapering limbs,
 jointed legs, cones, rounded boxes, rings and lathed shapes (robes, caps, flames, funnels, barrels) are baked by `forge()`
 into ONE vertex-coloured geometry per type (cached, `geometry.userData.shared`, so `disposeObject3D` leaves it alone).
-`createBeastMaterial` is a skin-textured, bump-mapped standard material (Shardfall-style painted skins, `SKINS`: big bold scaly `hide`, `fuzz`, armour-plate `shell`, riveted `metal`, `cloth`; `beastSkin(type)` / `SKIN_OF` picks one, boss forms wear their regular form's) with a fresnel rim, plus vertex attributes the shader
+`createBeastMaterial` is a skin-textured, bump-mapped standard material (Shardfall-style painted skins, `SKINS`: big bold scaly `hide`, `fuzz`, armour-plate `shell`, riveted `metal`, `cloth`; `beastSkin(type)` / `SKIN_OF` picks one, boss forms wear their regular form's; each skin has a full-contrast grey relief map, `paintRelief`, used as the bump map so scale rims, shell grooves, seams and weave are indented like Shardfall's; the material swaps in three r149's world-space bump formula, `BUMP_WORLD`, so the dents don't fade on small, distant creatures) with a fresnel rim, plus vertex attributes the shader
 reads: `aGlow` (eyes, blisters, cores, embers glow in their own colour) and `aWig` / `aWigX` (legs step with the walk, driven
 by `createBeastAnimator`'s `uWalkT` / `uWalkA` from the monster's real speed; wings, fins, tails, tendrils, flames and orbiting
 debris sway on the clock). Every creature looks cross (slit-pupil cream eyes, heavy brows, a toothed maw). Regular monsters'
