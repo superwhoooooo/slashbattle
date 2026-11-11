@@ -2,7 +2,8 @@
 // page (key 7) and the Loadout (key 9; also openable from the start card). Banked
 // crystals buy skill levels and power-up upgrades; the loadout picks the pets
 // you start every run with. Pure DOM; main.js hands in the profile and callbacks.
-import { dragonIconUrl, iconImg } from './icons.js'
+import { dragonIconUrl, heroIconUrl, iconImg } from './icons.js'
+import { HEROES, heroById, heroEffects, ownsHero, ownsSkin } from './logic/heroes.js'
 import { BREATHS, SCALES, describeDragon, dragonSetup, isBreathUnlocked, isDragon, isSkinUnlocked, tuneDragon } from './logic/dragons.js'
 import { skillIconSvg } from './skillIcons.js'
 import * as actions from './logic/profile.js'
@@ -23,6 +24,29 @@ import {
 } from './logic/skills.js'
 
 const CSS = `
+.hub-heroes { display: grid; grid-template-columns: minmax(220px, 300px) 1fr; gap: 16px; align-items: start; }
+@media (max-width: 720px) { .hub-heroes { grid-template-columns: 1fr; } }
+.hero-detail { border-radius: 14px; padding: 12px; background: rgba(255,255,255,0.75); border: 1px solid #d8dee6; display: flex; flex-direction: column; gap: 8px; }
+.hero-detail img.portrait { width: 100%; max-width: 220px; align-self: center; aspect-ratio: 1; image-rendering: auto; }
+.hero-detail h2 { margin: 0; font-size: 20px; }
+.hero-detail .blurb { margin: 0; font-style: italic; font-size: 13px; color: var(--muted, #5b6b80); }
+.hero-detail .trait { margin: 0; font-size: 13px; }
+.hero-detail .trait b { color: var(--teal, #19b5a5); }
+.hero-detail ul { margin: 0; padding-left: 18px; font-size: 12px; }
+.hero-skins { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.hero-skin { font: inherit; font-size: 10px; font-weight: 700; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 4px; border-radius: 10px; border: 2px solid #d3dae3; background: #fff; cursor: pointer; color: #3d4a5c; }
+.hero-skin img { width: 100%; aspect-ratio: 1; }
+.hero-skin.on { border-color: var(--teal, #19b5a5); box-shadow: 0 0 0 2px color-mix(in srgb, var(--teal, #19b5a5) 30%, transparent); }
+.hero-skin.locked img { opacity: 0.55; }
+.hero-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; }
+.hero-card { font: inherit; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 4px 8px; border-radius: 12px; border: 2px solid #d3dae3; background: #fff; cursor: pointer; color: #3d4a5c; }
+.hero-card img { width: 86px; height: 86px; }
+.hero-card .nm { font-weight: 800; font-size: 12px; text-align: center; }
+.hero-card .tag { font-size: 10px; font-weight: 700; color: var(--muted, #5b6b80); }
+.hero-card.viewing { border-color: var(--butter, #ffd15c); }
+.hero-card.playing { border-color: var(--teal, #19b5a5); background: color-mix(in srgb, var(--teal, #19b5a5) 8%, #fff); }
+.hero-card.playing .tag { color: var(--teal, #19b5a5); }
+.hero-card.locked img { filter: grayscale(0.7) brightness(0.9); }
 #hub-root { z-index: 45; background: rgba(20, 26, 40, 0.55); }
 #hub-root .hub-card { width: min(1040px, 96vw); max-height: 92vh; overflow: auto; padding: 18px 22px 20px; align-items: stretch; gap: 12px; }
 .hub-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
@@ -126,6 +150,7 @@ const TABS = [
   { id: 'gunsmith', label: 'Gunsmith', key: 'J' },
   { id: 'dragons', label: 'Dragon Den', key: 'N' },
   { id: 'loadout', label: 'Loadout', key: '9' },
+  { id: 'heroes', label: 'Heroes', key: 'Y' },
 ]
 
 // Callbacks: getProfile() -> profile, setProfile(next) (main saves it), getRun() ->
@@ -586,6 +611,87 @@ export function createHub({ getProfile, setProfile, getDragons, setDragons, getR
     return wrap
   }
 
+  // Heroes (Y): pick who you play as and what they wear. Both are bought with banked crystals and saved.
+  let heroView = null
+  function heroesPage(profile) {
+    const wrap = el('div', 'hub-heroes')
+    const viewing = heroById(heroView ?? profile.hero)
+    const owned = ownsHero(profile, viewing.id)
+    const playing = profile.hero === viewing.id
+    const wornId = profile.heroSkins?.[viewing.id] ?? viewing.skins[0].id
+    const lookOf = (hero, sk) => ({ heroId: hero.id, gear: hero.gear, mask: hero.mask === true, ...sk, accent: sk.glow })
+
+    const detail = el('div', 'hero-detail')
+    const portrait = document.createElement('img')
+    portrait.className = 'portrait'
+    portrait.alt = viewing.name
+    portrait.src = heroIconUrl(lookOf(viewing, viewing.skins.find((k) => k.id === wornId) ?? viewing.skins[0]))
+    detail.appendChild(portrait)
+    detail.appendChild(el('h2', null, viewing.name))
+    detail.appendChild(el('p', 'blurb', viewing.blurb))
+    const trait = el('p', 'trait')
+    trait.appendChild(el('b', null, `${viewing.trait.name}: `))
+    trait.appendChild(document.createTextNode(viewing.trait.desc))
+    detail.appendChild(trait)
+    const fx = heroEffects(viewing.id)
+    const lines = describeEffects(fx)
+    if (fx.dash !== 1) lines.push(`Dash recharges ${Math.round((1 - fx.dash) * 100)}% faster`)
+    if (lines.length) {
+      const ul = el('ul')
+      for (const line of lines) ul.appendChild(el('li', null, line))
+      detail.appendChild(ul)
+    }
+    const main = el('button', `hub-btn${playing ? '' : ' primary'}`, playing ? 'Playing as this hero' : owned ? 'Play as this hero' : `Unlock for ${viewing.cost} ◆`)
+    main.type = 'button'
+    main.disabled = playing || (!owned && profile.bank < viewing.cost)
+    main.addEventListener('click', () => act(api.buyHero(viewing.id)))
+    detail.appendChild(main)
+    detail.appendChild(el('p', 'hub-note', owned ? 'Skins (click to wear; locked ones cost banked crystals):' : 'Skins (unlock the hero first):'))
+    const skins = el('div', 'hero-skins')
+    for (const sk of viewing.skins) {
+      const have = ownsSkin(profile, viewing.id, sk.id)
+      const b = el('button', `hero-skin${have ? '' : ' locked'}${owned && sk.id === wornId ? ' on' : ''}`)
+      b.type = 'button'
+      b.title = sk.name
+      const img = document.createElement('img')
+      img.alt = sk.name
+      img.src = heroIconUrl(lookOf(viewing, sk))
+      b.appendChild(img)
+      b.appendChild(el('span', null, have ? sk.name : `${sk.cost} ◆`))
+      b.disabled = !owned || (!have && profile.bank < sk.cost)
+      b.addEventListener('click', () => act(api.buySkin(viewing.id, sk.id)))
+      skins.appendChild(b)
+    }
+    detail.appendChild(skins)
+    wrap.appendChild(detail)
+
+    const grid = el('div', 'hero-grid')
+    for (const hero of HEROES) {
+      const have = ownsHero(profile, hero.id)
+      const isPlaying = profile.hero === hero.id
+      const card = el('button', `hero-card${isPlaying ? ' playing' : ''}${hero.id === viewing.id ? ' viewing' : ''}${have ? '' : ' locked'}`)
+      card.type = 'button'
+      const worn = hero.skins.find((k) => k.id === profile.heroSkins?.[hero.id]) ?? hero.skins[0]
+      const img = document.createElement('img')
+      img.alt = ''
+      img.src = heroIconUrl(lookOf(hero, worn))
+      card.appendChild(img)
+      card.appendChild(el('span', 'nm', hero.name))
+      card.appendChild(el('span', 'tag', isPlaying ? 'PLAYING' : have ? 'Owned' : `${hero.cost} ◆`))
+      card.addEventListener('click', () => {
+        heroView = hero.id
+        status = ''
+        render()
+      })
+      grid.appendChild(card)
+    }
+    wrap.appendChild(grid)
+    const outer = el('div')
+    outer.appendChild(wrap)
+    outer.appendChild(el('p', 'hub-note', 'Your hero and skins are saved on this device. A new pick takes effect right away, even mid-run.'))
+    return outer
+  }
+
   const free = () => getRun().sandbox === true
   // Runs a profile purchase; in the sandbox it costs nothing (the real bank is kept).
   const buy = (fn, id) => {
@@ -601,10 +707,10 @@ export function createHub({ getProfile, setProfile, getDragons, setDragons, getR
     // Sandbox upgrades are free: the pages see a bottomless bank (the header still shows the real one).
     const profile = free() ? { ...real, bank: 1e9 } : real
     card.replaceChildren(header(real))
-    if (tab !== 'loadout') card.appendChild(loadoutStrip(profile))
-    card.appendChild(tab === 'skills' ? skillsPage(profile) : tab === 'powerups' ? powerupsPage(profile) : tab === 'gunsmith' ? gunsmithPage(profile) : tab === 'dragons' ? dragonsPage(profile) : loadoutPage(profile))
+    if (tab !== 'loadout' && tab !== 'heroes') card.appendChild(loadoutStrip(profile))
+    card.appendChild(tab === 'skills' ? skillsPage(profile) : tab === 'powerups' ? powerupsPage(profile) : tab === 'gunsmith' ? gunsmithPage(profile) : tab === 'dragons' ? dragonsPage(profile) : tab === 'heroes' ? heroesPage(profile) : loadoutPage(profile))
     card.appendChild(el('p', 'hub-status', status))
-    card.appendChild(el('p', 'hub-note', '6 / 7 / 9 / J / N: switch pages · Esc: close · T (in a run): bank crystals'))
+    card.appendChild(el('p', 'hub-note', '6 / 7 / 9 / J / N / Y: switch pages · Esc: close · T (in a run): bank crystals'))
   }
 
   // The profile actions live here so the page code stays small; each returns { profile, ok, reason }.
@@ -617,6 +723,8 @@ export function createHub({ getProfile, setProfile, getDragons, setDragons, getR
     upgradeAmmo: (id) => buy(actions.buyAmmoLevel, id),
     upgradePet: (id) => buy(actions.buyPetLevel, id),
     togglePet: (id) => actions.toggleLoadoutPet(getProfile(), id),
+    buyHero: (id) => buy(actions.buyHero, id),
+    buySkin: (heroId, skinId) => buy((p) => actions.buySkin(p, heroId, skinId)),
     setActive: (i) => actions.setActiveLoadout(getProfile(), i),
     isOpen: () => open,
     refresh: render,

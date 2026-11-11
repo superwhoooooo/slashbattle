@@ -69,7 +69,7 @@ describe('nextPixelRatio', () => {
 
 describe('quality presets', () => {
   it('medium is cheaper than the old default; high stays pretty', () => {
-    expect(QUALITY_PRESETS.medium).toEqual({ maxPixelRatio: 1.5, msaaSamples: 2, gtao: false, shadowMapSize: 1024 })
+    expect(QUALITY_PRESETS.medium).toEqual({ maxPixelRatio: 1.5, msaaSamples: 2, gtao: false, bloom: false, shadowMapSize: 1024 })
     expect(QUALITY_PRESETS.high.gtao).toBe(true)
     expect(QUALITY_PRESETS.high.maxPixelRatio).toBe(2)
   })

@@ -3,7 +3,8 @@
 // power-ups as little pictograms of what they do. Everything is drawn once,
 // lazily, and cached as a data URL.
 import * as THREE from 'three'
-import { createWeaponModel } from './characters.js'
+import { createPlayerMesh, createWeaponModel } from './characters.js'
+import { dressPlayer } from './heroGear.js'
 import { createPetModel } from './petModels.js'
 import { ABILITIES, PETS, POWERUPS, WEAPONS } from './logic/items.js'
 
@@ -583,6 +584,20 @@ function pictogram(kind, id) {
 }
 
 // A dragon rendered in its chosen scale (cached per dragon + scale), for the Dragon Den and loadout.
+// A hero in a skin (logic/heroes.js heroLook shape): the player's jelly, dressed, without the staff.
+export function heroIconUrl(look) {
+  const key = `hero:${look.heroId}:${look.id}`
+  let url = cache.get(key)
+  if (!url) {
+    const mesh = createPlayerMesh()
+    if (mesh.userData.sword) mesh.userData.sword.visible = false
+    dressPlayer(mesh, look)
+    url = snapshot(mesh, { yaw: -0.45, pitch: 0.18 })
+    cache.set(key, url)
+  }
+  return url
+}
+
 export function dragonIconUrl(tuned) {
   const key = `dragon:${tuned.id}:${tuned.scale.id}`
   let url = cache.get(key)

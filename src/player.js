@@ -8,6 +8,9 @@ import {
   FALL_GRAVITY,
   HIT_FLASH_DURATION,
   JELLY_HIT_STRENGTH,
+  DASH_DURATION,
+  DASH_IFRAMES,
+  DASH_SPEED,
   PLAYER_ACCEL_TIME,
   PLAYER_FACING_DAMPING,
   PLAYER_IFRAME_DURATION,
@@ -55,6 +58,9 @@ export class Player {
     this.poisonUntil = -Infinity
     this.poisonNext = 0
     this.sprintUntil = -Infinity // the Sprint ability: speedMultiplier boosted until then
+    this.dashTime = 0 // seconds of dash burst left (tap Shift)
+    this.dashDir = { x: 0, z: 1 }
+    this.dashReadyAt = -Infinity // elapsed seconds when the next dash is allowed
     this._hitFlashElapsed = null // null means not currently flashing
     this.hidden = false
     this.exitedAt = null // seconds elapsed at the last pop-out; drives the ambush window
@@ -271,6 +277,17 @@ export class Player {
   // the mesh's visual rotation separately damps toward the (instant)
   // facing direction via dampAngle, always turning the shortest way, so
   // turns look smooth without lagging input itself.
+  // Starts a dash along dir (normalized x/z) if it's off cooldown; true if it did.
+  dash(now, dir, cooldown) {
+    if (this.hidden || this.falling || this.dashTime > 0 || now < this.dashReadyAt) return false
+    const length = Math.hypot(dir.x, dir.z) || 1
+    this.dashDir = { x: dir.x / length, z: dir.z / length }
+    this.dashTime = DASH_DURATION
+    this.dashReadyAt = now + cooldown
+    this.invulnerableUntil = Math.max(this.invulnerableUntil, now + DASH_IFRAMES)
+    return true
+  }
+
   update(input, cameraYaw, deltaSeconds, swim = null) {
     this._updateHitFlash(deltaSeconds)
     if (this.hidden || this.falling) return
@@ -316,6 +333,20 @@ export class Player {
       this.position = swum
       this.mesh.position.x = this.position.x
       this.mesh.position.z = this.position.z
+      return
+    }
+
+    if (this.dashTime > 0) {
+      // Dash burst: a straight shove along dashDir at DASH_SPEED, ignoring the speed ramp.
+      const step = Math.min(this.dashTime, deltaSeconds)
+      this.dashTime -= deltaSeconds
+      this.speed = DASH_SPEED
+      this.moveDir = { ...this.dashDir }
+      this.mesh.rotation.y = dampAngle(this.mesh.rotation.y, this.facing, PLAYER_FACING_DAMPING, deltaSeconds)
+      this.position = resolveArenaMove(this.position, { x: this.dashDir.x * DASH_SPEED * step, z: this.dashDir.z * DASH_SPEED * step }, PLAYER_RADIUS, this.obstacles)
+      this.mesh.position.x = this.position.x
+      this.mesh.position.z = this.position.z
+      if (this.dashTime <= 0) this.speed = PLAYER_SPEED * this.speedMultiplier
       return
     }
 

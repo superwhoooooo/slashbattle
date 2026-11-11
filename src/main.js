@@ -28,6 +28,8 @@ import { iconImg } from './icons.js'
 import { PICKUP_RADIUS, createPerkPickup, updatePerkPickup } from './pickups.js'
 import { createLoadoutPanel } from './loadout.js'
 import { createHub } from './hub.js'
+import { dressPlayer } from './heroGear.js'
+import { FOCUS_DELAY, HEROES, heroById, heroEffects, heroLook as lookForProfile, marksmanBonus, moltenBonus } from './logic/heroes.js'
 import { loadProfile, saveProfile } from './profile.js'
 import { createScope } from './scope.js'
 import { SCOPES, AMMO, rifleSetup as riflePicks, stepSteady, tuneRifle } from './logic/rifles.js'
@@ -79,6 +81,7 @@ import {
   ARENA_RADIUS,
   setArenaRadius,
   BLOOM_RADIUS,
+  BLOOM_ENABLED,
   BLOOM_STRENGTH,
   BLOOM_THRESHOLD,
   CAMERA_FAR,
@@ -100,6 +103,7 @@ import {
   LUNGE_IFRAMES,
   LUNGE_WIDTH,
   SPRINT_SPEED_MULTIPLIER,
+  DASH_COOLDOWN,
   THUNDER_COLOR,
   THUNDER_DAMAGE,
   THUNDER_RANGE,
@@ -192,7 +196,7 @@ import {
 import { createCarpet, updateCarpet } from './carpet.js'
 import { setPlayerWeapon } from './characters.js'
 import { createChest, openChest, updateChest } from './chests.js'
-import { createAttackState, damageMonster, setKnockbackWorldScale, updateMonsterHitReaction, updatePlayerAttack } from './combat.js'
+import { createAttackState, damageMonster, setDamageHooks, setKnockbackWorldScale, updateMonsterHitReaction, updatePlayerAttack } from './combat.js'
 import { attractAllCrystals, createCrystalSystem, dropCrystals, resetCrystals, updateCrystals } from './crystals.js'
 import { createHidingState, createPod, startPodDematerialize, updateHiding, updatePod } from './hiding.js'
 import {
@@ -283,6 +287,7 @@ const touchDevice = isTouchDevice()
 const PIXEL_RATIO_CAP = touchDevice ? Math.min(MAX_PIXEL_RATIO, 2) : MAX_PIXEL_RATIO
 // Some machines refuse a context with the fancy options (a busy or software-only GPU, too many
 // open WebGL tabs), so try progressively plainer ones before giving up with a readable message.
+const DIRECT_RENDER_DEFAULT = !BLOOM_ENABLED && !GTAO_ENABLED
 function createRendererWithFallback() {
   // The canvas itself needs no antialiasing: everything is drawn through the composer's own
   // multisampled target, so a multisampled default framebuffer is pure extra fill and resolve.
@@ -292,8 +297,10 @@ function createRendererWithFallback() {
   const attempts = isTouchDevice()
     ? [{ antialias: false }, { antialias: false, powerPreference: 'low-power' }, { antialias: true }]
     : [
-        { antialias: false, powerPreference: preferred },
-        { antialias: false },
+        // With bloom and AO off (the default medium preset) most frames skip the composer and draw
+        // straight to the canvas, so the canvas itself is antialiased then.
+        { antialias: DIRECT_RENDER_DEFAULT, powerPreference: preferred },
+        { antialias: DIRECT_RENDER_DEFAULT },
         { antialias: false, powerPreference: 'low-power' },
       ]
   let lastError = null
@@ -430,12 +437,21 @@ const bloomPass = new UnrealBloomPass(
   BLOOM_RADIUS,
   BLOOM_THRESHOLD,
 )
+bloomPass.enabled = BLOOM_ENABLED
 composer.addPass(bloomPass)
 // The screen-warp pass (Warp Field, Gravity Well, ripples from slams and
 // heavy weapons) bends the finished frame, so it goes before OutputPass.
 const warp = createWarp(camera)
 composer.addPass(warp.pass)
 composer.addPass(new OutputPass())
+// Like Shardfall's Normal preset: when no post effect is on this frame (no bloom, no AO, no warp
+// zone), skip the whole composer chain (MSAA target, passes, output blit) and draw straight to the
+// canvas. The renderer applies the same tone mapping and colour space OutputPass would.
+const renderThroughComposer = composer.render.bind(composer)
+composer.render = (...args) => {
+  if (gtaoPass.enabled || bloomPass.enabled || warp.pass.enabled) renderThroughComposer(...args)
+  else renderer.render(scene, camera)
+}
 
 const input = new Input()
 const hud = createHud()
@@ -458,6 +474,11 @@ const projectilePool = createProjectilePool()
 scene.add(projectilePool.group)
 const poisonPool = createPoisonPool()
 scene.add(poisonPool.group)
+// The Plague Doctor's Contagion puddles: the same bubbling poison look, but they only hurt monsters
+// (main.js's heroState.clouds does the damage), so they're stepped against a player nobody can reach.
+const contagionPool = createPoisonPool()
+scene.add(contagionPool.group)
+const NOBODY = { hidden: true, diving: false, position: { x: 0, z: 0 }, damagePlayer: () => false }
 const shockwavePool = createShockwavePool()
 scene.add(shockwavePool.group)
 const bulletPool = createBulletPool()
@@ -885,8 +906,18 @@ let gameMode = 'resort'
 let profile = loadProfile()
 // The sandbox has every scope and ammo unlocked (for testing); this is the profile as the rifle
 // code and the hub should see it (every pet counts as found, so all dragons can be customised). setProfile keeps the real unlocks so the sandbox never saves them.
-const sandboxProfile = () => (sandbox ? { ...profile, collection: Object.keys(PETS), unlocked: { scopes: Object.keys(SCOPES), ammo: Object.keys(AMMO) } } : profile)
+const ALL_HEROES = HEROES.map((h) => h.id)
+const ALL_SKINS = HEROES.flatMap((h) => h.skins.slice(1).map((k) => `${h.id}:${k.id}`))
+const sandboxProfile = () =>
+  sandbox
+    ? { ...heroProfile(), collection: Object.keys(PETS), unlocked: { scopes: Object.keys(SCOPES), ammo: Object.keys(AMMO) }, heroesOwned: ALL_HEROES, skinsOwned: ALL_SKINS }
+    : profile
 function setProfile(next) {
+  if (sandbox) {
+    // The sandbox's all-unlocked view never gets saved: hero picks stay in this session only.
+    sandboxHeroPick = { hero: next.hero, heroSkins: next.heroSkins }
+    next = { ...next, hero: profile.hero, heroSkins: profile.heroSkins, heroesOwned: profile.heroesOwned, skinsOwned: profile.skinsOwned }
+  }
   profile = sandbox ? { ...next, unlocked: profile.unlocked, collection: profile.collection } : next // the sandbox's all-unlocked view never gets saved
   saveProfile(profile)
   applySlotBonuses()
@@ -899,7 +930,120 @@ function applySlotBonuses() {
 applySlotBonuses()
 const hideLimit = () => POD_HIDE_LIMIT + activeFx(game.inventory.equipped).hideTime
 // The equipped power-ups (at their upgrade levels) plus the learned skills, as one effect set.
-const activeFx = (equipped) => combineEffects(powerupEffects(equipped, profile.powerups), skillEffects(profile.skills))
+const activeFx = (equipped) => combineEffects(combineEffects(powerupEffects(equipped, profile.powerups), skillEffects(profile.skills)), heroEffects(heroProfile().hero))
+
+// ---------- heroes (logic/heroes.js): the look, and each hero's one trait ----------
+// The sandbox lets you try every hero and skin for free, but those picks live only for that session:
+// they never become owned (or chosen) in the saved profile that normal runs use.
+let sandboxHeroPick = null // { hero, heroSkins } while in the sandbox
+const heroProfile = () => (sandbox && sandboxHeroPick ? { ...profile, ...sandboxHeroPick } : profile)
+const heroFx = () => heroEffects(heroProfile().hero)
+const heroLook = () => lookForProfile(heroProfile())
+const heroTrait = () => heroById(heroProfile().hero).trait.id
+let heroNow = 0 // elapsed seconds, for the damage hooks
+const heroState = { stillSince: 0, molten: 0, moltenUntil: -Infinity, lastHp: null, slipUntil: -Infinity, clouds: [], auraNext: 0 }
+// Trait damage itself (cause 'hero'), pets and hazards don't trigger or get boosted by traits.
+const TRAIT_EXCLUDED = new Set(['pet', 'photobomb', 'spike', 'hero', 'fall'])
+// What traits measure "0.5x damage" against: the weapon in hand with your damage bonuses.
+function heroBaseDamage() {
+  const weapon = WEAPONS[selectedWeaponId(game.inventory)]
+  return (weapon?.damage ?? 16) * activeFx(game.inventory.equipped).damage
+}
+setDamageHooks({
+  amount(monster, damage, cause) {
+    if (!game || TRAIT_EXCLUDED.has(cause)) return damage
+    const trait = heroTrait()
+    const p = game.player.position
+    let scale = 1
+    if (trait === 'focus' && heroNow - heroState.stillSince >= FOCUS_DELAY) scale *= 1.3
+    if (trait === 'marksman') scale *= marksmanBonus(Math.hypot(monster.position.x - p.x, monster.position.z - p.z))
+    if (trait === 'molten' && heroNow < heroState.moltenUntil) scale *= moltenBonus(heroState.molten)
+    if (trait === 'chill' && isFrozen(monster.userData, heroNow)) scale *= 1.2
+    return scale === 1 ? damage : Math.round(damage * scale)
+  },
+  hit(monster, damage, cause, lethal) {
+    if (!game || lethal || TRAIT_EXCLUDED.has(cause)) return
+    const trait = heroTrait()
+    if (trait === 'kindling' && Math.random() < 0.2) monster.userData.burn = { until: heroNow + 3, next: heroNow + 1, dps: 0.4 * heroBaseDamage() }
+    if (trait === 'chill' && Math.random() < 0.15) applyFreeze(monster.userData, heroNow, 1.2)
+  },
+})
+// Re-dresses the player when the hero or skin changed (a new run's mesh, or a pick in the hub).
+function redressHero() {
+  if (!game?.player) return
+  const look = heroLook()
+  const key = `${look.heroId}:${look.id}`
+  if (game.player.mesh.userData.heroKey === key) return
+  dressPlayer(game.player.mesh, look)
+  game.player.mesh.userData.heroKey = key
+}
+const heroHurt = (mesh, amount) =>
+  damageMonster(mesh, Math.max(1, Math.round(amount)), { fromPos: game.player.position, obstacles: game.obstacles, particleSystem, cause: 'hero' })
+const heroTargets = (x, z, radius) =>
+  game.monsters.filter((m) => !m.userData.dying && !m.userData.spawning && !m.userData.falling && Math.hypot(m.position.x - x, m.position.z - z) < radius + (m.userData.radius ?? 0.5))
+function onHeroDash(start, now) {
+  const trait = heroTrait()
+  if (trait === 'slipstream') heroState.slipUntil = now + 2.5
+  if (trait === 'phase') {
+    burst(particleSystem, { x: start.x, y: 0.6, z: start.z }, heroLook().glow, 26, 5, 0.4)
+    spawnShockwave(shockwavePool, start.x, start.z, 2.8, heroLook().glow)
+    for (const mesh of heroTargets(start.x, start.z, 2.6)) heroHurt(mesh, 1.5 * heroBaseDamage())
+  }
+}
+function onHeroKill(mesh, position) {
+  const trait = heroTrait()
+  if (trait === 'lucky' && Math.random() < 0.12) dropCrystals(crystalSystem, position.x, position.z, [5])
+  if (trait === 'contagion' && heroState.clouds.length < 10) {
+    // A splash of poison where it died; anything that dies in the puddle leaves one of its own.
+    heroState.clouds.push({ x: position.x, z: position.z, until: heroNow + 3, next: heroNow + 0.25 })
+    lobPoison(contagionPool, { x: position.x, z: position.z, tx: position.x, tz: position.z, flight: 0.001, radius: 2.2, life: 3, tick: 99, damage: 0 })
+  }
+}
+// Every frame of play: the look, gear motion, and the traits that run on a clock.
+function stepHeroTraits(now, dt) {
+  heroNow = now
+  redressHero()
+  const player = game.player
+  player.mesh.userData.heroGear?.userData.animate?.(now, player.speed)
+  const trait = heroTrait()
+  if (player.speed > 0.3) heroState.stillSince = now
+  if (trait === 'bramble' && player.hp > 0 && player.hp < player.maxHp / 2) player.hp = Math.min(player.maxHp, player.hp + 1.5 * dt)
+  if (heroState.lastHp !== null && player.hp < heroState.lastHp - 0.01 && trait === 'molten') {
+    heroState.molten = Math.min(5, (now < heroState.moltenUntil ? heroState.molten : 0) + 1)
+    heroState.moltenUntil = now + 6
+  }
+  heroState.lastHp = player.hp
+  // Kindling burns.
+  for (const mesh of game.monsters) {
+    const burn = mesh.userData.burn
+    if (!burn) continue
+    if (now >= burn.until || mesh.userData.dying) mesh.userData.burn = null
+    else if (now >= burn.next) {
+      burn.next += 1
+      heroHurt(mesh, burn.dps)
+      burst(particleSystem, { x: mesh.position.x, y: 1, z: mesh.position.z }, 0xff8a3d, 8, 2, 0.6)
+    }
+  }
+  // Contagion clouds.
+  heroState.clouds = heroState.clouds.filter((cloud) => {
+    if (now >= cloud.until) return false
+    if (now >= cloud.next) {
+      cloud.next += 0.5
+      burst(particleSystem, { x: cloud.x, y: 0.3, z: cloud.z }, 0x8fe02e, 5, 1.2, 0.6)
+      for (const mesh of heroTargets(cloud.x, cloud.z, 2.2)) heroHurt(mesh, 0.5 * heroBaseDamage())
+    }
+    return true
+  })
+  // Radiance aura.
+  if (trait === 'radiance' && now >= heroState.auraNext) {
+    heroState.auraNext = now + 0.5
+    for (const mesh of heroTargets(player.position.x, player.position.z, 3.5)) {
+      heroHurt(mesh, 0.35 * heroBaseDamage())
+      burst(particleSystem, { x: mesh.position.x, y: 0.9, z: mesh.position.z }, heroLook().glow, 5, 1.5, 0.6)
+      if (player.hp > 0) player.hp = Math.min(player.maxHp, player.hp + 0.5)
+    }
+  }
+}
 
 // Dragons, and the skins and breaths for them, are per-run finds: they live on the game and are lost with the
 // run (the sandbox has its own, with everything unlocked).
@@ -976,6 +1120,11 @@ function createGame() {
   const savedSpot = worldMode ? loadCheckpoint() : null // a Wilds run picks up at the last save point
   const player = new Player({ spawn: lab ? { x: labFloor.floor.start.x, z: labFloor.floor.start.z } : savedSpot ? { x: savedSpot.x, z: savedSpot.z } : { x: 0, z: 0 }, obstacles, particleSystem })
   scene.add(player.mesh)
+  dressPlayer(player.mesh, heroLook())
+  player.mesh.userData.heroKey = `${heroLook().heroId}:${heroLook().id}`
+  heroState.clouds = []
+  heroState.lastHp = null
+  heroState.molten = 0
 
   const game = {
     arena,
@@ -3673,6 +3822,7 @@ function scoreKill(game, mesh, cause, position, now) {
   showTrickSticker(hud, { name: trick.name, points, multiplier: game.chainState.multiplier, tone: trickToneForId(trick.id) })
   sfx.play(killVoiceForTrick(trick.id), position)
   input.rumble(RUMBLE_MEDIUM_STRENGTH, RUMBLE_MEDIUM_DURATION)
+  if (cause !== 'fall') onHeroKill(mesh, position)
 }
 
 // Advances each in-progress spawn-in effect (portal fade, monster
@@ -3950,6 +4100,7 @@ function advanceFloor(game) {
   resetProjectiles(projectilePool)
   sigJobs.length = 0
   resetPoison(poisonPool)
+  resetPoison(contagionPool)
   resetBullets(bulletPool)
   pendingSummons.length = 0
   pendingSplits.length = 0
@@ -4235,10 +4386,13 @@ const hub = createHub({
   getRun: () => ({ sandbox, inRun: started && !sandbox, pets: game.inventory.pets, weapons: game.inventory.weapons, crystals: game.inventory.crystals, owned: game.inventory.powerups, equipped: game.inventory.equipped }),
   onBank: bankRunCrystals,
   onOpenChange: (open) => {
-    if (!open) refreshDragons()
+    if (!open) {
+      refreshDragons()
+      redressHero()
+    }
   },
 })
-const HUB_KEYS = { Digit6: 'skills', Numpad6: 'skills', Digit7: 'powerups', Numpad7: 'powerups', KeyJ: 'gunsmith', KeyN: 'dragons', Digit9: 'loadout', Numpad9: 'loadout' }
+const HUB_KEYS = { Digit6: 'skills', Numpad6: 'skills', Digit7: 'powerups', Numpad7: 'powerups', KeyJ: 'gunsmith', KeyN: 'dragons', KeyY: 'heroes', Digit9: 'loadout', Numpad9: 'loadout' }
 function canOpenHub() {
   return !swapPanel.isOpen() && !pauseMenu.isOpen() && !(started && game.player.hp <= 0) && !(started && !sandbox && loadoutPanel.isOpen()) && !(started && sandbox && sandboxPanel?.isOpen?.())
 }
@@ -4255,6 +4409,7 @@ window.addEventListener('keydown', (event) => {
   } else if (event.code === 'KeyT') bankRunCrystals()
 })
 document.getElementById('hub-open-btn')?.addEventListener('click', () => hub.open('loadout'))
+document.getElementById('heroes-open-btn')?.addEventListener('click', () => hub.open('heroes'))
 // Graphics style (monster look), picked on the start card and remembered.
 const graphicsBtn = document.getElementById('graphics-btn')
 function showGraphicsStyle() {
@@ -4321,7 +4476,7 @@ function dismissStartCard(event) {
   // press both landing on the same frame and dismissing it twice.
   if (started) return
   // Opening the hub (its button, or keys 6 / 7 / 9) or typing inside it isn't "start".
-  if (hub.isOpen() || event?.target?.closest?.('#hub-open-btn, #hub-root, #graphics-btn') || HUB_KEYS[event?.code]) return
+  if (hub.isOpen() || event?.target?.closest?.('#hub-open-btn, #heroes-open-btn, #hub-root, #graphics-btn') || HUB_KEYS[event?.code]) return
   started = true
   // The card goes away first, and each step below is guarded: one failing (audio on an odd
   // browser, a bad saved profile) must never leave the card up with every click ignored.
@@ -4382,6 +4537,7 @@ function restartGame() {
   resetProjectiles(projectilePool)
   sigJobs.length = 0
   resetPoison(poisonPool)
+  resetPoison(contagionPool)
   resetBullets(bulletPool)
   resetCrystals(crystalSystem)
   setChestPrompt(hud, null)
@@ -4802,6 +4958,17 @@ function gameFrame(timestamp) {
   }
   stepWater(elapsedSeconds, deltaSeconds)
   input.wildsKeys = Boolean(game?.world)
+  // Tap Shift to dash (hold it to keep sprinting): along the way you're moving, or your facing when still.
+  if (!room && !player.hidden && !player.falling && player.hp > 0 && (input.wasPressed('ShiftLeft') || input.wasPressed('ShiftRight'))) {
+    const moving = player.speed > 0.5
+    const dir = moving ? player.moveDir : { x: Math.sin(player.facing), z: Math.cos(player.facing) }
+    const dashStart = { x: player.position.x, z: player.position.z }
+    if (player.dash(elapsedSeconds, dir, DASH_COOLDOWN * heroFx().dash)) {
+      onHeroDash(dashStart, elapsedSeconds)
+      burst(particleSystem, { x: player.position.x, y: 0.5, z: player.position.z }, heroLook().accent, 14, 3, 0.35)
+      sfx.play('swing', { x: player.position.x, z: player.position.z })
+    }
+  }
   player.update(input, cameraYaw, deltaSeconds, room ? true : null)
   if (game.world) {
     // Space: a plain hop; Space again in the air opens the paraglider (no cooldown, no ability slot). Not while hiding,
@@ -4837,7 +5004,8 @@ function gameFrame(timestamp) {
     input.rumble(RUMBLE_STRONG_STRENGTH, RUMBLE_STRONG_DURATION)
     game.hitstop.remaining = triggerHitstop(game.hitstop, HITSTOP_PLAYER_HURT).remaining
   }
-  updateJelly(player.mesh, deltaSeconds, elapsedSeconds, { speed: player.speed, moveDir: player.moveDir })
+  // Only the Guest (the bare jelly) stretches as it moves; the other heroes' gear would come apart from it.
+  updateJelly(player.mesh, deltaSeconds, elapsedSeconds, { speed: heroById(heroProfile().hero).id === 'guest' ? player.speed : 0, moveDir: player.moveDir })
   updateFace3D(player.mesh, gameplayDelta, elapsedSeconds)
 
   // wasHidden, compared against player.hidden after updateHiding runs,
@@ -4930,7 +5098,7 @@ function gameFrame(timestamp) {
     swingTrail,
     weaponId: selectedWeaponId(game.inventory),
     damageMultiplier: elapsedDamageMultiplier(player, elapsedSeconds) * petFx.damageMultiplier * perk.damage * (Math.random() < perk.crit ? 2 : 1),
-    cooldownMultiplier: petFx.cooldownMultiplier * perk.cooldown * (elapsedSeconds < player.frenzyUntil ? FRENZY_COOLDOWN_MULTIPLIER : 1) * (elapsedSeconds < timeWarp.until ? 0.77 : 1),
+    cooldownMultiplier: petFx.cooldownMultiplier * perk.cooldown * (elapsedSeconds < player.frenzyUntil ? FRENZY_COOLDOWN_MULTIPLIER : 1) * (elapsedSeconds < timeWarp.until ? 0.77 : 1) * (elapsedSeconds < heroState.slipUntil ? 1 / 1.35 : 1),
     knockbackMultiplier: petFx.knockbackMultiplier * perk.knockback,
     bulletPool,
     rifleSetup: riflePicks(sandboxProfile(), selectedWeaponId(game.inventory)),
@@ -5203,6 +5371,7 @@ function gameFrame(timestamp) {
   }
   const orbHurt = updateProjectiles(projectilePool, gameplayDelta * (elapsedSeconds < timeWarp.until ? timeWarp.factor : 1), player, elapsedSeconds, ARENA_RADIUS, bulwarkBlockers())
   const poisonHurt = updatePoison(poisonPool, gameplayDelta, player, elapsedSeconds)
+  updatePoison(contagionPool, gameplayDelta, NOBODY, elapsedSeconds)
   if (orbHurt || poisonHurt) {
     triggerShake(shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
     triggerDamageFlash(hud)
@@ -5221,6 +5390,7 @@ function gameFrame(timestamp) {
   }
   player.updateStatusEffects(elapsedSeconds)
   if (perk.regen > 0 && player.hp > 0) player.hp = Math.min(player.maxHp, player.hp + perk.regen * gameplayDelta)
+  stepHeroTraits(elapsedSeconds, gameplayDelta)
   // On hills, pets ride the ground: take last frame's lift off, let them move, put the new lift on.
   if (game.world) for (const pet of game.pets) pet.mesh.position.y -= pet.groundLift ?? 0
   updatePets(game.pets, { petDamage: perk.petDamage, levels: profile.pets, dt: gameplayDelta, elapsed: elapsedSeconds, player, monsters: game.monsters, obstacles, particleSystem, hitstop: game.hitstop, shockwavePool, onScratch: petScratch })

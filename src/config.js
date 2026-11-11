@@ -11,7 +11,7 @@ export const PLAYER_BODY_RADIUS = 0.6 // icosahedron radius for the player's jel
 // overlapping either, and it's a different hue family than blobbo's
 // green, so it stays identifiable on the pale sunlit deck.
 export const PLAYER_EDGE_COLOR = 0xffcabe
-export const PLAYER_SPEED = 4 // world units per second
+export const PLAYER_SPEED = 6.5 // world units per second (was 4: faster than every regular chaser now)
 // Speed eases into/out of PLAYER_SPEED over this many seconds (a
 // rampToward, not an instant snap) instead of starting/stopping dead.
 export const PLAYER_ACCEL_TIME = 0.1
@@ -38,7 +38,7 @@ export const FOG_FAR = 260
 // hp, damage per hit, and radius (collision/knockback/separation radius).
 export const MONSTER_TYPES = {
   blobbo: { shape: 'dodecahedron', size: 1.4, color: 0x5fd48e, edgeColor: 0xbfeed2, speed: 1.2, hp: 60, damage: 8, radius: 0.6 },
-  zippy: { shape: 'octahedron', size: 0.6, color: 0xff5c8a, edgeColor: 0xffbed0, speed: 5.5, hp: 20, damage: 5, radius: 0.25 },
+  zippy: { shape: 'octahedron', size: 0.6, color: 0xff5c8a, edgeColor: 0xffbed0, speed: 5, hp: 20, damage: 5, radius: 0.25 },
   grumpus: { shape: 'box', size: 1.1, color: 0x5c8dff, edgeColor: 0xbed1ff, speed: 2.0, hp: 100, damage: 15, radius: 0.45 },
   // Late-game enemies (src/logic/enemies.js): bloaters (wave 4) lob poison at
   // where you're heading, spinners (5) fire small orbs, splitters (6) burst
@@ -237,15 +237,17 @@ export const GAS_GIANT_RING_TILT = Math.PI / 2.6 // radians, off the orbital pla
 // trade looks for frame rate; the per-preset values below feed the
 // shadow map, ambient occlusion, pixel ratio and MSAA settings.
 export const QUALITY_PRESETS = {
-  low: { maxPixelRatio: 1, msaaSamples: 0, gtao: false, shadowMapSize: 1024 },
-  // Medium is the default: capped at 1.5x with 2x MSAA and 1024 shadows -- 'high' is the opt-in pretty mode.
-  medium: { maxPixelRatio: 1.5, msaaSamples: 2, gtao: false, shadowMapSize: 1024 },
-  high: { maxPixelRatio: 2, msaaSamples: 4, gtao: true, shadowMapSize: 2048 },
+  low: { maxPixelRatio: 1, msaaSamples: 0, gtao: false, bloom: false, shadowMapSize: 1024 },
+  // Medium is the default: capped at 1.5x, 1024 shadows and no bloom, so (like Shardfall's Normal) a
+  // frame with no warp effect skips post-processing and draws straight to an antialiased canvas.
+  // 'high' is the opt-in pretty mode.
+  medium: { maxPixelRatio: 1.5, msaaSamples: 2, gtao: false, bloom: false, shadowMapSize: 1024 },
+  high: { maxPixelRatio: 2, msaaSamples: 4, gtao: true, bloom: true, shadowMapSize: 2048 },
 }
 // Phones and tablets (a coarse pointer and no fine one) start on a lighter profile: a big
 // multisampled render target, 2048 shadow maps and a 2x pixel ratio are enough to make a
 // mobile browser refuse or lose its WebGL context.
-const MOBILE_PRESET = { maxPixelRatio: 1.5, msaaSamples: 0, gtao: false, shadowMapSize: 1024 }
+const MOBILE_PRESET = { maxPixelRatio: 1.5, msaaSamples: 0, gtao: false, bloom: false, shadowMapSize: 1024 }
 const IS_MOBILE =
   typeof window !== 'undefined' &&
   (() => {
@@ -270,6 +272,7 @@ const QUALITY_SETTINGS = {
   maxPixelRatio: numParam('pr', base.maxPixelRatio),
   msaaSamples: numParam('msaa', base.msaaSamples),
   gtao: urlParams.has('gtao') ? urlParams.get('gtao') === '1' : base.gtao,
+  bloom: urlParams.has('bloom') ? urlParams.get('bloom') === '1' : base.bloom,
   shadowMapSize: numParam('shadow', base.shadowMapSize),
 }
 
@@ -290,6 +293,7 @@ export const KEY_LIGHT_SHADOW_EXTENT = 25
 // and the renderer's own tone mapping exposure. In daylight, bloom is
 // tuned near-off (a high threshold plus a low strength) so only
 // genuinely bright highlights -- not the whole sunlit scene -- glow.
+export const BLOOM_ENABLED = QUALITY_SETTINGS.bloom // ?bloom=1 / ?bloom=0 overrides the preset
 export const BLOOM_STRENGTH = 0.15
 export const BLOOM_RADIUS = 0.4
 export const BLOOM_THRESHOLD = 0.95
@@ -711,3 +715,9 @@ export const DRAIN_HEAL_PER_HIT = 5
 export const DRAIN_COLOR = 0xd0104a
 export const FRENZY_COOLDOWN_MULTIPLIER = 0.7 // attack cooldown scale while Frenzy is up
 export const SPRINT_SPEED_MULTIPLIER = 1.6
+// Tapping Shift dashes (like Shardfall): a short burst of speed with a moment of invulnerability,
+// on a cooldown; keep holding Shift and you sprint on. Not in a water room (Shift dives there).
+export const DASH_SPEED = 26 // world units per second during the burst
+export const DASH_DURATION = 0.17 // seconds
+export const DASH_IFRAMES = 0.3 // seconds untouchable from the start of the dash
+export const DASH_COOLDOWN = 1.8 // seconds

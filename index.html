@@ -527,8 +527,8 @@
       #tutorial-panel button { font: inherit; font-weight: 700; padding: 5px 12px; border-radius: 8px; border: 2px solid var(--teal); background: #fff; color: var(--teal); cursor: pointer; }
       #tutorial-panel button.primary { background: var(--teal); color: #fff; }
       body.touch #tutorial-panel { top: 8px; width: min(300px, 50vw); font-size: 11px; padding: 8px 10px; }
-      #hub-open-btn { font: inherit; font-weight: 700; padding: 8px 18px; border-radius: 10px; border: 2px solid var(--butter); background: #fff; color: var(--ink); cursor: pointer; }
-      #hub-open-btn:hover { background: var(--butter); }
+      #hub-open-btn, #heroes-open-btn { font: inherit; font-weight: 700; padding: 8px 18px; border-radius: 10px; border: 2px solid var(--butter); background: #fff; color: var(--ink); cursor: pointer; }
+      #hub-open-btn:hover, #heroes-open-btn:hover { background: var(--butter); }
       .map-row { display: flex; gap: 12px; margin-top: 6px; flex-wrap: wrap; justify-content: center; }
       .map-btn {
         font: inherit;
@@ -1205,6 +1205,7 @@
         <h1>SlashBattle</h1>
         <div class="controls">
           <div class="control-row"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span>move</span></div>
+          <div class="control-row"><kbd>Shift</kbd><span>tap to dash, hold to sprint</span></div>
           <div class="control-row"><kbd>Click</kbd><kbd>Space</kbd><span>cast / swing (aim with the mouse)</span></div>
           <div class="control-row"><kbd>L</kbd><span>auto-shoot on / off</span></div>
           <div class="control-row"><kbd>E</kbd><span>hide in / exit a pod</span></div>
@@ -1216,6 +1217,7 @@
           <div class="control-row"><kbd>T</kbd><span>bank your crystals for upgrades</span></div>
           <div class="control-row"><kbd>0</kbd><span>first-person view (mouse looks)</span></div>
           <div class="control-row"><kbd>6</kbd><kbd>7</kbd><kbd>9</kbd><span>skill tree / power-ups / loadout</span></div>
+          <div class="control-row"><kbd>Y</kbd><span>heroes &amp; skins</span></div>
         </div>
         <div class="gamepad-legend">
           <span>🎮</span>
@@ -1235,6 +1237,7 @@
           <button id="world-btn" class="map-btn" type="button">The Wilds <kbd>O</kbd><small>Free roam a vast mystical continent: five biomes, monsters everywhere, no waves.</small></button>
         </div>
         <button id="hub-open-btn" type="button">Skills &amp; Loadout <kbd>6</kbd></button>
+        <button id="heroes-open-btn" class="hub-open-alt" type="button">Heroes &amp; Skins <kbd>Y</kbd></button>
         <button id="graphics-btn" type="button" title="Switch how monsters look">Graphics: Jelly</button>
         <button id="tutorial-btn" type="button">Tutorial <kbd>G</kbd></button>
         <button id="sandbox-btn" type="button">Sandbox mode <kbd>B</kbd></button>

@@ -56,11 +56,12 @@ record.
 - [ / ] — cycle the scope / ammo of the rifle in your hands (J opens the Gunsmith)
 - Shift (or E with no suitcase near) — in a water room: dive / surface
 - 1-5 — pick a weapon from the hotbar (melee or firearm)
-- Shift — hold to sprint (1.5x speed; in a water room it dives instead)
+- Shift — tap to dash (`DASH_*` in config.js: a 0.17s burst with brief i-frames, 1.8s cooldown); hold to sprint (1.5x speed; in a water room it dives instead)
 - Q / Z / X / C / V — use your abilities, in the order you found them
 - 0 — toggle first-person view (pointer-locked mouse look; W moves along the view, every weapon aims where you look; Esc or 0 exits)
 - N — open the Dragon Den (customize your dragons' scale and breath); in the Wilds (free roam) N shoots/swings instead and Space jumps (`logic/jump.js`: a plain hop, not an ability); Space again in the air opens the paraglider (`src/glider.js`: slow steady sink, 1.7x speed; Space folds it); E near a villager talks
 - U — in the Wilds: open the Wilds journal (goals, landmarks, bestiary, races); F inside a treasure map's circle digs
+- Y — open the hub's Heroes page (pick a hero and skin; see Heroes below)
 - Tab — open the power-up menu (pauses the game): click a power-up to equip / unequip it (in sandbox mode Tab opens the sandbox menu instead)
 
 A standard gamepad works too (`src/logic/gamepad.js` maps a snapshot to
@@ -929,3 +930,20 @@ kept. Falling off the world respawns you at the save point too (hurt, not healed
 ## Bullets keep their launch height
 The bullet layer rides the player's jumps and hills (`applyFxDepth`), so `bullets.js` stamps each bullet with the layer height it was
 fired at (`layerY`) and draws / hit-tests it at that world height (`localY`); a shot no longer bobs up and down while you jump.
+
+## Heroes and skins
+Inspired by Shardfall's roster. `src/logic/heroes.js` (pure) lists 12 heroes (The Guest, Ember Squire, Thorn Warden, Gale
+Runner, Prospector Pip, Frost Novice, Star Monk, Plague Doctor, Moon Hunter, Forge Titan, Sun Paladin, Void Walker), each
+with stat tweaks in the skills effect shape (plus a hero-only `dash` cooldown multiplier), one trait and four skins (body /
+cloak / trim / glow colours; the first is free). Heroes and skins are bought with banked crystals and saved in the profile
+(`hero`, `heroesOwned`, `heroSkins`, `skinsOwned`; `normalizeHeroFields`). `src/heroGear.js`'s `dressPlayer` recolours the
+jelly and builds the gear from primitives (hats, beak mask, capes, halos, horns, wings, lantern...; `mask` hides the face),
+and `icons.js`'s `heroIconUrl` renders portraits for the hub's Heroes page (Y, or the start card's button). `main.js`:
+`activeFx` folds in `heroEffects`; traits run through `combat.js`'s `setDamageHooks` (damage scaling / on-hit procs,
+skipping trait damage itself, cause 'hero') and `stepHeroTraits` (burns, contagion puddles -- a second, monster-only `hazards.js` pool, `contagionPool`, and a kill in one spawns another -- radiance aura, bramble regen,
+molten stacks, gear animation, re-dressing when the pick changes).
+
+## Speed and rendering (Shardfall comparison)
+`PLAYER_SPEED` is 6.5 (zippy 5, so no regular chaser outruns you). The medium preset has bloom off (`bloom` in
+`QUALITY_PRESETS`, `?bloom=1` overrides) and the canvas is then antialiased: `composer.render` draws straight to the canvas
+whenever GTAO, bloom and the warp pass are all off, and only runs the post chain while a warp zone is live.

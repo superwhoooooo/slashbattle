@@ -4,6 +4,7 @@
 // bought with banked crystals (skill tree + power-up upgrades). Every function
 // returns a NEW profile. src/profile.js saves it in localStorage.
 import { BREATHS, SCALES, isDragon, unlockedBreaths, unlockedSkins } from './dragons.js'
+import { DEFAULT_HERO, normalizeHeroFields } from './heroes.js'
 import { MAX_SLOTS, PETS, WEAPONS, PET_MAX_LEVEL, POWERUPS, SLOT_LIMITS, petLevel, petUpgradeCost } from './items.js'
 import { AMMO, AMMO_MAX_LEVEL, DEFAULT_AMMO, DEFAULT_SCOPE, RIFLE_MAX_LEVEL, SCOPES, ammoLevel, ammoUpgradeCost, cycleIn, isAmmoUnlocked, isScopeUnlocked, rifleLevel, rifleUpgradeCost, unlockedAmmo, unlockedScopes } from './rifles.js'
 import { POWERUP_MAX_LEVEL, SKILLS, powerupLevel, powerupUpgradeCost, skillLevel, skillState, skillsSpent } from './skills.js'
@@ -37,6 +38,10 @@ export function createProfile() {
     rifleLevels: {}, // rifle id -> level (absent = 1)
     ammoLevels: {}, // ammo id -> level (absent = 1)
     rifles: {}, // rifle id -> { scope, ammo } (absent = iron sights, standard ammo)
+    hero: DEFAULT_HERO, // logic/heroes.js: the hero you play as
+    heroesOwned: [], // heroes bought (the Guest is always owned)
+    heroSkins: {}, // hero id -> skin id worn (absent = its first skin)
+    skinsOwned: [], // 'heroId:skinId' keys bought
   }
 }
 
@@ -105,6 +110,7 @@ export function normalizeProfile(raw) {
     },
     rifleLevels,
     ammoLevels,
+    ...normalizeHeroFields(raw),
   }
 }
 
@@ -242,3 +248,5 @@ export function buyAmmoLevel(profile, id) {
 }
 
 export { skillLevel }
+
+export { buyHero, buySkin, selectHero } from './heroes.js'

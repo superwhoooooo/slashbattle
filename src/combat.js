@@ -164,6 +164,13 @@ export function setKnockbackWorldScale(scale) {
   knockbackWorldScale = scale
 }
 
+// Hero traits (main.js) can scale a hit and react to it: { amount(monster, damage, cause, fromPos) -> damage,
+// hit(monster, damage, cause, lethal) }. Null when no hero trait cares.
+let damageHooks = null
+export function setDamageHooks(hooks) {
+  damageHooks = hooks
+}
+
 export function damageMonster(monster, damage, { fromPos, knockback = 0, obstacles = [], particleSystem, cause = 'sword', ambush = false, hitstop = null }) {
   if (isUntouchable(monster)) return false // a deep dweller, out of reach until you dive
   // A summoner boss is immune while any minion it called in is still alive.
@@ -176,6 +183,7 @@ export function damageMonster(monster, damage, { fromPos, knockback = 0, obstacl
   }
   // A gopher sitting dazed after an eruption takes extra damage ("Whack-a-Mole" if it dies).
   if (monster.userData.dazed) damage = Math.round(damage * BURROW.dazedDamageMultiplier)
+  if (damageHooks?.amount) damage = damageHooks.amount(monster, damage, cause, fromPos)
   const { hp, lethal } = applyDamage({ hp: monster.userData.hp }, damage)
   monster.userData.hp = hp
   monster.userData.lastHitBy = cause
@@ -216,6 +224,7 @@ export function damageMonster(monster, damage, { fromPos, knockback = 0, obstacl
     jellyHit(monster, JELLY_DEATH_INFLATE_STRENGTH)
     shardBurst(particleSystem, hitPoint, stats.color, DEATH_SHARD_COUNT * (stats.boss ? BOSS_DEATH_SHARD_MULTIPLIER : 1), DEATH_SHARD_SPEED)
   }
+  damageHooks?.hit?.(monster, damage, cause, lethal)
   return lethal
 }
 
