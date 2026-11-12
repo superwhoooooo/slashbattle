@@ -10,9 +10,17 @@ import { SHADY_SCORES, shadyWeights } from './shadyGuests.js'
 export const WAVE_BASE_SIZE = 4
 export const WAVE_GROWTH = 4
 
+// The difficulty's wave tuning (logic/difficulty.js): `size` scales how many monsters a wave holds,
+// `interval` how long between arrivals. Normal is 1 / 1.
+let tuning = { size: 1, interval: 1 }
+export function setWaveTuning({ size = 1, interval = 1 } = {}) {
+  tuning = { size, interval }
+}
+
 // A strictly increasing enemy count for wave `n` (1-indexed).
 export function waveSize(n) {
-  return WAVE_BASE_SIZE + WAVE_GROWTH * (n - 1)
+  const base = WAVE_BASE_SIZE + WAVE_GROWTH * (n - 1)
+  return tuning.size === 1 ? base : Math.max(2, Math.round(base * tuning.size))
 }
 
 export const WAVE_BASE_SPAWN_INTERVAL = 1.9 // seconds
@@ -22,7 +30,7 @@ export const WAVE_MIN_SPAWN_INTERVAL = 0.65 // seconds
 // Seconds between enemies trickling in one at a time during wave `n`,
 // never faster than WAVE_MIN_SPAWN_INTERVAL.
 export function waveSpawnInterval(n) {
-  return Math.max(WAVE_MIN_SPAWN_INTERVAL, WAVE_BASE_SPAWN_INTERVAL - WAVE_SPAWN_INTERVAL_DECAY * (n - 1))
+  return Math.max(WAVE_MIN_SPAWN_INTERVAL, WAVE_BASE_SPAWN_INTERVAL - WAVE_SPAWN_INTERVAL_DECAY * (n - 1)) * tuning.interval
 }
 
 export const WAVE_INTERMISSION = 3 // seconds between a wave clearing and the next one spawning

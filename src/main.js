@@ -29,8 +29,11 @@ import { PICKUP_RADIUS, createPerkPickup, updatePerkPickup } from './pickups.js'
 import { createLoadoutPanel } from './loadout.js'
 import { createHub } from './hub.js'
 import { dressPlayer } from './heroGear.js'
-import { ECHO_EVERY, FOCUS_DELAY, HEROES, HEX_BONUS, STATIC_EVERY, heroById, heroEffects, heroLook as lookForProfile, marksmanBonus, moltenBonus, rewindTarget, tipJarCrystals } from './logic/heroes.js'
+import { BROADSIDE_COOLDOWN, ECHO_EVERY, FOCUS_DELAY, HEROES, HEX_BONUS, SECONDS_EVERY, STATIC_EVERY, broadsideSpots, grantSkin, heroById, isBehind, heroEffects, heroLook as lookForProfile, marksmanBonus, moltenBonus, rewindTarget, tipJarCrystals } from './logic/heroes.js'
 import { loadProfile, saveProfile } from './profile.js'
+import { DIFFICULTIES, DIFFICULTY_IDS, difficultyById, runPayout } from './logic/difficulty.js'
+import { getDifficulty, setDifficulty } from './difficulty.js'
+import { contractText, progressEvent } from './logic/progress.js'
 import { createScope } from './scope.js'
 import { SCOPES, AMMO, rifleSetup as riflePicks, stepSteady, tuneRifle } from './logic/rifles.js'
 import { BULLET_START_Y, bulletDamage, clampSlope } from './logic/bullets.js'
@@ -253,6 +256,7 @@ import {
   pickMonsterType,
   scoreForKill,
   stepWaves,
+  setWaveTuning,
   waveClearBonus,
   waveSize,
 } from './logic/waves.js'
@@ -946,6 +950,7 @@ const heroState = {
   hits: 0, // own hits landed (Static Charge / Echo Self counters)
   pending: [], // trait effects queued from inside damageMonster, run next frame: { at, run }
   whistleReady: 0, bassReadyAt: 0, rewindReady: 0, history: [], historyNext: 0,
+  kills: 0, broadsideReady: 0, thornsReady: 0, // Seconds, Please / Broadside / Thorns
 }
 // Trait damage itself (cause 'hero'), pets and hazards don't trigger or get boosted by traits.
 const TRAIT_EXCLUDED = new Set(['pet', 'photobomb', 'spike', 'hero', 'fall'])
@@ -967,6 +972,7 @@ setDamageHooks({
     if (trait === 'marksman') scale *= marksmanBonus(Math.hypot(monster.position.x - p.x, monster.position.z - p.z))
     if (trait === 'molten' && heroNow < heroState.moltenUntil) scale *= moltenBonus(heroState.molten)
     if (trait === 'chill' && isFrozen(monster.userData, heroNow)) scale *= 1.2
+    if (trait === 'backstab' && (monster.userData.state === 'wander' || monster.userData.state === 'search' || isBehind(monster.position, monster.rotation.y, p))) scale *= 1.6
     if (hexed) scale *= HEX_BONUS
     return scale === 1 ? damage : Math.round(damage * scale)
   },
@@ -981,6 +987,11 @@ setDamageHooks({
     if (trait === 'bassdrop' && heroNow >= heroState.bassReadyAt) {
       heroState.bassReadyAt = heroNow + 8
       heroState.pending.push({ at: heroNow, run: () => bassDrop(at) })
+    }
+    if (trait === 'broadside' && heroNow >= heroState.broadsideReady) {
+      heroState.broadsideReady = heroNow + BROADSIDE_COOLDOWN
+      const from = { x: game.player.position.x, z: game.player.position.z }
+      broadsideSpots(from, at).forEach((spot, i) => heroState.pending.push({ at: heroNow + 0.12 * (i + 1), run: () => cannonBlast(spot) }))
     }
     if (lethal) return
     if (trait === 'hex') {
@@ -1034,6 +1045,23 @@ function bassDrop(at) {
   sfx.play('bossSlam', at)
   for (const mesh of heroTargets(at.x, at.z, 4)) heroHurt(mesh, heroBaseDamage(), 2.5, at)
 }
+// Broadside: one cannon blast (Captain Gully).
+function cannonBlast(at) {
+  burst(particleSystem, { x: at.x, y: 0.8, z: at.z }, 0xffb547, 18, 4, 0.4)
+  burst(particleSystem, { x: at.x, y: 0.8, z: at.z }, 0x3a3a40, 10, 2, 0.7)
+  spawnShockwave(shockwavePool, at.x, at.z, 2, heroLook().glow)
+  warp.add('ripple', at.x, at.z, 2.5, 0.35)
+  sfx.play('bossSlam', at)
+  for (const mesh of heroTargets(at.x, at.z, 2)) heroHurt(mesh, 1.2 * heroBaseDamage(), 1.5, at)
+}
+// Thorns: a burst of thorns from the player when they get hurt (Rosa Thornheart).
+function thornBurst() {
+  const at = { x: game.player.position.x, z: game.player.position.z }
+  burst(particleSystem, { x: at.x, y: 0.8, z: at.z }, 0x4f8a4a, 20, 4.5, 0.35)
+  burst(particleSystem, { x: at.x, y: 0.8, z: at.z }, heroLook().body, 10, 3, 0.4)
+  spawnShockwave(shockwavePool, at.x, at.z, 3, heroLook().glow)
+  for (const mesh of heroTargets(at.x, at.z, 3)) heroHurt(mesh, 0.8 * heroBaseDamage(), 3, at)
+}
 // Clockwork Sage's Rewind and Lifeguard Lou's whistle: called before the game decides you're down.
 function heroRescue(now) {
   const player = game.player
@@ -1077,6 +1105,13 @@ function onHeroDash(start, now) {
 }
 function onHeroKill(mesh, position) {
   const trait = heroTrait()
+  heroState.kills++
+  if (trait === 'seconds' && heroState.kills % SECONDS_EVERY === 0 && game.player.hp > 0) {
+    const p = game.player
+    p.hp = Math.min(p.maxHp, p.hp + p.maxHp * 0.12)
+    burst(particleSystem, { x: p.position.x, y: 1.4, z: p.position.z }, heroLook().glow, 16, 2.5, 0.6)
+    showPopup(popupPool, p.position, 'SECONDS!', `+${Math.round(p.maxHp * 0.12)} HP`, '#7ee8a8')
+  }
   if (trait === 'lucky' && Math.random() < 0.12) dropCrystals(crystalSystem, position.x, position.z, [5])
   if (trait === 'tipjar') {
     const tip = tipJarCrystals(game.chainState.count)
@@ -1110,6 +1145,10 @@ function stepHeroTraits(now, dt) {
   const trait = heroTrait()
   if (player.speed > 0.3) heroState.stillSince = now
   if (trait === 'bramble' && player.hp > 0 && player.hp < player.maxHp / 2) player.hp = Math.min(player.maxHp, player.hp + 1.5 * dt)
+  if (heroState.lastHp !== null && player.hp < heroState.lastHp - 0.5 && trait === 'thorns' && now >= heroState.thornsReady && player.hp > 0) {
+    heroState.thornsReady = now + 0.4
+    thornBurst()
+  }
   if (heroState.lastHp !== null && player.hp < heroState.lastHp - 0.01 && trait === 'molten') {
     heroState.molten = Math.min(5, (now < heroState.moltenUntil ? heroState.molten : 0) + 1)
     heroState.moltenUntil = now + 6
@@ -1243,6 +1282,8 @@ function createGame() {
   heroState.history = []
   heroState.hits = 0
   heroState.whistleReady = heroState.bassReadyAt = heroState.rewindReady = 0
+  heroState.kills = heroState.broadsideReady = heroState.thornsReady = 0
+  applyDifficulty()
 
   const game = {
     arena,
@@ -2020,6 +2061,7 @@ function openChestNow(game, chest, now) {
   game.inventory = cost > 0 ? { ...paid.inventory, chestsOpened: paid.inventory.chestsOpened + 1 } : paid.inventory
   openChest(chest)
   sfx.play('chestOpen')
+  progressNote({ type: 'chest' })
   const obstacleIndex = game.obstacles.indexOf(chest.userData.obstacle)
   if (obstacleIndex !== -1) game.obstacles.splice(obstacleIndex, 1)
 
@@ -3376,6 +3418,11 @@ function spawnMonster(game, type, { at = null, effectOptions, hpScale = 1, faceP
       mesh.userData.hp = mesh.userData.maxHp = Math.round(mesh.userData.maxHp * Math.min(1.15, Math.max(1, fx.damage / Math.max(0.55, fx.cooldown))))
     }
   }
+  // The difficulty's toughness (logic/difficulty.js): bosses keep their own speed scaling.
+  const d = diff()
+  const toughness = stats.boss ? d.bossHp : d.monsterHp
+  if (toughness !== 1) mesh.userData.hp = mesh.userData.maxHp = Math.max(1, Math.round(mesh.userData.maxHp * toughness))
+  if (!stats.boss) mesh.userData.speedScale = (mesh.userData.speedScale ?? 1) * d.monsterSpeed
   scene.add(mesh)
   game.monsters.push(mesh)
 
@@ -3931,8 +3978,13 @@ function scoreKill(game, mesh, cause, position, now) {
   })
   game.chainState = stepChain(game.chainState, now, trick.id)
   if (game.chainState.multiplier > 1) tutorialEvent('chain')
-  const points = Math.round(trickPoints(scoreForKill(mesh.userData.type), game.chainState.multiplier) * activeFx(game.inventory.equipped).scoreMult)
+  const zeroG = trick.id === 'checkout' || trick.id === 'vipCheckout' ? (heroTrait() === 'zerog' ? 3 : 1) : 1 // Cosmo Nova's ring-outs
+  const points = Math.round(trickPoints(scoreForKill(mesh.userData.type), game.chainState.multiplier) * activeFx(game.inventory.equipped).scoreMult * diff().score * zeroG)
   game.score += points
+  progressNote({ type: 'kill', monster: mesh.userData.type, trick: trick.id })
+  if (mesh.userData.isBoss) progressNote({ type: 'boss' })
+  if (game.chainState.multiplier > 1) progressNote({ type: 'chain', value: game.chainState.multiplier })
+  progressNote({ type: 'score', value: game.score })
   const killHeal = activeFx(game.inventory.equipped).killHeal
   if (killHeal) game.player.hp = Math.min(game.player.maxHp, game.player.hp + killHeal)
   const pointsLine = game.chainState.multiplier > 1 ? `+${points} ×${game.chainState.multiplier}` : `+${points}`
@@ -4196,9 +4248,10 @@ function advanceFloor(game) {
   if (lab.floorIndex + 1 >= LABYRINTH_FLOORS) {
     lab.won = true
     game.score += 3000
-    const best = loadHighScore()
-    saveHighScore({ bestScore: Math.max(best.bestScore, game.score), bestWave: Math.max(best.bestWave, game.waveState.waveNumber) })
-    document.getElementById('win-score').textContent = `Score: ${game.score}`
+    const best = loadHighScore(getDifficulty())
+    saveHighScore({ bestScore: Math.max(best.bestScore, game.score), bestWave: Math.max(best.bestWave, game.waveState.waveNumber) }, getDifficulty())
+    const payout = finishRun(game) ?? 0
+    document.getElementById('win-score').textContent = `Score: ${game.score}${payout ? ` · Checkout tip: +${payout} ◆ banked` : ''}`
     return
   }
   const index = lab.floorIndex + 1
@@ -4302,6 +4355,56 @@ let tutorialSetupStep = -1
 const freePlay = () => sandbox || tutorial
 // No waves at all: the sandbox, the tutorial and the free roam world.
 const noWaves = () => freePlay() || Boolean(game?.world)
+
+// ---------- difficulty (logic/difficulty.js) and long-term progress (logic/progress.js) ----------
+// The sandbox and the tutorial always play at Normal and never feed contracts / mastery.
+const diff = () => (freePlay() ? DIFFICULTIES.normal : difficultyById(getDifficulty()))
+function applyDifficulty() {
+  const d = diff()
+  setWaveTuning({ size: d.waveSize, interval: d.spawnInterval })
+  document.body.dataset.difficulty = d.id
+}
+// Progress changes on nearly every kill, so it's kept in memory and saved a moment later.
+let progressSaveTimer = null
+function saveProgressSoon() {
+  if (progressSaveTimer) return
+  progressSaveTimer = setTimeout(() => {
+    progressSaveTimer = null
+    saveProfile(profile)
+  }, 2500)
+}
+// Feeds one run event into contracts, hero mastery and records; pays what they earned into the bank.
+function progressNote(event) {
+  if (freePlay() || !game || !started) return
+  const result = progressEvent(profile.progress, event, { hero: profile.hero, difficulty: getDifficulty() })
+  if (result.progress === profile.progress && !result.bank) return
+  let next = { ...profile, progress: result.progress }
+  if (result.bank) next = bankCrystals(next, result.bank)
+  for (const up of result.levelUps) if (up.skin !== null) next = grantSkin(next, up.hero, up.skin)
+  profile = next
+  saveProgressSoon()
+  for (const done of result.done) {
+    sfx.play('waveCleared')
+    showLootToast(hud, { title: 'CONTRACT COMPLETE', name: done.text, blurb: `+${done.reward} ◆ banked. A new contract is waiting [I]` })
+  }
+  for (const up of result.levelUps) {
+    const hero = heroById(up.hero)
+    const skinName = up.skin !== null ? hero.skins[up.skin]?.name : null
+    sfx.play('chestOpen')
+    showLootToast(hud, { title: `MASTERY ${up.level}`, name: hero.name, blurb: `+${up.reward} ◆ banked${skinName ? `, and the ${skinName} skin is yours` : ''}` })
+  }
+  if (result.done.length || result.levelUps.length) hub.refresh()
+}
+// The end of a run (lost, or the labyrinth won): the checkout tip, records, and the game-over summary.
+function finishRun(game) {
+  if (game.runFinished || freePlay() || game.world) return null
+  game.runFinished = true
+  const payout = runPayout({ wave: game.waveState.waveNumber, score: game.score, bosses: game.bossesDefeated ?? 0, difficulty: getDifficulty() })
+  progressNote({ type: 'runEnd' })
+  if (payout > 0) profile = bankCrystals(profile, payout)
+  saveProfile(profile)
+  return payout
+}
 
 function tutorialEvent(type, amount, target) {
   if (!tutorial) return
@@ -4510,7 +4613,7 @@ const hub = createHub({
     }
   },
 })
-const HUB_KEYS = { Digit6: 'skills', Numpad6: 'skills', Digit7: 'powerups', Numpad7: 'powerups', KeyJ: 'gunsmith', KeyN: 'dragons', KeyY: 'heroes', Digit9: 'loadout', Numpad9: 'loadout' }
+const HUB_KEYS = { Digit6: 'skills', Numpad6: 'skills', Digit7: 'powerups', Numpad7: 'powerups', KeyJ: 'gunsmith', KeyN: 'dragons', KeyY: 'heroes', KeyI: 'contracts', Digit9: 'loadout', Numpad9: 'loadout' }
 function canOpenHub() {
   return !swapPanel.isOpen() && !pauseMenu.isOpen() && !(started && game.player.hp <= 0) && !(started && !sandbox && loadoutPanel.isOpen()) && !(started && sandbox && sandboxPanel?.isOpen?.())
 }
@@ -4528,6 +4631,23 @@ window.addEventListener('keydown', (event) => {
 })
 document.getElementById('hub-open-btn')?.addEventListener('click', () => hub.open('loadout'))
 document.getElementById('heroes-open-btn')?.addEventListener('click', () => hub.open('heroes'))
+document.getElementById('contracts-open-btn')?.addEventListener('click', () => hub.open('contracts'))
+// Difficulty (Relax / Normal / Hard), picked on the start card and remembered.
+function showDifficulty() {
+  const current = getDifficulty()
+  for (const btn of document.querySelectorAll('.diff-btn')) btn.classList.toggle('on', btn.dataset.difficulty === current)
+  const blurb = document.getElementById('difficulty-blurb')
+  if (blurb) blurb.textContent = difficultyById(current).blurb
+}
+for (const btn of document.querySelectorAll('.diff-btn')) {
+  btn.addEventListener('click', () => {
+    if (started || !DIFFICULTY_IDS.includes(btn.dataset.difficulty)) return
+    setDifficulty(btn.dataset.difficulty)
+    applyDifficulty()
+    showDifficulty()
+  })
+}
+showDifficulty()
 // Graphics style (monster look), picked on the start card and remembered.
 const graphicsBtn = document.getElementById('graphics-btn')
 function showGraphicsStyle() {
@@ -4594,7 +4714,7 @@ function dismissStartCard(event) {
   // press both landing on the same frame and dismissing it twice.
   if (started) return
   // Opening the hub (its button, or keys 6 / 7 / 9) or typing inside it isn't "start".
-  if (hub.isOpen() || event?.target?.closest?.('#hub-open-btn, #heroes-open-btn, #hub-root, #graphics-btn') || HUB_KEYS[event?.code]) return
+  if (hub.isOpen() || event?.target?.closest?.('#hub-open-btn, #heroes-open-btn, #contracts-open-btn, #difficulty-row, #hub-root, #graphics-btn') || HUB_KEYS[event?.code]) return
   started = true
   // The card goes away first, and each step below is guarded: one failing (audio on an odd
   // browser, a bad saved profile) must never leave the card up with every click ignored.
@@ -4891,12 +5011,18 @@ function gameFrame(timestamp) {
   // we let the loop keep running, but it doesn't past this point).
   if (gameState === 'lost' && !game.gameOverRecorded) {
     game.gameOverRecorded = true
-    const previousBest = loadHighScore()
+    const mode = getDifficulty()
+    const previousBest = loadHighScore(mode)
     const isNewBest = game.score > previousBest.bestScore
     const bestScore = Math.max(previousBest.bestScore, game.score)
     const bestWave = Math.max(previousBest.bestWave, game.waveState.waveNumber)
-    saveHighScore({ bestScore, bestWave })
-    game.gameOverStats = { wave: game.waveState.waveNumber, score: game.score, bestScore, isNewBest }
+    saveHighScore({ bestScore, bestWave }, mode)
+    const payout = finishRun(game)
+    game.gameOverStats = {
+      wave: game.waveState.waveNumber, score: game.score, bestScore, isNewBest,
+      difficulty: difficultyById(mode).name, payout, bank: profile.bank,
+      contracts: profile.progress.contracts.map((c) => ({ text: contractText(c), progress: c.progress, goal: c.goal })),
+    }
   }
   showGameOverlay(hud, gameState === 'lost' ? 'lost' : null, game.gameOverStats)
 
@@ -4963,15 +5089,19 @@ function gameFrame(timestamp) {
   // The labyrinth's corridors swallow monsters: half the time a second one tags along.
   if (game.labyrinth) spawns.forEach((type) => { if (Math.random() < 0.5) spawnMonster(game, type) })
   if (events.includes('waveCleared')) {
-    const bonus = waveClearBonus(clearedWaveNumber)
+    const bonus = Math.round(waveClearBonus(clearedWaveNumber) * diff().score)
     game.score += bonus
     showWaveClearedBanner(hud, bonus)
     sfx.play('waveCleared')
-    player.hp = Math.min(player.maxHp, player.hp + WAVE_CLEAR_HEAL * activeFx(game.inventory.equipped).waveHeal)
+    player.hp = Math.min(player.maxHp, player.hp + WAVE_CLEAR_HEAL * activeFx(game.inventory.equipped).waveHeal * diff().waveHeal)
+    progressNote({ type: 'waveClear' })
+    progressNote({ type: 'wave', value: game.waveState.waveNumber })
+    progressNote({ type: 'score', value: game.score })
   }
   if (events.includes('bossDefeated')) {
-    const bonus = waveClearBonus(clearedWaveNumber) * 2
+    const bonus = Math.round(waveClearBonus(clearedWaveNumber) * 2 * diff().score)
     game.score += bonus
+    progressNote({ type: 'wave', value: game.waveState.waveNumber })
     game.bossesDefeated = (game.bossesDefeated ?? 0) + 1
     if (game.labyrinth) {
       const lab = game.labyrinth
@@ -4993,7 +5123,7 @@ function gameFrame(timestamp) {
       showWaveClearedBanner(hud, bonus, { lead: bossBeforeStep.name, text: `DEFEATED - NEXT STOP: ${nextLevel.name.toUpperCase()}` })
     }
     sfx.play('waveCleared')
-    player.hp = Math.min(player.maxHp, player.hp + WAVE_CLEAR_HEAL * activeFx(game.inventory.equipped).waveHeal * BOSS_DEFEAT_HEAL_MULTIPLIER)
+    player.hp = Math.min(player.maxHp, player.hp + WAVE_CLEAR_HEAL * activeFx(game.inventory.equipped).waveHeal * diff().waveHeal * BOSS_DEFEAT_HEAL_MULTIPLIER)
   }
   if (events.includes('waveCleared') || events.includes('bossDefeated')) attractAllCrystals(crystalSystem)
   if (events.includes('bossIntro')) startBossCutscene(game)
@@ -5502,6 +5632,7 @@ function gameFrame(timestamp) {
   // Pets follow and help, crystals scatter/home/get collected, and chests
   // animate; F opens the nearest one in reach if you can afford it.
   player.damageTakenMultiplier = tutorial || (sandbox && godMode) ? 0 : Math.max(0.3, petFx.damageTakenMultiplier * perk.damageTaken)
+  player.difficultyDamage = diff().damageTaken
   if (tutorial) stepTutorial()
   if (sandbox) {
     game.inventory = sandboxTopUp(game.inventory)
@@ -5524,6 +5655,7 @@ function gameFrame(timestamp) {
     const gained = Math.max(1, Math.round(collected * petFx.crystalMultiplier * perk.crystal))
     game.inventory = addCrystals(game.inventory, gained)
     tutorialEvent('crystal', gained)
+    progressNote({ type: 'crystals', amount: gained })
     if (game.world) worldQuestEvent(game, { type: 'crystals', amount: gained })
     sfx.play('crystal')
   }

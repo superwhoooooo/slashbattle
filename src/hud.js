@@ -113,6 +113,8 @@ export function createHud() {
     loseScore: document.getElementById('lose-score'),
     loseBest: document.getElementById('lose-best'),
     loseNewBest: document.getElementById('lose-new-best'),
+    losePayout: document.getElementById('lose-payout'),
+    loseContracts: document.getElementById('lose-contracts'),
     _last: {}, // dirty-check cache for updateHud's setIfChanged, so it skips DOM writes when nothing changed
   }
 }
@@ -287,10 +289,26 @@ export function showGameOverlay(hud, state, stats) {
   hud.loseScreen.style.display = state === 'lost' ? 'flex' : 'none'
   if (state !== 'lost' || !stats) return
 
-  hud.loseWave.textContent = `Wave reached: ${stats.wave}`
+  if (hud.shownStats === stats) return // filled once per game over (this runs every frame)
+  hud.shownStats = stats
+  hud.loseWave.textContent = `Wave reached: ${stats.wave}${stats.difficulty ? ` · ${stats.difficulty}` : ''}`
   hud.loseScore.textContent = `Score: ${stats.score}`
-  hud.loseBest.textContent = `Best: ${stats.bestScore}`
+  hud.loseBest.textContent = `Best${stats.difficulty ? ` (${stats.difficulty})` : ''}: ${stats.bestScore}`
   hud.loseNewBest.style.display = stats.isNewBest ? 'block' : 'none'
+  if (hud.losePayout) hud.losePayout.textContent = stats.payout ? `Checkout tip: +${stats.payout} ◆ banked (${stats.bank} in the bank)` : ''
+  if (hud.loseContracts) {
+    hud.loseContracts.replaceChildren(
+      ...(stats.contracts ?? []).map((c) => {
+        const li = document.createElement('li')
+        const name = document.createElement('span')
+        name.textContent = c.text
+        const amount = document.createElement('b')
+        amount.textContent = `${c.progress.toLocaleString('en-US')} / ${c.goal.toLocaleString('en-US')}`
+        li.append(name, amount)
+        return li
+      }),
+    )
+  }
 }
 
 // Updates the health bar's width/label (pulsing red at/under

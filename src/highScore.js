@@ -4,12 +4,14 @@
 // { bestScore: 0, bestWave: 0 } fallback.
 import { noteSaved } from './saveSync.js'
 const STORAGE_KEY = 'slashbattle:highscore'
+// Normal keeps the original key; Relax and Hard keep their own bests.
+const keyFor = (difficulty = 'normal') => (difficulty === 'normal' ? STORAGE_KEY : `${STORAGE_KEY}:${difficulty}`)
 
 // Loads the saved high score, or the zero fallback if nothing's saved
 // yet, storage is unavailable, or the saved value is malformed.
-export function loadHighScore() {
+export function loadHighScore(difficulty = 'normal') {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
+    const raw = localStorage.getItem(keyFor(difficulty))
     if (!raw) return { bestScore: 0, bestWave: 0 }
     const parsed = JSON.parse(raw)
     return {
@@ -23,9 +25,9 @@ export function loadHighScore() {
 
 // Saves { bestScore, bestWave }. Silently does nothing if storage is
 // unavailable.
-export function saveHighScore(highScore) {
+export function saveHighScore(highScore, difficulty = 'normal') {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(highScore))
+    localStorage.setItem(keyFor(difficulty), JSON.stringify(highScore))
     noteSaved()
   } catch {
     // Storage may be unavailable (private browsing, quota, disabled);

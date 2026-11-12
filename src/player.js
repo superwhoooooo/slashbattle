@@ -44,6 +44,7 @@ export class Player {
     this.shieldUntil = -Infinity // the Bubble Shield ability: no damage at all until then
     this.rageUntil = -Infinity // the Rage ability: weapon damage multiplied until then
     this.damageTakenMultiplier = 1 // < 1 with a guard pet
+    this.difficultyDamage = 1 // logic/difficulty.js: every hit taken (Relax < 1 < Hard), on top of armour
     this.aimAngle = null // yaw toward the mouse while a ranged weapon is out; overrides the movement facing
     this.speedMultiplier = 1 // > 1 with a speed pet or Sprint
     this.whirlUntil = -Infinity // the Whirlwind ability: spinning and cutting everything close until then
@@ -106,7 +107,7 @@ export class Player {
     if (now < this.shieldUntil) return false
     const armour = this.damageTakenMultiplier
     const effective = armour === 0 ? 0 : armour + (1 - armour) * trueFraction
-    this.hp = applyDamage({ hp: this.hp }, amount * effective).hp
+    this.hp = applyDamage({ hp: this.hp }, amount * effective * this.difficultyDamage).hp
     this.invulnerableUntil = now + PLAYER_IFRAME_DURATION * this.iframeScale
     this._hitFlashElapsed = 0
     jellyHit(this.mesh, JELLY_HIT_STRENGTH)

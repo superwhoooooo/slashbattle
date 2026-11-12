@@ -6,6 +6,10 @@ import { dragonIconUrl, heroIconUrl, iconImg } from './icons.js'
 import { HEROES, heroById, heroEffects, ownsHero, ownsSkin } from './logic/heroes.js'
 import { BREATHS, SCALES, describeDragon, dragonSetup, isBreathUnlocked, isDragon, isSkinUnlocked, tuneDragon } from './logic/dragons.js'
 import { skillIconSvg } from './skillIcons.js'
+import { MASTERY_MAX, MASTERY_SKIN_LEVELS, contractText, contractTier, isBestKind, masteryBar, masteryReward } from './logic/progress.js'
+import { DIFFICULTY_IDS, difficultyById } from './logic/difficulty.js'
+import { getDifficulty } from './difficulty.js'
+import { loadHighScore } from './highScore.js'
 import * as actions from './logic/profile.js'
 import { PETS, PET_MAX_LEVEL, POWERUPS, SLOT_LIMITS, WEAPONS, petBoost, petLevel, petUpgradeCost, powerupEffects } from './logic/items.js'
 import { AMMO, AMMO_MAX_LEVEL, RIFLE_MAX_LEVEL, SCOPES, ammoLevel, ammoUpgradeCost, isAmmoUnlocked, isScopeUnlocked, rifleLevel, rifleSetup, rifleUpgradeCost, tuneRifle } from './logic/rifles.js'
@@ -24,6 +28,22 @@ import {
 } from './logic/skills.js'
 
 const CSS = `
+.hub-progress { display: grid; gap: 14px; }
+.hub-progress h2 { margin: 0 0 6px; font-size: 16px; letter-spacing: 0.04em; }
+.contract { border-radius: 12px; padding: 10px 12px; background: rgba(255,255,255,0.75); border: 1px solid #d8dee6; display: grid; gap: 6px; }
+.contract .row { display: flex; justify-content: space-between; gap: 12px; font-weight: 700; font-size: 14px; }
+.contract .row .reward { color: var(--teal, #19b5a5); white-space: nowrap; }
+.pbar { height: 8px; border-radius: 99px; background: #e4e9ef; overflow: hidden; }
+.pbar > i { display: block; height: 100%; background: linear-gradient(90deg, #19b5a5, #ffd15c); border-radius: 99px; }
+.contract small, .mastery-card small { color: var(--muted, #5b6b80); font-size: 12px; }
+.mastery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.mastery-card { border-radius: 12px; padding: 8px; background: rgba(255,255,255,0.75); border: 1px solid #d8dee6; display: grid; grid-template-columns: 44px 1fr; gap: 4px 8px; align-items: center; }
+.mastery-card.locked { opacity: 0.5; }
+.mastery-card img { width: 44px; height: 44px; grid-row: span 3; }
+.mastery-card b { font-size: 13px; }
+.records { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+.records div { border-radius: 12px; padding: 8px 10px; background: rgba(255,255,255,0.75); border: 1px solid #d8dee6; font-size: 12px; color: var(--muted, #5b6b80); }
+.records div b { display: block; font-size: 18px; color: var(--ink, #1f2a37); }
 .hub-heroes { display: grid; grid-template-columns: minmax(220px, 300px) 1fr; gap: 16px; align-items: start; }
 @media (max-width: 720px) { .hub-heroes { grid-template-columns: 1fr; } }
 .hero-detail { border-radius: 14px; padding: 12px; background: rgba(255,255,255,0.75); border: 1px solid #d8dee6; display: flex; flex-direction: column; gap: 8px; }
@@ -151,6 +171,7 @@ const TABS = [
   { id: 'dragons', label: 'Dragon Den', key: 'N' },
   { id: 'loadout', label: 'Loadout', key: '9' },
   { id: 'heroes', label: 'Heroes', key: 'Y' },
+  { id: 'contracts', label: 'Contracts', key: 'I' },
 ]
 
 // Callbacks: getProfile() -> profile, setProfile(next) (main saves it), getRun() ->
@@ -633,6 +654,8 @@ export function createHub({ getProfile, setProfile, getDragons, setDragons, getR
     trait.appendChild(el('b', null, `${viewing.trait.name}: `))
     trait.appendChild(document.createTextNode(viewing.trait.desc))
     detail.appendChild(trait)
+    const mastered = masteryBar(profile.progress?.mastery?.[viewing.id] ?? 0)
+    detail.appendChild(el('p', 'hub-note', `Mastery level ${mastered.level}${mastered.span ? ` (${mastered.into} / ${mastered.span} XP to the next)` : ' (max)'} · see Contracts [I]`))
     const fx = heroEffects(viewing.id)
     const lines = describeEffects(fx)
     if (fx.dash !== 1) lines.push(`Dash recharges ${Math.round((1 - fx.dash) * 100)}% faster`)
@@ -692,6 +715,78 @@ export function createHub({ getProfile, setProfile, getDragons, setDragons, getR
     return outer
   }
 
+  // Contracts, hero mastery and lifetime records (logic/progress.js).
+  function contractsPage(profile) {
+    const prog = profile.progress
+    const wrap = el('div', 'hub-progress')
+    const mode = difficultyById(getDifficulty())
+    const sec = (title) => {
+      const box = el('section')
+      box.appendChild(el('h2', null, title))
+      wrap.appendChild(box)
+      return box
+    }
+    const bar = (into, span) => {
+      const b = el('div', 'pbar')
+      const fill = el('i')
+      fill.style.width = `${span ? Math.min(100, (into / span) * 100) : 100}%`
+      b.appendChild(fill)
+      return b
+    }
+    const jobs = sec(`Contracts · ${prog.contractsDone} done`)
+    for (const c of prog.contracts) {
+      const card = el('div', 'contract')
+      const row = el('div', 'row')
+      row.appendChild(el('span', null, contractText(c)))
+      row.appendChild(el('span', 'reward', `+${Math.round(c.reward * mode.reward)} ◆`))
+      card.appendChild(row)
+      card.appendChild(bar(c.progress, c.goal))
+      card.appendChild(el('small', null, `${c.progress.toLocaleString('en-US')} / ${c.goal.toLocaleString('en-US')}${isBestKind(c) ? ' (in one run)' : ' (adds up over runs)'}`))
+      jobs.appendChild(card)
+    }
+    jobs.appendChild(el('p', 'hub-note', `Finished contracts pay banked crystals right away and a new one takes their place. Every 3 done, new ones get bigger (tier ${contractTier(prog.contractsDone) + 1}). Rewards on ${mode.name}: x${mode.reward}. Not counted in the sandbox or tutorial.`))
+
+    const mastery = sec('Hero mastery')
+    const grid = el('div', 'mastery-grid')
+    for (const hero of [...HEROES].sort((a, b) => (prog.mastery[b.id] ?? 0) - (prog.mastery[a.id] ?? 0) || a.cost - b.cost)) {
+      const owned = ownsHero(profile, hero.id)
+      const { level, into, span } = masteryBar(prog.mastery[hero.id] ?? 0)
+      const card = el('div', `mastery-card${owned ? '' : ' locked'}`)
+      const img = document.createElement('img')
+      img.alt = ''
+      const worn = hero.skins.find((k) => k.id === profile.heroSkins?.[hero.id]) ?? hero.skins[0]
+      img.src = heroIconUrl({ heroId: hero.id, gear: hero.gear, mask: hero.mask === true, ...worn, accent: worn.glow })
+      card.appendChild(img)
+      card.appendChild(el('b', null, `${hero.name} · ${level}`))
+      card.appendChild(bar(into, span))
+      const nextSkin = Object.entries(MASTERY_SKIN_LEVELS).find(([lv]) => Number(lv) > level)
+      card.appendChild(el('small', null, level >= MASTERY_MAX ? 'Mastered!' : `Lv ${level + 1}: +${Math.round(masteryReward(level + 1) * mode.reward)} ◆${nextSkin && Number(nextSkin[0]) === level + 1 ? ` + ${hero.skins[nextSkin[1]].name}` : ''}`))
+      grid.appendChild(card)
+    }
+    mastery.appendChild(grid)
+    mastery.appendChild(el('p', 'hub-note', 'Heroes earn mastery XP while you play them: 1 per kill, 6 per wave cleared, 30 per boss. Each level pays crystals; levels 4, 7 and 10 give that hero a skin for free.'))
+
+    const rec = prog.records
+    const records = sec('Records')
+    const tiles = el('div', 'records')
+    const tile = (label, value) => {
+      const t = el('div')
+      t.appendChild(el('b', null, String(value)))
+      t.appendChild(document.createTextNode(label))
+      tiles.appendChild(t)
+    }
+    tile('runs finished', rec.runs)
+    tile('monsters checked out', rec.kills.toLocaleString('en-US'))
+    tile('bosses beaten', rec.bosses)
+    tile('chests opened', rec.chests)
+    for (const id of DIFFICULTY_IDS) {
+      const d = difficultyById(id)
+      tile(`best on ${d.name} (wave ${Math.max(rec.bestWave[id] ?? 0, loadHighScore(id).bestWave)})`, loadHighScore(id).bestScore.toLocaleString('en-US'))
+    }
+    records.appendChild(tiles)
+    return wrap
+  }
+
   const free = () => getRun().sandbox === true
   // Runs a profile purchase; in the sandbox it costs nothing (the real bank is kept).
   const buy = (fn, id) => {
@@ -707,10 +802,10 @@ export function createHub({ getProfile, setProfile, getDragons, setDragons, getR
     // Sandbox upgrades are free: the pages see a bottomless bank (the header still shows the real one).
     const profile = free() ? { ...real, bank: 1e9 } : real
     card.replaceChildren(header(real))
-    if (tab !== 'loadout' && tab !== 'heroes') card.appendChild(loadoutStrip(profile))
-    card.appendChild(tab === 'skills' ? skillsPage(profile) : tab === 'powerups' ? powerupsPage(profile) : tab === 'gunsmith' ? gunsmithPage(profile) : tab === 'dragons' ? dragonsPage(profile) : tab === 'heroes' ? heroesPage(profile) : loadoutPage(profile))
+    if (tab !== 'loadout' && tab !== 'heroes' && tab !== 'contracts') card.appendChild(loadoutStrip(profile))
+    card.appendChild(tab === 'skills' ? skillsPage(profile) : tab === 'powerups' ? powerupsPage(profile) : tab === 'gunsmith' ? gunsmithPage(profile) : tab === 'dragons' ? dragonsPage(profile) : tab === 'heroes' ? heroesPage(profile) : tab === 'contracts' ? contractsPage(profile) : loadoutPage(profile))
     card.appendChild(el('p', 'hub-status', status))
-    card.appendChild(el('p', 'hub-note', '6 / 7 / 9 / J / N / Y: switch pages · Esc: close · T (in a run): bank crystals'))
+    card.appendChild(el('p', 'hub-note', '6 / 7 / 9 / J / N / Y / I: switch pages · Esc: close · T (in a run): bank crystals'))
   }
 
   // The profile actions live here so the page code stays small; each returns { profile, ok, reason }.

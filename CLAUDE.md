@@ -62,6 +62,7 @@ record.
 - N — open the Dragon Den (customize your dragons' scale and breath); in the Wilds (free roam) N shoots/swings instead and Space jumps (`logic/jump.js`: a plain hop, not an ability); Space again in the air opens the paraglider (`src/glider.js`: slow steady sink, 1.7x speed; Space folds it); E near a villager talks
 - U — in the Wilds: open the Wilds journal (goals, landmarks, bestiary, races); F inside a treasure map's circle digs
 - Y — open the hub's Heroes page (pick a hero and skin; see Heroes below)
+- I — open the hub's Contracts page (contracts, hero mastery, records; see Difficulty and progress below)
 - Tab — open the power-up menu (pauses the game): click a power-up to equip / unequip it (in sandbox mode Tab opens the sandbox menu instead)
 
 A standard gamepad works too (`src/logic/gamepad.js` maps a snapshot to
@@ -932,9 +933,12 @@ The bullet layer rides the player's jumps and hills (`applyFxDepth`), so `bullet
 fired at (`layerY`) and draws / hit-tests it at that world height (`localY`); a shot no longer bobs up and down while you jump.
 
 ## Heroes and skins
-Inspired by Shardfall's roster. `src/logic/heroes.js` (pure) lists 20 heroes (The Guest, Ember Squire, Thorn Warden, Gale
+Inspired by Shardfall's roster. `src/logic/heroes.js` (pure) lists 25 heroes (The Guest, Ember Squire, Thorn Warden, Gale
 Runner, Prospector Pip, Lifeguard Lou, Bellhop Max, Frost Novice, Star Monk, Storm Acolyte, Bone Caller, DJ Bass Drop, Plague
-Doctor, Moon Hunter, Forge Titan, Hex Witch, Echo Twin, Sun Paladin, Void Walker, Clockwork Sage), each
+Doctor, Moon Hunter, Forge Titan, Hex Witch, Echo Twin, Sun Paladin, Void Walker, Clockwork Sage, Chef Flambé (Seconds,
+Please: every 6th kill heals 12%), Captain Gully (Broadside: cannon blasts past the target every 9 s, `broadsideSpots`), Rosa
+Thornheart (Thorns: a burst around you whenever you're hurt), Shadow Valet (Backstab: +60% on a monster's back or one that
+hasn't spotted you, `isBehind`) and Cosmo Nova (Zero-G: +60% knockback, ring-outs score triple)), each
 with stat tweaks in the skills effect shape (plus a hero-only `dash` cooldown multiplier), one trait and four skins (body /
 cloak / trim / glow colours; the first is free). Heroes and skins are bought with banked crystals and saved in the profile
 (`hero`, `heroesOwned`, `heroSkins`, `skinsOwned`; `normalizeHeroFields`). `src/heroGear.js`'s `dressPlayer` recolours the
@@ -951,3 +955,25 @@ Guest gets the jelly movement stretch.
 `PLAYER_SPEED` is 6.5 (zippy 5, so no regular chaser outruns you). The medium preset has bloom off (`bloom` in
 `QUALITY_PRESETS`, `?bloom=1` overrides) and the canvas is then antialiased: `composer.render` draws straight to the canvas
 whenever GTAO, bloom and the warp pass are all off, and only runs the post chain while a warp zone is live.
+
+## Difficulty and progress
+`src/logic/difficulty.js` (pure): `DIFFICULTIES` Relax / Normal / Hard, picked on the start card (`#difficulty-row`) and
+remembered by `src/difficulty.js` (`slashbattle:difficulty`, a save key). Normal is all 1s. A mode scales regular monster hp and
+speed and boss hp (`spawnMonster`), every hit the player takes (`Player.difficultyDamage`, after armour), wave size and arrival
+speed (`waves.js`'s `setWaveTuning`, applied by `main.js`'s `applyDifficulty`), the between-wave heal, score (kills and wave
+bonuses) and banked rewards. The sandbox and tutorial always play at Normal (`diff()`). High scores are kept per difficulty
+(`highScore.js`: Normal keeps the old key, the others `slashbattle:highscore:<id>`).
+
+`src/logic/progress.js` (pure, saved as `profile.progress`, cleaned by `normalizeProgress`) gives runs a lasting point:
+- **Contracts**: three open jobs (`CONTRACT_TEMPLATES`: kills, ring-outs, ambushes, pool kills, pet kills, staff kills, a monster
+  type, bosses, chests, crystals, waves cleared, or one-run bests: reach wave N, a xN chain, a score). `progressEvent` advances them
+  from run events that `main.js`'s `progressNote` feeds (scoreKill, wave cleared / boss, chest opened, crystals collected); a
+  finished one banks crystals (x the difficulty's reward) and a new one is drawn, a tier bigger every 3 done.
+- **Hero mastery**: the hero you play earns XP (`XP_PER`: kill 1, wave 6, boss 30), levels 1-10 (`MASTERY_XP`), each paying
+  `masteryReward`, with levels 4 / 7 / 10 granting that hero's 2nd / 3rd / 4th skin (`grantSkin`).
+- **Records**: runs, kills, bosses, chests, best wave per difficulty.
+- **Checkout tip**: at game over (and the labyrinth win) `finishRun` banks `runPayout` (wave, bosses, score, x reward), so every
+  run moves you forward even without pressing T. The game-over card shows the tip and the open contracts.
+Progress is kept in memory and saved a moment later (`saveProgressSoon`). The hub's Contracts page (I) shows all three parts.
+Not counted in the sandbox, the tutorial (`freePlay`); the Wilds feed contracts and mastery but pay no checkout tip.
+

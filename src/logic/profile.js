@@ -5,6 +5,7 @@
 // returns a NEW profile. src/profile.js saves it in localStorage.
 import { BREATHS, SCALES, isDragon, unlockedBreaths, unlockedSkins } from './dragons.js'
 import { DEFAULT_HERO, normalizeHeroFields } from './heroes.js'
+import { createProgress, normalizeProgress } from './progress.js'
 import { MAX_SLOTS, PETS, WEAPONS, PET_MAX_LEVEL, POWERUPS, SLOT_LIMITS, petLevel, petUpgradeCost } from './items.js'
 import { AMMO, AMMO_MAX_LEVEL, DEFAULT_AMMO, DEFAULT_SCOPE, RIFLE_MAX_LEVEL, SCOPES, ammoLevel, ammoUpgradeCost, cycleIn, isAmmoUnlocked, isScopeUnlocked, rifleLevel, rifleUpgradeCost, unlockedAmmo, unlockedScopes } from './rifles.js'
 import { POWERUP_MAX_LEVEL, SKILLS, powerupLevel, powerupUpgradeCost, skillLevel, skillState, skillsSpent } from './skills.js'
@@ -42,6 +43,7 @@ export function createProfile() {
     heroesOwned: [], // heroes bought (the Guest is always owned)
     heroSkins: {}, // hero id -> skin id worn (absent = its first skin)
     skinsOwned: [], // 'heroId:skinId' keys bought
+    progress: createProgress(), // logic/progress.js: contracts, hero mastery, lifetime records
   }
 }
 
@@ -111,6 +113,7 @@ export function normalizeProfile(raw) {
     rifleLevels,
     ammoLevels,
     ...normalizeHeroFields(raw),
+    progress: normalizeProgress(raw.progress),
   }
 }
 

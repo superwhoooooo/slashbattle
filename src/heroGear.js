@@ -302,6 +302,95 @@ const GEAR = {
     part(cog, new THREE.CircleGeometry(0.09, 12), glowMat(look.glow), [0, 0, -0.035], [0, Math.PI, 0])
     g.add(cog)
   },
+  // Chef Flambé: a tall puffy toque and a curly moustache.
+  chefHat(g, look) {
+    const cloth = solid(look.cloak, 0.9)
+    part(g, new THREE.CylinderGeometry(0.36, 0.34, 0.3, 20), cloth, [0, TOP + 0.06, 0])
+    const puff = new THREE.Group()
+    puff.position.set(0, TOP + 0.34, 0)
+    puff.userData.bob = true
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2
+      part(puff, new THREE.SphereGeometry(0.2, 12, 8), cloth, [Math.cos(a) * 0.2, 0, Math.sin(a) * 0.2])
+    }
+    part(puff, new THREE.SphereGeometry(0.24, 12, 8), cloth, [0, 0.1, 0])
+    g.add(puff)
+    part(g, new THREE.CylinderGeometry(0.365, 0.365, 0.06, 20), solid(look.trim, 0.6), [0, TOP - 0.06, 0])
+  },
+  mustache(g, look) {
+    const hair = solid(0x3a2418, 0.7)
+    both((side) => part(g, new THREE.TorusGeometry(0.1, 0.035, 6, 14, Math.PI * 1.3), hair, [side * 0.12, R * 1.08, R * 0.98], [0, 0, side > 0 ? Math.PI * 1.1 : -Math.PI * 0.4]))
+  },
+  // Captain Gully: a tricorn hat with a gold trim and a glowing badge, and an eyepatch.
+  tricorn(g, look) {
+    const felt = solid(look.cloak, 0.7)
+    part(g, new THREE.CylinderGeometry(0.34, 0.38, 0.28, 18), felt, [0, TOP + 0.04, 0])
+    for (let i = 0; i < 3; i++) {
+      const a = (i / 3) * Math.PI * 2
+      part(g, new THREE.BoxGeometry(0.62, 0.22, 0.04), felt, [Math.sin(a) * 0.36, TOP + 0.06, Math.cos(a) * 0.36], [-0.35, a, 0])
+      part(g, new THREE.BoxGeometry(0.62, 0.03, 0.05), solid(look.trim, 0.3, 0.7), [Math.sin(a) * 0.38, TOP + 0.17, Math.cos(a) * 0.38], [-0.35, a, 0])
+    }
+    part(g, new THREE.OctahedronGeometry(0.07), glowMat(look.glow), [0, TOP + 0.12, 0.44])
+  },
+  eyepatch(g, look) {
+    const black = solid(0x14141a, 0.6)
+    part(g, new THREE.TorusGeometry(R * 0.98, 0.018, 4, 30), black, [0, R * 1.5, 0], [Math.PI / 2 - 0.2, 0, 0])
+    part(g, new THREE.CylinderGeometry(0.15, 0.15, 0.04, 14), black, [-0.2, R * 1.42, R * 0.97], [FRONT, 0, 0])
+  },
+  // Rosa Thornheart: a crown of roses and leaves.
+  flowerCrown(g, look) {
+    part(g, new THREE.TorusGeometry(0.42, 0.04, 6, 28), solid(0x4f8a4a, 0.7), [0, TOP - 0.02, 0], [Math.PI / 2, 0, 0])
+    for (let i = 0; i < 7; i++) {
+      const a = (i / 7) * Math.PI * 2
+      const x = Math.sin(a) * 0.42
+      const z = Math.cos(a) * 0.42
+      part(g, new THREE.DodecahedronGeometry(0.09), solid(look.body, 0.5), [x, TOP + 0.03, z])
+      part(g, new THREE.SphereGeometry(0.035, 6, 4), glowMat(look.glow), [x * 1.05, TOP + 0.1, z * 1.05])
+      part(g, new THREE.ConeGeometry(0.05, 0.16, 4), solid(0x4f8a4a, 0.7), [Math.sin(a + 0.45) * 0.44, TOP, Math.cos(a + 0.45) * 0.44], [Math.PI / 2, a, 0])
+    }
+  },
+  // Shadow Valet: a headband with long tails, and two kunai crossed on the back.
+  headband(g, look) {
+    const cloth = clothMat(look.trim)
+    part(g, new THREE.TorusGeometry(R * 0.93, 0.06, 6, 28), cloth, [0, R * 1.72, 0], [Math.PI / 2 + 0.08, 0, 0])
+    part(g, new THREE.BoxGeometry(0.2, 0.12, 0.04), solid(look.glow, 0.3, 0.6), [0, R * 1.74, R * 0.9], [-0.1, 0, 0])
+    both((side) => {
+      const tail = part(g, new THREE.BoxGeometry(0.08, 0.03, 0.55), cloth, [side * 0.1, R * 1.66, -R - 0.22], [0.5, side * 0.25, 0])
+      tail.userData.flap = true
+      return tail
+    })
+  },
+  kunai(g, look) {
+    const steel = solid(0xc8d0dc, 0.25, 0.85)
+    both((side) => {
+      const k = new THREE.Group()
+      k.position.set(0, R * 1.05, -R - 0.06)
+      k.rotation.z = side * 0.75
+      part(k, new THREE.ConeGeometry(0.06, 0.38, 4), steel, [0, 0.3, 0])
+      part(k, new THREE.CylinderGeometry(0.025, 0.025, 0.24, 6), solid(look.cloak, 0.8), [0, 0, 0])
+      part(k, new THREE.TorusGeometry(0.05, 0.015, 4, 10), solid(look.trim, 0.6), [0, -0.15, 0])
+      g.add(k)
+      return k
+    })
+  },
+  // Cosmo Nova: a glass bubble helmet with a glowing antenna, and a jetpack with flickering flames.
+  bubbleHelmet(g, look) {
+    part(g, new THREE.SphereGeometry(R * 1.25, 24, 16), new THREE.MeshStandardMaterial({ color: look.glow, transparent: true, opacity: 0.18, roughness: 0.05, metalness: 0.1, depthWrite: false }), [0, R, 0])
+    part(g, new THREE.TorusGeometry(R * 0.95, 0.07, 8, 28), solid(look.cloak, 0.4, 0.3), [0, R * 0.32, 0], [Math.PI / 2, 0, 0])
+    part(g, new THREE.CylinderGeometry(0.015, 0.015, 0.4, 4), solid(look.trim, 0.4, 0.5), [0.25, TOP + 0.35, -0.1])
+    const tip = part(g, new THREE.SphereGeometry(0.05, 8, 6), glowMat(look.glow), [0.25, TOP + 0.56, -0.1])
+    tip.userData.bob = true
+  },
+  jetpack(g, look) {
+    const shell = solid(look.cloak, 0.35, 0.4)
+    both((side) => {
+      part(g, new THREE.CylinderGeometry(0.15, 0.15, 0.6, 14), shell, [side * 0.2, R * 1.0, -R - 0.12])
+      part(g, new THREE.ConeGeometry(0.15, 0.16, 14), solid(look.trim, 0.3, 0.6), [side * 0.2, R * 1.38, -R - 0.12])
+      const flame = part(g, new THREE.ConeGeometry(0.1, 0.32, 10), glowMat(look.trim), [side * 0.2, R * 0.48, -R - 0.12], [Math.PI, 0, 0])
+      flame.userData.flicker = true
+      return flame
+    })
+  },
 }
 
 export const GEAR_PARTS = Object.keys(GEAR)

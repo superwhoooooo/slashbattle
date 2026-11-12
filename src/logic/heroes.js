@@ -256,6 +256,66 @@ export const HEROES = [
       skin('midnight', 'Midnight Hour', 0x1c2440, 0x0e1220, 0xffc94a, 0xff4fa3, 200),
     ],
   },
+  {
+    id: 'chef', name: 'Chef Flambé', cost: 150,
+    blurb: 'Runs the resort kitchen. Cooks with whatever falls on the deck.',
+    stats: { maxHp: 20, regen: 0.2 }, trait: { id: 'seconds', name: 'Seconds, Please', desc: 'Every 6th kill serves a dish: you heal 12% of your max health.' },
+    gear: ['chefHat', 'mustache'],
+    skins: [
+      skin('whites', 'Kitchen Whites', 0xf4ede0, 0xffffff, 0xc8452f, 0xffd15c),
+      skin('pastry', 'Pastry Pink', 0xffb0c8, 0xfff4f8, 0x8a3a5a, 0xfff0a0, 80),
+      skin('grill', 'Grill Master', 0x5a3a2a, 0x20202e, 0xff7a2f, 0xffb547, 120),
+      skin('truffle', 'Truffle', 0x3a2a24, 0xe8d9c0, 0xffd15c, 0xfff4c0, 200),
+    ],
+  },
+  {
+    id: 'pirate', name: 'Captain Gully', cost: 400,
+    blurb: 'Lost the ship, kept the hat. Still fires the cannons.',
+    stats: { damage: 1.05, knockback: 1.15 }, trait: { id: 'broadside', name: 'Broadside', desc: 'Every 9 s your next hit fires a broadside: three cannon blasts march out past the target, each hitting everything within 2 m for 1.2x.' },
+    gear: ['tricorn', 'eyepatch', 'cape'],
+    skins: [
+      skin('sea', 'High Seas', 0x3a6a9a, 0x20202e, 0xffc94a, 0xfff0a0),
+      skin('red', 'Redbeard', 0xc8452f, 0x2a1014, 0xe8c56a, 0xffb547, 80),
+      skin('ghost', 'Ghost Ship', 0x9fe8d8, 0x2a3a3a, 0xdfe6f5, 0x6fffd0, 120),
+      skin('royal', 'Admiral', 0xf0e6d0, 0x1c2c5a, 0xffd15c, 0xffe9a0, 200),
+    ],
+  },
+  {
+    id: 'rosa', name: 'Rosa Thornheart', cost: 400,
+    blurb: 'Tends the resort gardens. The roses bite back.',
+    stats: { maxHp: 25, damageTaken: 0.94 }, trait: { id: 'thorns', name: 'Thorns', desc: 'Whenever you get hurt, thorns burst out of you: everything within 3 m takes 0.8x damage and is shoved away.' },
+    gear: ['flowerCrown', 'leafCape'],
+    skins: [
+      skin('rose', 'Red Rose', 0xd94a5a, 0x3e5a2c, 0x6d5233, 0xffe0e8),
+      skin('lily', 'White Lily', 0xf2f0e6, 0x4f8a4a, 0xffd15c, 0xffffff, 80),
+      skin('violet', 'Violet', 0x8a5ac8, 0x2f5a3a, 0xffd15c, 0xe8d8ff, 120),
+      skin('night', 'Nightbloom', 0x24223a, 0x14281c, 0xc77dff, 0x6fe3ff, 200),
+    ],
+  },
+  {
+    id: 'valet', name: 'Shadow Valet', cost: 600,
+    blurb: 'Parks your car. Nobody ever sees them do it.',
+    stats: { speed: 1.12, crit: 0.06, maxHp: -15 }, trait: { id: 'backstab', name: 'Backstab', desc: "Hits on a monster's back, or on one that hasn't spotted you yet, deal 60% more damage." },
+    gear: ['headband', 'kunai'],
+    skins: [
+      skin('ink', 'Ink', 0x2a2a34, 0x14141e, 0xc8452f, 0xff6a6a),
+      skin('smoke', 'Smoke', 0x8a8a96, 0x3a3a44, 0x2a2a34, 0xdfe6f5, 80),
+      skin('sakura', 'Sakura', 0xffb0c8, 0x8a3a5a, 0xffffff, 0xff4fa3, 120),
+      skin('jade', 'Jade Lotus', 0x1f6a4a, 0x0e2a20, 0xffd15c, 0x6fffc8, 200),
+    ],
+  },
+  {
+    id: 'astro', name: 'Cosmo Nova', cost: 900,
+    blurb: 'Fell off a space station once. Liked it.',
+    stats: { knockback: 1.6, speed: 1.05 }, trait: { id: 'zerog', name: 'Zero-G', desc: 'Your hits shove monsters 60% farther, and every guest you knock off the edge scores triple points.' },
+    gear: ['bubbleHelmet', 'jetpack'],
+    skins: [
+      skin('nasa', 'Mission White', 0xf2f6fa, 0xdfe6f5, 0xff6a2a, 0x9fd8ff),
+      skin('mars', 'Red Planet', 0xd9734a, 0x5a2a1a, 0xffd36e, 0xffb547, 80),
+      skin('nebula', 'Nebula', 0x6a3aa8, 0x1a1030, 0xff4fa3, 0x6fe3ff, 120),
+      skin('gold', 'Gold Visor', 0x2a2a3a, 0x14141e, 0xffc94a, 0xffd96a, 200),
+    ],
+  },
 ]
 
 export const HERO_IDS = HEROES.map((h) => h.id)
@@ -333,6 +393,14 @@ export function buySkin(profile, heroId, skinId) {
   return { profile: { ...next, heroSkins, hero: heroId }, ok: true }
 }
 
+// Gives a skin for free (hero mastery rewards): owned from now on, but not worn automatically.
+// `index` is the skin's place in the hero's list; the first skin always comes with the hero.
+export function grantSkin(profile, heroId, index) {
+  const sk = BY_ID[heroId]?.skins[index]
+  if (!sk || index === 0 || ownsSkin(profile, heroId, sk.id)) return profile
+  return { ...profile, skinsOwned: [...(profile.skinsOwned ?? []), skinKey(heroId, sk.id)] }
+}
+
 // --- trait rules (pure) ---
 
 // Marksman: +0 at point blank up to +50% at 14 m.
@@ -351,3 +419,21 @@ export function rewindTarget(history, now, maxHp) {
 // Molten Core: +10% per stack, up to 5.
 export const moltenBonus = (stacks) => 1 + 0.1 * Math.min(5, Math.max(0, stacks))
 export const FOCUS_DELAY = 0.8 // seconds standing still before Inner Focus kicks in
+export const SECONDS_EVERY = 6 // kills per Seconds, Please dish
+export const BROADSIDE_COOLDOWN = 9
+// Broadside: three blast spots marching out past the target, away from the shooter.
+export function broadsideSpots(from, target, step = 2.5) {
+  const dx = target.x - from.x
+  const dz = target.z - from.z
+  const len = Math.hypot(dx, dz) || 1
+  return [0, 1, 2].map((i) => ({ x: target.x + (dx / len) * step * i, z: target.z + (dz / len) * step * i }))
+}
+// Backstab: is the attacker at `from` behind a monster at `at` facing `rotationY` (forward = +z rotated)?
+export function isBehind(at, rotationY, from) {
+  const fx = Math.sin(rotationY)
+  const fz = Math.cos(rotationY)
+  const dx = from.x - at.x
+  const dz = from.z - at.z
+  const len = Math.hypot(dx, dz) || 1
+  return (fx * dx + fz * dz) / len < -0.25
+}

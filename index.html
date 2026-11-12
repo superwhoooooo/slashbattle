@@ -527,8 +527,8 @@
       #tutorial-panel button { font: inherit; font-weight: 700; padding: 5px 12px; border-radius: 8px; border: 2px solid var(--teal); background: #fff; color: var(--teal); cursor: pointer; }
       #tutorial-panel button.primary { background: var(--teal); color: #fff; }
       body.touch #tutorial-panel { top: 8px; width: min(300px, 50vw); font-size: 11px; padding: 8px 10px; }
-      #hub-open-btn, #heroes-open-btn { font: inherit; font-weight: 700; padding: 8px 18px; border-radius: 10px; border: 2px solid var(--butter); background: #fff; color: var(--ink); cursor: pointer; }
-      #hub-open-btn:hover, #heroes-open-btn:hover { background: var(--butter); }
+      #hub-open-btn, #heroes-open-btn, #contracts-open-btn { font: inherit; font-weight: 700; padding: 8px 18px; border-radius: 10px; border: 2px solid var(--butter); background: #fff; color: var(--ink); cursor: pointer; }
+      #hub-open-btn:hover, #heroes-open-btn:hover, #contracts-open-btn:hover { background: var(--butter); }
       .map-row { display: flex; gap: 12px; margin-top: 6px; flex-wrap: wrap; justify-content: center; }
       .map-btn {
         font: inherit;
@@ -545,6 +545,20 @@
       .map-btn small { display: block; font-weight: 400; color: var(--muted); font-size: 12px; margin-top: 2px; }
       .map-btn:hover { background: var(--teal); color: #fff; }
       .map-btn:hover small { color: #e9fffb; }
+      .difficulty-row { display: flex; gap: 8px; margin: 8px 0 2px; justify-content: center; align-items: center; flex-wrap: wrap; }
+      .difficulty-row > span { font-weight: 800; font-size: 12px; letter-spacing: 0.08em; color: var(--muted); }
+      .diff-btn {
+        font: inherit; font-weight: 700; font-size: 13px; padding: 6px 14px; border-radius: 999px; cursor: pointer;
+        border: 2px solid var(--teal); background: rgba(255, 255, 255, 0.7); color: var(--ink);
+      }
+      .diff-btn.on { background: var(--teal); color: #fff; }
+      .diff-btn[data-difficulty='relax'].on { background: #5fc48f; border-color: #5fc48f; }
+      .diff-btn[data-difficulty='hard'].on { background: var(--coral, #ff6a4d); border-color: var(--coral, #ff6a4d); }
+      #difficulty-blurb { margin: 2px 0 6px; font-size: 12px; color: var(--muted); min-height: 1.2em; }
+      #lose-payout { font-weight: 800; color: var(--teal); }
+      #lose-contracts { list-style: none; padding: 0; margin: 6px auto 0; font-size: 13px; text-align: left; max-width: 340px; }
+      #lose-contracts li { display: flex; justify-content: space-between; gap: 12px; padding: 2px 0; }
+      #lose-contracts li b { color: var(--muted); font-weight: 700; }
       #floor-chip {
         position: fixed;
         top: 124px;
@@ -1218,6 +1232,7 @@
           <div class="control-row"><kbd>0</kbd><span>first-person view (mouse looks)</span></div>
           <div class="control-row"><kbd>6</kbd><kbd>7</kbd><kbd>9</kbd><span>skill tree / power-ups / loadout</span></div>
           <div class="control-row"><kbd>Y</kbd><span>heroes &amp; skins</span></div>
+          <div class="control-row"><kbd>I</kbd><span>contracts, hero mastery &amp; records</span></div>
         </div>
         <div class="gamepad-legend">
           <span>🎮</span>
@@ -1230,6 +1245,13 @@
           <span><kbd class="pad">Start</kbd> restart</span>
           <span><kbd class="pad">Back</kbd> mute</span>
         </div>
+        <div class="difficulty-row" id="difficulty-row">
+          <span>DIFFICULTY</span>
+          <button class="diff-btn" data-difficulty="relax" type="button">🌴 Relax</button>
+          <button class="diff-btn" data-difficulty="normal" type="button">🛎️ Normal</button>
+          <button class="diff-btn" data-difficulty="hard" type="button">🔥 Hard</button>
+        </div>
+        <p id="difficulty-blurb"></p>
         <p class="hint">Choose a map (or press any key for the Sundeck)</p>
         <div class="map-row">
           <button id="resort-btn" class="map-btn" type="button">Orbital Sundeck<small>Endless waves on a floating platform</small></button>
@@ -1238,6 +1260,7 @@
         </div>
         <button id="hub-open-btn" type="button">Skills &amp; Loadout <kbd>6</kbd></button>
         <button id="heroes-open-btn" class="hub-open-alt" type="button">Heroes &amp; Skins <kbd>Y</kbd></button>
+        <button id="contracts-open-btn" class="hub-open-alt" type="button">Contracts &amp; Mastery <kbd>I</kbd></button>
         <button id="graphics-btn" type="button" title="Switch how monsters look">Graphics: Jelly</button>
         <button id="tutorial-btn" type="button">Tutorial <kbd>G</kbd></button>
         <button id="sandbox-btn" type="button">Sandbox mode <kbd>B</kbd></button>
@@ -1282,6 +1305,8 @@
         <p id="lose-score">Score: 0</p>
         <p id="lose-best">Best: 0</p>
         <p id="lose-new-best">NEW BEST!</p>
+        <p id="lose-payout"></p>
+        <ul id="lose-contracts"></ul>
         <p class="hint">Press R to play again</p>
       </div>
     </div>
