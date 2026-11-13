@@ -28,8 +28,8 @@ import { iconImg } from './icons.js'
 import { PICKUP_RADIUS, createPerkPickup, updatePerkPickup } from './pickups.js'
 import { createLoadoutPanel } from './loadout.js'
 import { createHub } from './hub.js'
-import { dressPlayer } from './heroGear.js'
-import { BROADSIDE_COOLDOWN, ECHO_EVERY, FOCUS_DELAY, HEROES, HEX_BONUS, SECONDS_EVERY, STATIC_EVERY, broadsideSpots, grantSkin, heroById, isBehind, heroEffects, heroLook as lookForProfile, marksmanBonus, moltenBonus, rewindTarget, tipJarCrystals } from './logic/heroes.js'
+import { createHeroProjectile, disposeHeroProjectile, dressPlayer } from './heroGear.js'
+import { BOOMERANG_EVERY, HOTFOOT_MAX, HOTFOOT_STEP, ROOTS_COOLDOWN, SABER_CHANCE, boomerangPoint, rootsTriggered, saberPoint, spinReels, BROADSIDE_COOLDOWN, ECHO_EVERY, FOCUS_DELAY, HEROES, HEX_BONUS, SECONDS_EVERY, STATIC_EVERY, broadsideSpots, grantSkin, heroById, isBehind, heroEffects, heroLook as lookForProfile, marksmanBonus, moltenBonus, rewindTarget, tipJarCrystals } from './logic/heroes.js'
 import { loadProfile, saveProfile } from './profile.js'
 import { DIFFICULTIES, DIFFICULTY_IDS, difficultyById, runPayout } from './logic/difficulty.js'
 import { getDifficulty, setDifficulty } from './difficulty.js'
@@ -951,6 +951,9 @@ const heroState = {
   pending: [], // trait effects queued from inside damageMonster, run next frame: { at, run }
   whistleReady: 0, bassReadyAt: 0, rewindReady: 0, history: [], historyNext: 0,
   kills: 0, broadsideReady: 0, thornsReady: 0, // Seconds, Please / Broadside / Thorns
+  flyers: [], // thrown things: Plasma Wake blades, boomerangs, Tip Jar suitcases (see launchFlyer)
+  footprints: [], footDist: 0, lastFoot: null, // Hot Foot
+  rootsReady: 0, // Thorn Warden's roots
 }
 // Trait damage itself (cause 'hero'), pets and hazards don't trigger or get boosted by traits.
 const TRAIT_EXCLUDED = new Set(['pet', 'photobomb', 'spike', 'hero', 'fall'])
@@ -992,6 +995,15 @@ setDamageHooks({
       heroState.broadsideReady = heroNow + BROADSIDE_COOLDOWN
       const from = { x: game.player.position.x, z: game.player.position.z }
       broadsideSpots(from, at).forEach((spot, i) => heroState.pending.push({ at: heroNow + 0.12 * (i + 1), run: () => cannonBlast(spot) }))
+    }
+    if (trait === 'boomerang' && heroState.hits % BOOMERANG_EVERY === 0) {
+      const p = game.player.position
+      const angle = Math.atan2(at.x - p.x, at.z - p.z)
+      heroState.pending.push({ at: heroNow, run: () => throwBoomerang(angle) })
+    }
+    if (trait === 'jackpot') {
+      const spin = spinReels()
+      if (spin.win) heroState.pending.push({ at: heroNow + 0.05, run: () => jackpotBlast(at, spin.reels) })
     }
     if (lethal) return
     if (trait === 'hex') {
@@ -1092,6 +1104,138 @@ function heroRescue(now) {
     showLootToast(hud, { title: 'RESCUE WHISTLE', name: 'Lifeguard Lou', blurb: 'Everybody out of the pool!' })
   }
 }
+// ---- thrown things (Plasma Wake, Boomerang, Tip Jar's suitcase) ----
+// A flyer follows `point(t)` (t 0..1 over `duration`), spinning, and hits each monster it passes
+// once per leg (`legs` 2 for the boomerang: everything can be hit again on the way back).
+function launchFlyer({ kind, color, duration, radius, damage, knockback = 1, spin = 14, point, legs = 1, arc = 0 }) {
+  const mesh = createHeroProjectile(kind, color)
+  const start = point(0)
+  mesh.position.set(start.x, game.player.mesh.position.y + 0.9, start.z)
+  scene.add(mesh)
+  heroState.flyers.push({ mesh, born: heroNow, duration, radius, damage, knockback, spin, point, legs, arc, hit: new Set(), leg: 0, lastAt: start, color })
+}
+function stepFlyers(now) {
+  heroState.flyers = heroState.flyers.filter((f) => {
+    const t = Math.min(1, (now - f.born) / f.duration)
+    const leg = Math.min(f.legs - 1, Math.floor(t * f.legs))
+    if (leg !== f.leg) {
+      f.leg = leg
+      f.hit.clear()
+    }
+    const at = f.point(t)
+    f.mesh.position.x = at.x
+    f.mesh.position.z = at.z
+    f.mesh.position.y = game.player.mesh.position.y + 0.9 + f.arc * Math.sin(Math.PI * t)
+    f.mesh.rotation.y = (now - f.born) * f.spin
+    if (Math.random() < 0.6) burst(particleSystem, { x: at.x, y: f.mesh.position.y, z: at.z }, f.color, 2, 0.6, 0.3)
+    const from = f.lastAt
+    f.lastAt = at
+    for (const mesh of heroTargets(at.x, at.z, f.radius)) {
+      if (f.hit.has(mesh)) continue
+      f.hit.add(mesh)
+      heroHurt(mesh, f.damage, f.knockback, from)
+      burst(particleSystem, { x: mesh.position.x, y: 1, z: mesh.position.z }, f.color, 10, 2.5, 0.35)
+    }
+    if (t >= 1) {
+      scene.remove(f.mesh)
+      disposeHeroProjectile(f.mesh)
+      return false
+    }
+    return true
+  })
+}
+function clearFlyers() {
+  for (const f of heroState.flyers) {
+    scene.remove(f.mesh)
+    disposeHeroProjectile(f.mesh)
+  }
+  heroState.flyers = []
+}
+// Dread Lord Vexar's Plasma Wake: called as an attack starts; half the time a blade follows it out.
+function onHeroAttack(player) {
+  if (heroTrait() !== 'saber' || Math.random() >= SABER_CHANCE) return
+  const angle = player.facing
+  const from = { x: player.position.x + Math.sin(angle) * 0.6, z: player.position.z + Math.cos(angle) * 0.6 }
+  launchFlyer({ kind: 'saber', color: heroLook().glow, duration: 0.5, radius: 1.3, damage: 0.8 * heroBaseDamage(), knockback: 1.5, spin: 22, point: (t) => saberPoint(from, angle, t) })
+  sfx.play('swing', from)
+}
+function throwBoomerang(angle) {
+  const p = game.player
+  const from = { x: p.position.x, z: p.position.z }
+  launchFlyer({ kind: 'boomerang', color: heroLook().glow, duration: 1.1, radius: 1.1, damage: 0.7 * heroBaseDamage(), knockback: 1, spin: 16, legs: 2, point: (t) => boomerangPoint(from, p.position, angle, t) })
+  sfx.play('swing', from)
+}
+// Lady Jackpot: three of a kind -- a coin blast and a spray of crystals.
+function jackpotBlast(at, reels) {
+  burst(particleSystem, { x: at.x, y: 1.2, z: at.z }, 0xffd15c, 36, 6, 0.5)
+  burst(particleSystem, { x: at.x, y: 1.2, z: at.z }, heroLook().glow, 16, 4, 0.6)
+  spawnShockwave(shockwavePool, at.x, at.z, 3.5, 0xffd15c)
+  warp.add('ripple', at.x, at.z, 4, 0.45)
+  triggerShake(game.shake, SHAKE_HIT_MAGNITUDE * 1.4, SHAKE_HIT_DURATION)
+  sfx.play('chestOpen', at)
+  showPopup(popupPool, at, 'JACKPOT!', reels.join(' '), '#ffd15c')
+  dropCrystals(crystalSystem, at.x, at.z, [1, 1, 1, 1, 1, 1])
+  for (const mesh of heroTargets(at.x, at.z, 3.5)) heroHurt(mesh, 2 * heroBaseDamage(), 2.5, at)
+}
+// Chef Flambé: the pan goes up -- a fire burst that sets everything near alight.
+function flambe(at) {
+  burst(particleSystem, { x: at.x, y: 0.8, z: at.z }, 0xff8a3d, 30, 5, 0.45)
+  burst(particleSystem, { x: at.x, y: 1.4, z: at.z }, 0xffd15c, 14, 3, 0.6)
+  spawnShockwave(shockwavePool, at.x, at.z, 3.5, 0xff8a3d)
+  sfx.play('cannonball', at)
+  for (const mesh of heroTargets(at.x, at.z, 3.5)) {
+    heroHurt(mesh, heroBaseDamage(), 1.5, at)
+    mesh.userData.burn = { until: heroNow + 3, next: heroNow + 1, dps: 0.4 * heroBaseDamage() }
+  }
+}
+// Prospector Pip's Mother Lode: a geode cracks open.
+function motherLode(at) {
+  burst(particleSystem, { x: at.x, y: 0.8, z: at.z }, heroLook().glow, 26, 5, 0.4)
+  burst(particleSystem, { x: at.x, y: 0.8, z: at.z }, 0x8a7a6a, 12, 3, 0.5)
+  spawnShockwave(shockwavePool, at.x, at.z, 3, heroLook().glow)
+  sfx.play('crystal', at)
+  dropCrystals(crystalSystem, at.x, at.z, [5])
+  for (const mesh of heroTargets(at.x, at.z, 3)) heroHurt(mesh, heroBaseDamage(), 2, at)
+}
+// Thorn Warden: roots erupt as health first drops below half.
+function rootBurst() {
+  const at = { x: game.player.position.x, z: game.player.position.z }
+  burst(particleSystem, { x: at.x, y: 0.4, z: at.z }, 0x6d5233, 30, 5, 0.4)
+  burst(particleSystem, { x: at.x, y: 0.6, z: at.z }, heroLook().glow, 20, 4, 0.5)
+  spawnShockwave(shockwavePool, at.x, at.z, 5, heroLook().glow)
+  warp.add('ripple', at.x, at.z, 5.5, 0.5)
+  for (const mesh of heroTargets(at.x, at.z, 5)) {
+    applyFreeze(mesh.userData, heroNow, 2)
+    heroHurt(mesh, heroBaseDamage(), 0, at)
+    column(mesh.position.x, mesh.position.z, 0x6d5233, 1.6, 6)
+  }
+  showLootToast(hud, { title: 'ROOTED', name: 'Thorn Warden', blurb: 'The forest has your back.' })
+}
+// Magma Marge's Hot Foot: footprints of lava while sprinting or dashing, each burning for 3 s.
+function stepHotFoot(player, now, dt) {
+  const fast = player.speed > PLAYER_SPEED * 1.2 && !player.hidden && !player.falling
+  const here = { x: player.position.x, z: player.position.z }
+  if (fast && heroState.lastFoot) heroState.footDist += Math.hypot(here.x - heroState.lastFoot.x, here.z - heroState.lastFoot.z)
+  heroState.lastFoot = here
+  if (fast && heroState.footDist >= HOTFOOT_STEP) {
+    heroState.footDist = 0
+    if (heroState.footprints.length >= HOTFOOT_MAX) heroState.footprints.shift()
+    heroState.footprints.push({ x: here.x, z: here.z, until: now + 3, next: now + 0.15, glow: now })
+  }
+  const glow = heroLook().glow
+  heroState.footprints = heroState.footprints.filter((f) => {
+    if (now >= f.until) return false
+    if (now >= f.glow) {
+      f.glow = now + 0.18
+      burst(particleSystem, { x: f.x, y: 0.15, z: f.z }, glow, 2, 0.8, 0.5)
+    }
+    if (now >= f.next) {
+      f.next = now + 0.5
+      for (const mesh of heroTargets(f.x, f.z, 0.9)) heroHurt(mesh, 0.4 * heroBaseDamage())
+    }
+    return true
+  })
+}
 const heroTargets = (x, z, radius) =>
   game.monsters.filter((m) => !m.userData.dying && !m.userData.spawning && !m.userData.falling && Math.hypot(m.position.x - x, m.position.z - z) < radius + (m.userData.radius ?? 0.5))
 function onHeroDash(start, now) {
@@ -1110,12 +1254,26 @@ function onHeroKill(mesh, position) {
     const p = game.player
     p.hp = Math.min(p.maxHp, p.hp + p.maxHp * 0.12)
     burst(particleSystem, { x: p.position.x, y: 1.4, z: p.position.z }, heroLook().glow, 16, 2.5, 0.6)
-    showPopup(popupPool, p.position, 'SECONDS!', `+${Math.round(p.maxHp * 0.12)} HP`, '#7ee8a8')
+    showPopup(popupPool, p.position, 'FLAMBÉ!', `+${Math.round(p.maxHp * 0.12)} HP`, '#ffb547')
+    const at = { x: position.x, z: position.z }
+    heroState.pending.push({ at: heroNow + 0.05, run: () => flambe(at) })
   }
-  if (trait === 'lucky' && Math.random() < 0.12) dropCrystals(crystalSystem, position.x, position.z, [5])
+  if (trait === 'lucky' && Math.random() < 0.15) {
+    const at = { x: position.x, z: position.z }
+    heroState.pending.push({ at: heroNow + 0.06, run: () => motherLode(at) })
+  }
   if (trait === 'tipjar') {
     const tip = tipJarCrystals(game.chainState.count)
-    if (tip) dropCrystals(crystalSystem, position.x, position.z, Array(tip).fill(1))
+    if (tip) {
+      dropCrystals(crystalSystem, position.x, position.z, Array(tip).fill(1))
+      const target = heroTargets(position.x, position.z, 8).filter((m) => m !== mesh)
+        .sort((a, b) => Math.hypot(a.position.x - position.x, a.position.z - position.z) - Math.hypot(b.position.x - position.x, b.position.z - position.z))[0]
+      if (target) {
+        const from = { x: position.x, z: position.z }
+        const to = { x: target.position.x, z: target.position.z }
+        launchFlyer({ kind: 'suitcase', color: heroLook().trim, duration: 0.35, radius: 0.9, damage: heroBaseDamage(), knockback: 5, spin: 9, point: (t) => ({ x: from.x + (to.x - from.x) * t, z: from.z + (to.z - from.z) * t }), arc: 1.2 })
+      }
+    }
   }
   if (trait === 'corpse') {
     const at = { x: position.x, z: position.z }
@@ -1153,7 +1311,14 @@ function stepHeroTraits(now, dt) {
     heroState.molten = Math.min(5, (now < heroState.moltenUntil ? heroState.molten : 0) + 1)
     heroState.moltenUntil = now + 6
   }
+  if (trait === 'bramble' && rootsTriggered(heroState.lastHp, player.hp, player.maxHp, now, heroState.rootsReady)) {
+    heroState.rootsReady = now + ROOTS_COOLDOWN
+    rootBurst()
+  }
   heroState.lastHp = player.hp
+  if (trait === 'hotfoot') stepHotFoot(player, now, dt)
+  else heroState.footprints.length = 0
+  stepFlyers(now)
   // Queued trait effects (static arcs, echoes, bass drops, bone bursts).
   if (heroState.pending.length) {
     const due = heroState.pending.filter((p) => now >= p.at)
@@ -1283,6 +1448,11 @@ function createGame() {
   heroState.hits = 0
   heroState.whistleReady = heroState.bassReadyAt = heroState.rewindReady = 0
   heroState.kills = heroState.broadsideReady = heroState.thornsReady = 0
+  clearFlyers()
+  heroState.footprints = []
+  heroState.footDist = 0
+  heroState.lastFoot = null
+  heroState.rootsReady = 0
   applyDifficulty()
 
   const game = {
@@ -5361,6 +5531,7 @@ function gameFrame(timestamp) {
   if (!hadSwing && attackState.swingElapsed !== null) {
     tutorialEvent('attack')
     sfx.play('swing', { x: player.position.x, z: player.position.z })
+    onHeroAttack(player)
     playWeaponFx(selectedWeaponId(game.inventory), player.position, player.facing, {
       particleSystem,
       shockwavePool,

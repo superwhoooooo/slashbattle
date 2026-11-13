@@ -87,3 +87,51 @@ describe('new hero traits', () => {
     expect(rewindTarget([], 5, 100)).toBe(null)
   })
 })
+
+import { BOOMERANG_EVERY, JACKPOT_CHANCE, boomerangPoint, rootsTriggered, saberPoint, spinReels } from '../src/logic/heroes.js'
+
+describe('new hero traits', () => {
+  it('the Plasma Wake blade flies straight out along the aim to its full reach', () => {
+    const from = { x: 1, z: 2 }
+    expect(saberPoint(from, 0, 0)).toEqual(from)
+    const end = saberPoint(from, Math.PI / 2, 1)
+    expect(end.x).toBeCloseTo(10)
+    expect(end.z).toBeCloseTo(2)
+    expect(saberPoint(from, 0, 0.5).z - 2).toBeGreaterThan(4.5) // eases off: more than half way at half time
+  })
+
+  it('the boomerang goes out, bows to the side, and comes home to wherever the thrower is now', () => {
+    const from = { x: 0, z: 0 }
+    const home = { x: 3, z: -1 }
+    expect(boomerangPoint(from, home, 0, 0)).toEqual({ x: 0, z: 0 })
+    const far = boomerangPoint(from, home, 0, 0.5)
+    expect(far.z).toBeGreaterThan(8)
+    const back = boomerangPoint(from, home, 0, 1)
+    expect(back.x).toBeCloseTo(3)
+    expect(back.z).toBeCloseTo(-1)
+    expect(Math.sign(boomerangPoint(from, from, 0, 0.25).x)).toBe(-Math.sign(boomerangPoint(from, from, 0, 0.75).x))
+    expect(BOOMERANG_EVERY).toBe(4)
+  })
+
+  it('jackpot reels show three of a kind only on a win, about 1 in 10', () => {
+    let seed = 7
+    const rng = () => ((seed = (seed * 16807) % 2147483647) / 2147483647)
+    let wins = 0
+    for (let i = 0; i < 5000; i++) {
+      const spin = spinReels(rng)
+      const same = spin.reels[0] === spin.reels[1] && spin.reels[1] === spin.reels[2]
+      expect(same).toBe(spin.win)
+      if (spin.win) wins++
+    }
+    expect(wins / 5000).toBeGreaterThan(JACKPOT_CHANCE * 0.7)
+    expect(wins / 5000).toBeLessThan(JACKPOT_CHANCE * 1.3)
+  })
+
+  it('Thorn Warden roots fire only on crossing below half, off cooldown', () => {
+    expect(rootsTriggered(60, 40, 100, 5, 0)).toBe(true)
+    expect(rootsTriggered(45, 40, 100, 5, 0)).toBe(false) // already below
+    expect(rootsTriggered(60, 40, 100, 5, 10)).toBe(false) // cooling down
+    expect(rootsTriggered(null, 40, 100, 5, 0)).toBe(false)
+    expect(rootsTriggered(60, 0, 100, 5, 0)).toBe(false) // knocked out
+  })
+})

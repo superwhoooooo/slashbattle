@@ -41,7 +41,7 @@ export const HEROES = [
   {
     id: 'thorn', name: 'Thorn Warden', cost: 150,
     blurb: 'The forest walks with this one, slowly.',
-    stats: { maxHp: 40, speed: 0.95, damageTaken: 0.88 }, trait: { id: 'bramble', name: 'Bramble Skin', desc: 'Below half health you heal 1.5 health a second.' },
+    stats: { maxHp: 40, speed: 0.95, damageTaken: 0.88 }, trait: { id: 'bramble', name: 'Bramble Skin', desc: 'Below half health you heal 1.5 health a second. The moment you drop below half, roots burst out: monsters within 5 m are rooted for 2 s and hit for 1x (once every 20 s).' },
     gear: ['antlers', 'leafCape'],
     skins: [
       skin('moss', 'Moss', 0x6f9e4a, 0x3e5a2c, 0x6d5233, 0xc6ff7a),
@@ -65,7 +65,7 @@ export const HEROES = [
   {
     id: 'prospector', name: 'Prospector Pip', cost: 150,
     blurb: 'Knows what crystals are worth, and where they hide.',
-    stats: { crystal: 1.25, magnet: 1.4 }, trait: { id: 'lucky', name: 'Lucky Strike', desc: '12% of your kills drop a bonus 5-crystal gem.' },
+    stats: { crystal: 1.25, magnet: 1.4 }, trait: { id: 'lucky', name: 'Mother Lode', desc: '15% of your kills crack open a geode: a blast hits everything within 3 m for 1x and drops a bonus 5-crystal gem.' },
     gear: ['minerHat', 'pickaxe'],
     skins: [
       skin('dust', 'Dusty', 0xc89a6a, 0x5c4426, 0xffb547, 0xffd36e),
@@ -174,7 +174,7 @@ export const HEROES = [
   {
     id: 'bellhop', name: 'Bellhop Max', cost: 150,
     blurb: 'Carries your bags, your tips, and a grudge.',
-    stats: { crystal: 1.1, speed: 1.08 }, trait: { id: 'tipjar', name: 'Tip Jar', desc: 'Once your kill chain reaches 3, every kill in it drops an extra crystal (two at x5 and up).' },
+    stats: { crystal: 1.1, speed: 1.08 }, trait: { id: 'tipjar', name: 'Tip Jar', desc: 'Once your kill chain reaches 3, every kill in it drops an extra crystal (two at x5 and up) and flings a suitcase at the nearest monster for 1x, knocking it flying.' },
     gear: ['pillbox', 'tray'],
     skins: [
       skin('classic', 'Lobby Red', 0xc8452f, 0x8a1c1c, 0xffd15c, 0xfff0c0),
@@ -259,7 +259,7 @@ export const HEROES = [
   {
     id: 'chef', name: 'Chef Flambé', cost: 150,
     blurb: 'Runs the resort kitchen. Cooks with whatever falls on the deck.',
-    stats: { maxHp: 20, regen: 0.2 }, trait: { id: 'seconds', name: 'Seconds, Please', desc: 'Every 6th kill serves a dish: you heal 12% of your max health.' },
+    stats: { maxHp: 20, regen: 0.2 }, trait: { id: 'seconds', name: 'Flambé!', desc: 'Every 6th kill serves a dish: you heal 12% of your max health and the pan goes up in flames, hitting everything within 3.5 m for 1x and setting it alight.' },
     gear: ['chefHat', 'mustache'],
     skins: [
       skin('whites', 'Kitchen Whites', 0xf4ede0, 0xffffff, 0xc8452f, 0xffd15c),
@@ -314,6 +314,58 @@ export const HEROES = [
       skin('mars', 'Red Planet', 0xd9734a, 0x5a2a1a, 0xffd36e, 0xffb547, 80),
       skin('nebula', 'Nebula', 0x6a3aa8, 0x1a1030, 0xff4fa3, 0x6fe3ff, 120),
       skin('gold', 'Gold Visor', 0x2a2a3a, 0x14141e, 0xffc94a, 0xffd96a, 200),
+    ],
+  },
+  {
+    id: 'dread', name: 'Dread Lord Vexar', cost: 900,
+    blurb: 'Black armour, heavy breathing, a plasma blade that never stays sheathed.',
+    stats: { damage: 1.1, damageTaken: 0.92, speed: 0.95, maxHp: 20 }, mask: true,
+    trait: { id: 'saber', name: 'Plasma Wake', desc: 'Half your attacks are trailed by a spinning plasma blade that flies 9 m along your aim, slicing everything it passes for 0.8x.' },
+    gear: ['dreadHelm', 'longCape', 'chestPanel', 'saberHilt'],
+    skins: [
+      skin('crimson', 'Crimson Blade', 0x22222a, 0x0c0c10, 0x6a6e78, 0xff2a2a),
+      skin('azure', 'Azure Blade', 0x2a2f3a, 0x10141c, 0xb8c0cc, 0x3aa8ff, 120),
+      skin('emerald', 'Emerald Blade', 0x24302a, 0x0e1612, 0x9aa49c, 0x3aff6a, 120),
+      skin('amethyst', 'Amethyst Blade', 0x2c2434, 0x120e18, 0xc8b8d8, 0xb44aff, 200),
+    ],
+  },
+  {
+    id: 'odie', name: 'Outback Odie', cost: 400,
+    blurb: 'Throws it, catches it, never once checked where it was going.',
+    stats: { speed: 1.06, crit: 0.03 },
+    trait: { id: 'boomerang', name: 'Boomerang', desc: 'Every 4th hit flings a boomerang that loops 9 m out and back to you, hitting everything on the way out and again on the way back for 0.7x.' },
+    gear: ['bushHat', 'boomerangBack'],
+    skins: [
+      skin('khaki', 'Khaki', 0xd9a86a, 0x8a6a3a, 0xc8452f, 0xffd36e),
+      skin('outback', 'Red Centre', 0xc8603a, 0x5a3a20, 0xffe0a0, 0xff9a4a, 80),
+      skin('reef', 'Reef', 0x3ac0c8, 0xf2e6c8, 0xff6a8a, 0xbdfff6, 120),
+      skin('dreamtime', 'Dreamtime', 0x3a2a24, 0x1a120e, 0xffd15c, 0xff7a2f, 200),
+    ],
+  },
+  {
+    id: 'jackpot', name: 'Lady Jackpot', cost: 600,
+    blurb: 'Plays the slots with every swing. The house always wins; she is the house.',
+    stats: { crit: 0.04, crystal: 1.1 },
+    trait: { id: 'jackpot', name: 'Jackpot', desc: 'Every hit spins the reels: 1 in 10 hits pays out, a coin blast hits everything within 3.5 m for 2x and sprays 6 crystals.' },
+    gear: ['topHat', 'dice'],
+    skins: [
+      skin('velvet', 'Velvet', 0xb0283a, 0x2a0a12, 0xffd15c, 0xffe07a),
+      skin('emerald', 'Card Table', 0x2a7a4a, 0x0e2a1a, 0xffffff, 0xffd15c, 80),
+      skin('neon', 'Neon Strip', 0xff4fa3, 0x1a1030, 0x6fe3ff, 0xfff27a, 120),
+      skin('platinum', 'High Roller', 0xe8e8f0, 0x2a2a34, 0xc8c8d8, 0xb8f0ff, 200),
+    ],
+  },
+  {
+    id: 'magma', name: 'Magma Marge', cost: 600,
+    blurb: 'Retired volcano. Still erupts when she runs late.',
+    stats: { maxHp: 30, speed: 1.04, dash: 0.85 },
+    trait: { id: 'hotfoot', name: 'Hot Foot', desc: 'Sprinting or dashing leaves burning footprints for 3 s that hit monsters standing in them for 0.4x every 0.5 s. Dash comes back 15% sooner.' },
+    gear: ['magmaCrown', 'lavaDrips'],
+    skins: [
+      skin('basalt', 'Basalt', 0x3a2a28, 0x1a1210, 0x5a4a44, 0xff6a1a),
+      skin('pumice', 'Pumice', 0xb8aca0, 0x6a5e54, 0x8a7a6a, 0xffb547, 80),
+      skin('blue', 'Blue Lava', 0x1c2a3a, 0x0e141c, 0x4a5a6a, 0x3ad8ff, 120),
+      skin('obsidian', 'Obsidian Bloom', 0x14101a, 0x08060c, 0x6a3a8a, 0xff3ac8, 200),
     ],
   },
 ]
@@ -437,3 +489,41 @@ export function isBehind(at, rotationY, from) {
   const len = Math.hypot(dx, dz) || 1
   return (fx * dx + fz * dz) / len < -0.25
 }
+
+// Plasma Wake: half your attacks launch a blade. The blade's spot `t` (0..1) along its flight.
+export const SABER_CHANCE = 0.5
+export const SABER_REACH = 9
+export function saberPoint(from, angle, t, reach = SABER_REACH) {
+  const d = reach * (1 - (1 - t) * (1 - t)) // fast out, easing off
+  return { x: from.x + Math.sin(angle) * d, z: from.z + Math.cos(angle) * d }
+}
+// Boomerang: loops `reach` out along `angle`, bowing to one side going out and the other coming
+// back, and ends on `home` (where the thrower is now). t in 0..1; the return leg starts at 0.5.
+export const BOOMERANG_EVERY = 4
+export function boomerangPoint(from, home, angle, t, reach = 9, bow = 2.4) {
+  const ox = from.x + (home.x - from.x) * t
+  const oz = from.z + (home.z - from.z) * t
+  const out = reach * Math.sin(Math.PI * t)
+  const side = bow * Math.sin(2 * Math.PI * t)
+  const fx = Math.sin(angle)
+  const fz = Math.cos(angle)
+  return { x: ox + fx * out + fz * side, z: oz + fz * out - fx * side }
+}
+// Jackpot: one hit in ten pays out; the reels shown for it (three of a kind on a win).
+export const JACKPOT_CHANCE = 0.1
+const REELS = ['7', '★', '◆', '♣', '♥', '$']
+export function spinReels(rng = Math.random) {
+  if (rng() < JACKPOT_CHANCE) {
+    const s = REELS[Math.floor(rng() * REELS.length)]
+    return { win: true, reels: [s, s, s] }
+  }
+  const a = Math.floor(rng() * REELS.length)
+  const b = (a + 1 + Math.floor(rng() * (REELS.length - 1))) % REELS.length // never three alike
+  return { win: false, reels: [REELS[a], REELS[b], REELS[Math.floor(rng() * REELS.length)]] }
+}
+// Hot Foot: a footprint every this many metres covered while running fast.
+export const HOTFOOT_STEP = 1.1
+export const HOTFOOT_MAX = 18
+// Thorn Warden's roots: fire on the frame health first crosses below half (and the cooldown is up).
+export const ROOTS_COOLDOWN = 20
+export const rootsTriggered = (lastHp, hp, maxHp, now, readyAt) => lastHp !== null && lastHp >= maxHp / 2 && hp > 0 && hp < maxHp / 2 && now >= readyAt

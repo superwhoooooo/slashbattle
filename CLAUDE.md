@@ -938,7 +938,10 @@ Runner, Prospector Pip, Lifeguard Lou, Bellhop Max, Frost Novice, Star Monk, Sto
 Doctor, Moon Hunter, Forge Titan, Hex Witch, Echo Twin, Sun Paladin, Void Walker, Clockwork Sage, Chef Flambé (Seconds,
 Please: every 6th kill heals 12%), Captain Gully (Broadside: cannon blasts past the target every 9 s, `broadsideSpots`), Rosa
 Thornheart (Thorns: a burst around you whenever you're hurt), Shadow Valet (Backstab: +60% on a monster's back or one that
-hasn't spotted you, `isBehind`) and Cosmo Nova (Zero-G: +60% knockback, ring-outs score triple)), each
+hasn't spotted you, `isBehind`) and Cosmo Nova (Zero-G: +60% knockback, ring-outs score triple), Dread Lord Vexar (Plasma Wake: half your attacks launch a
+spinning plasma blade 9 m along your aim, `saberPoint`; skins are blade colours), Outback Odie (Boomerang: every 4th hit, out
+and back, `boomerangPoint`), Lady Jackpot (Jackpot: 1 in 10 hits pays a coin blast + crystals, `spinReels`) and Magma Marge
+(Hot Foot: sprinting / dashing leaves burning footprints)), each
 with stat tweaks in the skills effect shape (plus a hero-only `dash` cooldown multiplier), one trait and four skins (body /
 cloak / trim / glow colours; the first is free). Heroes and skins are bought with banked crystals and saved in the profile
 (`hero`, `heroesOwned`, `heroSkins`, `skinsOwned`; `normalizeHeroFields`). `src/heroGear.js`'s `dressPlayer` recolours the
@@ -948,7 +951,10 @@ and `icons.js`'s `heroIconUrl` renders portraits for the hub's Heroes page (Y, o
 skipping trait damage itself, cause 'hero') and `stepHeroTraits` (burns, contagion puddles -- a second, monster-only `hazards.js` pool in its own 'plague' style (violet ooze, glowing veins in the skin's glow, a rune rim, rising wisps), `contagionPool`, and a kill in one spawns another -- radiance aura, bramble regen,
 molten stacks, gear animation, re-dressing when the pick changes). Trait effects that would re-enter `damageMonster` (Static
 Charge arcs, Echo Self repeats, Bass Drop, Bone Burst) are queued in `heroState.pending` and run next frame; `heroRescue` (Rewind,
-Rescue Whistle) runs before the revive / game-over checks. Sandbox hero picks are session-only (`sandboxHeroPick`), and only the
+Rescue Whistle) runs before the revive / game-over checks. Thrown trait effects (blades, boomerangs, Tip Jar's suitcase) are
+`main.js`'s flyers (`launchFlyer` / `stepFlyers`, meshes from `heroGear.js`'s `createHeroProjectile`): each follows a path and
+hits a monster once per leg. Juiced traits: Flambé! (Chef: the 6th-kill heal also sets a fire burst), Mother Lode (Pip: a
+geode blast with the gem), Tip Jar flings a suitcase, and Thorn Warden's roots root everything near when health drops below half. Sandbox hero picks are session-only (`sandboxHeroPick`), and only the
 Guest gets the jelly movement stretch.
 
 ## Speed and rendering (Shardfall comparison)

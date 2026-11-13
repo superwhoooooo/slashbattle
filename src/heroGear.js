@@ -391,7 +391,143 @@ const GEAR = {
       return flame
     })
   },
+  // Dread Lord Vexar: a glossy black war helm with a flared neck guard, a faceplate with a grille
+  // and a glowing visor slit in the blade's colour.
+  dreadHelm(g, look) {
+    const lacquer = new THREE.MeshPhysicalMaterial({ color: look.cloak, roughness: 0.18, metalness: 0.4, clearcoat: 1, clearcoatRoughness: 0.1, flatShading: true })
+    part(g, new THREE.SphereGeometry(R * 1.1, 24, 14, 0, Math.PI * 2, 0, Math.PI * 0.55), lacquer, [0, R * 0.98, 0])
+    part(g, new THREE.CylinderGeometry(R * 1.05, R * 1.32, R * 0.55, 24, 1, true, Math.PI * 0.6, Math.PI * 0.8), lacquer, [0, R * 0.78, 0])
+    part(g, new THREE.BoxGeometry(R * 0.06, R * 0.5, R * 0.5), lacquer, [0, TOP - 0.02, R * 0.2], [0.3, 0, 0])
+    const plate = solid(look.trim, 0.35, 0.7)
+    part(g, new THREE.ConeGeometry(R * 0.42, R * 0.7, 3), plate, [0, R * 0.72, R * 0.92], [-0.18, 0, Math.PI], [1, 1, 0.45])
+    for (let i = -2; i <= 2; i++) part(g, new THREE.BoxGeometry(0.018, R * 0.22, 0.02), solid(0x101014, 0.6), [i * 0.045, R * 0.66, R * 1.03], [-0.18, 0, 0])
+    part(g, new THREE.BoxGeometry(R * 1.05, R * 0.09, 0.04), glowMat(look.glow), [0, R * 1.18, R * 1.0])
+    both((side) => part(g, new THREE.BoxGeometry(R * 0.36, R * 0.2, 0.05), solid(0x08080c, 0.15, 0.6), [side * R * 0.3, R * 1.08, R * 0.98], [0, side * -0.18, side * 0.15]))
+  },
+  // A chest box with blinking lights (they pulse via `flicker`).
+  chestPanel(g, look) {
+    part(g, new THREE.BoxGeometry(0.3, 0.2, 0.06), solid(0x16161c, 0.4, 0.6), [0, R * 0.42, R * 0.98], [0.25, 0, 0])
+    const colors = [look.glow, 0x3aff6a, 0x3aa8ff]
+    colors.forEach((c, i) => {
+      const led = part(g, new THREE.BoxGeometry(0.05, 0.04, 0.02), glowMat(c), [-0.08 + i * 0.08, R * 0.44, R * 1.02], [0.25, 0, 0])
+      if (i === 0) led.userData.flicker = true
+    })
+  },
+  // A plasma blade worn ignited at the hip, angled back.
+  saberHilt(g, look) {
+    const s = new THREE.Group()
+    s.position.set(R * 0.95, R * 0.55, -0.05)
+    s.rotation.set(-0.7, 0, -0.25)
+    part(s, new THREE.CylinderGeometry(0.035, 0.04, 0.24, 10), solid(0xc9ced6, 0.25, 0.85), [0, 0, 0])
+    part(s, new THREE.CylinderGeometry(0.05, 0.05, 0.04, 10), solid(0x2a2a30, 0.5, 0.4), [0, 0.12, 0])
+    part(s, new THREE.CylinderGeometry(0.022, 0.022, 0.85, 8), glowMat(0xffffff), [0, 0.56, 0])
+    const halo = part(s, new THREE.CylinderGeometry(0.05, 0.05, 0.9, 10), new THREE.MeshBasicMaterial({ color: look.glow, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false }), [0, 0.58, 0])
+    halo.castShadow = false
+    halo.userData.flicker = true
+    g.add(s)
+  },
+  // Outback Odie: a wide-brimmed bush hat with a band, and a boomerang strapped to the back.
+  bushHat(g, look) {
+    const felt = solid(look.cloak, 0.85)
+    part(g, new THREE.CylinderGeometry(0.66, 0.7, 0.04, 26), felt, [0, TOP - 0.05, 0], [0, 0, 0.06])
+    part(g, new THREE.CylinderGeometry(0.3, 0.36, 0.3, 18), felt, [0, TOP + 0.11, 0])
+    part(g, new THREE.CylinderGeometry(0.365, 0.365, 0.07, 18), solid(look.trim, 0.6), [0, TOP + 0.0, 0])
+    for (let i = 0; i < 4; i++) {
+      const cork = part(g, new THREE.CylinderGeometry(0.02, 0.025, 0.1, 5), solid(0xc89a6a, 0.9), [-0.66 + i * 0.05, TOP - 0.14, 0.4 - i * 0.18])
+      cork.userData.swing = true
+    }
+  },
+  boomerangBack(g, look) {
+    const b = boomerangModel(look.trim, look.glow)
+    b.position.set(0, R * 1.0, -R - 0.08)
+    b.rotation.set(0, 0, 0.5)
+    b.rotation.x = Math.PI / 2
+    g.add(b)
+  },
+  // Lady Jackpot: two dice orbiting the hat.
+  dice(g, look) {
+    const orbit = new THREE.Group()
+    orbit.position.y = TOP + 0.25
+    orbit.userData.orbit = true
+    const pip = glowMat(look.trim)
+    for (let i = 0; i < 2; i++) {
+      const die = part(orbit, new THREE.BoxGeometry(0.16, 0.16, 0.16), solid(0xfaf6ee, 0.4), [i ? -0.62 : 0.62, 0.05 * i, 0], [0.5, 0.6 * i, 0.3])
+      for (const [x, y] of [[-0.04, 0.04], [0, 0], [0.04, -0.04]]) part(die, new THREE.SphereGeometry(0.016, 6, 4), pip, [x, y, 0.081])
+      part(die, new THREE.SphereGeometry(0.016, 6, 4), pip, [0.081, 0, 0])
+    }
+    g.add(orbit)
+    part(g, new THREE.TorusGeometry(R * 0.25, 0.03, 6, 16), solid(look.trim, 0.3, 0.7), [0, R * 0.48, R * 0.9], [0.3, 0, 0])
+  },
+  // Magma Marge: a crown of glowing rocks, and lava dripping down the body.
+  magmaCrown(g, look) {
+    const rock = solid(look.trim, 0.95)
+    const lava = glowMat(look.glow)
+    for (let i = 0; i < 7; i++) {
+      const a = (i / 7) * Math.PI * 2
+      part(g, new THREE.DodecahedronGeometry(0.12 + (i % 3) * 0.03), rock, [Math.sin(a) * R * 0.62, TOP - 0.02 + (i % 2) * 0.05, Math.cos(a) * R * 0.62], [i, i * 2, 0])
+    }
+    const pool = part(g, new THREE.CylinderGeometry(R * 0.45, R * 0.45, 0.05, 16), lava, [0, TOP + 0.01, 0])
+    pool.userData.bob = true
+    const plume = part(g, new THREE.ConeGeometry(0.1, 0.35, 8), lava, [0, TOP + 0.2, 0])
+    plume.userData.flicker = true
+  },
+  lavaDrips(g, look) {
+    const lava = glowMat(look.glow)
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2 + 0.3
+      const y = R * (1.45 - (i % 3) * 0.12)
+      const r = Math.sqrt(Math.max(0, R * R - (y - R) * (y - R))) + 0.01
+      part(g, new THREE.CapsuleGeometry(0.035, 0.18 + (i % 2) * 0.1, 3, 6), lava, [Math.sin(a) * r, y, Math.cos(a) * r], [Math.cos(a) * 0.3, 0, -Math.sin(a) * 0.3])
+    }
+  },
 }
+
+function boomerangModel(wood, glow) {
+  const b = new THREE.Group()
+  const mat = solid(wood, 0.6)
+  for (const side of [-1, 1]) {
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.04, 0.1), mat)
+    arm.position.set(side * 0.16, 0, 0.08)
+    arm.rotation.y = side * 0.55
+    b.add(arm)
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.045, 0.104), glowMat(glow))
+    stripe.position.set(side * 0.22, 0, 0.04)
+    stripe.rotation.y = side * 0.55
+    b.add(stripe)
+  }
+  return b
+}
+
+// The meshes hero traits throw: the plasma blade, a boomerang, a suitcase. Each lies flat and is
+// spun around y by main.js; disposeHeroProjectile frees it.
+export function createHeroProjectile(kind, color) {
+  const g = new THREE.Group()
+  if (kind === 'saber') {
+    const blade = new THREE.Group()
+    blade.add(new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.0, 8), glowMat(0xffffff)))
+    blade.add(new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 2.1, 10), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false })))
+    const hilt = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, 0.4, 8), solid(0xc9ced6, 0.25, 0.85))
+    hilt.position.y = -1.15
+    blade.add(hilt)
+    blade.rotation.z = Math.PI / 2 // lies flat; spinning the group about y whirls it end over end like a thrown blade
+    blade.scale.setScalar(0.85)
+    g.add(blade)
+  } else if (kind === 'boomerang') {
+    const b = boomerangModel(0xc8603a, color)
+    b.scale.setScalar(1.8)
+    g.add(b)
+  } else {
+    const shell = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.5, 0.3), solid(0xf2e6c8, 0.5))
+    g.add(shell)
+    const band = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.08, 0.32), solid(color, 0.4))
+    g.add(band)
+    const handle = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.025, 6, 12, Math.PI), solid(0x3a3a40, 0.5))
+    handle.position.y = 0.25
+    g.add(handle)
+  }
+  return g
+}
+export const disposeHeroProjectile = disposeGear
 
 export const GEAR_PARTS = Object.keys(GEAR)
 
