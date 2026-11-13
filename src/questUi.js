@@ -15,6 +15,7 @@ export function createQuestUi({ onButton, onClose }) {
 
   let open = false
   let buttons = []
+  let lastTouchPress = -Infinity
   let trackerKey = ''
   let toastTimer = null
   let toastBusy = false
@@ -57,7 +58,19 @@ export function createQuestUi({ onButton, onClose }) {
         el.type = 'button'
         el.textContent = b.label
         el.className = i === 0 ? 'primary' : ''
-        el.addEventListener('click', () => onButton(b.id))
+        // Touch presses fire on pointerup: the synthesized click never arrives on a phone when
+        // main.js's double-tap-zoom guard cancels a quick second touchend, or when another
+        // finger is still on a stick. The click that may follow is ignored.
+        el.addEventListener('pointerup', (event) => {
+          if (event.pointerType === 'mouse') return
+          event.preventDefault()
+          lastTouchPress = performance.now()
+          onButton(b.id)
+        })
+        el.addEventListener('click', () => {
+          if (performance.now() - lastTouchPress < 600) return
+          onButton(b.id)
+        })
         return el
       }),
     )
