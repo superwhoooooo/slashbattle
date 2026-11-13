@@ -5706,6 +5706,10 @@ function gameFrame(timestamp) {
     return true
   })
   game.monsters = monsters
+  pendingSummons.splice(0).forEach(({ bossMesh, count, maxMinions }) => summonMinions(game, bossMesh, count, maxMinions))
+  if (bossGone) popMinions(game)
+  // Splits come after the boss's minions are popped: Splitzilla's own split-offs ("two problems,
+  // then four") must survive it, and the boss fight only ends once they're beaten too.
   pendingSplits.splice(0).forEach(({ type, x, z }) => {
     const { into, count } = SPLITS[type]
     for (let i = 0; i < count; i++) {
@@ -5715,9 +5719,7 @@ function gameFrame(timestamp) {
       spawnMonster(game, into, { at })
     }
   })
-  pendingSummons.splice(0).forEach(({ bossMesh, count, maxMinions }) => summonMinions(game, bossMesh, count, maxMinions))
   if (bossGone) {
-    popMinions(game)
     attractAllCrystals(crystalSystem)
     // A boss leaves a free chest where it fell (when it died on the platform).
     if (bossDeathPoint) {
