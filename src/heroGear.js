@@ -480,6 +480,208 @@ const GEAR = {
       part(g, new THREE.CapsuleGeometry(0.035, 0.18 + (i % 2) * 0.1, 3, 6), lava, [Math.sin(a) * r, y, Math.cos(a) * r], [Math.cos(a) * 0.3, 0, -Math.sin(a) * 0.3])
     }
   },
+  // Thundra Stormborn: a silver helm with swept-up wings, and the hammer slung on the back.
+  wingedHelm(g, look) {
+    const steel = solid(look.trim, 0.25, 0.85)
+    part(g, new THREE.SphereGeometry(R * 1.04, 22, 12, 0, Math.PI * 2, 0, Math.PI * 0.32), steel, [0, R * 0.98, 0])
+    part(g, new THREE.TorusGeometry(R * 0.9, 0.04, 6, 26), solid(look.glow, 0.3, 0.5), [0, R * 1.62, 0], [Math.PI / 2, 0, 0])
+    for (const side of [-1, 1]) {
+      const wing = new THREE.Group()
+      wing.position.set(side * R * 0.85, R * 1.6, -0.05)
+      wing.rotation.z = side * -0.5
+      for (let i = 0; i < 4; i++) part(wing, new THREE.BoxGeometry(0.05, 0.36 - i * 0.06, 0.1), steel, [side * i * 0.06, 0.16 + i * 0.05, -i * 0.07], [-0.5 - i * 0.15, 0, 0])
+      g.add(wing)
+    }
+    const cape = part(g, new THREE.PlaneGeometry(R * 1.4, R * 1.3), clothMat(look.cloak), [0, R * 0.75, -R * 0.98], [0.15, 0, 0])
+    cape.userData.sway = true
+  },
+  hammerBack(g, look) {
+    const h = hammerModel(look.trim, look.glow)
+    h.position.set(R * 0.35, R * 1.0, -R - 0.15)
+    h.rotation.set(0.2, 0, -0.5)
+    g.add(h)
+  },
+  // Professor Singularity: wild white hair, and electron rings orbiting the body.
+  wildHair(g, look) {
+    const hair = solid(0xf2f2f2, 0.95)
+    for (let i = 0; i < 9; i++) {
+      const a = (i / 9) * Math.PI * 2
+      part(g, new THREE.DodecahedronGeometry(0.15 + (i % 3) * 0.04), hair, [Math.sin(a) * R * 0.75, R * 1.55 + (i % 2) * 0.1, Math.cos(a) * R * 0.75 - 0.1], [i, i, 0])
+    }
+    for (const side of [-1, 1]) part(g, new THREE.TorusGeometry(0.11, 0.02, 6, 14), solid(0x2a2a30, 0.4, 0.6), [side * 0.17, R * 1.42, R * 0.98])
+  },
+  atomRings(g, look) {
+    for (let i = 0; i < 3; i++) {
+      const ring = new THREE.Group()
+      ring.position.y = R
+      ring.rotation.set(Math.PI / 2 + (i - 1) * 0.9, 0, i * 1.1)
+      ring.userData.spin = true
+      part(ring, new THREE.TorusGeometry(R * 1.55, 0.015, 4, 40), glowMat(look.trim))
+      part(ring, new THREE.SphereGeometry(0.07, 8, 6), glowMat(look.glow), [R * 1.55, 0, 0])
+      g.add(ring)
+    }
+    const core = part(g, new THREE.SphereGeometry(0.1, 10, 8), glowMat(look.glow), [0, R * 0.55, R * 1.02])
+    core.userData.flicker = true
+  },
+  // Phoenix Phoebe: a crest of flame feathers and two blazing wings.
+  flameCrest(g, look) {
+    for (let i = 0; i < 5; i++) {
+      const f = part(g, new THREE.ConeGeometry(0.08, 0.5 - Math.abs(i - 2) * 0.08, 6), glowMat(i % 2 ? look.glow : look.cloak), [0, TOP + 0.1, -0.2 + i * 0.1], [-0.6 + i * 0.3, 0, 0])
+      f.userData.flicker = true
+    }
+  },
+  flameWings(g, look) {
+    for (const side of [-1, 1]) {
+      const wing = new THREE.Group()
+      wing.position.set(side * R * 0.7, R * 1.15, -R * 0.75)
+      wing.userData.wing = side
+      for (let i = 0; i < 5; i++) {
+        const feather = part(wing, new THREE.ConeGeometry(0.09, 0.75 - i * 0.08, 5), glowMat(i % 2 ? look.cloak : look.glow), [side * (0.25 + i * 0.15), 0.1 - i * 0.07, 0], [0, 0, side * (-1.1 - i * 0.18)])
+        feather.userData.flicker = true
+      }
+      g.add(wing)
+    }
+  },
+  // Kenji Ninefold: a topknot and headband, and a katana across the back.
+  topknot(g, look) {
+    part(g, new THREE.CylinderGeometry(R * 1.02, R * 1.02, 0.08, 24, 1, true), clothMat(look.trim), [0, R * 1.62, 0])
+    for (const side of [-1, 1]) {
+      const tail = part(g, new THREE.BoxGeometry(0.06, 0.02, 0.4), clothMat(look.trim), [side * 0.08, R * 1.6, -R - 0.15], [0.4, side * 0.3, 0])
+      tail.userData.sway = true
+    }
+    part(g, new THREE.SphereGeometry(0.14, 10, 8), solid(0x1a1a1e, 0.8), [0, TOP + 0.02, -0.1])
+    part(g, new THREE.CylinderGeometry(0.05, 0.09, 0.3, 8), solid(0x1a1a1e, 0.8), [0, TOP + 0.12, -0.25], [-1.2, 0, 0])
+  },
+  katanaBack(g, look) {
+    const k = new THREE.Group()
+    k.position.set(0, R * 1.05, -R - 0.1)
+    k.rotation.z = 0.75
+    part(k, new THREE.BoxGeometry(0.05, 1.3, 0.09), solid(look.cloak, 0.5), [0, 0.1, 0])
+    part(k, new THREE.CylinderGeometry(0.035, 0.035, 0.36, 8), solid(look.trim, 0.7), [0, 0.92, 0])
+    part(k, new THREE.CylinderGeometry(0.09, 0.09, 0.03, 10), solid(0xd8b84a, 0.3, 0.8), [0, 0.74, 0])
+    const edge = part(k, new THREE.BoxGeometry(0.012, 1.2, 0.02), glowMat(look.glow), [0.03, 0.1, 0])
+    edge.userData.flicker = true
+    g.add(k)
+  },
+  // Hookshot Hana: a ninja hood with a face scarf (eyes peek over it) and trailing scarf tails.
+  hoodScarf(g, look) {
+    const cloth = clothMat(look.cloak)
+    part(g, new THREE.SphereGeometry(R * 1.06, 22, 12, Math.PI / 2 + 0.75, Math.PI * 2 - 1.5, 0, Math.PI * 0.5), cloth, [0, R * 0.96, -0.02]) // open at the face
+    part(g, new THREE.CylinderGeometry(R * 1.03, R * 1.05, R * 0.42, 24, 1, true), cloth, [0, R * 0.62, 0])
+    part(g, new THREE.CylinderGeometry(R * 1.06, R * 1.06, R * 0.1, 24, 1, true), solid(look.trim, 0.5, 0.4), [0, R * 1.42, 0])
+    part(g, new THREE.BoxGeometry(R * 0.5, R * 0.14, 0.03), solid(look.trim, 0.4, 0.6), [0, R * 1.42, R * 1.04])
+    for (const side of [-1, 1]) {
+      const tail = part(g, new THREE.BoxGeometry(0.1, 0.03, 0.6), clothMat(look.glow), [side * 0.12, R * 1.42, -R - 0.3], [0.2, side * 0.25, 0])
+      tail.userData.sway = true
+    }
+  },
+  // A coiled chain on the hip ending in a glowing kunai hook.
+  hookChain(g, look) {
+    const metal = solid(look.trim, 0.3, 0.8)
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2
+      part(g, new THREE.TorusGeometry(0.05, 0.015, 5, 10), metal, [R * 0.95 + Math.sin(a) * 0.12, R * 0.5, Math.cos(a) * 0.12], [Math.PI / 2, 0, a])
+    }
+    const hook = part(g, new THREE.ConeGeometry(0.06, 0.24, 4), glowMat(look.glow), [R * 1.0, R * 0.28, 0.1], [Math.PI, 0, 0])
+    hook.userData.swing = true
+  },
+  // Rush Rocket: racing goggles pushed up on the head, and swept-back booster fins.
+  goggles(g, look) {
+    part(g, new THREE.TorusGeometry(R * 1.0, 0.04, 6, 28), solid(0x2a2a30, 0.6), [0, R * 1.5, 0], [Math.PI / 2 - 0.25, 0, 0], [1, 1, 1])
+    for (const side of [-1, 1]) {
+      part(g, new THREE.CylinderGeometry(0.15, 0.15, 0.08, 16), solid(look.trim, 0.3, 0.6), [side * 0.2, R * 1.62, R * 0.78], [FRONT - 0.6, 0, 0])
+      part(g, new THREE.CircleGeometry(0.11, 16), glowMat(look.glow), [side * 0.2, R * 1.655, R * 0.82], [-0.6 - 0.35, 0, 0])
+    }
+  },
+  boosterFins(g, look) {
+    const fin = solid(look.cloak, 0.35, 0.4)
+    for (let i = 0; i < 3; i++) {
+      const y = R * (1.5 - i * 0.35)
+      part(g, new THREE.ConeGeometry(0.12, 0.7, 4), fin, [0, y, -R * 0.95], [-FRONT - 0.5, 0, 0], [1, 1, 0.35])
+    }
+    const nozzle = part(g, new THREE.CylinderGeometry(0.12, 0.17, 0.25, 12), solid(look.trim, 0.3, 0.7), [0, R * 0.55, -R - 0.1], [FRONT, 0, 0])
+    nozzle.castShadow = false
+    const flame = part(g, new THREE.ConeGeometry(0.12, 0.45, 10), glowMat(look.glow), [0, R * 0.55, -R - 0.42], [-FRONT, 0, 0])
+    flame.userData.flicker = true
+  },
+  // Commander Cobalt: a full armoured helmet with a wraparound gold visor.
+  visorHelm(g, look) {
+    const armour = new THREE.MeshPhysicalMaterial({ color: look.body, roughness: 0.35, metalness: 0.3, clearcoat: 0.6, flatShading: true })
+    part(g, new THREE.SphereGeometry(R * 1.08, 24, 16, 0, Math.PI * 2, 0, Math.PI * 0.62), armour, [0, R * 0.92, 0])
+    const visor = new THREE.MeshPhysicalMaterial({ color: look.glow, roughness: 0.05, metalness: 0.9, clearcoat: 1, emissive: look.glow, emissiveIntensity: 0.35 })
+    part(g, new THREE.SphereGeometry(R * 1.1, 24, 10, Math.PI * 0.18, Math.PI * 0.64, Math.PI * 0.3, Math.PI * 0.22), visor, [0, R * 0.92, 0.02])
+    part(g, new THREE.BoxGeometry(R * 0.2, R * 0.3, R * 0.12), solid(look.trim, 0.5, 0.5), [0, R * 0.6, R * 0.98])
+  },
+  shoulderPads(g, look) {
+    const plate = solid(look.cloak, 0.45, 0.35)
+    both((side) => {
+      part(g, new THREE.SphereGeometry(0.28, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), plate, [side * R * 0.95, R * 0.95, 0], [0, 0, side * -0.6], [1, 0.7, 1.1])
+      return part(g, new THREE.BoxGeometry(0.06, 0.04, 0.3), glowMat(look.glow), [side * R * 1.12, R * 1.02, 0], [0, 0, side * -0.6])
+    })
+  },
+  antenna(g, look) {
+    part(g, new THREE.CylinderGeometry(0.012, 0.018, 0.55, 5), solid(look.trim, 0.4, 0.6), [-R * 0.55, TOP + 0.08, -R * 0.4], [-0.15, 0, 0.1])
+    const tip = part(g, new THREE.SphereGeometry(0.045, 8, 6), glowMat(0xff3a3a), [-R * 0.58, TOP + 0.36, -R * 0.44])
+    tip.userData.flicker = true
+  },
+  // Kaiju Kiddo: rows of jagged back plates that glow brighter as Atomic Breath charges.
+  dorsalPlates(g, look) {
+    const rock = solid(look.trim, 0.8)
+    const core = glowMat(look.glow)
+    for (let i = 0; i < 5; i++) {
+      const a = 0.35 + i * 0.42 // from the crown down the back
+      const y = R + Math.cos(a) * R * 1.0
+      const z = -Math.sin(a) * R * 1.0
+      const size = 0.34 - Math.abs(i - 1.5) * 0.04
+      for (const side of i % 2 ? [0] : [-0.12, 0.12]) {
+        part(g, new THREE.ConeGeometry(size * 0.55, size * 1.4, 4), rock, [side, y + Math.cos(a) * 0.1, z - Math.sin(a) * 0.1], [-a, 0, side * 2], [1, 1, 0.35])
+        const glow = part(g, new THREE.ConeGeometry(size * 0.3, size * 0.9, 4), core, [side, y + Math.cos(a) * 0.12, z - Math.sin(a) * 0.12], [-a, 0, side * 2], [1, 1, 0.5])
+        glow.userData.charge = true
+      }
+    }
+  },
+  kaijuTail(g, look) {
+    const tail = new THREE.Group()
+    tail.position.set(0, R * 0.35, -R * 0.85)
+    tail.userData.swing = true
+    const skin = solid(look.body, 0.7)
+    for (let i = 0; i < 5; i++) {
+      const r = 0.22 - i * 0.035
+      part(tail, new THREE.SphereGeometry(r, 10, 8), skin, [0, -i * 0.04, -i * 0.22], [0, 0, 0], [1, 0.85, 1.3])
+      if (i < 4) part(tail, new THREE.ConeGeometry(r * 0.5, r * 1.2, 4), solid(look.trim, 0.8), [0, r * 0.9 - i * 0.04, -i * 0.22], [0, 0, 0], [1, 1, 0.35])
+    }
+    g.add(tail)
+  },
+  // Deadeye Dakota: a tall cowboy hat with a curled brim, and a striped poncho.
+  cowboyHat(g, look) {
+    const felt = solid(look.cloak, 0.85)
+    const brim = part(g, new THREE.CylinderGeometry(0.78, 0.78, 0.04, 30), felt, [0, TOP - 0.04, 0], [0.08, 0, 0])
+    brim.scale.set(1, 1, 0.85)
+    for (const side of [-1, 1]) part(g, new THREE.TorusGeometry(0.12, 0.035, 6, 12, Math.PI), felt, [side * 0.7, TOP + 0.04, 0], [0, Math.PI / 2, 0], [1, 1.2, 2.2])
+    part(g, new THREE.CylinderGeometry(0.3, 0.38, 0.42, 18), felt, [0, TOP + 0.18, 0])
+    part(g, new THREE.BoxGeometry(0.42, 0.06, 0.3), felt, [0, TOP + 0.38, 0], [0, 0, 0], [1, 1, 1])
+    part(g, new THREE.CylinderGeometry(0.385, 0.385, 0.07, 18), solid(look.trim, 0.5, 0.4), [0, TOP + 0.02, 0])
+    part(g, new THREE.OctahedronGeometry(0.06), glowMat(look.glow), [0, TOP + 0.03, 0.39])
+  },
+  poncho(g, look) {
+    const cloth = clothMat(look.cloak)
+    part(g, new THREE.ConeGeometry(R * 1.3, R * 0.9, 8, 1, true), cloth, [0, R * 0.95, 0])
+    for (let i = 0; i < 2; i++) part(g, new THREE.CylinderGeometry(R * (1.08 + i * 0.12), R * (1.08 + i * 0.12), 0.05, 8, 1, true), clothMat(i ? look.glow : look.trim), [0, R * (0.82 - i * 0.18), 0])
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2
+      const fringe = part(g, new THREE.BoxGeometry(0.03, 0.12, 0.03), solid(look.trim, 0.9), [Math.sin(a) * R * 1.28, R * 0.44, Math.cos(a) * R * 1.28])
+      fringe.userData.swing = true
+    }
+  },
+}
+
+function hammerModel(metal, glow) {
+  const h = new THREE.Group()
+  part(h, new THREE.CylinderGeometry(0.04, 0.045, 0.7, 8), solid(0x6d5233, 0.8), [0, -0.1, 0])
+  part(h, new THREE.BoxGeometry(0.42, 0.26, 0.26), solid(metal, 0.25, 0.85), [0, 0.32, 0])
+  for (const side of [-1, 1]) part(h, new THREE.BoxGeometry(0.03, 0.2, 0.2), glowMat(glow), [side * 0.22, 0.32, 0])
+  part(h, new THREE.TorusGeometry(0.05, 0.015, 5, 10), solid(metal, 0.4, 0.6), [0, -0.48, 0])
+  return h
 }
 
 function boomerangModel(wood, glow) {
@@ -512,6 +714,19 @@ export function createHeroProjectile(kind, color) {
     blade.rotation.z = Math.PI / 2 // lies flat; spinning the group about y whirls it end over end like a thrown blade
     blade.scale.setScalar(0.85)
     g.add(blade)
+  } else if (kind === 'hammer') {
+    const h = hammerModel(0xc8ced6, color)
+    h.scale.setScalar(1.7)
+    h.rotation.z = Math.PI / 2 // lies flat, tumbling end over end as it spins about y
+    g.add(h)
+  } else if (kind === 'hook') {
+    const hook = new THREE.Group()
+    hook.add(new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.55, 4), glowMat(color)))
+    const guard = new THREE.Mesh(new THREE.TorusGeometry(0.14, 0.03, 6, 12), solid(0x8d8a86, 0.3, 0.8))
+    guard.position.y = -0.3
+    hook.add(guard)
+    hook.rotation.x = Math.PI / 2 // points along +z
+    g.add(hook)
   } else if (kind === 'boomerang') {
     const b = boomerangModel(0xc8603a, color)
     b.scale.setScalar(1.8)
@@ -528,6 +743,27 @@ export function createHeroProjectile(kind, color) {
   return g
 }
 export const disposeHeroProjectile = disposeGear
+
+// A beam of light `length` long along the group's +z (Atomic Breath, Orbital Strike's sky beam): a white
+// core inside an additive glow. main.js fades it through `userData.setFade(0..1)`.
+export function createHeroBeam(color, length, width = 0.5) {
+  const g = new THREE.Group()
+  const core = new THREE.Mesh(new THREE.CylinderGeometry(width * 0.35, width * 0.35, length, 10), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true }))
+  const glow = new THREE.Mesh(new THREE.CylinderGeometry(width, width * 0.8, length, 14), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false }))
+  for (const m of [core, glow]) {
+    m.rotation.x = Math.PI / 2
+    m.position.z = length / 2
+    g.add(m)
+  }
+  g.userData.setFade = (f) => {
+    core.material.opacity = f
+    glow.material.opacity = 0.6 * f
+    const s = 0.4 + 0.6 * f
+    core.scale.set(s, 1, s)
+    glow.scale.set(s, 1, s)
+  }
+  return g
+}
 
 export const GEAR_PARTS = Object.keys(GEAR)
 
@@ -566,6 +802,10 @@ export function dressPlayer(mesh, look) {
       if (o.userData.swing) o.rotation.x = Math.sin(time * 4) * (0.1 + run * 0.3)
       if (o.userData.flap) o.rotation.x = rest.x + Math.sin(time * 9) * (0.08 + run * 0.25)
       if (o.userData.flicker) o.scale.y = 1 + Math.sin(time * 17) * 0.12
+      if (o.userData.charge) {
+        const c = gear.userData.charge ?? 0
+        o.scale.setScalar(0.6 + c * 0.7 + (c >= 0.9 ? Math.sin(time * 20) * 0.1 : 0))
+      }
       if (o.userData.spin) o.rotation.z = time * 1.2
       if (o.userData.drift) {
         o.position.x = R * 0.9 + Math.sin(time * 1.3) * 0.25

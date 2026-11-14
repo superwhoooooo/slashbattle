@@ -319,8 +319,8 @@ export const HEROES = [
   {
     id: 'dread', name: 'Dread Lord Vexar', cost: 900,
     blurb: 'Black armour, heavy breathing, a plasma blade that never stays sheathed.',
-    stats: { damage: 1.1, damageTaken: 0.92, speed: 0.95, maxHp: 20 }, mask: true,
-    trait: { id: 'saber', name: 'Plasma Wake', desc: 'Half your attacks are trailed by a spinning plasma blade that flies 9 m along your aim, slicing everything it passes for 0.8x.' },
+    stats: { damage: 1.15, damageTaken: 0.9, speed: 0.97, maxHp: 25 }, mask: true,
+    trait: { id: 'saber', name: 'Plasma Wake', desc: '3 in 4 attacks hurl a spinning plasma blade 12 m along your aim and back again, slicing everything both ways for 1.2x. Every 3rd throw splits into twin blades.' },
     gear: ['dreadHelm', 'longCape', 'chestPanel', 'saberHilt'],
     skins: [
       skin('crimson', 'Crimson Blade', 0x22222a, 0x0c0c10, 0x6a6e78, 0xff2a2a),
@@ -366,6 +366,125 @@ export const HEROES = [
       skin('pumice', 'Pumice', 0xb8aca0, 0x6a5e54, 0x8a7a6a, 0xffb547, 80),
       skin('blue', 'Blue Lava', 0x1c2a3a, 0x0e141c, 0x4a5a6a, 0x3ad8ff, 120),
       skin('obsidian', 'Obsidian Bloom', 0x14101a, 0x08060c, 0x6a3a8a, 0xff3ac8, 200),
+    ],
+  },
+  // --- Five heroes after classic action-game archetypes (original characters, their own looks) ---
+  {
+    id: 'hana', name: 'Hookshot Hana', cost: 1200,
+    blurb: 'A masked ninja with a chain hook. Nobody gets away from her. Literally.',
+    stats: { speed: 1.05, crit: 0.04 },
+    trait: { id: 'hookshot', name: 'Get Over Here!', desc: 'Every 6 s, a hit fires a chain hook at the farthest monster within 13 m: it is yanked right up to you, stunned and hit for 1x. Bosses are only dragged partway.' },
+    gear: ['hoodScarf', 'hookChain'],
+    skins: [
+      skin('ember', 'Ember Clan', 0xe8b84a, 0x2a2a30, 0x8d8a86, 0xff6a2a),
+      skin('frost', 'Frost Clan', 0x6fa8e8, 0x1c2c5a, 0xdfe6f5, 0x9fe8ff, 80),
+      skin('venom', 'Venom Clan', 0x5fd46a, 0x14281c, 0x2a2a30, 0xc8ff4a, 120),
+      skin('shadow', 'Shadow Clan', 0x3a3a48, 0x0e0e14, 0xb44aff, 0xff3ac8, 200),
+    ],
+  },
+  {
+    id: 'rush', name: 'Rush Rocket', cost: 1400,
+    blurb: 'Too fast to stop, too fast to steer. Gotta go, always.',
+    stats: { speed: 1.1, dash: 0.7, maxHp: -10 },
+    trait: { id: 'ram', name: 'Sonic Boom', desc: 'Sprinting or dashing turns you into a missile: anything you run into takes 0.9x and is blasted away. Every dash leaves a sonic boom (1x within 3 m). Dash comes back 30% sooner.' },
+    gear: ['goggles', 'boosterFins'],
+    skins: [
+      skin('cobalt', 'Cobalt Blur', 0x2f6bff, 0x1c2c5a, 0xff3a3a, 0x9fe8ff),
+      skin('crimson', 'Red Streak', 0xe8403a, 0x5a1a14, 0xffffff, 0xffd15c, 80),
+      skin('lime', 'Lime Zoom', 0x8ad43a, 0x2a4a14, 0xff6a2a, 0xfff27a, 120),
+      skin('chrome', 'Chrome Comet', 0xd8dce4, 0x3a3e48, 0x6fe3ff, 0x6fe3ff, 200),
+    ],
+  },
+  {
+    id: 'cobalt', name: 'Commander Cobalt', cost: 1600,
+    blurb: 'Space marine on shore leave. Still has a satellite on speed dial.',
+    stats: { maxHp: 20, damageTaken: 0.95 }, mask: true,
+    trait: { id: 'orbital', name: 'Orbital Strike', desc: 'Every 10 kills, a satellite paints the biggest crowd within 18 m. 1.5 s later a beam from the sky hits everything within 5 m for 4x.' },
+    gear: ['visorHelm', 'shoulderPads', 'antenna'],
+    skins: [
+      skin('olive', 'Olive Drab', 0x5a7a3a, 0x3a4a24, 0x8d8a86, 0xffb547),
+      skin('arctic', 'Arctic Ops', 0xe8eef4, 0x9aa4b0, 0x3a3e48, 0x6fe3ff, 80),
+      skin('crimson', 'Red Team', 0xb0283a, 0x4a1018, 0xc8c2b4, 0xff6a6a, 120),
+      skin('gold', 'Legendary', 0xe8b84a, 0x8a5a14, 0xfff0c0, 0x6fffc8, 200),
+    ],
+  },
+  {
+    id: 'kaiju', name: 'Kaiju Kiddo', cost: 1600,
+    blurb: 'Hatched under the resort pool. Already bigger than the lifeguard.',
+    stats: { maxHp: 30, damage: 1.05, speed: 0.96 },
+    trait: { id: 'atomic', name: 'Atomic Breath', desc: 'Every hit charges your glowing back plates; on the 10th you ROAR a 14 m beam along your aim that hits everything in its path for 1.6x and shoves it back.' },
+    gear: ['dorsalPlates', 'kaijuTail'],
+    skins: [
+      skin('classic', 'Atomic', 0x3a5a4a, 0x24382c, 0x8d9a8a, 0x6fe3ff),
+      skin('magma', 'Burning', 0x3a2420, 0x1a0e0c, 0x8a4a2a, 0xff5a1a, 80),
+      skin('space', 'Space Beast', 0x4a2a6a, 0x24143a, 0xc8b8d8, 0xff4fa3, 120),
+      skin('gold', 'Three-Headed Gold', 0xe8c04a, 0x8a6a14, 0xfff0c0, 0xfff27a, 200),
+    ],
+  },
+  {
+    id: 'dakota', name: 'Deadeye Dakota', cost: 1400,
+    blurb: 'Rode into the resort at sundown. It is always high noon somewhere.',
+    stats: { crit: 0.05, speed: 1.03 },
+    trait: { id: 'highnoon', name: 'High Noon', desc: 'Every 16 s your next hit stops the clock: time slows, up to 6 monsters within 16 m are marked, then you fan the hammer for 2x on each.' },
+    gear: ['cowboyHat', 'poncho'],
+    skins: [
+      skin('dust', 'Dust Devil', 0xd9a86a, 0x6a4a2a, 0xc8c2b4, 0xff3a3a),
+      skin('midnight', 'Midnight Rider', 0x2a2a3a, 0x14141e, 0xc8c8d8, 0x6fe3ff, 80),
+      skin('sunset', 'Sunset', 0xff8a5a, 0x8a2a3a, 0xffd15c, 0xfff27a, 120),
+      skin('ghost', 'Ghost Town', 0xe8f0f4, 0x8aa4b0, 0x3a3e48, 0x6fffc8, 200),
+    ],
+  },
+  // --- Premium heroes (2200): the big, flashy traits ---
+  {
+    id: 'thundra', name: 'Thundra Stormborn', cost: 2200,
+    blurb: 'Sky warrior with a hammer that always comes home. Brings the weather with it.',
+    stats: { damage: 1.12, maxHp: 25, knockback: 1.2 },
+    trait: { id: 'hammer', name: 'Hammer Recall', desc: 'Every 4th hit hurls a lightning hammer 11 m along your aim. Where it turns, lightning strikes (1.8x within 3.5 m), then it flies back to your hand through everything for 1x.' },
+    gear: ['wingedHelm', 'hammerBack'],
+    skins: [
+      skin('storm', 'Stormborn', 0xd8c09a, 0xb0283a, 0xc8ced6, 0x6fd8ff),
+      skin('frost', 'Frost Giant', 0x9fc8e8, 0x1c2c5a, 0xdfe6f5, 0xbdfff6, 120),
+      skin('gold', 'Asgold', 0xe8b84a, 0x3a2a6a, 0xfff0c0, 0xfff27a, 200),
+      skin('void', 'Dark Thunder', 0x3a3448, 0x14101e, 0x8a8a9a, 0xb44aff, 300),
+    ],
+  },
+  {
+    id: 'singularity', name: 'Professor Singularity', cost: 2200,
+    blurb: 'Split the atom, then the resort. Carries a pocket black hole for emergencies.',
+    stats: { cooldown: 0.9, crit: 0.03 },
+    trait: { id: 'blackhole', name: 'Event Horizon', desc: 'Every 9 s a hit tears open a black hole on its target: for 2 s it drags in everything within 8 m, then it implodes for 3x within 4 m.' },
+    gear: ['wildHair', 'atomRings'],
+    skins: [
+      skin('lab', 'Lab Coat', 0xf2f0e6, 0xdfe6f5, 0x3a3e48, 0xb44aff),
+      skin('quantum', 'Quantum', 0x2a3a6a, 0x14141e, 0x6fe3ff, 0x6fe3ff, 120),
+      skin('antimatter', 'Antimatter', 0x1a1a1e, 0x08080c, 0xff4fa3, 0xff4fa3, 200),
+      skin('supernova', 'Supernova', 0xffd36e, 0x8a3f12, 0xffffff, 0xff6a2a, 300),
+    ],
+  },
+  {
+    id: 'phoebe', name: 'Phoenix Phoebe', cost: 2200,
+    blurb: 'Has died eleven times. Got better every time.',
+    stats: { maxHp: 15, regen: 0.4, speed: 1.04 },
+    trait: { id: 'rebirth', name: 'Rebirth', desc: 'A quarter of your hits set monsters alight. Once a minute, a killing blow instead explodes you in a 6 m fire nova (3x, sets everything alight) and you rise again at half health.' },
+    gear: ['flameCrest', 'flameWings'],
+    skins: [
+      skin('flame', 'Firebird', 0xff6a2a, 0xffb547, 0xffd15c, 0xffe07a),
+      skin('blue', 'Blue Phoenix', 0x3a8aff, 0x6fd8ff, 0xdfe6f5, 0xbdfff6, 120),
+      skin('shadow', 'Shadowflame', 0x2a1a3a, 0x8a3ac8, 0xc77dff, 0xb44aff, 200),
+      skin('jade', 'Jade Bird', 0x2fbf8a, 0x8affc8, 0xffd15c, 0xd8fff0, 300),
+    ],
+  },
+  {
+    id: 'kenji', name: 'Kenji Ninefold', cost: 2200,
+    blurb: 'A wandering swordsman. You will not see the cut. You will see the bill.',
+    stats: { speed: 1.08, crit: 0.08, maxHp: -10 },
+    trait: { id: 'thousandcuts', name: 'Thousand Cuts', desc: 'Every 9 s your next hit becomes a lightning-fast chain: you flash through up to 7 monsters (each within 8 m of the last) for 1.6x each, untouchable while you do.' },
+    gear: ['topknot', 'katanaBack'],
+    skins: [
+      skin('ronin', 'Ronin', 0xe8d8b8, 0x3a2a4a, 0xc8452f, 0xff6a6a),
+      skin('crane', 'White Crane', 0xf2f6fa, 0xdfe6f5, 0x2a2a34, 0x6fe3ff, 120),
+      skin('oni', 'Oni Mask', 0xc8303a, 0x2a0a12, 0xffd15c, 0xffb547, 200),
+      skin('moon', 'Moonlit Blade', 0x2a3048, 0x10141e, 0xc8c8d8, 0xb8f0ff, 300),
     ],
   },
 ]
@@ -490,13 +609,10 @@ export function isBehind(at, rotationY, from) {
   return (fx * dx + fz * dz) / len < -0.25
 }
 
-// Plasma Wake: half your attacks launch a blade. The blade's spot `t` (0..1) along its flight.
-export const SABER_CHANCE = 0.5
-export const SABER_REACH = 9
-export function saberPoint(from, angle, t, reach = SABER_REACH) {
-  const d = reach * (1 - (1 - t) * (1 - t)) // fast out, easing off
-  return { x: from.x + Math.sin(angle) * d, z: from.z + Math.cos(angle) * d }
-}
+// Plasma Wake: 3 in 4 attacks throw a blade out and back (returningPoint, below).
+export const SABER_CHANCE = 0.75
+export const SABER_REACH = 12
+export const SABER_TWIN_EVERY = 3 // every 3rd blade thrown splits into two
 // Boomerang: loops `reach` out along `angle`, bowing to one side going out and the other coming
 // back, and ends on `home` (where the thrower is now). t in 0..1; the return leg starts at 0.5.
 export const BOOMERANG_EVERY = 4
@@ -527,3 +643,95 @@ export const HOTFOOT_MAX = 18
 // Thorn Warden's roots: fire on the frame health first crosses below half (and the cooldown is up).
 export const ROOTS_COOLDOWN = 20
 export const rootsTriggered = (lastHp, hp, maxHp, now, readyAt) => lastHp !== null && lastHp >= maxHp / 2 && hp > 0 && hp < maxHp / 2 && now >= readyAt
+
+// --- Hookshot Hana, Rush Rocket, Commander Cobalt, Kaiju Kiddo, Deadeye Dakota ---
+const dist = (a, b) => Math.hypot(a.x - b.x, a.z - b.z)
+// Get Over Here!: the farthest point within `range` of `from` (null if none).
+export const HOOK_COOLDOWN = 6
+export const HOOK_RANGE = 13
+export function farthestWithin(points, from, range = HOOK_RANGE) {
+  let best = null
+  for (const p of points) {
+    const d = dist(p, from)
+    if (d <= range && (!best || d > dist(best, from))) best = p
+  }
+  return best
+}
+// Sonic Boom: how long a rammed monster is safe before it can be rammed again.
+export const RAM_REHIT = 0.5
+// Orbital Strike: the spot whose `radius` neighbourhood holds the most points (their centroid).
+export const ORBITAL_EVERY = 10
+export const ORBITAL_RADIUS = 5
+export function densestSpot(points, radius = ORBITAL_RADIUS) {
+  let best = null
+  for (const p of points) {
+    const near = points.filter((q) => dist(p, q) <= radius)
+    if (!best || near.length > best.count) {
+      best = { count: near.length, x: near.reduce((s, q) => s + q.x, 0) / near.length, z: near.reduce((s, q) => s + q.z, 0) / near.length }
+    }
+  }
+  return best
+}
+// Atomic Breath: is `point` inside the beam from `from` along `angle` (`reach` long, `width` half-wide)?
+export const ATOMIC_EVERY = 10
+export const ATOMIC_REACH = 14
+export function inBeam(from, angle, point, reach = ATOMIC_REACH, width = 1.3) {
+  const fx = Math.sin(angle)
+  const fz = Math.cos(angle)
+  const dx = point.x - from.x
+  const dz = point.z - from.z
+  const along = dx * fx + dz * fz
+  if (along < 0 || along > reach) return false
+  return Math.abs(dx * fz - dz * fx) <= width
+}
+// High Noon: the nearest `max` points within `range`, nearest first.
+export const HIGHNOON_COOLDOWN = 16
+export function pickMarks(points, from, range = 16, max = 6) {
+  return points.filter((p) => dist(p, from) <= range).sort((a, b) => dist(a, from) - dist(b, from)).slice(0, max)
+}
+
+// --- premium heroes ---
+// A thrown thing that flies `reach` out along `angle` (easing off) and back to `home` (where the thrower
+// is now). t in 0..1; it turns at t = 0.5. Hammer Recall and the buffed Plasma Wake fly this way.
+export function returningPoint(from, home, angle, t, reach) {
+  const fx = Math.sin(angle)
+  const fz = Math.cos(angle)
+  if (t <= 0.5) {
+    const u = t * 2
+    const d = reach * (1 - (1 - u) * (1 - u))
+    return { x: from.x + fx * d, z: from.z + fz * d }
+  }
+  const u = (t - 0.5) * 2
+  const turn = { x: from.x + fx * reach, z: from.z + fz * reach }
+  const e = u * u // speeds up on the way home
+  return { x: turn.x + (home.x - turn.x) * e, z: turn.z + (home.z - turn.z) * e }
+}
+export const HAMMER_EVERY = 4
+export const HAMMER_REACH = 11
+export const BLACKHOLE_COOLDOWN = 9
+export const BLACKHOLE_PULL_RADIUS = 8
+export const BLACKHOLE_BLAST_RADIUS = 4
+export const BLACKHOLE_LIFE = 2
+export const REBIRTH_COOLDOWN = 60
+export const CUTS_COOLDOWN = 9
+// Thousand Cuts: hop from `from` to the nearest unvisited point within `hop`, up to `max` hops.
+export function chainPath(points, from, max = 7, hop = 8) {
+  const left = [...points]
+  const path = []
+  let at = from
+  while (path.length < max) {
+    let best = -1
+    let bestD = Infinity
+    left.forEach((p, i) => {
+      const d = Math.hypot(p.x - at.x, p.z - at.z)
+      if (d <= hop && d < bestD) {
+        best = i
+        bestD = d
+      }
+    })
+    if (best < 0) break
+    at = left.splice(best, 1)[0]
+    path.push(at)
+  }
+  return path
+}

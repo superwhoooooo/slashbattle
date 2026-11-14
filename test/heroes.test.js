@@ -88,16 +88,18 @@ describe('new hero traits', () => {
   })
 })
 
-import { BOOMERANG_EVERY, JACKPOT_CHANCE, boomerangPoint, rootsTriggered, saberPoint, spinReels } from '../src/logic/heroes.js'
+import { BOOMERANG_EVERY, JACKPOT_CHANCE, boomerangPoint, rootsTriggered, returningPoint, spinReels } from '../src/logic/heroes.js'
 
 describe('new hero traits', () => {
-  it('the Plasma Wake blade flies straight out along the aim to its full reach', () => {
+  it('the Plasma Wake blade flies out to full reach and comes back to wherever the thrower is now', () => {
     const from = { x: 1, z: 2 }
-    expect(saberPoint(from, 0, 0)).toEqual(from)
-    const end = saberPoint(from, Math.PI / 2, 1)
-    expect(end.x).toBeCloseTo(10)
-    expect(end.z).toBeCloseTo(2)
-    expect(saberPoint(from, 0, 0.5).z - 2).toBeGreaterThan(4.5) // eases off: more than half way at half time
+    expect(returningPoint(from, from, 0, 0, 12)).toEqual(from)
+    const turn = returningPoint(from, from, Math.PI / 2, 0.5, 12)
+    expect(turn.x).toBeCloseTo(13)
+    expect(turn.z).toBeCloseTo(2)
+    expect(returningPoint(from, from, 0, 0.25, 12).z - 2).toBeGreaterThan(6) // eases off: more than half way at half the out leg
+    const home = { x: -3, z: 5 }
+    expect(returningPoint(from, home, 0, 1, 12)).toEqual(home)
   })
 
   it('the boomerang goes out, bows to the side, and comes home to wherever the thrower is now', () => {
@@ -133,5 +135,63 @@ describe('new hero traits', () => {
     expect(rootsTriggered(60, 40, 100, 5, 10)).toBe(false) // cooling down
     expect(rootsTriggered(null, 40, 100, 5, 0)).toBe(false)
     expect(rootsTriggered(60, 0, 100, 5, 0)).toBe(false) // knocked out
+  })
+})
+
+describe('archetype heroes', () => {
+  it('are in the roster with their traits', async () => {
+    const ids = HEROES.map((h) => h.id)
+    for (const id of ['hana', 'rush', 'cobalt', 'kaiju', 'dakota']) expect(ids).toContain(id)
+    expect(heroEffects('rush').dash).toBeCloseTo(0.7)
+  })
+
+  it('hookshot picks the farthest monster in range', async () => {
+    const { farthestWithin } = await import('../src/logic/heroes.js')
+    const pts = [{ x: 2, z: 0 }, { x: 10, z: 0 }, { x: 20, z: 0 }]
+    expect(farthestWithin(pts, { x: 0, z: 0 }, 13)).toBe(pts[1])
+    expect(farthestWithin([{ x: 30, z: 0 }], { x: 0, z: 0 }, 13)).toBe(null)
+  })
+
+  it('orbital strike aims at the biggest crowd', async () => {
+    const { densestSpot } = await import('../src/logic/heroes.js')
+    const spot = densestSpot([{ x: 0, z: 0 }, { x: 10, z: 10 }, { x: 11, z: 10 }, { x: 10, z: 11 }], 3)
+    expect(spot.count).toBe(3)
+    expect(spot.x).toBeCloseTo(31 / 3)
+    expect(densestSpot([])).toBe(null)
+  })
+
+  it('atomic breath hits along the aim only', async () => {
+    const { inBeam } = await import('../src/logic/heroes.js')
+    const o = { x: 0, z: 0 }
+    expect(inBeam(o, 0, { x: 0.5, z: 8 })).toBe(true) // ahead (+z)
+    expect(inBeam(o, 0, { x: 0, z: -3 })).toBe(false) // behind
+    expect(inBeam(o, 0, { x: 4, z: 5 })).toBe(false) // off to the side
+    expect(inBeam(o, Math.PI / 2, { x: 10, z: 0.4 })).toBe(true) // aimed +x
+    expect(inBeam(o, 0, { x: 0, z: 20 }, 14)).toBe(false) // past its reach
+  })
+
+  it('high noon marks the nearest six in range', async () => {
+    const { pickMarks } = await import('../src/logic/heroes.js')
+    const pts = Array.from({ length: 9 }, (_, i) => ({ x: 9 - i, z: 0 }))
+    pts.push({ x: 40, z: 0 })
+    const marks = pickMarks(pts, { x: 0, z: 0 }, 16, 6)
+    expect(marks.map((p) => p.x)).toEqual([1, 2, 3, 4, 5, 6])
+  })
+})
+
+describe('premium heroes', () => {
+  it('cost 2200 and Vexar got buffed', async () => {
+    const { SABER_CHANCE, SABER_REACH } = await import('../src/logic/heroes.js')
+    for (const id of ['thundra', 'singularity', 'phoebe', 'kenji']) expect(HEROES.find((h) => h.id === id).cost).toBe(2200)
+    expect(SABER_CHANCE).toBeGreaterThan(0.5)
+    expect(SABER_REACH).toBeGreaterThan(9)
+  })
+
+  it('thousand cuts hops to the nearest unvisited monster in reach', async () => {
+    const { chainPath } = await import('../src/logic/heroes.js')
+    const pts = [{ x: 3, z: 0 }, { x: 6, z: 0 }, { x: 1, z: 0 }, { x: 40, z: 0 }]
+    expect(chainPath(pts, { x: 0, z: 0 }, 7, 8).map((p) => p.x)).toEqual([1, 3, 6]) // 40 is too far a hop
+    expect(chainPath(pts, { x: 0, z: 0 }, 2, 8)).toHaveLength(2)
+    expect(chainPath([], { x: 0, z: 0 })).toEqual([])
   })
 })

@@ -941,7 +941,17 @@ Thornheart (Thorns: a burst around you whenever you're hurt), Shadow Valet (Back
 hasn't spotted you, `isBehind`) and Cosmo Nova (Zero-G: +60% knockback, ring-outs score triple), Dread Lord Vexar (Plasma Wake: half your attacks launch a
 spinning plasma blade 9 m along your aim, `saberPoint`; skins are blade colours), Outback Odie (Boomerang: every 4th hit, out
 and back, `boomerangPoint`), Lady Jackpot (Jackpot: 1 in 10 hits pays a coin blast + crystals, `spinReels`) and Magma Marge
-(Hot Foot: sprinting / dashing leaves burning footprints)), each
+(Hot Foot: sprinting / dashing leaves burning footprints)); five after classic action-game archetypes (original
+characters): Hookshot Hana (Get Over Here!: a chain hook yanks the farthest monster to you, `farthestWithin`, `stepYanks`), Rush
+Rocket (Sonic Boom: at sprint/dash speed you ram monsters away, a boom where each dash starts), Commander Cobalt (Orbital Strike:
+every 10 kills a sky beam on the biggest crowd, `densestSpot`), Kaiju Kiddo (Atomic Breath: every 10th hit a 14 m beam, `inBeam`;
+the back plates grow with the charge via `gear.userData.charge`) and Deadeye Dakota (High Noon: slows time, marks 6, fans the
+hammer, `pickMarks`); and four premium 2200-crystal heroes: Thundra Stormborn (Hammer Recall: a hammer out and back,
+`returningPoint`, with a lightning strike where it turns), Professor Singularity (Event Horizon: a black hole that drags monsters in
+for 2 s then implodes, `heroState.holes`), Phoenix Phoebe (Rebirth in `heroRescue`: once a minute a killing blow becomes a fire nova
+and half HP; 25% of hits burn) and Kenji Ninefold (Thousand Cuts: teleports you through up to 7 monsters, `chainPath`). Beams
+(`heroGear.js`'s `createHeroBeam`) fade via `heroState.fx`. Dread Lord Vexar's Plasma Wake is buffed: 75% of attacks, 12 m out and
+back (`returningPoint`), 1.2x, every 3rd throw twin blades), each
 with stat tweaks in the skills effect shape (plus a hero-only `dash` cooldown multiplier), one trait and four skins (body /
 cloak / trim / glow colours; the first is free). Heroes and skins are bought with banked crystals and saved in the profile
 (`hero`, `heroesOwned`, `heroSkins`, `skinsOwned`; `normalizeHeroFields`). `src/heroGear.js`'s `dressPlayer` recolours the
