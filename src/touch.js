@@ -10,17 +10,32 @@ import { ABILITY_KEYS, HOTBAR_KEYS } from './logic/items.js'
 //   AUTO / MUTE  - L (auto-shoot) and M (sound)
 //   hotbar and ability slots - tap to pick a weapon / use an ability
 //   tap the game-over card to restart; tap anywhere to skip cutscene lines
-// Shown only on a coarse pointer (a phone or tablet), or with #touch in
-// the address for testing on a desktop.
+// Shown on a coarse pointer (a phone or tablet) and on every iPad, or with #touch in
+// the address for testing on a desktop (#desktop turns it off).
 
 const STICK_RADIUS = 56 // px a finger can drag from where it landed
 const MOVE_DEADZONE = 0.18
 const AIM_DEADZONE = 0.3 // below this, an attack just uses your facing
 
+// The pure rule: #touch / #desktop force it; an iPad is always touch (iPadOS Safari calls itself a
+// Mac, and with a keyboard / trackpad attached it reports a fine pointer too -- but no real Mac has a
+// touchscreen, so a "Mac" with touch points is an iPad); otherwise a coarse pointer and no fine one.
+export function wantsTouch({ hash = '', coarse = false, anyFine = false, maxTouchPoints = 0, userAgent = '' } = {}) {
+  if (hash === '#touch') return true
+  if (hash === '#desktop') return false
+  if (/iPad/.test(userAgent) || (/Macintosh/.test(userAgent) && maxTouchPoints > 0)) return true
+  return coarse && !anyFine
+}
+
 export function isTouchDevice() {
   try {
-    if (window.location.hash === '#touch') return true
-    return window.matchMedia('(pointer: coarse)').matches && !window.matchMedia('(any-pointer: fine)').matches
+    return wantsTouch({
+      hash: window.location.hash,
+      coarse: window.matchMedia('(pointer: coarse)').matches,
+      anyFine: window.matchMedia('(any-pointer: fine)').matches,
+      maxTouchPoints: navigator.maxTouchPoints ?? 0,
+      userAgent: navigator.userAgent ?? '',
+    })
   } catch {
     return false
   }
