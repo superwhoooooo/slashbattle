@@ -63,6 +63,7 @@ record.
 - U — in the Wilds: open the Wilds journal (goals, landmarks, bestiary, races); F inside a treasure map's circle digs
 - Y — open the hub's Heroes page (pick a hero and skin; see Heroes below)
 - I — open the hub's Contracts page (contracts, hero mastery, records; see Difficulty and progress below)
+- P — online co-op: host a game or join a friend's with a 4-letter room code (see Online co-op below)
 - Tab — open the power-up menu (pauses the game): click a power-up to equip / unequip it (in sandbox mode Tab opens the sandbox menu instead)
 
 A standard gamepad works too (`src/logic/gamepad.js` maps a snapshot to
@@ -148,6 +149,9 @@ slashbattle/
     sfx.js             # synthesized, spatialized sound effects
     logic/gamepad.js   # gamepad deadzone, button edges, button -> action mapping
     logic/sfx.js       # sound-effect rate limiting and trick -> voice mapping
+    coop.js            # online co-op: remote players, mirrored (puppet) monsters, host-side stand-ins, the P panel
+    net/link.js        # co-op connection layer: PeerJS room codes + MQTT relay fallback, host relays (star)
+    logic/coop.js      # pure co-op rules: room codes, monster snapshot rows, pickTarget, routeEvents, smoothing
     highScore.js       # load/save the best score/wave in localStorage (try/catch, zero fallback)
     saveSync.js        # one save per device: syncs the save keys with ~/.slashbattle/save.json via the dev server (vite.config.js plugin; logic/saveData.js rules), plus pause-menu Export/Import save; savers call noteSaved()
     particles.js       # pooled spark (Points) and tumbling-shard (InstancedMesh) bursts
@@ -992,4 +996,35 @@ bonuses) and banked rewards. The sandbox and tutorial always play at Normal (`di
   run moves you forward even without pressing T. The game-over card shows the tip and the open contracts.
 Progress is kept in memory and saved a moment later (`saveProgressSoon`). The hub's Contracts page (I) shows all three parts.
 Not counted in the sandbox, the tutorial (`freePlay`); the Wilds feed contracts and mastery but pay no checkout tip.
+
+## Online co-op
+P (or the start card's "Play with friends") opens `src/coop.js`'s panel: one player hosts and gets a 4-letter room code,
+up to three friends join with it. It plays the Orbital Sundeck waves only (`canCoop` refuses the sandbox, the tutorial,
+the labyrinth and the Wilds). Modeled on flopsim's multiplayer: `src/net/link.js` is peer to peer over WebRTC (PeerJS; the
+free public PeerJS server only matches codes), the host relays everyone's messages (a star), and when a network blocks the
+direct route a joiner falls back by itself to free public MQTT brokers (`RELAY_BROKERS`, slower update rates). A
+connection silent for `SILENCE_TIMEOUT` is dropped; a joiner with a different `PROTOCOL` is told to refresh.
+- **The host's game is the real one**: waves, monsters, bosses, splits, summons. `spawnMonster` gives every monster a
+  `netId` and the host streams them ~15x a second (`packMonster` rows + the wave counter / place). A joiner's
+  `noWaves()` is true; its monsters are **puppets** (`userData.netPuppet`) in `game.monsters`, interpolated
+  (`INTERP_DELAY`) by `coop.stepPuppet` from the main monster loop, so every weapon, bullet, pet, ability and hero trait
+  hits them as usual. `combat.js`'s `damageMonster` hands a puppet hit to `setNetHooks`' `puppetHit` (after the
+  joiner's own hero scaling), the host applies it with `raw: true, by: <peer>` (skipping its own hero hooks), and
+  freezes / slows / confusion on puppets are forwarded too (`forwardStatuses`).
+- **Kill credit**: `userData.netKiller` is the last remote hitter (any local hit clears it); `coop.creditKill` sends the
+  kill to them (score, trick, chain, crystals, a bandit's sack happen in their game) and the host skips scoring it.
+- **Monsters go after the nearest player who's up** (`pickTarget`, with `TARGET_SWITCH_MARGIN` hysteresis). On the host a
+  remote player is a stand-in (`proxy`: position, hidden, diving, sightScale, ghostUntil, `damagePlayer` -> a `hurt`
+  message), so monster.js is unchanged. Monster events are split by `routeEvents`: area attacks and shots go to everyone
+  (each game runs `applyBossEvents` against its own player; a joiner's snipe never hurts puppets), steal / pull / status
+  go only to the targeted player, summon / escape stay on the host.
+- **Waves**: the host's `applyWaveEvents` results (cleared, boss beaten + next place, boss arriving) are sent to joiners,
+  who give themselves the bonus / heal / banner / hyperspace jump; a joiner's place resyncs from the snapshot if it drifts.
+  Joiners play at the host's difficulty (`coop.difficulty` in `diff()`).
+- **Downs**: at 0 HP in co-op you're down (`stepCoopDown`: no moving, swinging, abilities, chests), back up at the middle
+  after `COOP_RESPAWN_SECONDS` with `COOP_RESPAWN_HP`. Only when everyone is down does the host end the run for all
+  (`game.coopOver`); only the host's R restarts, and it restarts everyone. If the host leaves, a joiner carries on solo
+  from the same wave.
+- Each player keeps their own hero, gear, crystals, chests, pods, pets and score; others see your hero, skin, weapon,
+  name tag and swing effects (`onSwingFx`). `window.__debug.coop` (dev only) exposes the co-op state.
 

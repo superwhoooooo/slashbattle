@@ -529,6 +529,29 @@
       body.touch #tutorial-panel { top: 8px; width: min(300px, 50vw); font-size: 11px; padding: 8px 10px; }
       #hub-open-btn, #heroes-open-btn, #contracts-open-btn { font: inherit; font-weight: 700; padding: 8px 18px; border-radius: 10px; border: 2px solid var(--butter); background: #fff; color: var(--ink); cursor: pointer; }
       #hub-open-btn:hover, #heroes-open-btn:hover, #contracts-open-btn:hover { background: var(--butter); }
+      /* Online co-op (src/coop.js) */
+      #coop-btn { font: inherit; font-weight: 700; padding: 8px 18px; border-radius: 10px; border: 2px solid var(--teal); background: var(--teal); color: #fff; cursor: pointer; margin-bottom: 6px; }
+      #coop-btn:hover { filter: brightness(1.08); }
+      #coop-panel { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; z-index: 60; background: rgba(20, 28, 40, 0.35); padding: 16px; }
+      #coop-panel.open { display: flex; }
+      #coop-panel .coop-card { width: min(420px, 100%); padding: 20px 22px; border-radius: 18px; color: var(--ink); }
+      #coop-panel h2 { margin: 0 0 4px; font-size: 24px; }
+      #coop-panel .coop-blurb { margin: 0 0 12px; color: var(--muted); font-size: 13px; }
+      #coop-panel .coop-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 10px; }
+      #coop-panel input { font: inherit; font-size: 16px; padding: 8px 10px; border-radius: 10px; border: 2px solid var(--track); background: #fff; color: var(--ink); min-width: 0; }
+      #coop-panel input:focus { outline: none; border-color: var(--teal); }
+      #coop-code { flex: 1; text-transform: uppercase; letter-spacing: 0.3em; font-weight: 800; text-align: center; }
+      #coop-panel .coop-row { display: flex; gap: 8px; margin: 8px 0; }
+      #coop-panel button { font: inherit; font-weight: 700; padding: 8px 16px; border-radius: 10px; border: 2px solid var(--teal); background: #fff; color: var(--ink); cursor: pointer; }
+      #coop-panel button:hover:not(:disabled) { background: var(--teal); color: #fff; }
+      #coop-panel button:disabled { opacity: 0.45; cursor: default; }
+      #coop-host { flex: 1; }
+      #coop-leave { border-color: var(--coral); }
+      #coop-panel #coop-leave:hover { background: var(--coral); }
+      #coop-close { margin-left: auto; }
+      #coop-code-big:not(:empty) { margin: 10px 0 4px; text-align: center; font-size: 44px; font-weight: 800; letter-spacing: 0.25em; color: var(--teal); }
+      #coop-status { font-size: 13px; margin-top: 8px; min-height: 1.4em; }
+      #coop-players { font-size: 13px; color: var(--muted); margin-top: 4px; }
       .map-row { display: flex; gap: 12px; margin-top: 6px; flex-wrap: wrap; justify-content: center; }
       .map-btn {
         font: inherit;
@@ -1233,6 +1256,7 @@
           <div class="control-row"><kbd>6</kbd><kbd>7</kbd><kbd>9</kbd><span>skill tree / power-ups / loadout</span></div>
           <div class="control-row"><kbd>Y</kbd><span>heroes &amp; skins</span></div>
           <div class="control-row"><kbd>I</kbd><span>contracts, hero mastery &amp; records</span></div>
+          <div class="control-row"><kbd>P</kbd><span>online co-op: host or join friends</span></div>
         </div>
         <div class="gamepad-legend">
           <span>🎮</span>
@@ -1258,6 +1282,7 @@
           <button id="labyrinth-btn" class="map-btn" type="button">Labyrinth <kbd>K</kbd><small>3 floors of walls &amp; spike traps. Beat 2 bosses per floor to open the gate.</small></button>
           <button id="world-btn" class="map-btn" type="button">The Wilds <kbd>O</kbd><small>Free roam a vast mystical continent: five biomes, monsters everywhere, no waves.</small></button>
         </div>
+        <button id="coop-btn" type="button">Play with friends <kbd>P</kbd></button>
         <button id="hub-open-btn" type="button">Skills &amp; Loadout <kbd>6</kbd></button>
         <button id="heroes-open-btn" class="hub-open-alt" type="button">Heroes &amp; Skins <kbd>Y</kbd></button>
         <button id="contracts-open-btn" class="hub-open-alt" type="button">Contracts &amp; Mastery <kbd>I</kbd></button>

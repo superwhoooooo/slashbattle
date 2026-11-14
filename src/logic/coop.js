@@ -1,0 +1,188 @@
+// Pure rules for online co-op (no Three.js, no network): room codes, the monster snapshot format the
+// host streams, who a monster goes after, smoothing remote movement, and which monster events travel
+// to whom. src/net/link.js moves the messages; src/coop.js applies them to the game.
+
+export const PROTOCOL = 1 // bump when the message format changes; a mismatched joiner is told to refresh
+export const MAX_PLAYERS = 4
+export const CODE_LENGTH = 4
+const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789' // no 0/O, 1/I/L
+
+export const COOP_RESPAWN_SECONDS = 8 // a downed player gets back up this long after going down (if anyone is still standing)
+export const COOP_RESPAWN_HP = 0.6 // ...with this share of their max HP
+export const COOP_RESPAWN_IFRAMES = 3
+export const TARGET_SWITCH_MARGIN = 3 // a monster only switches to another player this much closer than its current one
+export const INTERP_DELAY = 0.12 // s: draw remote things this far in the past so movement is smooth
+export const RELAY_INTERP_DELAY = 0.3 // ...more over the slower relay
+export const SILENCE_TIMEOUT = 10 // s without a message = that connection is gone
+
+export function makeRoomCode(rng = Math.random) {
+  let code = ''
+  for (let i = 0; i < CODE_LENGTH; i++) code += CODE_CHARS[Math.floor(rng() * CODE_CHARS.length)]
+  return code
+}
+
+// What someone typed into the code box, cleaned up (case, spaces, dashes).
+export function normalizeCode(text) {
+  return String(text ?? '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '')
+    .slice(0, CODE_LENGTH)
+}
+
+export const isValidCode = (code) => typeof code === 'string' && code.length === CODE_LENGTH && [...code].every((c) => CODE_CHARS.includes(c))
+
+export const cleanName = (name, fallback = 'Friend') => String(name ?? '').replace(/[<>&"]/g, '').trim().slice(0, 16) || fallback
+
+// ---------- monster snapshots ----------
+// Bit flags for a monster row.
+export const FLAG = {
+  spawning: 1,
+  dying: 2,
+  falling: 4,
+  boss: 8,
+  immune: 16,
+  phase2: 32,
+  dazed: 64,
+  burrowed: 128,
+  reflect: 256, // its mirror shield is up
+  frozen: 512,
+}
+
+const round2 = (v) => Math.round(v * 100) / 100
+
+// One row per monster: [id, type, x, z, y, rotY, hp, maxHp, flags]. `now` decides `frozen`.
+export function packMonster(ud, pos, rotY, now = 0) {
+  let flags = 0
+  if (ud.spawning) flags |= FLAG.spawning
+  if (ud.dying) flags |= FLAG.dying
+  if (ud.falling) flags |= FLAG.falling
+  if (ud.isBoss) flags |= FLAG.boss
+  if (ud.immune) flags |= FLAG.immune
+  if (ud.phase2) flags |= FLAG.phase2
+  if (ud.dazed) flags |= FLAG.dazed
+  if (ud.burrowed) flags |= FLAG.burrowed
+  if (ud.reflect) flags |= FLAG.reflect
+  if (now < (ud.frozenUntil ?? -Infinity)) flags |= FLAG.frozen
+  return [ud.netId, ud.type, round2(pos.x), round2(pos.z), round2(pos.y), round2(rotY), Math.max(0, Math.round(ud.hp)), Math.round(ud.maxHp), flags]
+}
+
+export function unpackMonster(row) {
+  if (!Array.isArray(row) || row.length < 9) return null
+  const [id, type, x, z, y, rotY, hp, maxHp, flags] = row
+  if (typeof id !== 'number' || typeof type !== 'string' || ![x, z, y, rotY, hp, maxHp].every(Number.isFinite)) return null
+  const has = (f) => (flags & f) !== 0
+  return {
+    id, type, x, z, y, rotY, hp, maxHp,
+    spawning: has(FLAG.spawning), dying: has(FLAG.dying), falling: has(FLAG.falling), boss: has(FLAG.boss),
+    immune: has(FLAG.immune), phase2: has(FLAG.phase2), dazed: has(FLAG.dazed), burrowed: has(FLAG.burrowed),
+    reflect: has(FLAG.reflect), frozen: has(FLAG.frozen),
+  }
+}
+
+// ---------- smoothing ----------
+// Snapshots are { t, ... } in arrival order. Returns the two around `t` and how far between them.
+export function sampleSnapshots(snaps, t) {
+  if (!snaps.length) return null
+  if (t <= snaps[0].t) return { a: snaps[0], b: snaps[0], k: 0 }
+  for (let i = snaps.length - 1; i >= 0; i--) {
+    if (snaps[i].t <= t) {
+      const a = snaps[i]
+      const b = snaps[i + 1] ?? a
+      const k = b.t > a.t ? Math.min(1, Math.max(0, (t - a.t) / (b.t - a.t))) : 0
+      return { a, b, k }
+    }
+  }
+  return { a: snaps[0], b: snaps[0], k: 0 }
+}
+
+export const lerp = (a, b, k) => a + (b - a) * k
+
+export function lerpAngle(a, b, k) {
+  let d = (b - a) % (Math.PI * 2)
+  if (d > Math.PI) d -= Math.PI * 2
+  if (d < -Math.PI) d += Math.PI * 2
+  return a + d * k
+}
+
+// Keeps a snapshot buffer short (and in order).
+export function pushSnapshot(snaps, snap, max = 30) {
+  if (snaps.length && snap.t < snaps[snaps.length - 1].t) return snaps
+  snaps.push(snap)
+  while (snaps.length > max) snaps.shift()
+  return snaps
+}
+
+// ---------- who a monster goes after ----------
+// `players`: [{ key, x, z, alive }]. Sticks with `currentKey` unless someone else is clearly closer
+// (TARGET_SWITCH_MARGIN) or the current one is gone / down. Returns a key (or null if nobody is up).
+export function pickTarget(at, players, currentKey = null, margin = TARGET_SWITCH_MARGIN) {
+  let best = null
+  let bestD = Infinity
+  let current = null
+  let currentD = Infinity
+  for (const p of players) {
+    if (!p.alive) continue
+    const d = Math.hypot(p.x - at.x, p.z - at.z)
+    if (d < bestD) {
+      bestD = d
+      best = p
+    }
+    if (p.key === currentKey) {
+      current = p
+      currentD = d
+    }
+  }
+  if (!best) return null
+  if (current && currentD - bestD < margin) return current.key
+  return best.key
+}
+
+// ---------- monster events ----------
+// Events aimed at the one player a monster is after: only that player's game applies them.
+export const TARGETED_EVENTS = new Set(['steal', 'pull', 'status'])
+// Events only the host's game may act on (they change the shared world).
+export const HOST_ONLY_EVENTS = new Set(['summon', 'escape'])
+
+// Splits a monster's events into what the host applies for its own player, what goes to everyone
+// else (area attacks, shots: each game checks them against its own player), and what goes only to
+// the targeted remote player.
+export function routeEvents(events, targetIsRemote) {
+  const host = []
+  const broadcast = []
+  const targeted = []
+  for (const e of events) {
+    if (TARGETED_EVENTS.has(e.type)) (targetIsRemote ? targeted : host).push(e)
+    else {
+      host.push(e)
+      if (!HOST_ONLY_EVENTS.has(e.type)) broadcast.push(e)
+    }
+  }
+  return { host, broadcast, targeted }
+}
+
+// A plain-data copy safe to send (drops functions, three objects' methods, cycles become null).
+export function plainCopy(value) {
+  const seen = new WeakSet()
+  return JSON.parse(
+    JSON.stringify(value, (key, v) => {
+      if (typeof v === 'function') return undefined
+      if (v && typeof v === 'object') {
+        if (seen.has(v)) return null
+        seen.add(v)
+      }
+      return v
+    }),
+  )
+}
+
+// ---------- downs and game over ----------
+// Everyone in the room is down at once (the host's own player plus every remote one).
+export function everyoneDown(hostDown, remoteDowns) {
+  return hostDown && remoteDowns.every(Boolean)
+}
+
+// Damage forwarded over the wire is clamped so a bad message can't do anything silly.
+export function clampDamage(amount, max = 5000) {
+  const n = Number(amount)
+  return Number.isFinite(n) ? Math.max(0, Math.min(max, n)) : 0
+}

@@ -171,8 +171,33 @@ export function setDamageHooks(hooks) {
   damageHooks = hooks
 }
 
-export function damageMonster(monster, damage, { fromPos, knockback = 0, obstacles = [], particleSystem, cause = 'sword', ambush = false, hitstop = null }) {
+// Co-op (src/coop.js): { puppetHit(monster, damage, { fromPos, knockback, cause, ambush }) } sends a hit on a
+// joined player's mirrored monster to the host, whose game applies it.
+let netHooks = null
+export function setNetHooks(hooks) {
+  netHooks = hooks
+}
+
+// `raw` (co-op host only): a hit a joined player already scaled in their own game; skips our hero hooks.
+// `by`: that player's id, so the kill is credited to them (cleared by any local hit).
+export function damageMonster(monster, damage, { fromPos, knockback = 0, obstacles = [], particleSystem, cause = 'sword', ambush = false, hitstop = null, raw = false, by = null }) {
   if (isUntouchable(monster)) return false // a deep dweller, out of reach until you dive
+  if (monster.userData.netPuppet) {
+    // A joined player's copy of the host's monster: the host's game decides what the hit does.
+    if (monster.userData.dying || monster.userData.spawning) return false
+    if (damageHooks?.amount) damage = damageHooks.amount(monster, damage, cause, fromPos)
+    netHooks?.puppetHit?.(monster, damage, { fromPos, knockback, cause, ambush })
+    monster.userData.hitFlashElapsed = 0
+    jellyHit(monster, JELLY_HIT_STRENGTH)
+    const stats = MONSTER_TYPES[monster.userData.type]
+    const hitPoint = { x: monster.position.x, y: monster.position.y + stats.size * 0.5, z: monster.position.z }
+    burst(particleSystem, hitPoint, stats.edgeColor, HIT_SPARK_COUNT, HIT_SPARK_SPEED)
+    burst(particleSystem, hitPoint, HIT_SPARK_WHITE_COLOR, HIT_SPARK_WHITE_COUNT, HIT_SPARK_WHITE_SPEED)
+    if (hitstop && cause !== 'pet') hitstop.remaining = triggerHitstop(hitstop, monster.userData.isBoss ? HITSTOP_BOSS : HITSTOP_HIT).remaining
+    damageHooks?.hit?.(monster, damage, cause, false)
+    return false
+  }
+  monster.userData.netKiller = by
   // A summoner boss is immune while any minion it called in is still alive.
   const minions = monster.userData.minions
   if (minions && minions.some((m) => !m.userData.dying && !m.userData.falling)) {
@@ -183,7 +208,7 @@ export function damageMonster(monster, damage, { fromPos, knockback = 0, obstacl
   }
   // A gopher sitting dazed after an eruption takes extra damage ("Whack-a-Mole" if it dies).
   if (monster.userData.dazed) damage = Math.round(damage * BURROW.dazedDamageMultiplier)
-  if (damageHooks?.amount) damage = damageHooks.amount(monster, damage, cause, fromPos)
+  if (damageHooks?.amount && !raw) damage = damageHooks.amount(monster, damage, cause, fromPos)
   const { hp, lethal } = applyDamage({ hp: monster.userData.hp }, damage)
   monster.userData.hp = hp
   monster.userData.lastHitBy = cause
@@ -224,7 +249,7 @@ export function damageMonster(monster, damage, { fromPos, knockback = 0, obstacl
     jellyHit(monster, JELLY_DEATH_INFLATE_STRENGTH)
     shardBurst(particleSystem, hitPoint, stats.color, DEATH_SHARD_COUNT * (stats.boss ? BOSS_DEATH_SHARD_MULTIPLIER : 1), DEATH_SHARD_SPEED)
   }
-  damageHooks?.hit?.(monster, damage, cause, lethal)
+  if (!raw) damageHooks?.hit?.(monster, damage, cause, lethal)
   return lethal
 }
 

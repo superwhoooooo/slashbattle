@@ -262,7 +262,9 @@ import {
 } from './logic/waves.js'
 import { enemyScale, SPLITS } from './logic/enemies.js'
 import { createMonsterAIState, separateMonsters, setDeepShield, setMonsterNavigator, setSurfaceShield, setTimeWarp, setWaterRoom, timeWarp, updateMonster, upgradeBossSpecials } from './monster.js'
-import { applyFreeze, isFrozen } from './logic/status.js'
+import { applyFreeze, applySlow, isFrozen } from './logic/status.js'
+import { createCoop } from './coop.js'
+import { COOP_RESPAWN_HP, COOP_RESPAWN_IFRAMES } from './logic/coop.js'
 import { burst, createParticleSystem, resetParticles, setParticleViewScale, shardBurst, updateParticles } from './particles.js'
 import { createPet, disposePets, updatePets } from './pets.js'
 import { Player } from './player.js'
@@ -1879,6 +1881,49 @@ function createGame() {
   )
 
   return game
+}
+
+// A cleared wave (score bonus, heal, banner) and a beaten boss (bonus, heal, on to the next place).
+// A co-op joiner gets these from the host's wave controller (levelIndexOverride: where the host is going).
+function applyWaveEvents(game, events, clearedWaveNumber, bossBeforeStep, levelIndexOverride = null) {
+  const { player } = game
+  if (events.includes('waveCleared')) {
+    const bonus = Math.round(waveClearBonus(clearedWaveNumber) * diff().score)
+    game.score += bonus
+    showWaveClearedBanner(hud, bonus)
+    sfx.play('waveCleared')
+    player.hp = Math.min(player.maxHp, player.hp + WAVE_CLEAR_HEAL * activeFx(game.inventory.equipped).waveHeal * diff().waveHeal)
+    progressNote({ type: 'waveClear' })
+    progressNote({ type: 'wave', value: game.waveState.waveNumber })
+    progressNote({ type: 'score', value: game.score })
+  }
+  if (events.includes('bossDefeated')) {
+    const bonus = Math.round(waveClearBonus(clearedWaveNumber) * 2 * diff().score)
+    game.score += bonus
+    progressNote({ type: 'wave', value: game.waveState.waveNumber })
+    game.bossesDefeated = (game.bossesDefeated ?? 0) + 1
+    if (game.labyrinth) {
+      const lab = game.labyrinth
+      lab.bossesThisFloor += 1
+      game.waveState = { ...game.waveState, wavesUntilBoss: 1 }
+      if (lab.bossesThisFloor >= BOSSES_PER_FLOOR) {
+        openLabyrinthGate(game)
+        showWaveClearedBanner(hud, bonus, { lead: bossBeforeStep?.name ?? 'THE BOSS', text: 'DEFEATED - THE GATE IS OPEN! FIND THE EXIT' })
+      } else {
+        showWaveClearedBanner(hud, bonus, { lead: bossBeforeStep?.name ?? 'THE BOSS', text: 'DEFEATED - ONE MORE BOSS GUARDS THE GATE' })
+      }
+    } else {
+      // The next place arrives through a hyperspace jump (logic/levelTransition.js): a moment of play,
+      // then streaks, a white flash (the place swaps behind it) and a swoop down onto the new deck.
+      const nextIndex = levelIndexOverride ?? levelIndexAfterBosses(game.bossesDefeated)
+      const nextLevel = levelAt(nextIndex)
+      game.levelTransition = createTransition(nextIndex)
+      transitionOverlay.begin(nextLevel)
+      showWaveClearedBanner(hud, bonus, { lead: bossBeforeStep?.name ?? 'THE BOSS', text: `DEFEATED - NEXT STOP: ${nextLevel.name.toUpperCase()}` })
+    }
+    sfx.play('waveCleared')
+    player.hp = Math.min(player.maxHp, player.hp + WAVE_CLEAR_HEAL * activeFx(game.inventory.equipped).waveHeal * diff().waveHeal * BOSS_DEFEAT_HEAL_MULTIPLIER)
+  }
 }
 
 // Picks a valid spot for a new pod -- random on the platform, spaced
@@ -3957,6 +4002,7 @@ function spawnMonster(game, type, { at = null, effectOptions, hpScale = 1, faceP
   if (!stats.boss) mesh.userData.speedScale = (mesh.userData.speedScale ?? 1) * d.monsterSpeed
   scene.add(mesh)
   game.monsters.push(mesh)
+  coop?.registerMonster(mesh) // co-op: an id the host's snapshots use for it
 
   const effect = createSpawnEffect(spawn, effectOptions)
   scene.add(effect.group)
@@ -4384,7 +4430,7 @@ function applyBossEvents(game, bossMesh, events, now) {
         hurtPlayer = true
         triggerShake(game.shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
       }
-      for (const other of game.monsters) {
+      for (const other of coop?.isClient ? [] : game.monsters) { // a co-op joiner's monsters are the host's to hurt
         if (other === bossMesh || other.userData.dying || other.userData.spawning || other.userData.falling) continue
         if (!beamHits(event, event.aim, event.length, event.width, other.position, other.userData.radius)) continue
         damageMonster(other, event.damage, { fromPos: { x: event.x, z: event.z }, knockback: 2, obstacles: game.obstacles, particleSystem, cause: 'photobomb', hitstop: game.hitstop })
@@ -4870,6 +4916,8 @@ const music = createMusic(audio)
 const sfx = createSfx(audio)
 
 let started = false
+let coop = null // online co-op (src/coop.js), created once the first game exists
+let coopSwingStarted = false // a swing started this frame (sent with our next state)
 // Sandbox mode (pick it on the start card: B or its button): no waves, a
 // menu (Tab) to spawn anything / equip anything / hop levels, free
 // crystals, no cooldowns and (by default) god mode. See src/sandbox.js.
@@ -4886,11 +4934,11 @@ let tutorialLastPos = null
 let tutorialSetupStep = -1
 const freePlay = () => sandbox || tutorial
 // No waves at all: the sandbox, the tutorial and the free roam world.
-const noWaves = () => freePlay() || Boolean(game?.world)
+const noWaves = () => freePlay() || Boolean(game?.world) || Boolean(coop?.isClient) // a co-op joiner mirrors the host's waves
 
 // ---------- difficulty (logic/difficulty.js) and long-term progress (logic/progress.js) ----------
 // The sandbox and the tutorial always play at Normal and never feed contracts / mastery.
-const diff = () => (freePlay() ? DIFFICULTIES.normal : difficultyById(getDifficulty()))
+const diff = () => (freePlay() ? DIFFICULTIES.normal : difficultyById(coop?.difficulty ?? getDifficulty())) // a co-op joiner plays at the host's difficulty
 function applyDifficulty() {
   const d = diff()
   setWaveTuning({ size: d.waveSize, interval: d.spawnInterval })
@@ -5246,7 +5294,8 @@ function dismissStartCard(event) {
   // press both landing on the same frame and dismissing it twice.
   if (started) return
   // Opening the hub (its button, or keys 6 / 7 / 9) or typing inside it isn't "start".
-  if (hub.isOpen() || event?.target?.closest?.('#hub-open-btn, #heroes-open-btn, #contracts-open-btn, #difficulty-row, #hub-root, #graphics-btn') || HUB_KEYS[event?.code]) return
+  if (hub.isOpen() || event?.target?.closest?.('#hub-open-btn, #heroes-open-btn, #contracts-open-btn, #difficulty-row, #hub-root, #graphics-btn, #coop-btn, #coop-panel') || HUB_KEYS[event?.code]) return
+  if (event && (event.code === 'KeyP' || coop?.isOpen())) return // P opens the co-op panel (a co-op join starts the run with no event)
   started = true
   // The card goes away first, and each step below is guarded: one failing (audio on an odd
   // browser, a bad saved profile) must never leave the card up with every click ignored.
@@ -5259,6 +5308,7 @@ function dismissStartCard(event) {
     }
   }
   guard('mode', () => {
+    if (coop?.active || coop?.connecting) return // co-op always plays the Orbital Sundeck
     if (event?.code === 'KeyB' || event?.target?.closest?.('#sandbox-btn')) startSandbox()
     else if (event?.code === 'KeyG' || event?.target?.closest?.('#tutorial-btn')) startTutorial()
     else if (event?.code === 'KeyO' || event?.target?.closest?.('#world-btn')) {
@@ -5291,12 +5341,180 @@ window.addEventListener('touchend', () => {
 let game = createGame()
 
 // Dev-server only: lets browser tests (and you, in the console) peek at the state.
-if (import.meta.env.DEV) window.__debug = { input, get game() { return game } }
+if (import.meta.env.DEV) window.__debug = { input, get game() { return game }, get coop() { return coop } }
+
+// ---------- online co-op (P; src/coop.js) ----------
+// The hurt feedback every source of player damage shares.
+function playerHurtFx(game) {
+  const { player } = game
+  triggerShake(game.shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
+  triggerDamageFlash(hud)
+  sfx.play('playerHurt', { x: player.position.x, z: player.position.z })
+  input.rumble(RUMBLE_STRONG_STRENGTH, RUMBLE_STRONG_DURATION)
+  game.hitstop.remaining = triggerHitstop(game.hitstop, HITSTOP_PLAYER_HURT).remaining
+}
+
+// Co-op downs: at 0 HP you drop (out of the fight) and get back up at the middle a few seconds later;
+// the run only ends when everyone is down at once (the host decides and tells everyone).
+function stepCoopDown(game, now) {
+  const player = game.player
+  const standUp = () => {
+    game.coopDownAt = null
+    player.mesh.visible = !firstPerson
+    player.invulnerableUntil = Math.max(player.invulnerableUntil, now + COOP_RESPAWN_IFRAMES)
+    burst(particleSystem, { x: player.position.x, y: 0.8, z: player.position.z }, 0x7dffc4, 36, 4, 1)
+    spawnShockwave(shockwavePool, player.position.x, player.position.z, 4, 0x7dffc4)
+  }
+  if (player.hp > 0) {
+    if (game.coopDownAt != null) standUp() // healed back up (a wave-clear heal)
+    return
+  }
+  if (game.coopDownAt == null) {
+    game.coopDownAt = now
+    player.mesh.visible = false
+    game.attackState.swingElapsed = null
+    shardBurst(particleSystem, { x: player.position.x, y: 0.8, z: player.position.z }, 0xff6a4d, 24, 4)
+    if (coop.remoteCount() > 0) questUi.showToast(`YOU'RE DOWN! BACK UP IN ${coop.respawnSeconds}s`)
+  }
+  if (coop.everyoneDown(true)) {
+    game.coopOver = true
+    coop.sendGameOver()
+    return
+  }
+  if (now - game.coopDownAt >= coop.respawnSeconds && !coop.everyoneDown(true)) {
+    player.hp = Math.max(1, Math.round(player.maxHp * COOP_RESPAWN_HP))
+    player.position.x = 0
+    player.position.z = 0
+    player.mesh.position.x = 0
+    player.mesh.position.z = 0
+    player.vel = { x: 0, z: 0 }
+    standUp()
+  }
+}
+
+function canCoop() {
+  if (sandbox) return 'Co-op plays the Orbital Sundeck waves. Leave the sandbox first (pause menu > Main menu).'
+  if (tutorial) return 'Co-op plays the Orbital Sundeck waves. Leave the tutorial first (pause menu > Main menu).'
+  if (gameMode !== 'resort') return 'Co-op plays the Orbital Sundeck waves. Go back to the main menu and pick it.'
+  return null
+}
+
+coop = createCoop({
+  scene,
+  particleSystem,
+  getGame: () => game,
+  now: () => timer.getElapsed(),
+  disposeObject3D,
+  canCoop,
+  difficultyId: () => getDifficulty(),
+  toast: (text) => questUi.showToast(text),
+  // Joined a host: a fresh run in their place, at their difficulty, mirroring their waves.
+  onJoined(welcome) {
+    if (!started) dismissStartCard()
+    restartGame()
+    applyDifficulty()
+    if (welcome.level) changeLevel(game, welcome.level)
+  },
+  // The session ended. A joiner carries on solo from the same wave (their own waves start up again).
+  onEnded(reason, wasClient) {
+    if (!started) return
+    applyDifficulty()
+    if (wasClient) {
+      const fresh = createWaveState()
+      game.waveState = { ...fresh, waveNumber: game.waveState.waveNumber, inWater: Boolean(waterRoom()) }
+      if (reason !== 'left') questUi.showToast('THE HOST LEFT. CARRYING ON SOLO')
+    }
+    game.coopOver = false
+    if (game.coopDownAt != null) {
+      game.player.hp = Math.max(1, Math.round(game.player.maxHp * COOP_RESPAWN_HP))
+      stepCoopDown(game, timer.getElapsed())
+    }
+  },
+  // A monster's swing landed on us in the host's game.
+  onHurt(amount, trueFraction) {
+    if (game.coopDownAt != null || game.coopOver) return
+    if (game.player.damagePlayer(amount, timer.getElapsed(), trueFraction)) playerHurtFx(game)
+  },
+  // A host monster's attack (a slam, a fan of orbs, a signature...) plays out here against our own player.
+  onEvents(mesh, events) {
+    if (!started || game.coopOver) return
+    if (applyBossEvents(game, mesh, events, timer.getElapsed())) playerHurtFx(game)
+  },
+  // Our hit finished a monster in the host's game: the kill (score, trick, crystals) is ours.
+  onKill(m) {
+    if (!started || typeof m.type !== 'string' || !MONSTER_TYPES[m.type]) return
+    const x = Number(m.x) || 0
+    const z = Number(m.z) || 0
+    const position = { x, y: 0, z }
+    const ghost = { userData: { type: m.type, isBoss: Boolean(m.b), lastHitAmbush: Boolean(m.a), lastHitDazed: Boolean(m.dz) }, position }
+    const cause = typeof m.c === 'string' ? m.c : 'sword'
+    scoreKill(game, ghost, cause, position, timer.getElapsed())
+    const stolen = Math.max(0, Math.min(9999, Number(m.st) || 0))
+    if (cause !== 'fall') {
+      dropCrystals(crystalSystem, x, z, crystalDrops(m.type, Boolean(m.b)))
+      if (stolen > 0) dropCrystals(crystalSystem, x, z, crystalChange(refundWithTip(stolen)))
+    } else if (stolen > 0) {
+      game.inventory = addCrystals(game.inventory, refundWithTip(stolen))
+    }
+  },
+  // The host's waves: cleared, boss beaten (on to the next place), boss arriving.
+  onWaveEvents(m) {
+    if (!started || !Array.isArray(m.e)) return
+    const events = m.e.filter((e) => typeof e === 'string')
+    applyWaveEvents(game, events, Number(m.n) || game.waveState.waveNumber, { name: String(m.boss ?? '') || 'THE BOSS' }, Number.isInteger(m.lvl) ? m.lvl : null)
+    if (events.includes('waveCleared') || events.includes('bossDefeated')) attractAllCrystals(crystalSystem)
+    if (events.includes('bossIntro')) questUi.showToast(`${String(m.boss || 'A BOSS').toUpperCase()} HAS CHECKED IN!`)
+  },
+  // The host's wave counter (for the HUD) and place (resyncs us if we missed a jump).
+  onWaveState(w) {
+    if (!started || typeof w.phase !== 'string') return
+    game.waveState = { ...game.waveState, waveNumber: Number(w.waveNumber) || 1, phase: w.phase, phaseElapsed: Number(w.phaseElapsed) || 0, spawnedCount: Number(w.spawnedCount) || 0 }
+    const level = Number(w.levelIndex) || 0
+    if (level !== (game.levelIndex ?? 0) && !game.levelTransition && !w.transitioning) changeLevel(game, level)
+  },
+  onRestart() {
+    restartGame()
+    applyDifficulty()
+  },
+  onGameOver() {
+    game.coopOver = true
+  },
+  // Someone else swung or fired: their weapon's effect where they stand.
+  onSwingFx(weaponId, at, facing) {
+    if (!WEAPONS[weaponId] || !Number.isFinite(facing)) return
+    playWeaponFx(weaponId, at, facing, { particleSystem, shockwavePool, warp, shake: () => {} })
+    sfx.play('swing', at)
+  },
+  // Host: a joined player's hit on one of our monsters (already scaled by their gear and hero).
+  applyRemoteHit(mesh, hit) {
+    const reach = hit.diving && mesh.userData.deep // a diving friend can reach the deep dwellers
+    if (reach) setDeepShield(false)
+    damageMonster(mesh, hit.damage, { fromPos: hit.fromPos, knockback: hit.knockback, obstacles: game.obstacles, particleSystem, cause: hit.cause, ambush: hit.ambush, raw: true, by: hit.by })
+    if (reach) setDeepShield(Boolean(waterRoom()) && !waterState.diving)
+  },
+  // Host: a joined player froze / slowed / confused one of our monsters.
+  applyRemoteStatus(mesh, m) {
+    const now = timer.getElapsed()
+    const secs = (v) => Math.max(0, Math.min(30, Number(v) || 0))
+    if (m.fr) applyFreeze(mesh.userData, now, secs(m.fr))
+    if (Array.isArray(m.sl)) applySlow(mesh.userData, now, secs(m.sl[0]), Math.max(0.05, Math.min(1, Number(m.sl[1]) || 1)))
+    if (m.cf && !mesh.userData.isBoss) mesh.userData.confusedUntil = Math.max(mesh.userData.confusedUntil ?? -Infinity, now + secs(m.cf))
+  },
+})
+window.addEventListener('keydown', (event) => {
+  if (event.repeat || event.code !== 'KeyP' || event.target?.closest?.('input, textarea')) return
+  if (hub.isOpen() || swapPanel.isOpen()) return
+  coop.toggle()
+})
+document.getElementById('coop-btn')?.addEventListener('click', () => coop.toggle(true))
+touchControls?.addMenuButton(() => coop.toggle(), 'CO-OP')
+
 
 const timer = new THREE.Timer()
 
 // Throws the current run away and starts a fresh one (same map).
 function restartGame() {
+  coop?.sendRestart() // co-op host: everyone starts the new run together
   if (waterState.diving) setFirstPerson(false)
   disposeGame(game)
   game = createGame()
@@ -5515,6 +5733,19 @@ function gameFrame(timestamp) {
   warp.update(deltaSeconds, timer.getElapsed())
   const elapsedSeconds = timer.getElapsed()
 
+  // Co-op: send our state, stream the host's monsters, move the other players. Runs even while this
+  // game is paused in a menu or a cutscene, so the connection and everyone else's game keep going.
+  if (coop) {
+    coop.frame(deltaSeconds, elapsedSeconds, {
+      player: game.player,
+      down: game.coopDownAt != null,
+      weapon: selectedWeaponId(game.inventory),
+      look: { hero: heroLook().heroId, skin: heroLook().id },
+      swingStarted: coopSwingStarted,
+    })
+    coopSwingStarted = false
+  }
+
   if (started && game.player.hp < game.player.maxHp * 0.3) heroRescue(elapsedSeconds)
   // Downed But Determined: back up at half HP, once per revive the skill tree grants.
   if (started && !sandbox && game.player.hp <= 0 && (game.revivesUsed ?? 0) < activeFx(game.inventory.equipped).revive) {
@@ -5527,7 +5758,15 @@ function gameFrame(timestamp) {
   }
   // The Wilds never end your run: at zero HP you get back up at the last save point.
   if (started && game.world && game.player.hp <= 0) respawnAtCheckpoint(game, elapsedSeconds)
-  const gameState = game.labyrinth?.won ? 'won' : evaluateGameState({ playerHp: game.player.hp })
+  // Co-op: going down isn't the end while a friend is still standing (stepCoopDown gets you back up).
+  if (started && coop?.active && !game.coopOver) stepCoopDown(game, elapsedSeconds)
+  const gameState = game.coopOver
+    ? 'lost'
+    : game.labyrinth?.won
+    ? 'won'
+    : coop?.active && game.player.hp <= 0
+    ? 'playing'
+    : evaluateGameState({ playerHp: game.player.hp })
   winScreen.style.display = gameState === 'won' ? 'flex' : 'none'
   if (game.labyrinth) updateFloorChip(game)
 
@@ -5559,7 +5798,10 @@ function gameFrame(timestamp) {
   showGameOverlay(hud, gameState === 'lost' ? 'lost' : null, game.gameOverStats)
 
   if (!started || gameState !== 'playing') {
-    if (started && gameState !== 'playing' && (input.wasPressed('KeyR') || input.wasRestartPressed())) restartGame()
+    if (started && gameState !== 'playing' && (input.wasPressed('KeyR') || input.wasRestartPressed())) {
+      if (coop?.isClient) questUi.showToast('THE HOST STARTS THE NEXT RUN')
+      else restartGame()
+    }
     renderMenuBackdrop(timestamp, MENU_IDLE_FPS)
     input.endFrame()
     return
@@ -5600,6 +5842,7 @@ function gameFrame(timestamp) {
   const { state: nextHitstop, scale: hitstopScale } = stepHitstop(game.hitstop, deltaSeconds)
   game.hitstop = nextHitstop
   const gameplayDelta = deltaSeconds * hitstopScale
+  const downed = game.coopDownAt != null // co-op: down and waiting to get back up (no moving, swinging or using things)
 
   if (game.world) stepWorld(game, elapsedSeconds, deltaSeconds)
   const { obstacles, player, pods, hidingState, attackState, shake } = game
@@ -5620,42 +5863,10 @@ function gameFrame(timestamp) {
   spawns.forEach((type) => spawnMonster(game, waterRoom() && Math.random() < DEEP_SPAWN_CHANCE ? pickDeepType() : type))
   // The labyrinth's corridors swallow monsters: half the time a second one tags along.
   if (game.labyrinth) spawns.forEach((type) => { if (Math.random() < 0.5) spawnMonster(game, type) })
-  if (events.includes('waveCleared')) {
-    const bonus = Math.round(waveClearBonus(clearedWaveNumber) * diff().score)
-    game.score += bonus
-    showWaveClearedBanner(hud, bonus)
-    sfx.play('waveCleared')
-    player.hp = Math.min(player.maxHp, player.hp + WAVE_CLEAR_HEAL * activeFx(game.inventory.equipped).waveHeal * diff().waveHeal)
-    progressNote({ type: 'waveClear' })
-    progressNote({ type: 'wave', value: game.waveState.waveNumber })
-    progressNote({ type: 'score', value: game.score })
-  }
-  if (events.includes('bossDefeated')) {
-    const bonus = Math.round(waveClearBonus(clearedWaveNumber) * 2 * diff().score)
-    game.score += bonus
-    progressNote({ type: 'wave', value: game.waveState.waveNumber })
-    game.bossesDefeated = (game.bossesDefeated ?? 0) + 1
-    if (game.labyrinth) {
-      const lab = game.labyrinth
-      lab.bossesThisFloor += 1
-      game.waveState = { ...game.waveState, wavesUntilBoss: 1 }
-      if (lab.bossesThisFloor >= BOSSES_PER_FLOOR) {
-        openLabyrinthGate(game)
-        showWaveClearedBanner(hud, bonus, { lead: bossBeforeStep.name, text: 'DEFEATED - THE GATE IS OPEN! FIND THE EXIT' })
-      } else {
-        showWaveClearedBanner(hud, bonus, { lead: bossBeforeStep.name, text: 'DEFEATED - ONE MORE BOSS GUARDS THE GATE' })
-      }
-    } else {
-      // The next place arrives through a hyperspace jump (logic/levelTransition.js): a moment of play,
-      // then streaks, a white flash (the place swaps behind it) and a swoop down onto the new deck.
-      const nextIndex = levelIndexAfterBosses(game.bossesDefeated)
-      const nextLevel = levelAt(nextIndex)
-      game.levelTransition = createTransition(nextIndex)
-      transitionOverlay.begin(nextLevel)
-      showWaveClearedBanner(hud, bonus, { lead: bossBeforeStep.name, text: `DEFEATED - NEXT STOP: ${nextLevel.name.toUpperCase()}` })
-    }
-    sfx.play('waveCleared')
-    player.hp = Math.min(player.maxHp, player.hp + WAVE_CLEAR_HEAL * activeFx(game.inventory.equipped).waveHeal * diff().waveHeal * BOSS_DEFEAT_HEAL_MULTIPLIER)
+  applyWaveEvents(game, events, clearedWaveNumber, bossBeforeStep)
+  if (events.length && coop?.isHost) {
+    const nextIndex = events.includes('bossDefeated') && !game.labyrinth ? game.levelTransition?.levelIndex ?? null : null
+    coop.sendWaveEvents({ e: events, n: clearedWaveNumber, boss: (events.includes('bossIntro') ? currentBoss(game.waveState) : bossBeforeStep)?.name ?? '', lvl: nextIndex })
   }
   if (events.includes('waveCleared') || events.includes('bossDefeated')) attractAllCrystals(crystalSystem)
   if (events.includes('bossIntro')) startBossCutscene(game)
@@ -5740,7 +5951,7 @@ function gameFrame(timestamp) {
   stepWater(elapsedSeconds, deltaSeconds)
   input.wildsKeys = Boolean(game?.world)
   // Tap Shift to dash (hold it to keep sprinting): along the way you're moving, or your facing when still.
-  if (!room && !player.hidden && !player.falling && player.hp > 0 && (input.wasPressed('ShiftLeft') || input.wasPressed('ShiftRight'))) {
+  if (!room && !downed && !player.hidden && !player.falling && player.hp > 0 && (input.wasPressed('ShiftLeft') || input.wasPressed('ShiftRight'))) {
     const moving = player.speed > 0.5
     const dir = moving ? player.moveDir : { x: Math.sin(player.facing), z: Math.cos(player.facing) }
     const dashStart = { x: player.position.x, z: player.position.z }
@@ -5750,7 +5961,7 @@ function gameFrame(timestamp) {
       sfx.play('swing', { x: player.position.x, z: player.position.z })
     }
   }
-  player.update(input, cameraYaw, deltaSeconds, room ? true : null)
+  if (!downed) player.update(input, cameraYaw, deltaSeconds, room ? true : null)
   if (game.world) {
     // Space: a plain hop; Space again in the air opens the paraglider (no cooldown, no ability slot). Not while hiding,
     // falling off the edge, or paused in a menu.
@@ -5797,7 +6008,7 @@ function gameFrame(timestamp) {
   // out by the hide-limit timer -- `ejected`) this frame, if any; pods
   // are single-use, so it always starts despawning. An eject also
   // triggers the same shake/flash feedback a monster's hit does.
-  const { showPrompt, nearestPod, vacatedPod, ejected } = updateHiding(
+  const { showPrompt, nearestPod, vacatedPod, ejected } = downed ? { showPrompt: false, nearestPod: null, vacatedPod: null, ejected: false } : updateHiding(
     hidingState,
     player,
     pods,
@@ -5840,7 +6051,7 @@ function gameFrame(timestamp) {
   const weaponCount = game.inventory.weapons.length
   if (input.wasPrevWeaponPressed()) selectWeapon(game, (game.inventory.selected - 1 + weaponCount) % weaponCount)
   if (input.wasNextWeaponPressed()) selectWeapon(game, (game.inventory.selected + 1) % weaponCount)
-  if (!player.hidden) {
+  if (!player.hidden && !downed) {
     ABILITY_KEYS.forEach((key, slot) => {
       if (input.wasPressed(key) || input.wasAbilityPressed(slot)) activateAbility(game, slot, elapsedSeconds)
     })
@@ -5868,7 +6079,7 @@ function gameFrame(timestamp) {
   // just started (attackState.swingElapsed goes from null to 0) from one
   // already in progress, so the whoosh only plays once per swing.
   const hadSwing = attackState.swingElapsed !== null
-  const { ambushHit, hitAny } = updatePlayerAttack(attackState, {
+  const { ambushHit, hitAny } = downed ? { ambushHit: false, hitAny: false } : updatePlayerAttack(attackState, {
     player,
     monsters,
     obstacles,
@@ -5891,6 +6102,7 @@ function gameFrame(timestamp) {
     onMeleeHit: (id, at, from) => playHitFx(id, at, Math.atan2(at.x - from.x, at.z - from.z), weaponFxContext()),
   })
   if (!hadSwing && attackState.swingElapsed !== null) {
+    coopSwingStarted = true // co-op: the others see your swing's effect
     tutorialEvent('attack')
     sfx.play('swing', { x: player.position.x, z: player.position.z })
     onHeroAttack(player)
@@ -5924,6 +6136,8 @@ function gameFrame(timestamp) {
   let bossGone = false
   let bossDeathPoint = null
   monsters = monsters.filter((mesh) => {
+    // Co-op joiner: the host's monster, mirrored (src/coop.js moves and animates it).
+    if (mesh.userData.netPuppet) return coop.stepPuppet(mesh, gameplayDelta, elapsedSeconds, player.position)
     if (mesh.userData.spawning) {
       if (room) mesh.position.y = monsterSwimY(mesh, elapsedSeconds)
       else if (game.world) mesh.position.y = mesh.userData.lake ? WATER_LEVEL - 0.3 : heightAt(mesh.position.x, mesh.position.z)
@@ -5938,10 +6152,13 @@ function gameFrame(timestamp) {
       const finishedDying = updateMonsterHitReaction(mesh, gameplayDelta)
       if (finishedDying) {
         rememberWorldKill(game, mesh, elapsedSeconds)
-        scoreKill(game, mesh, mesh.userData.lastHitBy ?? 'sword', mesh.position, elapsedSeconds)
-        dropCrystals(crystalSystem, mesh.position.x, mesh.position.z, crystalDrops(mesh.userData.type, mesh.userData.isBoss))
-        // A caught Bellhop Bandit spills its whole sack, plus a tip.
-        if (mesh.userData.stolen > 0) dropCrystals(crystalSystem, mesh.position.x, mesh.position.z, crystalChange(refundWithTip(mesh.userData.stolen)))
+        // Co-op: a friend's killing blow scores (and drops crystals) in their game, not ours.
+        if (!coop?.creditKill(mesh, mesh.userData.lastHitBy ?? 'sword')) {
+          scoreKill(game, mesh, mesh.userData.lastHitBy ?? 'sword', mesh.position, elapsedSeconds)
+          dropCrystals(crystalSystem, mesh.position.x, mesh.position.z, crystalDrops(mesh.userData.type, mesh.userData.isBoss))
+          // A caught Bellhop Bandit spills its whole sack, plus a tip.
+          if (mesh.userData.stolen > 0) dropCrystals(crystalSystem, mesh.position.x, mesh.position.z, crystalChange(refundWithTip(mesh.userData.stolen)))
+        }
         disposeObject3D(mesh) // per-monster geometry, materials and indicator textures; also removes it from the scene
         if (SPLITS[mesh.userData.type] && mesh.userData.lastHitBy) pendingSplits.push({ type: mesh.userData.type, x: mesh.position.x, z: mesh.position.z })
         if (mesh.userData.isBoss) {
@@ -5960,9 +6177,10 @@ function gameFrame(timestamp) {
       mesh.rotation.z += gameplayDelta * MONSTER_FALL_TUMBLE_SPEED * 0.6
       if (mesh.userData.fallState.fallenY >= FALL_DESPAWN_DEPTH) {
         rememberWorldKill(game, mesh, elapsedSeconds)
-        scoreKill(game, mesh, 'fall', { x: mesh.position.x, y: 0, z: mesh.position.z }, elapsedSeconds)
+        const friendsKill = coop?.creditKill(mesh, 'fall') // co-op: a friend knocked it off
+        if (!friendsKill) scoreKill(game, mesh, 'fall', { x: mesh.position.x, y: 0, z: mesh.position.z }, elapsedSeconds)
         // A Bellhop Bandit knocked overboard: the sack (and a tip) is credited straight back.
-        if (mesh.userData.stolen > 0) {
+        if (mesh.userData.stolen > 0 && !friendsKill) {
           const back = refundWithTip(mesh.userData.stolen)
           game.inventory = addCrystals(game.inventory, back)
           questUi.showToast(`SACK RECOVERED  +${back} CRYSTALS`)
@@ -5999,8 +6217,11 @@ function gameFrame(timestamp) {
       questUi.showToast(`${bossById(mesh.userData.type)?.name ?? 'BOSS'} IS ENRAGED!`)
     }
     updateFrozenLook(mesh, elapsedSeconds)
-    const { hitPlayer: monsterHitPlayer, events: specialEvents } = updateMonster(mesh, player, obstacles, gameplayDelta, elapsedSeconds)
-    const hitPlayer = monsterHitPlayer || (specialEvents.length > 0 && applyBossEvents(game, mesh, specialEvents, elapsedSeconds))
+    // Co-op host: it goes after the nearest player who's up; a remote player is a stand-in whose hits are sent to them.
+    const target = coop?.isHost ? coop.targetFor(mesh, player, downed) : player
+    const { hitPlayer: monsterHitPlayer, events: rawEvents } = updateMonster(mesh, target, obstacles, gameplayDelta, elapsedSeconds)
+    const specialEvents = coop?.isHost ? coop.routeMonsterEvents(mesh, target, rawEvents) : rawEvents
+    const hitPlayer = (monsterHitPlayer && target === player) || (specialEvents.length > 0 && applyBossEvents(game, mesh, specialEvents, elapsedSeconds))
     if (mesh.userData.escaped) {
       disposeObject3D(mesh) // a Bellhop Bandit that got away: gone, no kill
       return false
@@ -6207,7 +6428,7 @@ function gameFrame(timestamp) {
   if (pickupSpawnNow && !freePlay() && !game.world) trySpawnPerkPickup(game)
   game.pickups = game.pickups.filter((pickup) => {
     updatePerkPickup(pickup, gameplayDelta)
-    if (player.hidden || Math.hypot(pickup.position.x - player.position.x, pickup.position.z - player.position.z) > PICKUP_RADIUS) return true
+    if (player.hidden || downed || Math.hypot(pickup.position.x - player.position.x, pickup.position.z - player.position.z) > PICKUP_RADIUS) return true
     burst(particleSystem, { x: pickup.position.x, y: 1, z: pickup.position.z }, 0xffffff, 18, 3.5)
     sfx.play('chestOpen', { x: pickup.position.x, z: pickup.position.z })
     receiveLoot(game, { kind: 'powerup', id: pickup.userData.id })
@@ -6228,7 +6449,7 @@ function gameFrame(timestamp) {
       }
     }
   }
-  if (nearestChest && input.wasChestPressed() && game.inventory.crystals >= nearestChest.userData.cost) {
+  if (nearestChest && !downed && input.wasChestPressed() && game.inventory.crystals >= nearestChest.userData.cost) {
     openChestNow(game, nearestChest, elapsedSeconds)
   }
   game.chests = game.chests.filter((chest) => {
