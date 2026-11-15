@@ -702,8 +702,8 @@ const benji = () => kid({ skinColor: 0xe0aa86, hairColor: 0x2e2018, hair: 'messy
 // Remy: sandy-blond hair, a teal fleece with a dark chest pocket, grey jeans, teal socks.
 const remy = () => kid({ skinColor: 0xeab494, hairColor: 0xb88a4e, hair: 'sandy', top: 'fleece', topColor: 0x1f7f95, pocketColor: 0x3b4048, pants: 0x6b7480, shoes: 0x1f6f80 })
 
-// Dylan: a thick blond mop, blue-grey eyes, a blue T-shirt, baggy trousers and dark shoes.
-const dylan = () => kid({ skinColor: 0xf0c4a2, hairColor: 0xd9b56e, hair: 'blond', top: 'tee', topColor: 0x2f6fd1, pants: 0x3c4048, shoes: 0x1c1c20, sleeves: 'short', baggy: true, eyeColor: 0x4a6a86 })
+// Dylan: a thick blond mop, blue-grey eyes, a grey T-shirt, baggy trousers and dark shoes.
+const dylan = () => kid({ skinColor: 0xf0c4a2, hairColor: 0xd9b56e, hair: 'blond', top: 'tee', topColor: 0x8a8f96, pants: 0x3c4048, shoes: 0x1c1c20, sleeves: 'short', baggy: true, eyeColor: 0x4a6a86 })
 
 // Remy (left) and Benji (right) as one pet, standing side by side.
 function duo() {
