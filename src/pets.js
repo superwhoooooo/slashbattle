@@ -17,7 +17,7 @@ import { hasWallLineOfSight, isInsideWall } from './monster.js'
 import { spawnShockwave } from './shockwave.js'
 import { ARENA_RADIUS } from './config.js'
 import { clampToPlatform } from './logic/arena.js'
-import { SOAR_RADIUS, SOAR_TURN_RATE, STRIKES, SNAP_DISTANCE, canEngage, dist, engageGoal, homeSpot, isFighter, returnSpeed, stepToward, strikeReach } from './logic/petAI.js'
+import { SOAR_RADIUS, SOAR_TURN_RATE, STRIKES, SNAP_DISTANCE, canEngage, dist, engageGoal, homeSpot, isFighter, returnSpeed, stepBeamCycle, stepToward, strikeReach } from './logic/petAI.js'
 
 const ORBIT_RADIUS = 1.9
 const FOLLOW_RATE = 6
@@ -386,6 +386,52 @@ function zap(pet, target, ctx) {
   hitMonster(pet, target, def.damage * (pet.damageMult ?? 1), { x: mesh.position.x, z: mesh.position.z }, ctx)
 }
 
+// Dylan's golden beam: a bright core inside a soft additive glow, a unit-tall cylinder stretched from
+// his hands to the target each frame.
+const BEAM_UP = new THREE.Vector3(0, 1, 0)
+const beamDir = new THREE.Vector3()
+function createBeamMesh(color) {
+  const group = new THREE.Group()
+  const core = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1, 8, 1, true), new THREE.MeshBasicMaterial({ color: 0xfff6c8, transparent: true, opacity: 0.95, depthWrite: false }))
+  const glow = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 1, 10, 1, true), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false }))
+  group.add(core, glow)
+  group.userData.glow = glow
+  group.visible = false
+  return group
+}
+
+// Runs a beam pet's 5 s on / 3 s off cycle (logic/petAI.js's stepBeamCycle) and draws the beam.
+function stepBeam(pet, target, dt, elapsed, ctx) {
+  const { def, mesh } = pet
+  const inRange = Boolean(target) && dist(mesh.position, target.position) <= def.range && hasWallLineOfSight(mesh.position, target.position)
+  const { state, hits } = stepBeamCycle(pet.beam, dt, inRange, def)
+  pet.beam = state
+  const firing = state.phase === 'on' && inRange
+  mesh.userData.beaming = firing
+  if (!pet.beamMesh) {
+    pet.beamMesh = createBeamMesh(def.color)
+    pet.scene.add(pet.beamMesh)
+  }
+  const beam = pet.beamMesh
+  beam.visible = firing
+  if (!firing) return
+  const s = mesh.scale.x
+  const yaw = mesh.rotation.y
+  const from = new THREE.Vector3(mesh.position.x + Math.sin(yaw) * 0.42 * s, mesh.position.y + 0.72 * s, mesh.position.z + Math.cos(yaw) * 0.42 * s)
+  const to = new THREE.Vector3(target.position.x, target.position.y + 0.8, target.position.z)
+  beamDir.subVectors(to, from)
+  const length = Math.max(0.01, beamDir.length())
+  beam.position.copy(from).addScaledVector(beamDir, 0.5)
+  beam.quaternion.setFromUnitVectors(BEAM_UP, beamDir.normalize())
+  const flicker = 1 + Math.sin(elapsed * 40) * 0.12
+  beam.scale.set(flicker, length, flicker)
+  beam.userData.glow.material.opacity = 0.35 + Math.sin(elapsed * 23) * 0.1
+  for (let i = 0; i < hits; i++) {
+    burst(ctx.particleSystem, { x: to.x, y: to.y, z: to.z }, def.color, 8, 2.2)
+    hitMonster(pet, target, def.damage * (pet.damageMult ?? 1), { x: mesh.position.x, z: mesh.position.z }, ctx)
+  }
+}
+
 // Moves every pet for one tick: out to the nearest enemy in sight and into its attack, or
 // back to its spot beside the player when there is none.
 export function updatePets(pets, { petDamage = 1, levels = {}, dt, elapsed, player, monsters, obstacles, particleSystem, hitstop, shockwavePool, onScratch = null }) {
@@ -502,6 +548,10 @@ export function updatePets(pets, { petDamage = 1, levels = {}, dt, elapsed, play
       burst(particleSystem, { x: player.position.x, y: 1, z: player.position.z }, HEAL_COLOR, 6, 1.5, 1)
       return
     }
+    if (def.kind === 'beam') {
+      stepBeam(pet, target, dt, elapsed, ctx)
+      return
+    }
     if (!ready) return
     if (def.kind === 'pulse') {
       pulse(pet, ctx)
@@ -535,6 +585,10 @@ export function updatePets(pets, { petDamage = 1, levels = {}, dt, elapsed, play
 export function disposePets(pets, scene) {
   for (const pet of unitsOf(pets)) {
     disposeSpecials(pet)
+    if (pet.beamMesh) {
+      scene.remove(pet.beamMesh)
+      disposeTree(pet.beamMesh)
+    }
     for (const thrown of [...(pet.sabers ?? []), ...(pet.shots ?? [])]) {
       scene.remove(thrown.mesh)
       disposeTree(thrown.mesh)

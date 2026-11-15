@@ -31,7 +31,7 @@ describe('catalogs', () => {
     expect(Object.keys(WEAPONS).length).toBeGreaterThan(HOTBAR_SLOTS)
     expect(Object.keys(ABILITIES).length).toBeGreaterThan(ABILITY_SLOTS)
     expect(Object.keys(PETS).length).toBeGreaterThan(MAX_PETS)
-    expect(Object.keys(PETS)).toHaveLength(44)
+    expect(Object.keys(PETS)).toHaveLength(45)
   })
 
   it('makes the staff a ranged starter whose orbs are magic, and the sword a chest find', () => {
@@ -69,6 +69,7 @@ describe('catalogs', () => {
       magnet: ['radius'],
       guard: ['reduction'],
       breath: ['damage', 'interval', 'range', 'defaultScale', 'defaultBreath'],
+      beam: ['damage', 'beamTick', 'beamOn', 'beamOff', 'range'],
     }
     for (const pet of Object.values(PETS)) {
       expect(Object.keys(needs)).toContain(pet.kind)
@@ -255,7 +256,7 @@ describe('petEffects', () => {
 
   it('makes every pet that is not a healer, magnet or guard an attacker', () => {
     for (const pet of Object.values(PETS)) {
-      expect(['lunge', 'explode', 'zap', 'shot', 'pulse', 'throw', 'heal', 'magnet', 'guard', 'breath']).toContain(pet.kind)
+      expect(['lunge', 'explode', 'zap', 'shot', 'pulse', 'throw', 'heal', 'magnet', 'guard', 'breath', 'beam']).toContain(pet.kind)
     }
     const fighters = Object.values(PETS).filter((pet) => pet.kind !== 'heal' && pet.kind !== 'magnet' && pet.kind !== 'guard')
     expect(fighters.length).toBeGreaterThanOrEqual(12)

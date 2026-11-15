@@ -711,7 +711,7 @@ Only once you own everything does a chest pay out score and a heal ("LOADOUT FUL
   blows up in `blast` radius, reforms by you), `pulse` (runs close, hits everything within `radius` with a ring: Spike,
   Boomer, Grumble, Pandy, Koda, Leo), `zap` (stands off, spark beam: Sparky, Bolt), `shot` (stands off, fires a
   `projectile`: Waddles' snowball, Goldie's lobbed water droplet, Polly's squawk rings), `throw` (stands off, hurls
-  lightsabers / junk / bananas: Matthias, Remy & Benji, Mojo), and `heal`, `magnet`, `guard` which stay by your side.
+  lightsabers / junk / bananas: Matthias, Remy & Benji, Mojo), `beam` (Dylan: a blond kid in a blue T-shirt and baggy trousers who holds out his arms and fires a golden beam for `beamOn` 5 s, one 1-damage hit every `beamTick` 0.5 s, then rests `beamOff` 3 s; `logic/petAI.js`'s `stepBeamCycle`, `pets.js`'s `stepBeam`), and `heal`, `magnet`, `guard` which stay by your side.
   A pet with `split` parts (Remy & Benji) spawns as one unit per part (`pet.buddies`): each moves, aims and throws on its own, prefers an enemy its partner isn't on, and throws at interval × parts so total damage is unchanged. It still counts as one equipped pet.
   No pet buffs the player's own stats (`petEffects` only folds magnet radius and damage taken). Each is a real
   animal / object model from `src/petModels.js` (`def.model`); the ground walkers (16 four-legged animals, the

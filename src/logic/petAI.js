@@ -30,7 +30,7 @@ export const STRIKES = {
 }
 
 export const LUNGE_KINDS = ['lunge', 'explode']
-export const RANGED_KINDS = ['zap', 'throw', 'shot', 'breath']
+export const RANGED_KINDS = ['zap', 'throw', 'shot', 'breath', 'beam']
 export const isLunger = (def) => LUNGE_KINDS.includes(def.kind)
 export const isRanged = (def) => RANGED_KINDS.includes(def.kind)
 export const isFighter = (def) => isLunger(def) || isRanged(def) || def.kind === 'pulse'
@@ -113,3 +113,42 @@ export const returnSpeed = (distance) => Math.max(RETURN_SPEED, distance * 1.8)
 
 // A lunger lands its hit once it is this close.
 export const strikeReach = (monsterUserData) => CONTACT + (monsterUserData?.reachBonus ?? 0)
+
+// A beam pet (Dylan): fires a steady beam for `beamOn` seconds, rests for `beamOff`, then waits
+// for an enemy in range to start again. While on, it deals one hit every `beamTick` seconds to
+// whatever it is aimed at (the first lands at once). Returns the new state and how many hits land
+// this step; `state` is { phase: 'idle' | 'on' | 'off', t, tick }.
+export const BEAM_DEFAULTS = { beamOn: 5, beamOff: 3, beamTick: 0.5 }
+export function stepBeamCycle(state, dt, hasTarget, def = {}) {
+  const on = def.beamOn ?? BEAM_DEFAULTS.beamOn
+  const off = def.beamOff ?? BEAM_DEFAULTS.beamOff
+  const tickEvery = def.beamTick ?? BEAM_DEFAULTS.beamTick
+  let { phase = 'idle', t = 0, tick = 0 } = state ?? {}
+  let hits = 0
+  if (phase === 'idle') {
+    if (!hasTarget) return { state: { phase, t: 0, tick: 0 }, hits }
+    phase = 'on'
+    t = on
+    tick = 0
+  }
+  if (phase === 'on') {
+    const run = Math.min(dt, t) // no hits past the end of the beam
+    t -= dt
+    tick -= run
+    const ending = t <= 1e-9
+    if (hasTarget) {
+      // A hit due exactly as the beam ends doesn't land (so a 5 s beam is 10 hits, not 11).
+      while (tick <= 1e-9 && !(ending && tick > -1e-9)) {
+        hits++
+        tick += tickEvery
+      }
+    } else {
+      tick = Math.max(0, tick)
+    }
+    if (ending) return { state: { phase: 'off', t: off + t, tick: 0 }, hits }
+    return { state: { phase, t, tick }, hits }
+  }
+  t -= dt
+  if (t <= 1e-9) return { state: { phase: 'idle', t: 0, tick: 0 }, hits }
+  return { state: { phase, t, tick }, hits }
+}
