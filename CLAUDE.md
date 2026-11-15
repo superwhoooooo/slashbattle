@@ -62,6 +62,7 @@ record.
 - N — open the Dragon Den (customize your dragons' scale and breath); in the Wilds (free roam) N shoots/swings instead and Space jumps (`logic/jump.js`: a plain hop, not an ability); Space again in the air opens the paraglider (`src/glider.js`: slow steady sink, 1.7x speed; Space folds it); E near a villager talks
 - U — in the Wilds: open the Wilds journal (goals, landmarks, bestiary, races); F inside a treasure map's circle digs
 - Y — open the hub's Heroes page (pick a hero and skin; see Heroes below)
+- B — use your hero's ability (unlocked at mastery 4; see Hero awakening below; gamepad: click either stick; touch: the hero slot)
 - I — open the hub's Contracts page (contracts, hero mastery, records; see Difficulty and progress below)
 - P — online co-op: host a game or join a friend's with a 4-letter room code (see Online co-op below)
 - Tab — open the power-up menu (pauses the game): click a power-up to equip / unequip it (in sandbox mode Tab opens the sandbox menu instead)
@@ -141,6 +142,7 @@ slashbattle/
     logic/checkpoint.js # the Wilds' save points (Sanctum + villages): spot rules, respawn spot, saved-spot parsing
     logic/shadyGuests.js # the paparazzo, gopher and Bellhop Bandit: stats, wave weights, snipe/burrow state machines, steal/refund rules
     logic/tricks.js    # kill trick names (nameTrick) and the chain multiplier (stepChain)
+    logic/heroPowers.js # hero awakening at mastery 4: trait tuning (traitTune), awakened descs/stats, hero abilities + cooldowns
     logic/announcements.js # the resort PA lines (wave start/cleared, boss incoming, low hp, ambush)
     logic/carpet.js    # the VIP red carpet's eased unroll fraction
     carpet.js          # the VIP red carpet mesh for a boss's arrival
@@ -1027,4 +1029,22 @@ connection silent for `SILENCE_TIMEOUT` is dropped; a joiner with a different `P
   from the same wave.
 - Each player keeps their own hero, gear, crystals, chests, pods, pets and score; others see your hero, skin, weapon,
   name tag and swing effects (`onSwingFx`). `window.__debug.coop` (dev only) exposes the co-op state.
+
+## Hero awakening (mastery 4) and hero abilities
+`src/logic/heroPowers.js` (pure, `test/heroPowers.test.js`). Reaching mastery level `AWAKEN_LEVEL` (4) with a hero AWAKENS it
+(`isAwakened(xp)`; the sandbox treats every hero as awake). Every trait's numbers live in `TUNING` as `[base, awakened]` pairs and
+`main.js` reads them through `tn()` (= `traitTune(heroTrait(), heroAwake())`); the base set is the traits exactly as before. Most
+traits just get much bigger numbers (`AWAKENED[id].desc` says what, shown on the hub's Heroes page); some change shape:
+Thundra's hammer becomes a **storm hammer** that hovers for 10 s, glides after your aim (`steerToward`, `heroAimPoint`), smashes
+what it touches and calls lightning every second, then flies home (`throwStormHammer` / `stepStormHammer`); Kaiju Kiddo's breath is a
+**held beam** for 6 s that sweeps after your aim (`turnToward`, `startAtomicBreath` / `stepAtomicBreath`); Deadeye Dakota's High
+Noon nearly stops time for 6 s (`setTimeWarp` factor 0.2), marks 12 and boosts your damage while it lasts (`heroState.noonUntil`);
+Ember's burning kills spread fire, Hex curses spread on death, a Shadow Valet backstab kill turns you invisible, Void Walker bursts
+at both ends of a dash, and so on. `AWAKENED[id].stats` (only the Guest and Cosmo Nova) fold into `activeFx` when awake.
+Awakening also unlocks the hero's **ability** (`HERO_ABILITIES`: name, desc, cooldown, optional `range`) on B
+(`HERO_ABILITY_KEY`; gamepad LS/RS click via `gamepadActions().heroAbility`; touch: the hero slot). `main.js`'s
+`triggerHeroAbility` switches on the hero id; the cooldown is `heroState.abilityReady` (`useHeroAbility`, scaled by haste), shown in a
+butter `hero-slot` at the front of the ability bar (`hud.js`'s `updateHeroAbilityHud`, the hero's portrait). A locked press toasts how
+far mastery has to go. The level-4 mastery toast announces the awakening. `window.__debug` (dev) has `setSandboxHero(id)`,
+`spawn(type, n)` and `heroState` for browser tests.
 

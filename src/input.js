@@ -170,6 +170,11 @@ export class Input {
     return this._gamepadActions.abilities[slot] === true
   }
 
+  // The hero ability: a click of either stick, edge-triggered (like B).
+  wasHeroAbilityPressed() {
+    return this._gamepadActions.heroAbility === true
+  }
+
   // Restart after losing: edge-triggered, like R.
   wasRestartPressed() {
     return this._gamepadActions.restart

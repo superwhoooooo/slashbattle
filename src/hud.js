@@ -13,7 +13,7 @@ import {
   WAVE_CLEARED_BANNER_DURATION,
 } from './config.js'
 import { ABILITIES, ABILITY_KEYS, HOTBAR_SLOTS, MAX_SLOTS, PETS, SLOT_LIMITS, WEAPONS } from './logic/items.js'
-import { iconImg } from './icons.js'
+import { heroIconUrl, iconImg } from './icons.js'
 import { abilityCooldownFraction } from './logic/inventory.js'
 import { pickAnnouncement } from './logic/announcements.js'
 import { enemiesLeftText } from './logic/hudText.js'
@@ -57,9 +57,14 @@ export function createHud() {
     createSlot(ABILITY_KEYS[i].replace('Key', ''), 'small'),
   )
   document.getElementById('ability-bar').append(...abilitySlots.map((s) => s.element))
+  // The hero ability (logic/heroPowers.js), unlocked at mastery 4: its own slot, on B, ahead of the others.
+  const heroSlot = createSlot('B', 'small hero-slot')
+  heroSlot.element.style.display = 'none'
+  document.getElementById('ability-bar').prepend(heroSlot.element)
   return {
     hotbarSlots,
     abilitySlots,
+    heroSlot,
     petBar: document.getElementById('pet-bar'),
     crystalCounter: document.getElementById('crystal-counter'),
     chestPrompt: document.getElementById('chest-prompt'),
@@ -218,6 +223,24 @@ export function updateInventoryHud(hud, inventory, now) {
       }),
     )
   })
+}
+
+// The hero ability slot: null hides it; otherwise { key, look, name, fraction } (fraction 0 = ready).
+export function updateHeroAbilityHud(hud, state) {
+  const slot = hud.heroSlot
+  setIfChanged(hud, 'heroSlot', state?.key ?? '', (key) => {
+    slot.element.style.display = key ? '' : 'none'
+    slot.element.classList.toggle('empty', !key)
+    if (!key) return
+    const img = document.createElement('img')
+    img.alt = ''
+    img.src = heroIconUrl(state.look)
+    slot.icon.replaceChildren(img)
+    slot.element.title = `${state.name} [B]`
+  })
+  if (!state) return
+  setIfChanged(hud, 'heroCd', Math.round(state.fraction * 50), (v) => (slot.cooldown.style.height = `${v * 2}%`))
+  setIfChanged(hud, 'heroReady', state.fraction === 0, (v) => slot.element.classList.toggle('ready', v))
 }
 
 // Shows (or hides, with null) the chest prompt; `poor` styles it red.

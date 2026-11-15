@@ -29,11 +29,12 @@ import { PICKUP_RADIUS, createPerkPickup, updatePerkPickup } from './pickups.js'
 import { createLoadoutPanel } from './loadout.js'
 import { createHub } from './hub.js'
 import { createHeroBeam, createHeroProjectile, disposeHeroProjectile, dressPlayer } from './heroGear.js'
-import { BLACKHOLE_BLAST_RADIUS, BLACKHOLE_COOLDOWN, BLACKHOLE_LIFE, BLACKHOLE_PULL_RADIUS, CUTS_COOLDOWN, HAMMER_EVERY, HAMMER_REACH, REBIRTH_COOLDOWN, SABER_REACH, SABER_TWIN_EVERY, chainPath, returningPoint, ATOMIC_EVERY, ATOMIC_REACH, HIGHNOON_COOLDOWN, HOOK_COOLDOWN, HOOK_RANGE, ORBITAL_EVERY, ORBITAL_RADIUS, RAM_REHIT, densestSpot, farthestWithin, inBeam, pickMarks, BOOMERANG_EVERY, HOTFOOT_MAX, HOTFOOT_STEP, ROOTS_COOLDOWN, SABER_CHANCE, boomerangPoint, rootsTriggered, spinReels, BROADSIDE_COOLDOWN, ECHO_EVERY, FOCUS_DELAY, HEROES, HEX_BONUS, SECONDS_EVERY, STATIC_EVERY, broadsideSpots, grantSkin, heroById, isBehind, heroEffects, heroLook as lookForProfile, marksmanBonus, moltenBonus, rewindTarget, tipJarCrystals } from './logic/heroes.js'
+import { ATOMIC_REACH, HAMMER_REACH, HOOK_RANGE, HOTFOOT_MAX, HOTFOOT_STEP, HEROES, RAM_REHIT, boomerangPoint, broadsideSpots, chainPath, densestSpot, grantSkin, heroById, heroEffects, heroLook as lookForProfile, inBeam, isBehind, pickMarks, returningPoint, rewindTarget, rootsTriggered, spinReels, tipJarCrystals } from './logic/heroes.js'
+import { AWAKEN_LEVEL, HERO_ABILITIES, HERO_ABILITY_KEY, awakenedStats, heroAbilityFraction, isAwakened, pointsAlong, ringPoints, steerToward, traitTune, turnToward, useHeroAbility } from './logic/heroPowers.js'
 import { loadProfile, saveProfile } from './profile.js'
 import { DIFFICULTIES, DIFFICULTY_IDS, difficultyById, runPayout } from './logic/difficulty.js'
 import { getDifficulty, setDifficulty } from './difficulty.js'
-import { contractText, progressEvent } from './logic/progress.js'
+import { contractText, masteryLevel, progressEvent } from './logic/progress.js'
 import { createScope } from './scope.js'
 import { SCOPES, AMMO, rifleSetup as riflePicks, stepSteady, tuneRifle } from './logic/rifles.js'
 import { BULLET_START_Y, bulletDamage, clampSlope } from './logic/bullets.js'
@@ -216,6 +217,7 @@ import {
   triggerDamageFlash,
   updateHud,
   updateInventoryHud,
+  updateHeroAbilityHud,
 } from './hud.js'
 import { Input } from './input.js'
 import { bossEnrage, bossSpeedScale, immunityThresholdsFor, BOSS_HEAD_START, BOSS_IMMUNITY_MINIONS, BOSS_IMMUNITY_SECONDS, BOSS_IMMUNITY_THRESHOLDS, bossById, immunityPhaseReached, bossCooldownScale, bossDamageScale, bossHpScale, bossSpecialsFor } from './logic/bosses.js'
@@ -937,7 +939,10 @@ function applySlotBonuses() {
 applySlotBonuses()
 const hideLimit = () => POD_HIDE_LIMIT + activeFx(game.inventory.equipped).hideTime
 // The equipped power-ups (at their upgrade levels) plus the learned skills, as one effect set.
-const activeFx = (equipped) => combineEffects(combineEffects(powerupEffects(equipped, profile.powerups), skillEffects(profile.skills)), heroEffects(heroProfile().hero))
+const activeFx = (equipped) => {
+  const fx = combineEffects(combineEffects(powerupEffects(equipped, profile.powerups), skillEffects(profile.skills)), heroEffects(heroProfile().hero))
+  return heroAwake() ? combineEffects(fx, awakenedStats(heroProfile().hero)) : fx // mastery 4 (logic/heroPowers.js)
+}
 
 // ---------- heroes (logic/heroes.js): the look, and each hero's one trait ----------
 // The sandbox lets you try every hero and skin for free, but those picks live only for that session:
@@ -947,9 +952,13 @@ const heroProfile = () => (sandbox && sandboxHeroPick ? { ...profile, ...sandbox
 const heroFx = () => heroEffects(heroProfile().hero)
 const heroLook = () => lookForProfile(heroProfile())
 const heroTrait = () => heroById(heroProfile().hero).trait.id
+// Mastery 4 awakens the hero (logic/heroPowers.js): a stronger trait and the hero ability on B.
+// The sandbox lets you try every hero awakened.
+const heroAwake = () => sandbox || isAwakened(profile.progress?.mastery?.[heroProfile().hero] ?? 0)
+const tn = () => traitTune(heroTrait(), heroAwake()) // the current trait's numbers
 let heroNow = 0 // elapsed seconds, for the damage hooks
 const heroState = {
-  stillSince: 0, molten: 0, moltenUntil: -Infinity, lastHp: null, slipUntil: -Infinity, clouds: [], auraNext: 0,
+  stillSince: 0, molten: 0, moltenUntil: -Infinity, lastHp: null, slipUntil: -Infinity, slipHaste: 1.35, clouds: [], auraNext: 0,
   hits: 0, // own hits landed (Static Charge / Echo Self counters)
   pending: [], // trait effects queued from inside damageMonster, run next frame: { at, run }
   whistleReady: 0, bassReadyAt: 0, rewindReady: 0, history: [], historyNext: 0,
@@ -961,10 +970,30 @@ const heroState = {
   atomic: 0, // Kaiju Kiddo's breath charge (hits)
   noonReady: 0, // Deadeye Dakota
   fx: [], // fading beams: { mesh, born, life }
-  sabers: 0, // Plasma Wake throws (every SABER_TWIN_EVERY-th splits)
-  holeReady: 0, holes: [], // Professor Singularity's black holes: { x, z, born }
+  sabers: 0, // Plasma Wake throws (every twinEvery-th splits)
+  holeReady: 0, holes: [], // Professor Singularity's black holes: { x, z, born, pull, blast, damage, life }
   rebirthReady: 0, // Phoenix Phoebe
   cutsReady: 0, // Kenji Ninefold
+  // Awakened traits and hero abilities:
+  abilityReady: 0, lockedToastAt: -Infinity, // the hero ability's cooldown (B)
+  focusUntil: -Infinity, // Inner Focus lingering after you move (awakened) / Starfall Palm
+  noonUntil: -Infinity, // awakened High Noon's damage boost
+  echoUntil: -Infinity, // Mirror Self
+  vanishUntil: -Infinity, // Vanish: every hit is a backstab
+  speedUntil: -Infinity, // Tailwind
+  hammer: null, // Thundra's hovering storm hammer
+  breath: null, // Kaiju Kiddo's held Atomic Breath
+}
+function resetHeroState() {
+  Object.assign(heroState, {
+    clouds: [], lastHp: null, molten: 0, moltenUntil: -Infinity, pending: [], history: [], hits: 0,
+    whistleReady: 0, bassReadyAt: 0, rewindReady: 0, kills: 0, broadsideReady: 0, thornsReady: 0,
+    footprints: [], footDist: 0, lastFoot: null, rootsReady: 0, hookReady: 0, noonReady: 0, atomic: 0, sabers: 0,
+    holeReady: 0, rebirthReady: 0, cutsReady: 0, holes: [], slipUntil: -Infinity,
+    abilityReady: 0, focusUntil: -Infinity, noonUntil: -Infinity, echoUntil: -Infinity, vanishUntil: -Infinity, speedUntil: -Infinity,
+  })
+  clearFlyers()
+  clearHeroFx()
 }
 // Trait damage itself (cause 'hero'), pets and hazards don't trigger or get boosted by traits.
 const TRAIT_EXCLUDED = new Set(['pet', 'photobomb', 'spike', 'hero', 'fall'])
@@ -973,82 +1002,92 @@ function heroBaseDamage() {
   const weapon = WEAPONS[selectedWeaponId(game.inventory)]
   return (weapon?.damage ?? 16) * activeFx(game.inventory.equipped).damage
 }
+const setBurn = (mesh, dps = tn().dps ?? 0.4, time = tn().burn ?? 3) => {
+  mesh.userData.burn = { until: heroNow + time, next: heroNow + 1, dps: dps * heroBaseDamage() }
+}
 setDamageHooks({
   amount(monster, damage, cause) {
     if (!game) return damage
     const trait = heroTrait()
+    const t = tn()
     // Hexed monsters take more from everything (pets and trait damage too).
     const hexed = trait === 'hex' && heroNow < (monster.userData.hexUntil ?? -Infinity)
-    if (TRAIT_EXCLUDED.has(cause)) return hexed ? Math.round(damage * HEX_BONUS) : damage
+    if (TRAIT_EXCLUDED.has(cause)) return hexed ? Math.round(damage * t.bonus) : damage
     const p = game.player.position
     let scale = 1
-    if (trait === 'focus' && heroNow - heroState.stillSince >= FOCUS_DELAY) scale *= 1.3
-    if (trait === 'marksman') scale *= marksmanBonus(Math.hypot(monster.position.x - p.x, monster.position.z - p.z))
-    if (trait === 'molten' && heroNow < heroState.moltenUntil) scale *= moltenBonus(heroState.molten)
-    if (trait === 'chill' && isFrozen(monster.userData, heroNow)) scale *= 1.2
-    if (trait === 'backstab' && (monster.userData.state === 'wander' || monster.userData.state === 'search' || isBehind(monster.position, monster.rotation.y, p))) scale *= 1.6
-    if (hexed) scale *= HEX_BONUS
+    if (trait === 'focus' && (heroNow - heroState.stillSince >= t.delay || heroNow < heroState.focusUntil)) scale *= t.bonus
+    if (trait === 'marksman') scale *= 1 + t.max * Math.min(1, Math.hypot(monster.position.x - p.x, monster.position.z - p.z) / 14)
+    if (trait === 'molten' && heroNow < heroState.moltenUntil) scale *= 1 + t.per * Math.min(t.stacks, heroState.molten)
+    if (trait === 'chill' && isFrozen(monster.userData, heroNow)) scale *= t.bonus
+    if (trait === 'backstab' && (heroNow < heroState.vanishUntil || monster.userData.state === 'wander' || monster.userData.state === 'search' || isBehind(monster.position, monster.rotation.y, p))) {
+      scale *= t.bonus
+      monster.userData.backstabAt = heroNow
+    }
+    if (trait === 'highnoon' && heroNow < heroState.noonUntil) scale *= t.boost
+    if (hexed) scale *= t.bonus
     return scale === 1 ? damage : Math.round(damage * scale)
   },
   hit(monster, damage, cause, lethal) {
     if (!game || TRAIT_EXCLUDED.has(cause)) return
     const trait = heroTrait()
+    const t = tn()
     heroState.hits++
     const at = { x: monster.position.x, z: monster.position.z }
+    const p = game.player.position
+    const angle = Math.atan2(at.x - p.x, at.z - p.z)
     // These run next frame (queued), so a trait never re-enters damageMonster from inside it.
-    if (trait === 'static' && heroState.hits % STATIC_EVERY === 0) heroState.pending.push({ at: heroNow, run: () => staticArc(at) })
-    if (trait === 'echo' && heroState.hits % ECHO_EVERY === 0 && !lethal) heroState.pending.push({ at: heroNow + 0.4, run: () => echoHit(monster, damage) })
+    if (trait === 'static' && heroState.hits % t.every === 0) heroState.pending.push({ at: heroNow, run: () => staticArc(at) })
+    if (trait === 'echo' && !lethal && (heroNow < heroState.echoUntil || heroState.hits % t.every === 0)) {
+      const mult = heroNow < heroState.echoUntil ? 1 : t.mult
+      heroState.pending.push({ at: heroNow + 0.4, run: () => echoHit(monster, damage, mult) })
+    }
     if (trait === 'bassdrop' && heroNow >= heroState.bassReadyAt) {
-      heroState.bassReadyAt = heroNow + 8
+      heroState.bassReadyAt = heroNow + t.cooldown
       heroState.pending.push({ at: heroNow, run: () => bassDrop(at) })
     }
     if (trait === 'broadside' && heroNow >= heroState.broadsideReady) {
-      heroState.broadsideReady = heroNow + BROADSIDE_COOLDOWN
-      const from = { x: game.player.position.x, z: game.player.position.z }
-      broadsideSpots(from, at).forEach((spot, i) => heroState.pending.push({ at: heroNow + 0.12 * (i + 1), run: () => cannonBlast(spot) }))
+      heroState.broadsideReady = heroNow + t.cooldown
+      const from = { x: p.x, z: p.z }
+      broadsideSpots(from, at, 2.5, t.blasts).forEach((spot, i) => heroState.pending.push({ at: heroNow + 0.12 * (i + 1), run: () => cannonBlast(spot) }))
     }
-    if (trait === 'boomerang' && heroState.hits % BOOMERANG_EVERY === 0) {
-      const p = game.player.position
-      const angle = Math.atan2(at.x - p.x, at.z - p.z)
-      heroState.pending.push({ at: heroNow, run: () => throwBoomerang(angle) })
-    }
-    if (trait === 'hammer' && heroState.hits % HAMMER_EVERY === 0) {
-      const p = game.player.position
-      const angle = Math.atan2(at.x - p.x, at.z - p.z)
-      heroState.pending.push({ at: heroNow, run: () => throwHammer(angle) })
+    if (trait === 'boomerang' && heroState.hits % t.every === 0) heroState.pending.push({ at: heroNow, run: () => throwBoomerang(angle) })
+    if (trait === 'hammer' && heroState.hits % t.every === 0) {
+      // While the storm hammer hovers, the 4th hit calls lightning down on it instead.
+      if (heroState.hammer) heroState.pending.push({ at: heroNow, run: () => heroState.hammer && lightningStrike({ x: heroState.hammer.x, z: heroState.hammer.z }, heroLook().glow) })
+      else heroState.pending.push({ at: heroNow, run: () => (t.hover ? throwStormHammer(t.hover) : throwHammer(angle)) })
     }
     if (trait === 'blackhole' && heroNow >= heroState.holeReady) {
-      heroState.holeReady = heroNow + BLACKHOLE_COOLDOWN
+      heroState.holeReady = heroNow + t.cooldown
       heroState.pending.push({ at: heroNow, run: () => openBlackHole(at) })
     }
     if (trait === 'thousandcuts' && heroNow >= heroState.cutsReady) {
-      heroState.cutsReady = heroNow + CUTS_COOLDOWN
-      heroState.pending.push({ at: heroNow, run: thousandCuts })
+      heroState.cutsReady = heroNow + t.cooldown
+      heroState.pending.push({ at: heroNow, run: () => thousandCuts() })
     }
     if (trait === 'hookshot' && heroNow >= heroState.hookReady) {
-      heroState.hookReady = heroNow + HOOK_COOLDOWN
-      heroState.pending.push({ at: heroNow, run: fireHook })
+      heroState.hookReady = heroNow + t.cooldown
+      heroState.pending.push({ at: heroNow, run: () => fireHook() })
     }
-    if (trait === 'atomic' && ++heroState.atomic >= ATOMIC_EVERY) {
+    if (trait === 'atomic' && !heroState.breath && ++heroState.atomic >= t.every) {
       heroState.atomic = 0
-      heroState.pending.push({ at: heroNow + 0.05, run: atomicBreath })
+      heroState.pending.push({ at: heroNow + 0.05, run: () => (t.hold ? startAtomicBreath(t.hold) : atomicBreath()) })
     }
     if (trait === 'highnoon' && heroNow >= heroState.noonReady) {
-      heroState.noonReady = heroNow + HIGHNOON_COOLDOWN
-      heroState.pending.push({ at: heroNow, run: highNoon })
+      heroState.noonReady = heroNow + t.cooldown
+      heroState.pending.push({ at: heroNow, run: () => highNoon() })
     }
     if (trait === 'jackpot') {
-      const spin = spinReels()
+      const spin = spinReels(Math.random, t.chance)
       if (spin.win) heroState.pending.push({ at: heroNow + 0.05, run: () => jackpotBlast(at, spin.reels) })
     }
     if (lethal) return
     if (trait === 'hex') {
       if (heroNow >= (monster.userData.hexUntil ?? -Infinity)) burst(particleSystem, { x: at.x, y: 1.2, z: at.z }, heroLook().glow, 8, 1.5, 0.8)
-      monster.userData.hexUntil = heroNow + 4
+      monster.userData.hexUntil = Math.max(monster.userData.hexUntil ?? -Infinity, heroNow + t.time)
     }
-    if (trait === 'rebirth' && Math.random() < 0.25) monster.userData.burn = { until: heroNow + 3, next: heroNow + 1, dps: 0.4 * heroBaseDamage() }
-    if (trait === 'kindling' && Math.random() < 0.2) monster.userData.burn = { until: heroNow + 3, next: heroNow + 1, dps: 0.4 * heroBaseDamage() }
-    if (trait === 'chill' && Math.random() < 0.15) applyFreeze(monster.userData, heroNow, 1.2)
+    if (trait === 'rebirth' && Math.random() < t.burnChance) setBurn(monster, 0.4, 3)
+    if (trait === 'kindling' && Math.random() < t.chance) setBurn(monster)
+    if (trait === 'chill' && Math.random() < t.chance) applyFreeze(monster.userData, heroNow, t.freeze)
   },
 })
 // Re-dresses the player when the hero or skin changed (a new run's mesh, or a pick in the hub).
@@ -1063,62 +1102,87 @@ function redressHero() {
 const heroHurt = (mesh, amount, knockback = 0, fromPos = game.player.position) =>
   damageMonster(mesh, Math.max(1, Math.round(amount)), { fromPos, knockback, obstacles: game.obstacles, particleSystem, cause: 'hero' })
 const alive = (mesh) => !mesh.userData.dying && !mesh.userData.spawning && !mesh.userData.falling && game.monsters.includes(mesh)
-// Static Charge: lightning from where the hit landed into the 3 nearest monsters within 7 m.
-function staticArc(from) {
+const distTo = (mesh, at) => Math.hypot(mesh.position.x - at.x, mesh.position.z - at.z)
+// Where hero moves aim: the view in first person, else the cursor / aim stick, else the facing.
+function heroAimAngle() {
+  const player = game.player
+  if (firstPerson) return fpYaw
+  return (input.touchMode ? touchAimAngle(player) : mouseAimAngle(player)) ?? player.facing
+}
+function heroAimPoint(range) {
+  const player = game.player
+  if (!firstPerson) return abilityTargetPoint(player, range)
+  const d = Math.min(range, 10)
+  return clampToPlatform({ x: player.position.x + Math.sin(fpYaw) * d, z: player.position.z + Math.cos(fpYaw) * d }, ARENA_RADIUS - 1)
+}
+// A blast ring: shockwave, sparks, warp and a hit on everything within `radius` (`damage` x base; 0 skips the hit).
+function heroNova(at, radius, damage, knockback, color = heroLook().glow, each = null) {
+  burst(particleSystem, { x: at.x, y: 0.8, z: at.z }, color, 30, radius * 0.9, 0.45)
+  burst(particleSystem, { x: at.x, y: 1.2, z: at.z }, 0xffffff, 14, radius * 0.6, 0.35)
+  spawnShockwave(shockwavePool, at.x, at.z, radius, color)
+  warp.add('ripple', at.x, at.z, radius + 1, 0.55)
+  triggerShake(game.shake, SHAKE_HIT_MAGNITUDE * 1.6, SHAKE_HIT_DURATION * 1.4)
+  sfx.play('bossSlam', at)
+  for (const mesh of heroTargets(at.x, at.z, radius)) {
+    if (damage > 0) heroHurt(mesh, damage * heroBaseDamage(), knockback, at)
+    each?.(mesh)
+  }
+}
+// Static Charge: lightning from where the hit landed into the nearest monsters.
+function staticArc(from, t = tn()) {
   const glow = heroLook().glow
-  const targets = heroTargets(from.x, from.z, 7)
-    .sort((a, b) => Math.hypot(a.position.x - from.x, a.position.z - from.z) - Math.hypot(b.position.x - from.x, b.position.z - from.z))
-    .slice(0, 3)
+  const targets = heroTargets(from.x, from.z, t.range).sort((a, b) => distTo(a, from) - distTo(b, from)).slice(0, t.targets)
   for (const mesh of targets) {
     // A jagged trail of sparks from the hit to the target, then a flash on it.
     for (let i = 1; i <= 6; i++) {
-      const t = i / 6
-      burst(particleSystem, { x: from.x + (mesh.position.x - from.x) * t + (Math.random() - 0.5) * 0.5, y: 1 + (Math.random() - 0.5) * 0.4, z: from.z + (mesh.position.z - from.z) * t + (Math.random() - 0.5) * 0.5 }, glow, 2, 0.6)
+      const k = i / 6
+      burst(particleSystem, { x: from.x + (mesh.position.x - from.x) * k + (Math.random() - 0.5) * 0.5, y: 1 + (Math.random() - 0.5) * 0.4, z: from.z + (mesh.position.z - from.z) * k + (Math.random() - 0.5) * 0.5 }, glow, 2, 0.6)
     }
     column(mesh.position.x, mesh.position.z, glow, 2.5, 5)
-    heroHurt(mesh, heroBaseDamage())
+    heroHurt(mesh, t.damage * heroBaseDamage())
   }
 }
 // Echo Self: the twin's copy of a hit, 0.4 s late.
-function echoHit(mesh, damage) {
+function echoHit(mesh, damage, mult) {
   if (!alive(mesh)) return
   burst(particleSystem, { x: mesh.position.x, y: 1, z: mesh.position.z }, heroLook().glow, 12, 2.2, 0.4)
-  heroHurt(mesh, damage * 0.6)
+  heroHurt(mesh, damage * mult)
 }
-// Bass Drop: a shockwave from the hit, hurting and shoving everything within 4 m.
-function bassDrop(at) {
+// Bass Drop: a shockwave from the hit, hurting and shoving everything near.
+function bassDrop(at, radius = tn().radius, damage = tn().damage) {
   const glow = heroLook().glow
-  spawnShockwave(shockwavePool, at.x, at.z, 4, glow)
-  warp.add('ripple', at.x, at.z, 5, 0.5)
+  spawnShockwave(shockwavePool, at.x, at.z, radius, glow)
+  warp.add('ripple', at.x, at.z, radius + 1, 0.5)
   triggerShake(game.shake, SHAKE_HIT_MAGNITUDE, SHAKE_HIT_DURATION)
   sfx.play('bossSlam', at)
-  for (const mesh of heroTargets(at.x, at.z, 4)) heroHurt(mesh, heroBaseDamage(), 2.5, at)
+  for (const mesh of heroTargets(at.x, at.z, radius)) heroHurt(mesh, damage * heroBaseDamage(), 2.5, at)
 }
 // Broadside: one cannon blast (Captain Gully).
-function cannonBlast(at) {
+function cannonBlast(at, damage = tn().damage, radius = tn().radius) {
   burst(particleSystem, { x: at.x, y: 0.8, z: at.z }, 0xffb547, 18, 4, 0.4)
   burst(particleSystem, { x: at.x, y: 0.8, z: at.z }, 0x3a3a40, 10, 2, 0.7)
-  spawnShockwave(shockwavePool, at.x, at.z, 2, heroLook().glow)
-  warp.add('ripple', at.x, at.z, 2.5, 0.35)
+  spawnShockwave(shockwavePool, at.x, at.z, radius, heroLook().glow)
+  warp.add('ripple', at.x, at.z, radius + 0.5, 0.35)
   sfx.play('bossSlam', at)
-  for (const mesh of heroTargets(at.x, at.z, 2)) heroHurt(mesh, 1.2 * heroBaseDamage(), 1.5, at)
+  for (const mesh of heroTargets(at.x, at.z, radius)) heroHurt(mesh, damage * heroBaseDamage(), 1.5, at)
 }
 // Thorns: a burst of thorns from the player when they get hurt (Rosa Thornheart).
-function thornBurst() {
+function thornBurst(radius = tn().radius, damage = tn().damage) {
   const at = { x: game.player.position.x, z: game.player.position.z }
-  burst(particleSystem, { x: at.x, y: 0.8, z: at.z }, 0x4f8a4a, 20, 4.5, 0.35)
-  burst(particleSystem, { x: at.x, y: 0.8, z: at.z }, heroLook().body, 10, 3, 0.4)
-  spawnShockwave(shockwavePool, at.x, at.z, 3, heroLook().glow)
-  for (const mesh of heroTargets(at.x, at.z, 3)) heroHurt(mesh, 0.8 * heroBaseDamage(), 3, at)
+  burst(particleSystem, { x: at.x, y: 0.8, z: at.z }, 0x4f8a4a, 20, radius * 1.5, 0.35)
+  burst(particleSystem, { x: at.x, y: 0.8, z: at.z }, heroLook().body, 10, radius, 0.4)
+  spawnShockwave(shockwavePool, at.x, at.z, radius, heroLook().glow)
+  for (const mesh of heroTargets(at.x, at.z, radius)) heroHurt(mesh, damage * heroBaseDamage(), 3, at)
 }
-// Clockwork Sage's Rewind and Lifeguard Lou's whistle: called before the game decides you're down.
+// Clockwork Sage's Rewind, Phoenix Phoebe's Rebirth and Lifeguard Lou's whistle: called before the game decides you're down.
 function heroRescue(now) {
   const player = game.player
   const trait = heroTrait()
+  const t = tn()
   if (trait === 'rewind' && player.hp <= 0 && now >= heroState.rewindReady) {
     // No history yet (just picked, or frozen in a cutscene): rewind in place.
-    const back = rewindTarget(heroState.history, now, player.maxHp) ?? { x: player.position.x, z: player.position.z, hp: Math.ceil(player.maxHp * 0.3) }
-    heroState.rewindReady = now + 45
+    const back = rewindTarget(heroState.history, now, player.maxHp, t.minHp) ?? { x: player.position.x, z: player.position.z, hp: Math.ceil(player.maxHp * t.minHp) }
+    heroState.rewindReady = now + t.cooldown
     burst(particleSystem, { x: player.position.x, y: 0.8, z: player.position.z }, heroLook().glow, 30, 3, 0.6)
     player.position = { x: back.x, z: back.z }
     player.mesh.position.x = back.x
@@ -1127,25 +1191,30 @@ function heroRescue(now) {
     player.invulnerableUntil = Math.max(player.invulnerableUntil, now + 1.5)
     spawnShockwave(shockwavePool, back.x, back.z, 3, heroLook().glow)
     warp.add('swirl', back.x, back.z, 3, 0.7)
-    showLootToast(hud, { title: 'REWIND', name: 'Clockwork Sage', blurb: 'Not yet. Wound back 3 seconds.' })
+    if (t.slow) setTimeWarp(Math.max(timeWarp.until, now + t.slow), 0.3)
+    showLootToast(hud, { title: 'REWIND', name: 'Clockwork Sage', blurb: t.slow ? 'Not yet. Wound back, and the clock is crawling.' : 'Not yet. Wound back 3 seconds.' })
   }
   if (trait === 'rebirth' && player.hp <= 0 && now >= heroState.rebirthReady) {
-    heroState.rebirthReady = now + REBIRTH_COOLDOWN
-    player.hp = Math.ceil(player.maxHp * 0.5)
+    heroState.rebirthReady = now + t.cooldown
+    player.hp = Math.ceil(player.maxHp * t.riseHp)
     player.invulnerableUntil = Math.max(player.invulnerableUntil, now + 2)
-    phoenixNova({ x: player.position.x, z: player.position.z })
+    phoenixNova({ x: player.position.x, z: player.position.z }, t.radius, t.damage, true)
   }
-  if (trait === 'whistle' && player.hp > 0 && player.hp < player.maxHp * 0.3 && now >= heroState.whistleReady) {
-    heroState.whistleReady = now + 30
-    const at = { x: player.position.x, z: player.position.z }
-    spawnShockwave(shockwavePool, at.x, at.z, 6, heroLook().glow)
-    warp.add('ripple', at.x, at.z, 6.5, 0.6)
-    burst(particleSystem, { x: at.x, y: 1.4, z: at.z }, 0xffffff, 24, 4, 0.5)
-    sfx.play('announcement', at)
-    for (const mesh of heroTargets(at.x, at.z, 6)) heroHurt(mesh, heroBaseDamage(), 4, at)
-    player.hp = Math.min(player.maxHp, player.hp + 25)
+  if (trait === 'whistle' && player.hp > 0 && player.hp < player.maxHp * t.below && now >= heroState.whistleReady) {
+    heroState.whistleReady = now + t.cooldown
+    blowWhistle(t.radius, t.damage, t.heal)
     showLootToast(hud, { title: 'RESCUE WHISTLE', name: 'Lifeguard Lou', blurb: 'Everybody out of the pool!' })
   }
+}
+function blowWhistle(radius, damage, heal) {
+  const player = game.player
+  const at = { x: player.position.x, z: player.position.z }
+  spawnShockwave(shockwavePool, at.x, at.z, radius, heroLook().glow)
+  warp.add('ripple', at.x, at.z, radius + 0.5, 0.6)
+  burst(particleSystem, { x: at.x, y: 1.4, z: at.z }, 0xffffff, 24, 4, 0.5)
+  sfx.play('announcement', at)
+  for (const mesh of heroTargets(at.x, at.z, radius)) heroHurt(mesh, damage * heroBaseDamage(), 4, at)
+  player.hp = Math.min(player.maxHp, player.hp + heal)
 }
 // ---- thrown things (Plasma Wake, Boomerang, Tip Jar's suitcase) ----
 // A flyer follows `point(t)` (t 0..1 over `duration`), spinning, and hits each monster it passes
@@ -1194,80 +1263,90 @@ function clearFlyers() {
   }
   heroState.flyers = []
 }
-// Dread Lord Vexar's Plasma Wake: called as an attack starts; half the time a blade follows it out.
-// Buffed: 3 in 4 attacks, 12 m out and back (hits both ways), 1.2x, and every 3rd throw splits in two.
+// Dread Lord Vexar's Plasma Wake: called as an attack starts; most of the time a blade follows it out.
 function onHeroAttack(player) {
-  if (heroTrait() !== 'saber' || Math.random() >= SABER_CHANCE) return
+  const t = tn()
+  if (heroTrait() !== 'saber' || Math.random() >= t.chance) return
   const facing = player.facing
-  const from = { x: player.position.x + Math.sin(facing) * 0.6, z: player.position.z + Math.cos(facing) * 0.6 }
-  const twin = ++heroState.sabers % SABER_TWIN_EVERY === 0
-  for (const angle of twin ? [facing - 0.28, facing + 0.28] : [facing]) {
-    launchFlyer({ kind: 'saber', color: heroLook().glow, duration: 0.9, radius: 1.6, damage: 1.2 * heroBaseDamage(), knockback: 1.5, spin: 24, legs: 2, point: (t) => returningPoint(from, player.position, angle, t, SABER_REACH) })
-  }
-  sfx.play('swing', from)
+  const twin = ++heroState.sabers % t.twinEvery === 0
+  const angles = twin ? (t.twinCount === 3 ? [facing - 0.32, facing, facing + 0.32] : [facing - 0.28, facing + 0.28]) : [facing]
+  for (const angle of angles) throwSaber(angle, t.reach, t.damage)
+  sfx.play('swing', player.position)
 }
-function throwBoomerang(angle) {
+function throwSaber(angle, reach, damage) {
+  const player = game.player
+  const from = { x: player.position.x + Math.sin(angle) * 0.6, z: player.position.z + Math.cos(angle) * 0.6 }
+  launchFlyer({ kind: 'saber', color: heroLook().glow, duration: 0.9 * Math.max(1, reach / 12), radius: 1.6, damage: damage * heroBaseDamage(), knockback: 1.5, spin: 24, legs: 2, point: (k) => returningPoint(from, player.position, angle, k, reach) })
+}
+function throwBoomerang(angle, t = tn()) {
   const p = game.player
   const from = { x: p.position.x, z: p.position.z }
-  launchFlyer({ kind: 'boomerang', color: heroLook().glow, duration: 1.1, radius: 1.1, damage: 0.7 * heroBaseDamage(), knockback: 1, spin: 16, legs: 2, point: (t) => boomerangPoint(from, p.position, angle, t) })
+  for (let i = 0; i < t.count; i++) {
+    const bow = i % 2 ? -2.4 : 2.4 // a pair loops out on both sides
+    launchFlyer({ kind: 'boomerang', color: heroLook().glow, duration: 1.1 * Math.max(1, t.reach / 10), radius: 1.1, damage: t.damage * heroBaseDamage(), knockback: 1, spin: 16, legs: 2, point: (k) => boomerangPoint(from, p.position, angle, k, t.reach, bow) })
+  }
   sfx.play('swing', from)
 }
 // Lady Jackpot: three of a kind -- a coin blast and a spray of crystals.
-function jackpotBlast(at, reels) {
+function jackpotBlast(at, reels, t = tn()) {
   burst(particleSystem, { x: at.x, y: 1.2, z: at.z }, 0xffd15c, 36, 6, 0.5)
   burst(particleSystem, { x: at.x, y: 1.2, z: at.z }, heroLook().glow, 16, 4, 0.6)
-  spawnShockwave(shockwavePool, at.x, at.z, 3.5, 0xffd15c)
-  warp.add('ripple', at.x, at.z, 4, 0.45)
+  spawnShockwave(shockwavePool, at.x, at.z, t.radius, 0xffd15c)
+  warp.add('ripple', at.x, at.z, t.radius + 0.5, 0.45)
   triggerShake(game.shake, SHAKE_HIT_MAGNITUDE * 1.4, SHAKE_HIT_DURATION)
   sfx.play('chestOpen', at)
   showPopup(popupPool, at, 'JACKPOT!', reels.join(' '), '#ffd15c')
-  dropCrystals(crystalSystem, at.x, at.z, [1, 1, 1, 1, 1, 1])
-  for (const mesh of heroTargets(at.x, at.z, 3.5)) heroHurt(mesh, 2 * heroBaseDamage(), 2.5, at)
+  dropCrystals(crystalSystem, at.x, at.z, Array(t.crystals).fill(1))
+  for (const mesh of heroTargets(at.x, at.z, t.radius)) heroHurt(mesh, t.damage * heroBaseDamage(), 2.5, at)
 }
 // Chef Flambé: the pan goes up -- a fire burst that sets everything near alight.
-function flambe(at) {
-  burst(particleSystem, { x: at.x, y: 0.8, z: at.z }, 0xff8a3d, 30, 5, 0.45)
+function flambe(at, damage = tn().damage ?? 1, radius = tn().radius ?? 3.5) {
+  burst(particleSystem, { x: at.x, y: 0.8, z: at.z }, 0xff8a3d, 30, radius * 1.4, 0.45)
   burst(particleSystem, { x: at.x, y: 1.4, z: at.z }, 0xffd15c, 14, 3, 0.6)
-  spawnShockwave(shockwavePool, at.x, at.z, 3.5, 0xff8a3d)
+  spawnShockwave(shockwavePool, at.x, at.z, radius, 0xff8a3d)
   sfx.play('cannonball', at)
-  for (const mesh of heroTargets(at.x, at.z, 3.5)) {
-    heroHurt(mesh, heroBaseDamage(), 1.5, at)
-    mesh.userData.burn = { until: heroNow + 3, next: heroNow + 1, dps: 0.4 * heroBaseDamage() }
+  for (const mesh of heroTargets(at.x, at.z, radius)) {
+    heroHurt(mesh, damage * heroBaseDamage(), 1.5, at)
+    setBurn(mesh, 0.4, 3)
   }
 }
 // Prospector Pip's Mother Lode: a geode cracks open.
-function motherLode(at) {
+function motherLode(at, t = tn()) {
   burst(particleSystem, { x: at.x, y: 0.8, z: at.z }, heroLook().glow, 26, 5, 0.4)
   burst(particleSystem, { x: at.x, y: 0.8, z: at.z }, 0x8a7a6a, 12, 3, 0.5)
-  spawnShockwave(shockwavePool, at.x, at.z, 3, heroLook().glow)
+  spawnShockwave(shockwavePool, at.x, at.z, t.radius, heroLook().glow)
   sfx.play('crystal', at)
-  dropCrystals(crystalSystem, at.x, at.z, [5])
-  for (const mesh of heroTargets(at.x, at.z, 3)) heroHurt(mesh, heroBaseDamage(), 2, at)
+  dropCrystals(crystalSystem, at.x, at.z, Array(t.gems).fill(5))
+  for (const mesh of heroTargets(at.x, at.z, t.radius)) heroHurt(mesh, t.damage * heroBaseDamage(), 2, at)
 }
-// Thorn Warden: roots erupt as health first drops below half.
-function rootBurst() {
+// Thorn Warden: roots erupt as health first drops below half (and Overgrowth).
+function rootBurst(radius = tn().rootRadius, time = tn().rootTime, damage = tn().rootDamage, toast = true) {
   const at = { x: game.player.position.x, z: game.player.position.z }
-  burst(particleSystem, { x: at.x, y: 0.4, z: at.z }, 0x6d5233, 30, 5, 0.4)
-  burst(particleSystem, { x: at.x, y: 0.6, z: at.z }, heroLook().glow, 20, 4, 0.5)
-  spawnShockwave(shockwavePool, at.x, at.z, 5, heroLook().glow)
-  warp.add('ripple', at.x, at.z, 5.5, 0.5)
-  for (const mesh of heroTargets(at.x, at.z, 5)) {
-    applyFreeze(mesh.userData, heroNow, 2)
-    heroHurt(mesh, heroBaseDamage(), 0, at)
+  burst(particleSystem, { x: at.x, y: 0.4, z: at.z }, 0x6d5233, 30, radius, 0.4)
+  burst(particleSystem, { x: at.x, y: 0.6, z: at.z }, heroLook().glow, 20, radius * 0.8, 0.5)
+  spawnShockwave(shockwavePool, at.x, at.z, radius, heroLook().glow)
+  warp.add('ripple', at.x, at.z, radius + 0.5, 0.5)
+  for (const mesh of heroTargets(at.x, at.z, radius)) {
+    applyFreeze(mesh.userData, heroNow, time)
+    heroHurt(mesh, damage * heroBaseDamage(), 0, at)
     column(mesh.position.x, mesh.position.z, 0x6d5233, 1.6, 6)
   }
-  showLootToast(hud, { title: 'ROOTED', name: 'Thorn Warden', blurb: 'The forest has your back.' })
+  if (toast) showLootToast(hud, { title: 'ROOTED', name: 'Thorn Warden', blurb: 'The forest has your back.' })
 }
-// Magma Marge's Hot Foot: footprints of lava while sprinting or dashing, each burning for 3 s.
+// Magma Marge's Hot Foot: footprints of lava while running fast (awakened: any running), each burning a while.
+function addFootprint(x, z, now, t = tn()) {
+  if (heroState.footprints.length >= HOTFOOT_MAX * 3) heroState.footprints.shift()
+  heroState.footprints.push({ x, z, until: now + t.life, next: now + 0.15, glow: now, damage: t.damage, radius: t.radius })
+}
 function stepHotFoot(player, now, dt) {
-  const fast = player.speed > PLAYER_SPEED * 1.2 && !player.hidden && !player.falling
+  const t = tn()
+  const fast = heroTrait() === 'hotfoot' && player.speed > PLAYER_SPEED * t.minSpeed && !player.hidden && !player.falling
   const here = { x: player.position.x, z: player.position.z }
   if (fast && heroState.lastFoot) heroState.footDist += Math.hypot(here.x - heroState.lastFoot.x, here.z - heroState.lastFoot.z)
   heroState.lastFoot = here
   if (fast && heroState.footDist >= HOTFOOT_STEP) {
     heroState.footDist = 0
-    if (heroState.footprints.length >= HOTFOOT_MAX) heroState.footprints.shift()
-    heroState.footprints.push({ x: here.x, z: here.z, until: now + 3, next: now + 0.15, glow: now })
+    addFootprint(here.x, here.z, now, t)
   }
   const glow = heroLook().glow
   heroState.footprints = heroState.footprints.filter((f) => {
@@ -1278,7 +1357,7 @@ function stepHotFoot(player, now, dt) {
     }
     if (now >= f.next) {
       f.next = now + 0.5
-      for (const mesh of heroTargets(f.x, f.z, 0.9)) heroHurt(mesh, 0.4 * heroBaseDamage())
+      for (const mesh of heroTargets(f.x, f.z, f.radius)) heroHurt(mesh, f.damage * heroBaseDamage())
     }
     return true
   })
@@ -1292,14 +1371,16 @@ function sparkLine(from, to, color, steps = 8, y = 1) {
     burst(particleSystem, { x: from.x + (to.x - from.x) * t, y, z: from.z + (to.z - from.z) * t }, color, 1, 0.3, 0.25)
   }
 }
-// Get Over Here!: hook the farthest monster in range and reel it in.
-function fireHook() {
+// Get Over Here!: hook the farthest monsters in range (one, or three awakened) and reel them in.
+function fireHook(count = tn().count, range = HOOK_RANGE, damage = tn().damage, stun = tn().stun) {
   const p = game.player.position
-  const target = farthestWithin(livePoints(p.x, p.z, HOOK_RANGE), p)
-  if (!target) return
-  const hook = createHeroProjectile('hook', heroLook().glow)
-  scene.add(hook)
-  heroState.yanks.push({ mesh: target.mesh, hook, born: heroNow, boss: target.mesh.userData.isBoss === true, travelled: 0 })
+  const caught = livePoints(p.x, p.z, range).sort((a, b) => Math.hypot(b.x - p.x, b.z - p.z) - Math.hypot(a.x - p.x, a.z - p.z)).slice(0, count)
+  if (!caught.length) return
+  for (const target of caught) {
+    const hook = createHeroProjectile('hook', heroLook().glow)
+    scene.add(hook)
+    heroState.yanks.push({ mesh: target.mesh, hook, born: heroNow, boss: target.mesh.userData.isBoss === true, travelled: 0, damage, stun })
+  }
   sfx.play('swing', p)
   showPopup(popupPool, p, 'GET OVER HERE!', '', '#ffd15c')
 }
@@ -1333,16 +1414,17 @@ function stepYanks(now, dt) {
     scene.remove(y.hook)
     disposeHeroProjectile(y.hook)
     if (gone) return false
-    applyFreeze(m.userData, now, 1.2)
+    applyFreeze(m.userData, now, y.stun)
     burst(particleSystem, { x: m.position.x, y: 1, z: m.position.z }, heroLook().glow, 18, 3, 0.4)
     triggerShake(game.shake, SHAKE_HIT_MAGNITUDE, SHAKE_HIT_DURATION)
-    heroHurt(m, heroBaseDamage())
+    heroHurt(m, y.damage * heroBaseDamage())
     return false
   })
 }
-// Sonic Boom: at sprint / dash speed, everything you run into is blasted away.
+// Sonic Boom: at sprint / dash speed (awakened: any running), everything you run into is blasted away.
 function stepRam(player, now) {
-  if (player.speed <= PLAYER_SPEED * 1.2 || player.hidden || player.falling) return
+  const t = tn()
+  if (player.speed <= PLAYER_SPEED * t.minSpeed || player.hidden || player.falling) return
   const p = player.position
   if (Math.random() < 0.7) burst(particleSystem, { x: p.x, y: 0.7, z: p.z }, heroLook().glow, 2, 0.8, 0.35)
   for (const mesh of heroTargets(p.x, p.z, 0.9)) {
@@ -1350,8 +1432,16 @@ function stepRam(player, now) {
     mesh.userData.ramReadyAt = now + RAM_REHIT
     burst(particleSystem, { x: mesh.position.x, y: 1, z: mesh.position.z }, 0xffffff, 14, 4, 0.3)
     triggerShake(game.shake, SHAKE_HIT_MAGNITUDE * 0.8, SHAKE_HIT_DURATION)
-    heroHurt(mesh, 0.9 * heroBaseDamage(), 4, p)
+    heroHurt(mesh, t.damage * heroBaseDamage(), 4, p)
   }
+}
+function sonicBoom(at, radius, damage) {
+  burst(particleSystem, { x: at.x, y: 0.8, z: at.z }, 0xffffff, 18, 5, 0.3)
+  burst(particleSystem, { x: at.x, y: 0.8, z: at.z }, heroLook().glow, 14, 4, 0.4)
+  spawnShockwave(shockwavePool, at.x, at.z, radius, heroLook().glow)
+  warp.add('ripple', at.x, at.z, radius + 0.5, 0.4)
+  sfx.play('cannonball', at)
+  for (const mesh of heroTargets(at.x, at.z, radius)) heroHurt(mesh, damage * heroBaseDamage(), 2.5, at)
 }
 // A beam that fades out over `life` seconds.
 function addBeam(color, length, width, life, place) {
@@ -1383,11 +1473,18 @@ function clearHeroFx() {
     disposeHeroProjectile(f.mesh)
   }
   heroState.fx = []
+  for (const held of [heroState.hammer, heroState.breath]) {
+    if (!held) continue
+    scene.remove(held.mesh)
+    disposeHeroProjectile(held.mesh)
+  }
+  heroState.hammer = null
+  heroState.breath = null
 }
 // Atomic Breath: a roaring beam along the player's aim.
 function atomicBreath() {
   const p = game.player
-  const angle = p.facing
+  const angle = heroAimAngle()
   const from = { x: p.position.x, z: p.position.z }
   const glow = heroLook().glow
   addBeam(glow, ATOMIC_REACH, 0.7, 0.5, (mesh) => {
@@ -1408,39 +1505,87 @@ function atomicBreath() {
     heroHurt(mesh, 1.6 * heroBaseDamage(), 3, from)
   }
 }
-// Orbital Strike: mark the biggest crowd, then call the beam down on it 1.5 s later.
-function paintOrbital(fallback) {
+// Awakened Atomic Breath: a beam held for `hold` seconds that sweeps after your aim, burning what it touches.
+function startAtomicBreath(hold) {
+  const p = game.player
+  if (heroState.breath) {
+    heroState.breath.until = Math.max(heroState.breath.until, heroNow + hold)
+    return
+  }
+  const reach = traitTune('atomic', true).reach
+  const mesh = createHeroBeam(heroLook().glow, reach, 0.85)
+  scene.add(mesh)
+  heroState.breath = { mesh, until: heroNow + hold, angle: heroAimAngle(), next: heroNow, reach }
+  triggerShake(game.shake, SHAKE_HIT_MAGNITUDE * 1.8, SHAKE_HIT_DURATION * 1.5)
+  sfx.play('bossSlam', p.position)
+  showPopup(popupPool, p.position, 'ROAAAAAAR!', 'ATOMIC BREATH', '#6fe3ff')
+}
+function stepAtomicBreath(now, dt) {
+  const b = heroState.breath
+  if (!b) return
+  const p = game.player
+  if (now >= b.until || p.hp <= 0 || p.hidden || p.falling) {
+    scene.remove(b.mesh)
+    disposeHeroProjectile(b.mesh)
+    heroState.breath = null
+    return
+  }
+  b.angle = turnToward(b.angle, heroAimAngle(), 3.2, dt)
+  p.facing = b.angle
+  const from = { x: p.position.x, z: p.position.z }
+  b.mesh.position.set(from.x + Math.sin(b.angle) * 0.5, p.mesh.position.y + 1.1, from.z + Math.cos(b.angle) * 0.5)
+  b.mesh.rotation.y = b.angle
+  const left = b.until - now
+  b.mesh.userData.setFade(Math.min(1, left / 0.4) * (0.8 + 0.2 * Math.sin(now * 40)))
+  const glow = heroLook().glow
+  const t = traitTune('atomic', true)
+  const along = Math.random() * b.reach
+  burst(particleSystem, { x: from.x + Math.sin(b.angle) * along, y: 1.1, z: from.z + Math.cos(b.angle) * along }, glow, 3, 2, 0.35)
+  if (now < b.next) return
+  b.next = now + t.tick
+  triggerShake(game.shake, SHAKE_HIT_MAGNITUDE * 0.5, SHAKE_HIT_DURATION)
+  for (const mesh of heroTargets(from.x, from.z, b.reach + 2)) {
+    if (!inBeam(from, b.angle, mesh.position, b.reach, 1.4 + (mesh.userData.radius ?? 0.5))) continue
+    heroHurt(mesh, t.tickDamage * heroBaseDamage(), 0.8, from)
+  }
+}
+// Orbital Strike: mark the biggest crowd, then call the beam down on it a moment later.
+function paintOrbital(fallback, t = tn()) {
   const p = game.player.position
-  const spot = densestSpot(livePoints(p.x, p.z, 18), ORBITAL_RADIUS) ?? fallback
-  const at = { x: spot.x, z: spot.z }
+  const spot = densestSpot(livePoints(p.x, p.z, 18), t.radius) ?? fallback
+  callOrbital({ x: spot.x, z: spot.z }, t.radius, t.damage, t.delay)
+}
+function callOrbital(at, radius, damage, delay) {
   const glow = heroLook().glow
   showPopup(popupPool, at, 'ORBITAL STRIKE', 'INBOUND', '#ff6a6a')
   sfx.play('announcement', at)
-  for (let i = 0; i < 5; i++) heroState.pending.push({ at: heroNow + i * 0.3, run: () => sparkRing(at.x, at.z, ORBITAL_RADIUS * (1 - i * 0.15), 0xff3a3a, 20) })
-  heroState.pending.push({ at: heroNow + 1.5, run: () => orbitalStrike(at, glow) })
+  for (let i = 0; i < 5; i++) heroState.pending.push({ at: heroNow + i * delay * 0.2, run: () => sparkRing(at.x, at.z, radius * (1 - i * 0.15), 0xff3a3a, 20) })
+  heroState.pending.push({ at: heroNow + delay, run: () => orbitalStrike(at, glow, radius, damage) })
 }
-function orbitalStrike(at, glow) {
-  addBeam(glow, 40, 1.6, 0.7, (mesh) => {
+function orbitalStrike(at, glow, radius, damage) {
+  addBeam(glow, 40, radius * 0.32, 0.7, (mesh) => {
     mesh.position.set(at.x, game.player.mesh.position.y, at.z)
     mesh.rotation.x = -Math.PI / 2 // +z up into the sky
   })
   burst(particleSystem, { x: at.x, y: 0.6, z: at.z }, 0xffffff, 40, 7, 0.4)
   burst(particleSystem, { x: at.x, y: 0.6, z: at.z }, glow, 30, 5, 0.6)
   column(at.x, at.z, glow, 8, 14)
-  spawnShockwave(shockwavePool, at.x, at.z, ORBITAL_RADIUS, glow)
-  warp.add('ripple', at.x, at.z, ORBITAL_RADIUS + 1.5, 0.7)
+  spawnShockwave(shockwavePool, at.x, at.z, radius, glow)
+  warp.add('ripple', at.x, at.z, radius + 1.5, 0.7)
   triggerShake(game.shake, SHAKE_HIT_MAGNITUDE * 2.2, SHAKE_HIT_DURATION * 2)
   sfx.play('bossSlam', at)
   input.rumble(RUMBLE_STRONG_STRENGTH, RUMBLE_STRONG_DURATION)
-  for (const mesh of heroTargets(at.x, at.z, ORBITAL_RADIUS)) heroHurt(mesh, 4 * heroBaseDamage(), 3, at)
+  for (const mesh of heroTargets(at.x, at.z, radius)) heroHurt(mesh, damage * heroBaseDamage(), 3, at)
 }
-// High Noon: slow time, mark the nearest six, then fan the hammer.
-function highNoon() {
+// High Noon: slow time, mark the nearest monsters, then fan the hammer.
+// Awakened: time nearly stops for 6 s, twice the marks, and your hits deal more until it ends.
+function highNoon(t = tn()) {
   const p = game.player
-  const marks = pickMarks(livePoints(p.position.x, p.position.z, 16), p.position)
+  const marks = pickMarks(livePoints(p.position.x, p.position.z, t.range), p.position, t.range, t.marks)
   if (!marks.length) return
-  setTimeWarp(Math.max(timeWarp.until, heroNow + 1.3))
-  warp.add('swirl', p.position.x, p.position.z, 6, 0.9)
+  setTimeWarp(Math.max(timeWarp.until, heroNow + t.slow), t.factor)
+  heroState.noonUntil = heroNow + t.slow
+  warp.add('swirl', p.position.x, p.position.z, 6, Math.min(t.slow, 2))
   showPopup(popupPool, p.position, "IT'S HIGH NOON", '', '#ffd15c')
   sfx.play('announcement', p.position)
   for (const m of marks) column(m.x, m.z, 0xff3a3a, 3, 6)
@@ -1453,7 +1598,7 @@ function highNoon() {
       sparkLine(from, to, 0xfff0a0, 12)
       burst(particleSystem, { x: to.x, y: 1, z: to.z }, 0xff3a3a, 14, 3, 0.35)
       sfx.play('hit', to)
-      heroHurt(m.mesh, 2 * heroBaseDamage(), 1.5, from)
+      heroHurt(m.mesh, t.damage * heroBaseDamage(), 1.5, from)
     },
   }))
 }
@@ -1468,7 +1613,58 @@ function throwHammer(angle) {
   const turn = { x: from.x + Math.sin(angle) * HAMMER_REACH, z: from.z + Math.cos(angle) * HAMMER_REACH }
   heroState.pending.push({ at: heroNow + 0.5, run: () => lightningStrike(turn, glow) })
 }
-function lightningStrike(at, glow) {
+// Awakened Hammer Recall: the hammer hangs in the air for `hover` seconds, gliding after your aim, smashing
+// what it touches and calling lightning down every second, then flies back to your hand.
+const HAMMER_GLIDE = 13 // m/s it chases the aim point
+const HAMMER_RETURN = 30
+function throwStormHammer(hover) {
+  if (heroState.hammer) {
+    heroState.hammer.until = Math.max(heroState.hammer.until, heroNow + hover)
+    heroState.hammer.returning = false
+    return
+  }
+  const p = game.player
+  const mesh = createHeroProjectile('hammer', heroLook().glow)
+  mesh.scale.setScalar(1.6)
+  mesh.position.set(p.position.x, p.mesh.position.y + 1.3, p.position.z)
+  scene.add(mesh)
+  heroState.hammer = { mesh, x: p.position.x, z: p.position.z, until: heroNow + hover, nextStrike: heroNow + 0.6, returning: false, hit: new Map() }
+  sfx.play('swing', p.position)
+  showPopup(popupPool, p.position, 'STORM HAMMER', `${hover} s`, '#9fd8ff')
+}
+function stepStormHammer(now, dt) {
+  const h = heroState.hammer
+  if (!h) return
+  const p = game.player
+  const glow = heroLook().glow
+  if (now >= h.until || p.hp <= 0) h.returning = true
+  const target = h.returning ? p.position : heroAimPoint(18)
+  const next = steerToward(h, target, h.returning ? HAMMER_RETURN : HAMMER_GLIDE, dt)
+  h.x = next.x
+  h.z = next.z
+  h.mesh.position.set(h.x, p.mesh.position.y + 1.3 + Math.sin(now * 4) * 0.25, h.z)
+  h.mesh.rotation.y += dt * (h.returning ? 20 : 6)
+  if (Math.random() < 0.8) burst(particleSystem, { x: h.x, y: h.mesh.position.y, z: h.z }, glow, 2, 1, 0.3)
+  if (h.returning && Math.hypot(h.x - p.position.x, h.z - p.position.z) < 0.8) {
+    scene.remove(h.mesh)
+    disposeHeroProjectile(h.mesh)
+    heroState.hammer = null
+    burst(particleSystem, { x: p.position.x, y: 1.2, z: p.position.z }, glow, 16, 3, 0.4)
+    return
+  }
+  // Smashes what it touches (each monster at most every 0.5 s).
+  for (const mesh of heroTargets(h.x, h.z, 1.5)) {
+    if (now < (h.hit.get(mesh) ?? 0)) continue
+    h.hit.set(mesh, now + 0.5)
+    heroHurt(mesh, heroBaseDamage(), 2, { x: h.x, z: h.z })
+    burst(particleSystem, { x: mesh.position.x, y: 1, z: mesh.position.z }, glow, 10, 2.5, 0.35)
+  }
+  if (!h.returning && now >= h.nextStrike) {
+    h.nextStrike = now + 1
+    lightningStrike({ x: h.x, z: h.z }, glow)
+  }
+}
+function lightningStrike(at, glow, radius = 3.5, damage = 1.8) {
   addBeam(glow, 30, 0.45, 0.35, (mesh) => {
     mesh.position.set(at.x, game.player.mesh.position.y, at.z)
     mesh.rotation.x = -Math.PI / 2
@@ -1482,16 +1678,16 @@ function lightningStrike(at, glow) {
     burst(particleSystem, { x, y, z }, 0xffffff, 2, 0.6, 0.25)
   }
   burst(particleSystem, { x: at.x, y: 0.5, z: at.z }, glow, 30, 5, 0.4)
-  spawnShockwave(shockwavePool, at.x, at.z, 3.5, glow)
-  warp.add('ripple', at.x, at.z, 4, 0.45)
+  spawnShockwave(shockwavePool, at.x, at.z, radius, glow)
+  warp.add('ripple', at.x, at.z, radius + 0.5, 0.45)
   triggerShake(game.shake, SHAKE_HIT_MAGNITUDE * 1.5, SHAKE_HIT_DURATION)
   sfx.play('bossSlam', at)
-  for (const mesh of heroTargets(at.x, at.z, 3.5)) heroHurt(mesh, 1.8 * heroBaseDamage(), 2, at)
+  for (const mesh of heroTargets(at.x, at.z, radius)) heroHurt(mesh, damage * heroBaseDamage(), 2, at)
 }
-// Event Horizon: a black hole that drags everything in for 2 s, then implodes.
-function openBlackHole(at) {
-  heroState.holes.push({ x: at.x, z: at.z, born: heroNow })
-  warp.add('swirl', at.x, at.z, BLACKHOLE_PULL_RADIUS, BLACKHOLE_LIFE)
+// Event Horizon: a black hole that drags everything in, then implodes.
+function openBlackHole(at, t = tn()) {
+  heroState.holes.push({ x: at.x, z: at.z, born: heroNow, pull: t.pull, blast: t.blast, damage: t.damage, life: t.life })
+  warp.add('swirl', at.x, at.z, t.pull, t.life)
   showPopup(popupPool, at, 'EVENT HORIZON', '', '#c77dff')
   sfx.play('hyperspace', at)
 }
@@ -1500,23 +1696,23 @@ function stepBlackHoles(now, dt) {
   const glow = heroLook().glow
   heroState.holes = heroState.holes.filter((h) => {
     const age = now - h.born
-    if (age >= BLACKHOLE_LIFE) {
+    if (age >= h.life) {
       burst(particleSystem, { x: h.x, y: 0.8, z: h.z }, 0xffffff, 30, 7, 0.35)
       burst(particleSystem, { x: h.x, y: 0.8, z: h.z }, glow, 40, 6, 0.5)
-      spawnShockwave(shockwavePool, h.x, h.z, BLACKHOLE_BLAST_RADIUS, glow)
-      warp.add('ripple', h.x, h.z, BLACKHOLE_BLAST_RADIUS + 2, 0.6)
+      spawnShockwave(shockwavePool, h.x, h.z, h.blast, glow)
+      warp.add('ripple', h.x, h.z, h.blast + 2, 0.6)
       triggerShake(game.shake, SHAKE_HIT_MAGNITUDE * 2, SHAKE_HIT_DURATION * 1.5)
       sfx.play('bossSlam', h)
-      for (const mesh of heroTargets(h.x, h.z, BLACKHOLE_BLAST_RADIUS)) heroHurt(mesh, 3 * heroBaseDamage(), 3, h)
+      for (const mesh of heroTargets(h.x, h.z, h.blast)) heroHurt(mesh, h.damage * heroBaseDamage(), 3, h)
       return false
     }
     // A swirl of sparks spiralling into a dark core.
     for (let k = 0; k < 3; k++) {
       const a = age * 9 + k * 2.1
-      const r = BLACKHOLE_PULL_RADIUS * 0.6 * (1 - ((age * 2 + k / 3) % 1))
+      const r = h.pull * 0.6 * (1 - ((age * 2 + k / 3) % 1))
       burst(particleSystem, { x: h.x + Math.sin(a) * r, y: 0.6, z: h.z + Math.cos(a) * r }, k ? glow : 0x14101e, 1, 0.4, 0.3)
     }
-    for (const mesh of heroTargets(h.x, h.z, BLACKHOLE_PULL_RADIUS)) {
+    for (const mesh of heroTargets(h.x, h.z, h.pull)) {
       const dx = h.x - mesh.position.x
       const dz = h.z - mesh.position.z
       const d = Math.hypot(dx, dz)
@@ -1530,26 +1726,26 @@ function stepBlackHoles(now, dt) {
     return true
   })
 }
-// Rebirth: the fire nova Phoenix Phoebe rises from.
-function phoenixNova(at) {
+// Rebirth: the fire nova Phoenix Phoebe rises from (and her Phoenix Dive).
+function phoenixNova(at, radius, damage, toast) {
   const glow = heroLook().glow
-  burst(particleSystem, { x: at.x, y: 0.8, z: at.z }, 0xff6a2a, 50, 8, 0.5)
-  burst(particleSystem, { x: at.x, y: 1.6, z: at.z }, glow, 30, 5, 0.7)
+  burst(particleSystem, { x: at.x, y: 0.8, z: at.z }, 0xff6a2a, 50, radius * 1.3, 0.5)
+  burst(particleSystem, { x: at.x, y: 1.6, z: at.z }, glow, 30, radius * 0.8, 0.7)
   column(at.x, at.z, 0xffb547, 6, 12)
-  spawnShockwave(shockwavePool, at.x, at.z, 6, 0xff6a2a)
-  warp.add('ripple', at.x, at.z, 7, 0.7)
+  spawnShockwave(shockwavePool, at.x, at.z, radius, 0xff6a2a)
+  warp.add('ripple', at.x, at.z, radius + 1, 0.7)
   triggerShake(game.shake, SHAKE_HIT_MAGNITUDE * 2, SHAKE_HIT_DURATION * 2)
   sfx.play('cannonball', at)
-  showLootToast(hud, { title: 'REBIRTH', name: 'Phoenix Phoebe', blurb: 'From the ashes. Again.' })
-  for (const mesh of heroTargets(at.x, at.z, 6)) {
-    heroHurt(mesh, 3 * heroBaseDamage(), 3, at)
-    mesh.userData.burn = { until: heroNow + 3, next: heroNow + 1, dps: 0.4 * heroBaseDamage() }
+  if (toast) showLootToast(hud, { title: 'REBIRTH', name: 'Phoenix Phoebe', blurb: 'From the ashes. Again.' })
+  for (const mesh of heroTargets(at.x, at.z, radius)) {
+    heroHurt(mesh, damage * heroBaseDamage(), 3, at)
+    setBurn(mesh, 0.4, 3)
   }
 }
 // Thousand Cuts: flash from monster to monster, slashing each.
-function thousandCuts() {
+function thousandCuts(max = tn().max, hop = tn().hop, damage = tn().damage) {
   const p = game.player
-  const path = chainPath(livePoints(p.position.x, p.position.z, 16), p.position)
+  const path = chainPath(livePoints(p.position.x, p.position.z, hop * 2), p.position, max, hop)
   if (path.length < 1) return
   p.invulnerableUntil = Math.max(p.invulnerableUntil, heroNow + path.length * 0.08 + 0.5)
   showPopup(popupPool, p.position, 'THOUSAND CUTS', '', '#ff6a6a')
@@ -1573,80 +1769,202 @@ function thousandCuts() {
       game.player.mesh.position.z = landing.z
       game.player.facing = Math.atan2(dx, dz)
       sfx.play('swing', landing)
-      heroHurt(target.mesh, 1.6 * heroBaseDamage(), 1.5, from)
+      heroHurt(target.mesh, damage * heroBaseDamage(), 1.5, from)
     },
   }))
 }
 const heroTargets = (x, z, radius) =>
   game.monsters.filter((m) => !m.userData.dying && !m.userData.spawning && !m.userData.falling && Math.hypot(m.position.x - x, m.position.z - z) < radius + (m.userData.radius ?? 0.5))
+function phaseBurst(at, t = tn()) {
+  burst(particleSystem, { x: at.x, y: 0.6, z: at.z }, heroLook().glow, 26, t.radius * 1.5, 0.4)
+  spawnShockwave(shockwavePool, at.x, at.z, t.radius + 0.2, heroLook().glow)
+  for (const mesh of heroTargets(at.x, at.z, t.radius)) heroHurt(mesh, t.damage * heroBaseDamage())
+}
 function onHeroDash(start, now) {
   const trait = heroTrait()
-  if (trait === 'slipstream') heroState.slipUntil = now + 2.5
-  if (trait === 'ram') {
-    burst(particleSystem, { x: start.x, y: 0.8, z: start.z }, 0xffffff, 18, 5, 0.3)
-    burst(particleSystem, { x: start.x, y: 0.8, z: start.z }, heroLook().glow, 14, 4, 0.4)
-    spawnShockwave(shockwavePool, start.x, start.z, 3, heroLook().glow)
-    warp.add('ripple', start.x, start.z, 3.5, 0.4)
-    sfx.play('cannonball', start)
-    for (const mesh of heroTargets(start.x, start.z, 3)) heroHurt(mesh, heroBaseDamage(), 2.5, start)
+  const t = tn()
+  if (trait === 'slipstream') {
+    heroState.slipUntil = now + t.time
+    heroState.slipHaste = t.haste
+    if (t.gust) sonicBoom(start, 3, t.gust)
   }
+  if (trait === 'ram') sonicBoom(start, t.boomRadius, t.boomDamage)
   if (trait === 'phase') {
-    burst(particleSystem, { x: start.x, y: 0.6, z: start.z }, heroLook().glow, 26, 5, 0.4)
-    spawnShockwave(shockwavePool, start.x, start.z, 2.8, heroLook().glow)
-    for (const mesh of heroTargets(start.x, start.z, 2.6)) heroHurt(mesh, 1.5 * heroBaseDamage())
+    phaseBurst(start, t)
+    if (t.endBurst) heroState.pending.push({ at: now + 0.2, run: () => phaseBurst({ x: game.player.position.x, z: game.player.position.z }) })
   }
+}
+// A pool of plague ooze (Contagion), hitting every monster in it every 0.5 s.
+function addCloud(at, t = tn()) {
+  if (heroState.clouds.length >= t.cap) return
+  heroState.clouds.push({ x: at.x, z: at.z, until: heroNow + t.life, next: heroNow + 0.25, radius: t.radius, damage: t.damage })
+  setPoisonGlow(contagionPool, heroLook().glow)
+  lobPoison(contagionPool, { x: at.x, z: at.z, tx: at.x, tz: at.z, flight: 0.001, radius: t.radius, life: t.life, tick: 99, damage: 0 })
+}
+function boneBurst(at, t = tn()) {
+  burst(particleSystem, { x: at.x, y: 0.7, z: at.z }, heroLook().trim, 22, 5, 0.3)
+  burst(particleSystem, { x: at.x, y: 0.7, z: at.z }, heroLook().glow, 10, 3, 0.4)
+  spawnShockwave(shockwavePool, at.x, at.z, t.radius, heroLook().trim)
+  for (const mesh of heroTargets(at.x, at.z, t.radius)) heroHurt(mesh, t.damage * heroBaseDamage(), 1, at)
 }
 function onHeroKill(mesh, position) {
   const trait = heroTrait()
+  const t = tn()
+  const at = { x: position.x, z: position.z }
   heroState.kills++
-  if (trait === 'orbital' && heroState.kills % ORBITAL_EVERY === 0) {
-    const at = { x: position.x, z: position.z }
-    heroState.pending.push({ at: heroNow + 0.1, run: () => paintOrbital(at) })
-  }
-  if (trait === 'seconds' && heroState.kills % SECONDS_EVERY === 0 && game.player.hp > 0) {
+  if (trait === 'orbital' && heroState.kills % t.every === 0) heroState.pending.push({ at: heroNow + 0.1, run: () => paintOrbital(at) })
+  if (trait === 'seconds' && heroState.kills % t.every === 0 && game.player.hp > 0) {
     const p = game.player
-    p.hp = Math.min(p.maxHp, p.hp + p.maxHp * 0.12)
+    p.hp = Math.min(p.maxHp, p.hp + p.maxHp * t.heal)
     burst(particleSystem, { x: p.position.x, y: 1.4, z: p.position.z }, heroLook().glow, 16, 2.5, 0.6)
-    showPopup(popupPool, p.position, 'FLAMBÉ!', `+${Math.round(p.maxHp * 0.12)} HP`, '#ffb547')
-    const at = { x: position.x, z: position.z }
+    showPopup(popupPool, p.position, 'FLAMBÉ!', `+${Math.round(p.maxHp * t.heal)} HP`, '#ffb547')
     heroState.pending.push({ at: heroNow + 0.05, run: () => flambe(at) })
   }
-  if (trait === 'lucky' && Math.random() < 0.15) {
-    const at = { x: position.x, z: position.z }
-    heroState.pending.push({ at: heroNow + 0.06, run: () => motherLode(at) })
+  if (trait === 'lucky' && Math.random() < t.chance) heroState.pending.push({ at: heroNow + 0.06, run: () => motherLode(at) })
+  if (trait === 'tipjar' && game.chainState.count >= t.minChain) {
+    const tip = Math.max(1, tipJarCrystals(game.chainState.count)) * t.tipMult
+    dropCrystals(crystalSystem, position.x, position.z, Array(tip).fill(1))
+    const targets = heroTargets(position.x, position.z, 8).filter((m) => m !== mesh).sort((a, b) => distTo(a, at) - distTo(b, at)).slice(0, t.cases)
+    for (const target of targets) flingSuitcase(at, target, t.damage)
   }
-  if (trait === 'tipjar') {
-    const tip = tipJarCrystals(game.chainState.count)
-    if (tip) {
-      dropCrystals(crystalSystem, position.x, position.z, Array(tip).fill(1))
-      const target = heroTargets(position.x, position.z, 8).filter((m) => m !== mesh)
-        .sort((a, b) => Math.hypot(a.position.x - position.x, a.position.z - position.z) - Math.hypot(b.position.x - position.x, b.position.z - position.z))[0]
-      if (target) {
-        const from = { x: position.x, z: position.z }
-        const to = { x: target.position.x, z: target.position.z }
-        launchFlyer({ kind: 'suitcase', color: heroLook().trim, duration: 0.35, radius: 0.9, damage: heroBaseDamage(), knockback: 5, spin: 9, point: (t) => ({ x: from.x + (to.x - from.x) * t, z: from.z + (to.z - from.z) * t }), arc: 1.2 })
-      }
-    }
+  if (trait === 'corpse') heroState.pending.push({ at: heroNow + 0.08, run: () => boneBurst(at) })
+  // A splash of poison where it died; anything that dies in the puddle leaves one of its own.
+  if (trait === 'contagion') addCloud(at, t)
+  // Awakened Kindling: whatever dies burning bursts into flame and lights its neighbours.
+  if (trait === 'kindling' && t.spread && mesh.userData.burn && heroNow < mesh.userData.burn.until) heroState.pending.push({ at: heroNow + 0.08, run: () => flambe(at, 1, 3.5) })
+  // Awakened Hexed: a cursed monster's death curses everything near it.
+  if (trait === 'hex' && t.spread && heroNow < (mesh.userData.hexUntil ?? -Infinity)) {
+    burst(particleSystem, { x: at.x, y: 1, z: at.z }, heroLook().glow, 20, t.spread, 0.6)
+    spawnShockwave(shockwavePool, at.x, at.z, t.spread, heroLook().glow)
+    for (const m of heroTargets(at.x, at.z, t.spread)) m.userData.hexUntil = heroNow + t.time
   }
-  if (trait === 'corpse') {
-    const at = { x: position.x, z: position.z }
-    heroState.pending.push({
-      at: heroNow + 0.08,
-      run: () => {
-        burst(particleSystem, { x: at.x, y: 0.7, z: at.z }, heroLook().trim, 22, 5, 0.3)
-        burst(particleSystem, { x: at.x, y: 0.7, z: at.z }, heroLook().glow, 10, 3, 0.4)
-        spawnShockwave(shockwavePool, at.x, at.z, 3, heroLook().trim)
-        for (const mesh of heroTargets(at.x, at.z, 3)) heroHurt(mesh, 0.6 * heroBaseDamage(), 1, at)
-      },
-    })
-  }
-  if (trait === 'contagion' && heroState.clouds.length < 10) {
-    // A splash of poison where it died; anything that dies in the puddle leaves one of its own.
-    heroState.clouds.push({ x: position.x, z: position.z, until: heroNow + 3, next: heroNow + 0.25 })
-    setPoisonGlow(contagionPool, heroLook().glow)
-    lobPoison(contagionPool, { x: position.x, z: position.z, tx: position.x, tz: position.z, flight: 0.001, radius: 2.2, life: 3, tick: 99, damage: 0 })
+  // Awakened Backstab: a backstab kill and you melt into the shadows.
+  if (trait === 'backstab' && t.vanish && heroNow - (mesh.userData.backstabAt ?? -Infinity) < 0.2) {
+    game.player.ghostUntil = Math.max(game.player.ghostUntil ?? -Infinity, heroNow + t.vanish)
   }
 }
+function flingSuitcase(from, target, damage) {
+  const to = { x: target.position.x, z: target.position.z }
+  launchFlyer({ kind: 'suitcase', color: heroLook().trim, duration: 0.35, radius: 0.9, damage: damage * heroBaseDamage(), knockback: 5, spin: 9, point: (k) => ({ x: from.x + (to.x - from.x) * k, z: from.z + (to.z - from.z) * k }), arc: 1.2 })
+}
+
+// ---- hero abilities (B), unlocked by awakening at mastery 4 ----
+function triggerHeroAbility(now) {
+  const heroId = heroProfile().hero
+  const def = HERO_ABILITIES[heroId]
+  const player = game.player
+  if (!def || player.hidden || player.hp <= 0 || player.falling) return
+  if (!heroAwake()) {
+    if (now - heroState.lockedToastAt > 3) {
+      heroState.lockedToastAt = now
+      const level = masteryLevel(profile.progress?.mastery?.[heroId] ?? 0)
+      showLootToast(hud, { title: 'HERO ABILITY LOCKED', name: def.name, blurb: `Reach mastery ${AWAKEN_LEVEL} with ${heroById(heroId).name} to awaken it (now level ${level}).` })
+    }
+    return
+  }
+  const used = useHeroAbility(heroId, true, now, heroState.abilityReady, activeFx(game.inventory.equipped).haste)
+  if (!used.used) return
+  heroState.abilityReady = used.readyAt
+  heroNow = now
+  tutorialEvent('ability')
+  const p = { x: player.position.x, z: player.position.z }
+  const aim = heroAimAngle()
+  const glow = heroLook().glow
+  const awake = (id) => traitTune(id, true)
+  const later = (delay, run) => heroState.pending.push({ at: now + delay, run })
+  const heal = (amount) => {
+    player.hp = Math.min(player.maxHp, player.hp + amount)
+    showPopup(popupPool, player.position, `+${Math.round(amount)} HP`, '', '#7dffa0')
+  }
+  const nearest = (range, count) => heroTargets(p.x, p.z, range).sort((a, b) => distTo(a, p) - distTo(b, p)).slice(0, count)
+  showPopup(popupPool, player.position, def.name.toUpperCase(), 'HERO ABILITY', '#ffd15c')
+  input.rumble(RUMBLE_STRONG_STRENGTH, RUMBLE_STRONG_DURATION)
+  switch (heroId) {
+    case 'guest': heroNova(p, 6, 2, 5); break
+    case 'ember': heroNova(p, 7, 2, 2, 0xff8a3d, (m) => setBurn(m, 0.8, 5)); break
+    case 'thorn': rootBurst(9, 4, 1.5, false); heal(30); break
+    case 'gale':
+      heroNova(p, 6, 1, 8, 0xd8fff0)
+      heroState.speedUntil = now + 5
+      heroState.slipUntil = now + 5
+      heroState.slipHaste = 1.5
+      break
+    case 'prospector': ringPoints(p, 5, 3.5, aim).forEach((pt, i) => later(i * 0.12, () => motherLode(pt, awake('lucky')))); break
+    case 'frost': heroNova(p, 10, 0, 0, 0x9fe8ff, (m) => applyFreeze(m.userData, now, 3.5)); break
+    case 'monk': heroNova(p, 6, 3, 3); heroState.focusUntil = now + 8; break
+    case 'plague': [p, ...ringPoints(p, 6, 3.8)].forEach((pt) => addCloud(pt, { ...awake('contagion'), cap: 30 })); break
+    case 'moon':
+      heroTargets(p.x, p.z, 22).sort((a, b) => distTo(b, p) - distTo(a, p)).slice(0, 5)
+        .forEach((m, i) => later(i * 0.15, () => alive(m) && lightningStrike({ x: m.position.x, z: m.position.z }, 0xd8e6ff, 2, 3)))
+      break
+    case 'forge':
+      heroNova(p, 5, 2.5, 3, 0xff6a2a)
+      heroState.molten = awake('molten').stacks
+      heroState.moltenUntil = now + 8
+      break
+    case 'sun': heroNova(p, 8, 2.5, 3); heal(player.maxHp * 0.4); break
+    case 'void': {
+      const target = heroAimPoint(def.range)
+      phaseBurst(p, awake('phase'))
+      const moved = clampToPlatform(resolveArenaMove(player.position, { x: target.x - p.x, z: target.z - p.z }, PLAYER_RADIUS, game.obstacles), ARENA_RADIUS - 1)
+      streak(player.position, moved, glow, 12)
+      player.position = { x: moved.x, z: moved.z }
+      player.mesh.position.x = moved.x
+      player.mesh.position.z = moved.z
+      player.invulnerableUntil = Math.max(player.invulnerableUntil, now + 0.4)
+      phaseBurst(moved, awake('phase'))
+      warp.add('swirl', moved.x, moved.z, 4, 0.5)
+      break
+    }
+    case 'lifeguard': blowWhistle(9, 2, 30); break
+    case 'bellhop': nearest(12, 8).forEach((m, i) => later(i * 0.08, () => alive(m) && flingSuitcase({ x: game.player.position.x, z: game.player.position.z }, m, 2))); break
+    case 'storm': [...heroTargets(p.x, p.z, 14)].sort(() => Math.random() - 0.5).slice(0, 8)
+      .forEach((m, i) => later(i * 0.15, () => alive(m) && lightningStrike({ x: m.position.x, z: m.position.z }, glow, 2, 2)))
+      break
+    case 'bone': heroTargets(p.x, p.z, 10).forEach((m, i) => { const at = { x: m.position.x, z: m.position.z }; later(i * 0.05, () => boneBurst(at, awake('corpse'))) }); break
+    case 'dj': for (let i = 0; i < 4; i++) later(i * 0.45, () => bassDrop({ x: game.player.position.x, z: game.player.position.z }, 6, 1.5)); break
+    case 'hex':
+      heroNova(p, 14, 0, 0, glow, (m) => {
+        m.userData.hexUntil = now + 10
+        if (!m.userData.isBoss) m.userData.confusedUntil = now + 3
+      })
+      break
+    case 'echo': heroState.echoUntil = now + 6; burst(particleSystem, { x: p.x, y: 1, z: p.z }, glow, 30, 3, 0.6); break
+    case 'clock':
+      heroNova(p, 14, 0, 0, glow, (m) => applyFreeze(m.userData, now, 3))
+      setTimeWarp(Math.max(timeWarp.until, now + 5), 0.35)
+      break
+    case 'chef': heal(player.maxHp * 0.35); ringPoints(p, 3, 3, aim).forEach((pt, i) => later(0.1 + i * 0.15, () => flambe(pt, 2, 4))); break
+    case 'pirate':
+      pointsAlong(p, aim, 12, 1.6, 2).forEach((pt, i) => {
+        const side = (i % 2 ? 1 : -1) * 1.2
+        const spot = { x: pt.x + Math.cos(aim) * side, z: pt.z - Math.sin(aim) * side }
+        later(0.07 * i, () => cannonBlast(spot, 2, 2.4))
+      })
+      break
+    case 'rosa': for (let i = 0; i < 3; i++) later(i * 0.5, () => thornBurst(6, 1.5)); heal(20); break
+    case 'valet':
+      player.ghostUntil = Math.max(player.ghostUntil ?? -Infinity, now + 4)
+      heroState.vanishUntil = now + 4
+      burst(particleSystem, { x: p.x, y: 1, z: p.z }, 0x2a2a3a, 30, 3, 0.6)
+      break
+    case 'astro': heroNova(p, 10, 1.5, 14, glow); break
+    case 'dread': for (let i = 0; i < 8; i++) throwSaber(aim + (i / 8) * Math.PI * 2, 12, 2); sfx.play('swing', p); break
+    case 'odie': for (let i = 0; i < 6; i++) throwBoomerang(aim + (i / 5 - 0.5) * 1.5, { ...awake('boomerang'), reach: 12, count: 1 }); break
+    case 'jackpot': nearest(14, 3).forEach((m, i) => { const at = { x: m.position.x, z: m.position.z }; later(i * 0.2, () => jackpotBlast(at, ['7', '7', '7'], awake('jackpot'))) }); break
+    case 'magma': ringPoints(p, 18, 4).forEach((pt) => addFootprint(pt.x, pt.z, now, { ...awake('hotfoot'), radius: 1.3 })); sonicBoom(p, 4, 1); break
+    case 'hana': fireHook(6, 16, 2, 2.5); break
+    case 'rush': pointsAlong(p, aim, 5, 3, 2).forEach((pt, i) => later(i * 0.08, () => sonicBoom(pt, 3.5, 2))); break
+    case 'cobalt': pointsAlong(p, aim, 5, 4, 4).forEach((pt, i) => later(i * 0.2, () => callOrbital(pt, 5, 4, 1))); break
+    case 'kaiju': startAtomicBreath(awake('atomic').hold); break
+    case 'dakota': highNoon(awake('highnoon')); break
+    case 'thundra': throwStormHammer(awake('hammer').hover); break
+    case 'singularity': openBlackHole(heroAimPoint(def.range), { pull: 16, blast: 7, damage: 6, life: 3 }); break
+    case 'phoebe': phoenixNova(p, 7, 4, false); player.invulnerableUntil = Math.max(player.invulnerableUntil, now + 1); break
+    case 'kenji': thousandCuts(9, 12, 2.5); break
+  }
+}
+
 // Every frame of play: the look, gear motion, and the traits that run on a clock.
 function stepHeroTraits(now, dt) {
   heroNow = now
@@ -1654,30 +1972,36 @@ function stepHeroTraits(now, dt) {
   const player = game.player
   player.mesh.userData.heroGear?.userData.animate?.(now, player.speed)
   const trait = heroTrait()
-  if (player.speed > 0.3) heroState.stillSince = now
-  if (trait === 'bramble' && player.hp > 0 && player.hp < player.maxHp / 2) player.hp = Math.min(player.maxHp, player.hp + 1.5 * dt)
+  const t = tn()
+  if (player.speed > 0.3) {
+    // Awakened Inner Focus lingers a moment after you start moving.
+    if (trait === 'focus' && t.linger && now - heroState.stillSince >= t.delay) heroState.focusUntil = Math.max(heroState.focusUntil, now + t.linger)
+    heroState.stillSince = now
+  }
+  if (trait === 'bramble' && player.hp > 0 && player.hp < player.maxHp / 2) player.hp = Math.min(player.maxHp, player.hp + t.regen * dt)
   if (heroState.lastHp !== null && player.hp < heroState.lastHp - 0.5 && trait === 'thorns' && now >= heroState.thornsReady && player.hp > 0) {
     heroState.thornsReady = now + 0.4
     thornBurst()
   }
   if (heroState.lastHp !== null && player.hp < heroState.lastHp - 0.01 && trait === 'molten') {
-    heroState.molten = Math.min(5, (now < heroState.moltenUntil ? heroState.molten : 0) + 1)
-    heroState.moltenUntil = now + 6
+    heroState.molten = Math.min(t.stacks, (now < heroState.moltenUntil ? heroState.molten : 0) + 1)
+    heroState.moltenUntil = Math.max(heroState.moltenUntil, now + t.time)
   }
   if (trait === 'bramble' && rootsTriggered(heroState.lastHp, player.hp, player.maxHp, now, heroState.rootsReady)) {
-    heroState.rootsReady = now + ROOTS_COOLDOWN
+    heroState.rootsReady = now + t.rootCooldown
     rootBurst()
   }
   heroState.lastHp = player.hp
-  if (trait === 'hotfoot') stepHotFoot(player, now, dt)
-  else heroState.footprints.length = 0
+  if (trait === 'hotfoot' || heroState.footprints.length) stepHotFoot(player, now, dt) // Lava Ring's footprints burn out even if you switch away
   if (trait === 'ram') stepRam(player, now)
   const gear = player.mesh.userData.heroGear
-  if (gear) gear.userData.charge = trait === 'atomic' ? heroState.atomic / ATOMIC_EVERY : 0
+  if (gear) gear.userData.charge = trait === 'atomic' ? (heroState.breath ? 1 : heroState.atomic / t.every) : 0
   stepFlyers(now)
   stepYanks(now, dt)
   stepHeroFx(now)
   stepBlackHoles(now, dt)
+  stepStormHammer(now, dt)
+  stepAtomicBreath(now, dt)
   // Queued trait effects (static arcs, echoes, bass drops, bone bursts).
   if (heroState.pending.length) {
     const due = heroState.pending.filter((p) => now >= p.at)
@@ -1707,17 +2031,17 @@ function stepHeroTraits(now, dt) {
     if (now >= cloud.next) {
       cloud.next += 0.5
       burst(particleSystem, { x: cloud.x, y: 0.3, z: cloud.z }, heroLook().glow, 5, 1.2, 0.6)
-      for (const mesh of heroTargets(cloud.x, cloud.z, 2.2)) heroHurt(mesh, 0.5 * heroBaseDamage())
+      for (const mesh of heroTargets(cloud.x, cloud.z, cloud.radius)) heroHurt(mesh, cloud.damage * heroBaseDamage())
     }
     return true
   })
   // Radiance aura.
   if (trait === 'radiance' && now >= heroState.auraNext) {
     heroState.auraNext = now + 0.5
-    for (const mesh of heroTargets(player.position.x, player.position.z, 3.5)) {
-      heroHurt(mesh, 0.35 * heroBaseDamage())
+    for (const mesh of heroTargets(player.position.x, player.position.z, t.radius)) {
+      heroHurt(mesh, t.damage * heroBaseDamage())
       burst(particleSystem, { x: mesh.position.x, y: 0.9, z: mesh.position.z }, heroLook().glow, 5, 1.5, 0.6)
-      if (player.hp > 0) player.hp = Math.min(player.maxHp, player.hp + 0.5)
+      if (player.hp > 0) player.hp = Math.min(player.maxHp, player.hp + t.heal)
     }
   }
 }
@@ -1799,25 +2123,7 @@ function createGame() {
   scene.add(player.mesh)
   dressPlayer(player.mesh, heroLook())
   player.mesh.userData.heroKey = `${heroLook().heroId}:${heroLook().id}`
-  heroState.clouds = []
-  heroState.lastHp = null
-  heroState.molten = 0
-  heroState.pending = []
-  heroState.history = []
-  heroState.hits = 0
-  heroState.whistleReady = heroState.bassReadyAt = heroState.rewindReady = 0
-  heroState.kills = heroState.broadsideReady = heroState.thornsReady = 0
-  clearFlyers()
-  heroState.footprints = []
-  heroState.footDist = 0
-  heroState.lastFoot = null
-  heroState.rootsReady = 0
-  heroState.hookReady = heroState.noonReady = 0
-  heroState.atomic = 0
-  heroState.sabers = 0
-  heroState.holeReady = heroState.rebirthReady = heroState.cutsReady = 0
-  heroState.holes = []
-  clearHeroFx()
+  resetHeroState()
   applyDifficulty()
 
   const game = {
@@ -4557,7 +4863,7 @@ function scoreKill(game, mesh, cause, position, now) {
   })
   game.chainState = stepChain(game.chainState, now, trick.id)
   if (game.chainState.multiplier > 1) tutorialEvent('chain')
-  const zeroG = trick.id === 'checkout' || trick.id === 'vipCheckout' ? (heroTrait() === 'zerog' ? 3 : 1) : 1 // Cosmo Nova's ring-outs
+  const zeroG = trick.id === 'checkout' || trick.id === 'vipCheckout' ? (heroTrait() === 'zerog' ? tn().ringOut : 1) : 1 // Cosmo Nova's ring-outs
   const points = Math.round(trickPoints(scoreForKill(mesh.userData.type), game.chainState.multiplier) * activeFx(game.inventory.equipped).scoreMult * diff().score * zeroG)
   game.score += points
   progressNote({ type: 'kill', monster: mesh.userData.type, trick: trick.id })
@@ -4972,7 +5278,10 @@ function progressNote(event) {
     const hero = heroById(up.hero)
     const skinName = up.skin !== null ? hero.skins[up.skin]?.name : null
     sfx.play('chestOpen')
-    showLootToast(hud, { title: `MASTERY ${up.level}`, name: hero.name, blurb: `+${up.reward} ◆ banked${skinName ? `, and the ${skinName} skin is yours` : ''}` })
+    const awakened = up.level === AWAKEN_LEVEL && HERO_ABILITIES[up.hero]
+    showLootToast(hud, awakened
+      ? { title: `MASTERY ${up.level} · AWAKENED!`, name: hero.name, blurb: `${hero.trait.id ? `${hero.trait.name} grows far stronger, and ` : ''}${HERO_ABILITIES[up.hero].name} is yours: press B. +${up.reward} ◆${skinName ? `, ${skinName} skin` : ''}` }
+      : { title: `MASTERY ${up.level}`, name: hero.name, blurb: `+${up.reward} ◆ banked${skinName ? `, and the ${skinName} skin is yours` : ''}` })
   }
   if (result.done.length || result.levelUps.length) hub.refresh()
 }
@@ -5342,7 +5651,15 @@ window.addEventListener('touchend', () => {
 let game = createGame()
 
 // Dev-server only: lets browser tests (and you, in the console) peek at the state.
-if (import.meta.env.DEV) window.__debug = { input, get game() { return game }, get coop() { return coop } }
+if (import.meta.env.DEV) {
+  window.__debug = {
+    input, get game() { return game }, get coop() { return coop },
+    // Hero powers (sandbox): pick a hero, spawn monsters near you, read the awakened state.
+    setSandboxHero(id) { sandboxHeroPick = { hero: id, heroSkins: {} } },
+    spawn(type, n = 1) { for (let i = 0; i < n; i++) spawnMonster(game, type, { at: { x: game.player.position.x + Math.sin(i * 1.3) * (4 + i), z: game.player.position.z + Math.cos(i * 1.3) * (4 + i) } }) },
+    get heroState() { return heroState },
+  }
+}
 
 // ---------- online co-op (P; src/coop.js) ----------
 // The hurt feedback every source of player damage shares.
@@ -5930,7 +6247,7 @@ function gameFrame(timestamp) {
   if (!sandbox && game.inventory.pets.some((id) => !profile.collection.includes(id))) {
     setProfile(addToCollection(profile, game.inventory.pets))
   }
-  player.speedMultiplier = petFx.speedMultiplier * perk.speed * (holdSprinting() ? SHIFT_SPRINT_MULTIPLIER : 1) * (elapsedSeconds < player.sprintUntil ? SPRINT_SPEED_MULTIPLIER : 1) * (elapsedSeconds < (player.whirlUntil ?? -Infinity) ? 1.3 : 1) * player.speedFactor(elapsedSeconds)
+  player.speedMultiplier = petFx.speedMultiplier * perk.speed * (holdSprinting() ? SHIFT_SPRINT_MULTIPLIER : 1) * (elapsedSeconds < player.sprintUntil ? SPRINT_SPEED_MULTIPLIER : 1) * (elapsedSeconds < (player.whirlUntil ?? -Infinity) ? 1.3 : 1) * (elapsedSeconds < heroState.speedUntil ? 1.5 : 1) * player.speedFactor(elapsedSeconds)
   if (player.stepStatus(elapsedSeconds)) burst(particleSystem, { x: player.position.x, y: 1.1, z: player.position.z }, STATUS_COLORS.poison, 3, 1.5)
   if (game.world) {
     const jump = game.world.jump
@@ -6057,6 +6374,8 @@ function gameFrame(timestamp) {
       if (input.wasPressed(key) || input.wasAbilityPressed(slot)) activateAbility(game, slot, elapsedSeconds)
     })
   }
+  // The hero ability (B / a stick click / the hero slot), unlocked at mastery 4.
+  if (!downed && (input.wasPressed(HERO_ABILITY_KEY) || input.wasHeroAbilityPressed())) triggerHeroAbility(elapsedSeconds)
 
   // [ and ] cycle the scope / ammo (the ones you've unlocked) of the rifle in your hands.
   const heldId = selectedWeaponId(game.inventory)
@@ -6091,7 +6410,7 @@ function gameFrame(timestamp) {
     swingTrail,
     weaponId: selectedWeaponId(game.inventory),
     damageMultiplier: elapsedDamageMultiplier(player, elapsedSeconds) * petFx.damageMultiplier * perk.damage * (Math.random() < perk.crit ? 2 : 1),
-    cooldownMultiplier: petFx.cooldownMultiplier * perk.cooldown * (elapsedSeconds < player.frenzyUntil ? FRENZY_COOLDOWN_MULTIPLIER : 1) * (elapsedSeconds < timeWarp.until ? 0.77 : 1) * (elapsedSeconds < heroState.slipUntil ? 1 / 1.35 : 1),
+    cooldownMultiplier: petFx.cooldownMultiplier * perk.cooldown * (elapsedSeconds < player.frenzyUntil ? FRENZY_COOLDOWN_MULTIPLIER : 1) * (elapsedSeconds < timeWarp.until ? 0.77 : 1) * (elapsedSeconds < heroState.slipUntil ? 1 / heroState.slipHaste : 1),
     knockbackMultiplier: petFx.knockbackMultiplier * perk.knockback,
     bulletPool,
     rifleSetup: riflePicks(sandboxProfile(), selectedWeaponId(game.inventory)),
@@ -6477,6 +6796,11 @@ function gameFrame(timestamp) {
     setChestPrompt(hud, null)
   }
   updateInventoryHud(hud, game.inventory, elapsedSeconds)
+  {
+    const heroId = heroProfile().hero
+    const ability = HERO_ABILITIES[heroId]
+    updateHeroAbilityHud(hud, heroAwake() && ability ? { key: `${heroId}:${heroLook().id}`, look: heroLook(), name: ability.name, fraction: heroAbilityFraction(heroId, elapsedSeconds, heroState.abilityReady, activeFx(game.inventory.equipped).haste) } : null)
+  }
   updatePerkBar(game.inventory.equipped)
 
   const inBossFight = game.waveState.phase === 'bossFight'

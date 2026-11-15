@@ -36,6 +36,8 @@ export const BUTTONS = {
   RT: 7,
   BACK: 8,
   START: 9,
+  LS: 10, // stick clicks: the hero ability
+  RS: 11,
   DPAD_UP: 12,
   DPAD_DOWN: 13,
   DPAD_LEFT: 14,
@@ -112,5 +114,6 @@ export function gamepadActions(prev, curr, deadzone) {
     restart: pressedThisFrame(prev, curr, BUTTONS.START),
     mute: pressedThisFrame(prev, curr, BUTTONS.BACK),
     advance: (!ltHeld && aEdge) || pressedThisFrame(prev, curr, BUTTONS.START),
+    heroAbility: pressedThisFrame(prev, curr, BUTTONS.LS) || pressedThisFrame(prev, curr, BUTTONS.RS),
   }
 }

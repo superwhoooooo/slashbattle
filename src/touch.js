@@ -221,6 +221,12 @@ export function createTouchControls(input, hud) {
     })
   })
 
+  hud.heroSlot?.element.addEventListener('pointerdown', (event) => {
+    event.preventDefault()
+    event.stopPropagation()
+    input.tapKey('KeyB')
+  })
+
   // The game-over card: tap to play again.
   const lose = document.getElementById('lose-screen')
   lose?.addEventListener('pointerdown', (event) => {

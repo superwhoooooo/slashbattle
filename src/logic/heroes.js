@@ -582,10 +582,10 @@ export const STATIC_EVERY = 6 // hits per Static Charge arc
 export const ECHO_EVERY = 3 // hits per echo
 export const HEX_BONUS = 1.15
 // Rewind: the snapshot from ~3 s back, with at least 30% health.
-export function rewindTarget(history, now, maxHp) {
+export function rewindTarget(history, now, maxHp, minHp = 0.3) {
   const past = history.find((h) => now - h.t <= 3.2) ?? history[history.length - 1]
   if (!past) return null
-  return { x: past.x, z: past.z, hp: Math.max(past.hp, Math.ceil(maxHp * 0.3)) }
+  return { x: past.x, z: past.z, hp: Math.max(past.hp, Math.ceil(maxHp * minHp)) }
 }
 // Molten Core: +10% per stack, up to 5.
 export const moltenBonus = (stacks) => 1 + 0.1 * Math.min(5, Math.max(0, stacks))
@@ -593,11 +593,11 @@ export const FOCUS_DELAY = 0.8 // seconds standing still before Inner Focus kick
 export const SECONDS_EVERY = 6 // kills per Seconds, Please dish
 export const BROADSIDE_COOLDOWN = 9
 // Broadside: three blast spots marching out past the target, away from the shooter.
-export function broadsideSpots(from, target, step = 2.5) {
+export function broadsideSpots(from, target, step = 2.5, count = 3) {
   const dx = target.x - from.x
   const dz = target.z - from.z
   const len = Math.hypot(dx, dz) || 1
-  return [0, 1, 2].map((i) => ({ x: target.x + (dx / len) * step * i, z: target.z + (dz / len) * step * i }))
+  return Array.from({ length: count }, (_, i) => ({ x: target.x + (dx / len) * step * i, z: target.z + (dz / len) * step * i }))
 }
 // Backstab: is the attacker at `from` behind a monster at `at` facing `rotationY` (forward = +z rotated)?
 export function isBehind(at, rotationY, from) {
@@ -628,8 +628,8 @@ export function boomerangPoint(from, home, angle, t, reach = 9, bow = 2.4) {
 // Jackpot: one hit in ten pays out; the reels shown for it (three of a kind on a win).
 export const JACKPOT_CHANCE = 0.1
 const REELS = ['7', '★', '◆', '♣', '♥', '$']
-export function spinReels(rng = Math.random) {
-  if (rng() < JACKPOT_CHANCE) {
+export function spinReels(rng = Math.random, chance = JACKPOT_CHANCE) {
+  if (rng() < chance) {
     const s = REELS[Math.floor(rng() * REELS.length)]
     return { win: true, reels: [s, s, s] }
   }

@@ -759,6 +759,9 @@
         background: rgba(26, 36, 51, 0.55);
       }
       .slot.ready { border-color: var(--teal); }
+      .slot.hero-slot { border-color: var(--butter, #ffd15c); }
+      .slot.hero-slot.ready { box-shadow: 0 0 10px var(--butter, #ffd15c); }
+      .slot.hero-slot .slot-icon img { width: 100%; height: 100%; object-fit: contain; }
       #ability-bar .slot.empty, #ability-bar:empty { display: none; }
       #perk-bar { position: fixed; left: 16px; bottom: 16px; display: flex; gap: 6px; z-index: 4; pointer-events: none; }
       .perk-chip { width: 38px; height: 38px; padding: 4px; border: 2px solid var(--perk, var(--teal)); box-shadow: 0 0 10px color-mix(in srgb, var(--perk, #19b5a5) 55%, transparent); }

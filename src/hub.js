@@ -6,6 +6,7 @@ import { dragonIconUrl, heroIconUrl, iconImg } from './icons.js'
 import { HEROES, heroById, heroEffects, ownsHero, ownsSkin } from './logic/heroes.js'
 import { BREATHS, SCALES, describeDragon, dragonSetup, isBreathUnlocked, isDragon, isSkinUnlocked, tuneDragon } from './logic/dragons.js'
 import { skillIconSvg } from './skillIcons.js'
+import { AWAKEN_LEVEL, AWAKENED, HERO_ABILITIES } from './logic/heroPowers.js'
 import { MASTERY_MAX, MASTERY_SKIN_LEVELS, contractText, contractTier, isBestKind, masteryBar, masteryReward } from './logic/progress.js'
 import { DIFFICULTY_IDS, difficultyById } from './logic/difficulty.js'
 import { getDifficulty } from './difficulty.js'
@@ -52,6 +53,8 @@ const CSS = `
 .hero-detail .blurb { margin: 0; font-style: italic; font-size: 13px; color: var(--muted, #5b6b80); }
 .hero-detail .trait { margin: 0; font-size: 13px; }
 .hero-detail .trait b { color: var(--teal, #19b5a5); }
+.hero-detail .trait.locked { opacity: 0.6; }
+.hero-detail .trait.locked b { color: var(--muted, #5b6b80); }
 .hero-detail ul { margin: 0; padding-left: 18px; font-size: 12px; }
 .hero-skins { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
 .hero-skin { font: inherit; font-size: 10px; font-weight: 700; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 4px; border-radius: 10px; border: 2px solid #d3dae3; background: #fff; cursor: pointer; color: #3d4a5c; }
@@ -655,6 +658,22 @@ export function createHub({ getProfile, setProfile, getDragons, setDragons, getR
     trait.appendChild(document.createTextNode(viewing.trait.desc))
     detail.appendChild(trait)
     const mastered = masteryBar(profile.progress?.mastery?.[viewing.id] ?? 0)
+    // Mastery 4 awakens the hero: a stronger trait and a hero ability on B (logic/heroPowers.js).
+    const awake = mastered.level >= AWAKEN_LEVEL
+    const lockNote = awake ? '' : ` (mastery ${AWAKEN_LEVEL})`
+    if (AWAKENED[viewing.id]) {
+      const line = el('p', `trait${awake ? '' : ' locked'}`)
+      line.appendChild(el('b', null, `${awake ? '★ Awakened' : '🔒 Awakened'}${lockNote}: `))
+      line.appendChild(document.createTextNode(AWAKENED[viewing.id].desc))
+      detail.appendChild(line)
+    }
+    const ability = HERO_ABILITIES[viewing.id]
+    if (ability) {
+      const line = el('p', `trait${awake ? '' : ' locked'}`)
+      line.appendChild(el('b', null, `${awake ? '★' : '🔒'} [B] ${ability.name}${lockNote}: `))
+      line.appendChild(document.createTextNode(`${ability.desc} (${ability.cooldown} s cooldown)`))
+      detail.appendChild(line)
+    }
     detail.appendChild(el('p', 'hub-note', `Mastery level ${mastered.level}${mastered.span ? ` (${mastered.into} / ${mastered.span} XP to the next)` : ' (max)'} · see Contracts [I]`))
     const fx = heroEffects(viewing.id)
     const lines = describeEffects(fx)
@@ -760,11 +779,11 @@ export function createHub({ getProfile, setProfile, getDragons, setDragons, getR
       card.appendChild(el('b', null, `${hero.name} · ${level}`))
       card.appendChild(bar(into, span))
       const nextSkin = Object.entries(MASTERY_SKIN_LEVELS).find(([lv]) => Number(lv) > level)
-      card.appendChild(el('small', null, level >= MASTERY_MAX ? 'Mastered!' : `Lv ${level + 1}: +${Math.round(masteryReward(level + 1) * mode.reward)} ◆${nextSkin && Number(nextSkin[0]) === level + 1 ? ` + ${hero.skins[nextSkin[1]].name}` : ''}`))
+      card.appendChild(el('small', null, level >= MASTERY_MAX ? 'Mastered!' : `Lv ${level + 1}: +${Math.round(masteryReward(level + 1) * mode.reward)} ◆${nextSkin && Number(nextSkin[0]) === level + 1 ? ` + ${hero.skins[nextSkin[1]].name}` : ''}${level + 1 === AWAKEN_LEVEL ? ' + AWAKENS' : ''}${level >= AWAKEN_LEVEL ? ' · ★ awake' : ''}`))
       grid.appendChild(card)
     }
     mastery.appendChild(grid)
-    mastery.appendChild(el('p', 'hub-note', 'Heroes earn mastery XP while you play them: 1 per kill, 6 per wave cleared, 30 per boss. Each level pays crystals; levels 4, 7 and 10 give that hero a skin for free.'))
+    mastery.appendChild(el('p', 'hub-note', 'Heroes earn mastery XP while you play them: 1 per kill, 6 per wave cleared, 30 per boss. Each level pays crystals; levels 4, 7 and 10 give that hero a skin for free. Level 4 also AWAKENS the hero: a much stronger trait and a hero ability on B.'))
 
     const rec = prog.records
     const records = sec('Records')
