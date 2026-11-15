@@ -577,6 +577,8 @@
       .diff-btn.on { background: var(--teal); color: #fff; }
       .diff-btn[data-difficulty='relax'].on { background: #5fc48f; border-color: #5fc48f; }
       .diff-btn[data-difficulty='hard'].on { background: var(--coral, #ff6a4d); border-color: var(--coral, #ff6a4d); }
+      .diff-btn[data-difficulty='benji'] { border-color: #7a1030; }
+      .diff-btn[data-difficulty='benji'].on { background: linear-gradient(135deg, #1a0008, #7a1030); border-color: #ff2244; color: #fff; box-shadow: 0 0 12px rgba(255, 34, 68, 0.6); }
       #difficulty-blurb { margin: 2px 0 6px; font-size: 12px; color: var(--muted); min-height: 1.2em; }
       #lose-payout { font-weight: 800; color: var(--teal); }
       #lose-contracts { list-style: none; padding: 0; margin: 6px auto 0; font-size: 13px; text-align: left; max-width: 340px; }
@@ -1279,6 +1281,7 @@
           <button class="diff-btn" data-difficulty="relax" type="button">🌴 Relax</button>
           <button class="diff-btn" data-difficulty="normal" type="button">🛎️ Normal</button>
           <button class="diff-btn" data-difficulty="hard" type="button">🔥 Hard</button>
+          <button class="diff-btn" data-difficulty="benji" type="button">💀 Benji Mode</button>
         </div>
         <p id="difficulty-blurb"></p>
         <p class="hint">Choose a map (or press any key for the Sundeck)</p>

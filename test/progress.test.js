@@ -18,6 +18,17 @@ describe('difficulty', () => {
     expect(difficultyById('nonsense').id).toBe('normal')
   })
 
+  it('benji mode is far harder than hard on every knob, and pays the most', () => {
+    const { hard, benji } = DIFFICULTIES
+    for (const key of ['monsterHp', 'monsterSpeed', 'bossHp', 'damageTaken', 'waveSize', 'score', 'reward']) expect(benji[key], key).toBeGreaterThan(hard[key])
+    expect(benji.spawnInterval).toBeLessThan(hard.spawnInterval)
+    expect(benji.waveHeal).toBe(0)
+    expect(benji.playerHp).toBeLessThan(1)
+    expect(benji.monsterDamage).toBeGreaterThan(1)
+    expect(benji.bossEnraged).toBe(true)
+    expect(runPayout({ wave: 10, difficulty: 'benji' })).toBeGreaterThan(runPayout({ wave: 10, difficulty: 'hard' }))
+  })
+
   it('wave tuning scales size and arrival speed, and normal leaves them alone', () => {
     const size = waveSize(5)
     const interval = waveSpawnInterval(5)

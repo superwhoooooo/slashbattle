@@ -84,7 +84,7 @@ export function createProgress() {
     contracts,
     contractsDone: 0,
     mastery: {}, // hero id -> xp
-    records: { runs: 0, kills: 0, bosses: 0, chests: 0, bestWave: { relax: 0, normal: 0, hard: 0 } },
+    records: { runs: 0, kills: 0, bosses: 0, chests: 0, bestWave: { relax: 0, normal: 0, hard: 0, benji: 0 } },
   }
 }
 
@@ -111,7 +111,7 @@ export function normalizeProgress(raw, rng = Math.random) {
     mastery,
     records: {
       runs: num(r.runs), kills: num(r.kills), bosses: num(r.bosses), chests: num(r.chests),
-      bestWave: { relax: num(r.bestWave?.relax), normal: num(r.bestWave?.normal), hard: num(r.bestWave?.hard) },
+      bestWave: { relax: num(r.bestWave?.relax), normal: num(r.bestWave?.normal), hard: num(r.bestWave?.hard), benji: num(r.bestWave?.benji) },
     },
   }
 }

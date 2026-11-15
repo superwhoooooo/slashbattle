@@ -2164,7 +2164,7 @@ function createGame() {
   if (worldMode) {
     // The Wilds: monsters, scenery and treasure stream in around you (stepWorld), so nothing is pre-placed.
     applyLoadoutPets(game)
-    game.player.maxHp = Math.round(PLAYER_MAX_HP + skillEffects(profile.skills).maxHp)
+    game.player.maxHp = Math.max(1, Math.round((PLAYER_MAX_HP + skillEffects(profile.skills).maxHp) * (diff().playerHp ?? 1)))
     game.player.hp = game.player.maxHp
     game.world.fx = createWildsActivities()
     game.arena.group.add(game.world.fx.group)
@@ -2178,7 +2178,7 @@ function createGame() {
   trySpawnChest(game)
   trySpawnPerkPickup(game)
   applyLoadoutPets(game)
-  game.player.maxHp = Math.round(PLAYER_MAX_HP + skillEffects(profile.skills).maxHp)
+  game.player.maxHp = Math.max(1, Math.round((PLAYER_MAX_HP + skillEffects(profile.skills).maxHp) * (diff().playerHp ?? 1)))
   game.player.hp = game.player.maxHp
 
   camera.position.set(
@@ -3286,7 +3286,7 @@ function spawnWildMonster(game, type, at, m) {
   mesh.position.y = m.lake ? WATER_LEVEL - 0.3 : heightAt(at.x, at.z)
   const effect = game.spawnEffects[game.spawnEffects.length - 1]
   if (effect) effect.effect.group.position.y = mesh.position.y
-  mesh.userData.damageScale = (1 + m.danger * 1.1) * (m.elite ? 1.35 : 1)
+  mesh.userData.damageScale = (1 + m.danger * 1.1) * (m.elite ? 1.35 : 1) * (diff().monsterDamage ?? 1)
   mesh.userData.speedScale = 1 + m.danger * 0.18
   if (m.lake) {
     mesh.userData.lake = m.lake // water monsters never leave their lake
@@ -3295,7 +3295,7 @@ function spawnWildMonster(game, type, at, m) {
   if (m.boss) {
     const stats = MONSTER_TYPES[type]
     const fights = m.fights ?? BOSS_HEAD_START + Math.round(m.danger * 4)
-    mesh.userData.damageScale = bossDamageScale(fights)
+    mesh.userData.damageScale = bossDamageScale(fights) * (diff().monsterDamage ?? 1)
     mesh.userData.bossFights = fights
     mesh.userData.immunityThresholds = immunityThresholdsFor(fights)
     mesh.userData.speedScale = bossSpeedScale(stats.speed, fights)
@@ -4307,6 +4307,7 @@ function spawnMonster(game, type, { at = null, effectOptions, hpScale = 1, faceP
   const toughness = stats.boss ? d.bossHp : d.monsterHp
   if (toughness !== 1) mesh.userData.hp = mesh.userData.maxHp = Math.max(1, Math.round(mesh.userData.maxHp * toughness))
   if (!stats.boss) mesh.userData.speedScale = (mesh.userData.speedScale ?? 1) * d.monsterSpeed
+  if (d.monsterDamage && d.monsterDamage !== 1) mesh.userData.damageScale = (mesh.userData.damageScale ?? 1) * d.monsterDamage
   scene.add(mesh)
   game.monsters.push(mesh)
   coop?.registerMonster(mesh) // co-op: an id the host's snapshots use for it
@@ -4340,7 +4341,7 @@ function startBossCutscene(game) {
   })
   // Every boss fight makes the next one tougher: more hp (above), harder hits, extra moves, shorter cooldowns.
   const fights = game.waveState.bossesDefeated
-  mesh.userData.damageScale = bossDamageScale(fights)
+  mesh.userData.damageScale = bossDamageScale(fights) * (diff().monsterDamage ?? 1)
   mesh.userData.bossFights = fights
   mesh.userData.speedScale = bossSpeedScale(boss.stats.speed, fights)
   mesh.userData.immunityThresholds = immunityThresholdsFor(fights)
@@ -6236,7 +6237,7 @@ function gameFrame(timestamp) {
   // In the Wilds, wayshrine boons (and the merchant's tonics) fold into the same effect set.
   const perk = game.world ? foldBoons(activeFx(game.inventory.equipped), boonEffects(game.world.shrines, elapsedSeconds)) : activeFx(game.inventory.equipped)
   // Skill-tree vitals: max HP (a raise heals by the same amount) and longer i-frames.
-  const wantMaxHp = Math.round(PLAYER_MAX_HP + perk.maxHp)
+  const wantMaxHp = Math.max(1, Math.round((PLAYER_MAX_HP + perk.maxHp) * (diff().playerHp ?? 1))) // Benji Mode halves it
   if (player.maxHp !== wantMaxHp) {
     if (wantMaxHp > player.maxHp) player.hp += wantMaxHp - player.maxHp
     player.maxHp = wantMaxHp
@@ -6519,7 +6520,7 @@ function gameFrame(timestamp) {
     }
     if (mesh.userData.immune) stepImmunity(game, mesh, gameplayDelta, elapsedSeconds)
     // Phase two: at half health a boss ENRAGES: faster, its moves come round sooner, and it fires its signature at once.
-    if (mesh.userData.isBoss && !mesh.userData.phase2 && !mesh.userData.spawning && mesh.userData.hp <= mesh.userData.maxHp * 0.5) {
+    if (mesh.userData.isBoss && !mesh.userData.phase2 && !mesh.userData.spawning && (diff().bossEnraged || mesh.userData.hp <= mesh.userData.maxHp * 0.5)) {
       mesh.userData.phase2 = true
       const rage = bossEnrage(mesh.userData.bossFights ?? 99)
       mesh.userData.speedScale = (mesh.userData.speedScale ?? 1) * rage.speed

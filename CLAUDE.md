@@ -979,7 +979,10 @@ Guest gets the jelly movement stretch.
 whenever GTAO, bloom and the warp pass are all off, and only runs the post chain while a warp zone is live.
 
 ## Difficulty and progress
-`src/logic/difficulty.js` (pure): `DIFFICULTIES` Relax / Normal / Hard, picked on the start card (`#difficulty-row`) and
+`src/logic/difficulty.js` (pure): `DIFFICULTIES` Relax / Normal / Hard / **Benji Mode** (extremely hard: half max HP via
+`playerHp`, 3x monster hp, 3.5x boss hp, 1.35x speed, 3x damage taken plus `monsterDamage` 1.5x on every monster's and boss's
+`damageScale`, 2.2x waves arriving at 0.45x the interval, no wave heal, `bossEnraged` = every boss starts in its phase-two rage;
+4x score, 5x rewards), picked on the start card (`#difficulty-row`) and
 remembered by `src/difficulty.js` (`slashbattle:difficulty`, a save key). Normal is all 1s. A mode scales regular monster hp and
 speed and boss hp (`spawnMonster`), every hit the player takes (`Player.difficultyDamage`, after armour), wave size and arrival
 speed (`waves.js`'s `setWaveTuning`, applied by `main.js`'s `applyDifficulty`), the between-wave heal, score (kills and wave
