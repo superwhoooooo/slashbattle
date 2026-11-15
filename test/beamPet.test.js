@@ -16,11 +16,11 @@ const run = (seconds, dt, hasTarget = () => true) => {
 }
 
 describe('Dylan, the beam pet', () => {
-  it('is a ranged fighter dealing 1 damage every 0.5 s, on 5 s, off 3 s', () => {
+  it('is a ranged fighter dealing 2 damage every 0.5 s, on 5 s, off 3 s', () => {
     const d = PETS.dylan
     expect(d.kind).toBe('beam')
     expect(isRanged(d) && isFighter(d)).toBe(true)
-    expect([d.damage, d.beamTick, d.beamOn, d.beamOff]).toEqual([1, 0.5, 5, 3])
+    expect([d.damage, d.beamTick, d.beamOn, d.beamOff]).toEqual([2, 0.5, 5, 3])
   })
 
   it('hits 10 times in a 5 s beam, then rests 3 s before the next', () => {
