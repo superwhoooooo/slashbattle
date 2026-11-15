@@ -626,9 +626,9 @@ export function createCoop(ctx) {
     <div class="coop-card panel">
       <h2>Co-op</h2>
       <p class="coop-blurb">Fight the waves with up to ${MAX_PLAYERS - 1} friends, anywhere. One hosts, the others join with the room code.</p>
-      <label class="coop-field">Your name <input id="coop-name" maxlength="16" placeholder="Player" autocomplete="off"></label>
+      <label class="coop-field">Your name <input id="coop-name" type="text" maxlength="16" placeholder="Player" autocomplete="off" enterkeyhint="done"></label>
       <div class="coop-row"><button id="coop-host" type="button">Host a game</button></div>
-      <div class="coop-row"><input id="coop-code" maxlength="4" placeholder="CODE" autocomplete="off" spellcheck="false"><button id="coop-join" type="button">Join</button></div>
+      <div class="coop-row"><input id="coop-code" type="text" maxlength="4" placeholder="CODE" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="go"><button id="coop-join" type="button">Join</button></div>
       <div id="coop-code-big"></div>
       <div id="coop-status">Not connected.</div>
       <div id="coop-players"></div>

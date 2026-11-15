@@ -605,6 +605,8 @@
       /* Touch controls (src/touch.js): only present on a phone / tablet. */
       html, body, button, canvas { touch-action: manipulation; }
       body.touch { touch-action: none; overscroll-behavior: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+      /* Text boxes (the co-op name / room code) must stay typeable: iOS won't type into an input that inherits user-select: none. */
+      body.touch input, body.touch textarea { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; touch-action: manipulation; }
       #touch-layer { position: fixed; inset: 0; z-index: 3; pointer-events: none; }
       .touch-zone { position: absolute; top: 18%; bottom: 0; pointer-events: auto; touch-action: none; }
       #touch-move-zone { left: 0; width: 46%; }
@@ -667,7 +669,7 @@
       #touch-toggles { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); display: flex; gap: 8px; }
       /* HUD cards never swallow touches; the weapon / ability slots take them. */
       body.touch .panel { pointer-events: none; }
-      body.touch .overlay .panel, body.touch #sandbox-panel, body.touch #loadout-panel, body.touch #swap-panel, body.touch #npc-dialog, body.touch .overlay button { pointer-events: auto; }
+      body.touch .overlay .panel, body.touch #sandbox-panel, body.touch #loadout-panel, body.touch #swap-panel, body.touch #npc-dialog, body.touch #coop-panel .panel, body.touch .overlay button { pointer-events: auto; }
       body.touch .slot { pointer-events: auto; touch-action: none; }
       body.touch .controls, body.touch .gamepad-legend, body.touch #sandbox-btn kbd, body.touch #tutorial-btn kbd { display: none; }
       body.touch #hud, body.touch #hud-right, body.touch #crystal-card { zoom: 0.78; }

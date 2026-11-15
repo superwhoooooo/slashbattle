@@ -515,6 +515,7 @@ let lastTouchEnd = 0
 document.addEventListener(
   'touchend',
   (event) => {
+    if (event.target?.closest?.('input, textarea')) return // a quick second tap on a text box must still focus it
     const now = Date.now()
     if (now - lastTouchEnd < 350) event.preventDefault()
     lastTouchEnd = now
