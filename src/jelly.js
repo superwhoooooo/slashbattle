@@ -104,9 +104,19 @@ export function createJellyBody(geometry, material, edgeColor, restY = 0, { rigi
 //
 // `speed` is the character's current speed (world units/second, 0 when
 // stopped); `moveDir` is its normalized horizontal movement direction.
-export function updateJelly(jellyBody, dt, time, { speed = 0, moveDir = { x: 0, z: 1 } } = {}) {
+//
+// `still`: a body wearing rigid gear (a hero's mask, hat, cape...). Its vertices don't move at all
+// (no idle breathing, bulge or per-vertex splat, any of which would push the jelly out through the
+// costume); instead the hit spring squashes / inflates the WHOLE character group about its feet,
+// gear included, so the two stay together.
+export function updateJelly(jellyBody, dt, time, { speed = 0, moveDir = { x: 0, z: 1 }, still = false } = {}) {
   const jelly = jellyBody.userData.jelly
   if (!jelly) return
+  if (still) return updateStillJelly(jellyBody, jelly, dt)
+  if (jelly.wasStill) {
+    jelly.wasStill = false
+    jellyBody.scale.set(1, 1, 1)
+  }
 
   jelly.bulge = springStep(jelly.bulge, speed * JELLY_BULGE_RESPONSE, JELLY_BULGE_STIFFNESS, JELLY_BULGE_DAMPING, dt)
   jelly.hit = springStep(jelly.hit, 0, JELLY_HIT_STIFFNESS, JELLY_HIT_DAMPING, dt)
@@ -159,6 +169,30 @@ export function updateJelly(jellyBody, dt, time, { speed = 0, moveDir = { x: 0, 
   jelly.groundAnchorOffset = -bottomDy
   jelly.body.position.y = jelly.restY + jelly.groundAnchorOffset
   jelly.edges.position.y = jelly.restY + jelly.groundAnchorOffset
+}
+
+const STILL_PARAMS = Object.freeze({ idleAmplitude: 0, idleSpeed: 0, idlePhase: 0, bulge: 0, bulgeDirX: 0, bulgeDirZ: 1, hit: 0 })
+
+function updateStillJelly(jellyBody, jelly, dt) {
+  jelly.bulge = springStep(jelly.bulge, 0, JELLY_BULGE_STIFFNESS, JELLY_BULGE_DAMPING, dt)
+  jelly.hit = springStep(jelly.hit, 0, JELLY_HIT_STIFFNESS, JELLY_HIT_DAMPING, dt)
+  jelly.params = STILL_PARAMS // the face rides the undeformed surface
+  if (!jelly.wasStill && !jelly.rigid) {
+    // Put every vertex back on its original spot once, then leave the geometry alone.
+    const position = jelly.body.geometry.attributes.position
+    position.array.set(jelly.originalPositions)
+    position.needsUpdate = true
+    jelly.body.geometry.computeBoundingSphere()
+    jelly.body.position.y = jelly.restY
+    jelly.edges.position.y = jelly.restY
+    jelly.groundAnchorOffset = 0
+  }
+  jelly.wasStill = true
+  const h = Math.max(-1, Math.min(1, jelly.hit.value))
+  const k = 0.3
+  const sx = h >= 0 ? 1 + h * 0.5 * k : 1 - h * k * 0.6
+  const sy = 1 - h * k
+  jellyBody.scale.set(sx, sy, sx)
 }
 
 // Pushes an impulse into the hit spring: a positive `strength` flattens

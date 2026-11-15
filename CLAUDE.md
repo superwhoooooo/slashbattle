@@ -971,7 +971,8 @@ Rescue Whistle) runs before the revive / game-over checks. Thrown trait effects 
 `main.js`'s flyers (`launchFlyer` / `stepFlyers`, meshes from `heroGear.js`'s `createHeroProjectile`): each follows a path and
 hits a monster once per leg. Juiced traits: Flambé! (Chef: the 6th-kill heal also sets a fire burst), Mother Lode (Pip: a
 geode blast with the gem), Tip Jar flings a suitcase, and Thorn Warden's roots root everything near when health drops below half. Sandbox hero picks are session-only (`sandboxHeroPick`), and only the
-Guest gets the jelly movement stretch.
+Guest's jelly breathes, bulges and splats per vertex: every other hero's body is `updateJelly(..., { still: true })` (vertices
+never move, so nothing pokes out through the mask or costume; the hit spring squashes the whole character group, gear included).
 
 ## Speed and rendering (Shardfall comparison)
 `PLAYER_SPEED` is 6.5 (zippy 5, so no regular chaser outruns you). The medium preset has bloom off (`bloom` in

@@ -247,7 +247,7 @@ export function createCoop(ctx) {
       const shown = !remote.proxy.hidden && !remote.proxy.down
       mesh.visible = shown
       if (shown) {
-        updateJelly(mesh, dt, now, { speed: 0, moveDir: remote.moveDir })
+        updateJelly(mesh, dt, now, { speed: 0, moveDir: remote.moveDir, still: Boolean(remote.lookKey) && !remote.lookKey.startsWith('guest:') }) // a hero in gear stays still inside it
         updateFace3D(mesh, dt, now)
       }
     }

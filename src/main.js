@@ -4914,7 +4914,7 @@ function runCutscene(game, advancePressed, deltaSeconds, elapsedSeconds) {
   // player hiding in a pod when the boss arrives isn't ejected by the cutscene.
   if (player.hidden) game.hidingState.enteredAt += deltaSeconds
 
-  updateJelly(player.mesh, deltaSeconds, elapsedSeconds, { speed: 0, moveDir: player.moveDir })
+  updateJelly(player.mesh, deltaSeconds, elapsedSeconds, { speed: 0, moveDir: player.moveDir, still: heroById(heroProfile().hero).id !== 'guest' })
   updateFace3D(player.mesh, deltaSeconds, elapsedSeconds)
   game.monsters.forEach((m) => {
     updateJelly(m, deltaSeconds, elapsedSeconds, { speed: 0, moveDir: m.userData.moveDir })
@@ -6316,7 +6316,9 @@ function gameFrame(timestamp) {
     game.hitstop.remaining = triggerHitstop(game.hitstop, HITSTOP_PLAYER_HURT).remaining
   }
   // Only the Guest (the bare jelly) stretches as it moves; the other heroes' gear would come apart from it.
-  updateJelly(player.mesh, deltaSeconds, elapsedSeconds, { speed: heroById(heroProfile().hero).id === 'guest' ? player.speed : 0, moveDir: player.moveDir })
+  // Heroes in gear keep their jelly still (no breathing / bulge poking through the mask or costume) and squash as a whole.
+  const bareJelly = heroById(heroProfile().hero).id === 'guest'
+  updateJelly(player.mesh, deltaSeconds, elapsedSeconds, { speed: bareJelly ? player.speed : 0, moveDir: player.moveDir, still: !bareJelly })
   updateFace3D(player.mesh, gameplayDelta, elapsedSeconds)
 
   // wasHidden, compared against player.hidden after updateHiding runs,
