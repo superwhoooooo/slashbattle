@@ -16,23 +16,23 @@ const run = (seconds, dt, hasTarget = () => true) => {
 }
 
 describe('Dylan, the beam pet', () => {
-  it('is a ranged fighter dealing 2 damage every 0.5 s, on 5 s, off 3 s', () => {
+  it('is a ranged fighter dealing 2 damage every 0.5 s, on 5 s, off 1.825 s', () => {
     const d = PETS.dylan
     expect(d.kind).toBe('beam')
     expect(isRanged(d) && isFighter(d)).toBe(true)
-    expect([d.damage, d.beamTick, d.beamOn, d.beamOff]).toEqual([2, 0.5, 5, 3])
+    expect([d.damage, d.beamTick, d.beamOn, d.beamOff]).toEqual([2, 0.5, 5, 1.825])
   })
 
-  it('hits 10 times in a 5 s beam, then rests 3 s before the next', () => {
+  it('hits 10 times in a 5 s beam, then rests 1.825 s before the next', () => {
     const { log } = run(8, 0.05)
     const at = (t) => log.find((e) => Math.abs(e.t - t) < 1e-6)
     expect(at(4.95).phase).toBe('on')
     expect(at(5).hits).toBe(10)
     expect(at(5.05).phase).toBe('off')
-    expect(at(7.95).phase).toBe('off')
-    expect(at(7.95).hits).toBe(10)
+    expect(at(6.8).phase).toBe('off')
+    expect(at(6.8).hits).toBe(10)
     // A new beam starts on the next step after the rest, first hit at once.
-    expect(run(8.1, 0.05).hits).toBe(11)
+    expect(run(6.9, 0.05).hits).toBe(11)
   })
 
   it('does not start without an enemy in range, and holds fire if the target leaves mid-beam', () => {
