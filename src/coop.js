@@ -21,8 +21,12 @@ import * as THREE from 'three'
 import { Link } from './net/link.js'
 import {
   COOP_RESPAWN_SECONDS, INTERP_DELAY, MAX_PLAYERS, PROTOCOL, RELAY_INTERP_DELAY, cleanName, clampDamage, everyoneDown,
-  lerp, lerpAngle, normalizeCode, packMonster, pickTarget, plainCopy, pushSnapshot, routeEvents, sampleSnapshots, unpackMonster,
+  lerp, lerpAngle, normalizeCode, packMonster, packPets, packShots, pickTarget, plainCopy, pushSnapshot, routeEvents, sampleSnapshots,
+  unpackMonster, unpackPets, unpackShots,
 } from './logic/coop.js'
+import { createPetModel } from './petModels.js'
+import { createBeamMesh, aimBeam } from './pets.js'
+import { PETS } from './logic/items.js'
 import {
   BOSS_DEATH_SHARD_MULTIPLIER, DEATH_SHARD_COUNT, DEATH_SHARD_SPEED, FALL_DESPAWN_DEPTH, FALL_GRAVITY, JELLY_DEATH_INFLATE_STRENGTH,
   JELLY_HIT_STRENGTH, MONSTER_FALL_TUMBLE_SPEED, MONSTER_TYPES, PLAYER_IFRAME_DURATION,
@@ -143,6 +147,7 @@ export function createCoop(ctx) {
       lookKey: '',
       weapon: null,
       last: null,
+      pets: [], // { key, mesh, beam } for each of their pet units we're showing
       speed: 0,
       moveDir: { x: 0, z: 1 },
       // What the host's monsters see and swing at: the same fields monster.js reads off the real player.
@@ -174,6 +179,7 @@ export function createCoop(ctx) {
     if (!remote) return
     remotes.delete(id)
     ctx.disposeObject3D(remote.mesh)
+    clearRemotePets(remote)
     if (announce) ctx.toast(`${remote.name} LEFT THE GAME`)
     refresh()
   }
@@ -200,7 +206,7 @@ export function createCoop(ctx) {
 
   function applyRemoteState(remote, m) {
     if (!Number.isFinite(m.x) || !Number.isFinite(m.z)) return
-    pushSnapshot(remote.snaps, { t: clock(), x: m.x, z: m.z, y: Number.isFinite(m.y) ? m.y : 0, f: Number.isFinite(m.f) ? m.f : 0 })
+    pushSnapshot(remote.snaps, { t: clock(), x: m.x, z: m.z, y: Number.isFinite(m.y) ? m.y : 0, f: Number.isFinite(m.f) ? m.f : 0, p: unpackPets(m.pt) })
     const look = `${m.hero}:${m.skin}`
     if (look !== remote.lookKey && typeof m.hero === 'string') {
       remote.lookKey = look
@@ -244,6 +250,7 @@ export function createCoop(ctx) {
       mesh.rotation.y = lerpAngle(s.a.f, s.b.f, s.k)
       remote.proxy.position.x = x
       remote.proxy.position.z = z
+      stepRemotePets(remote, s, dt, now)
       const shown = !remote.proxy.hidden && !remote.proxy.down
       mesh.visible = shown
       if (shown) {
@@ -251,6 +258,63 @@ export function createCoop(ctx) {
         updateFace3D(mesh, dt, now)
       }
     }
+  }
+
+  // ---------- a friend's pets (cosmetic: their own game does the fighting) ----------
+  function buildPetModel(key) {
+    try {
+      if (key.startsWith('d:')) return PETS[key.slice(2)] ? createPetModel(PETS[key.slice(2)]) : null
+      return createPetModel({ model: key })
+    } catch {
+      return null
+    }
+  }
+  function clearRemotePets(remote) {
+    for (const pet of remote.pets) {
+      if (pet.mesh) ctx.disposeObject3D(pet.mesh)
+      if (pet.beam) ctx.disposeObject3D(pet.beam)
+    }
+    remote.pets = []
+  }
+  function stepRemotePets(remote, s, dt, now) {
+    const from = s.a.p ?? []
+    const to = s.b.p ?? []
+    const rows = to.length ? to : from
+    // A different line-up (they swapped pets): rebuild.
+    if (rows.length !== remote.pets.length || rows.some((row, i) => row.key !== remote.pets[i].key)) {
+      clearRemotePets(remote)
+      remote.pets = rows.map((row) => {
+        const mesh = buildPetModel(row.key)
+        if (mesh) ctx.scene.add(mesh)
+        return { key: row.key, mesh, beam: null, lastX: row.x, lastZ: row.z }
+      })
+    }
+    const visible = !remote.proxy.down
+    rows.forEach((row, i) => {
+      const pet = remote.pets[i]
+      if (!pet.mesh) return
+      const a = from[i]?.key === row.key ? from[i] : row
+      const x = lerp(a.x, row.x, s.k)
+      const z = lerp(a.z, row.z, s.k)
+      const moving = Math.hypot(x - pet.lastX, z - pet.lastZ) > 0.3 * Math.max(dt, 1e-3)
+      pet.lastX = x
+      pet.lastZ = z
+      pet.mesh.visible = visible
+      pet.mesh.position.set(x, lerp(a.y, row.y, s.k), z)
+      pet.mesh.rotation.y = lerpAngle(a.rotY, row.rotY, s.k)
+      const beaming = visible && Boolean(row.beamTo)
+      pet.mesh.userData.beaming = beaming
+      try { pet.mesh.userData.animate?.(now, moving) } catch { /* a model that needs more than (t, moving) */ }
+      if (beaming) {
+        if (!pet.beam) {
+          pet.beam = createBeamMesh(PETS.dylan?.color ?? 0xffcf3a)
+          ctx.scene.add(pet.beam)
+        }
+        aimBeam(pet.beam, pet.mesh, { x: row.beamTo.x, y: 0.8, z: row.beamTo.z }, now)
+      } else if (pet.beam) {
+        pet.beam.visible = false
+      }
+    })
   }
 
   // ---------- host: which player a monster goes after ----------
@@ -314,6 +378,8 @@ export function createCoop(ctx) {
     ud.isBoss = stats.boss === true
     ud.reachBonus = stats.reachBonus ?? 0
     ud.deep = stats.deep === true
+    ud.amphibious = stats.amphibious ?? null
+    ud.submerged = row.submerged
     ud.reflectCfg = stats.reflect ?? null
     ud.reflect = row.reflect ? ud.reflectCfg : null
     ud.shield = null
@@ -342,6 +408,7 @@ export function createCoop(ctx) {
     ud.dying = true
     ud.deathPopElapsed = 0
     jellyHit(mesh, JELLY_DEATH_INFLATE_STRENGTH)
+    if (ud.isBoss) ctx.onPuppetBossDeath?.(mesh) // our own free chests where it fell
     const stats = MONSTER_TYPES[ud.type]
     shardBurst(ctx.particleSystem, { x: mesh.position.x, y: mesh.position.y + stats.size * 0.5, z: mesh.position.z }, stats.color, DEATH_SHARD_COUNT * (stats.boss ? BOSS_DEATH_SHARD_MULTIPLIER : 1), DEATH_SHARD_SPEED)
   }
@@ -375,6 +442,7 @@ export function createCoop(ctx) {
       ud.burrowed = row.burrowed
       ud.netFrozen = row.frozen
       ud.reflect = row.reflect ? ud.reflectCfg : null
+      ud.submerged = row.submerged
       if (row.phase2 && !ud.phase2) {
         ud.phase2 = true
         const material = ud.jelly?.body?.material
@@ -426,7 +494,10 @@ export function createCoop(ctx) {
       const moved = Math.hypot(dx, dz)
       ud.speed = dt > 0 ? Math.min(14, moved / dt) : 0
       if (moved > 0.001) ud.moveDir = { x: dx / moved, z: dz / moved }
-      mesh.position.set(x, lerp(s.a.y, s.b.y, s.k), z)
+      // In a water room the swim height is OUR view of the water: a deep dweller rises to us when WE dive
+      // (the host's copy lurks low while the host floats), so our own shots and swings can reach it.
+      const localY = ctx.puppetY?.(mesh, now)
+      mesh.position.set(x, Number.isFinite(localY) ? localY : lerp(s.a.y, s.b.y, s.k), z)
       mesh.rotation.y = lerpAngle(s.a.r, s.b.r, s.k)
     }
     updateJelly(mesh, dt, now, { speed: ud.spawning ? 0 : ud.speed, moveDir: ud.moveDir ?? { x: 0, z: 1 } })
@@ -532,6 +603,14 @@ export function createCoop(ctx) {
         if (mesh) ctx.onEvents(mesh, m.e)
         break
       }
+      case 'sh':
+        if (from !== link.myId && remotes.has(from)) ctx.onRemoteShots?.(unpackShots(m.b))
+        break
+      case 'ab': {
+        const remote = remotes.get(from)
+        if (remote && typeof m.id === 'string' && !remote.proxy.down) ctx.onRemoteAbility?.(m.id.slice(0, 24), { x: remote.mesh.position.x, z: remote.mesh.position.z })
+        break
+      }
       case 'hurt':
         if (isClient()) ctx.onHurt(clampDamage(m.d), Math.max(0, Math.min(1, Number(m.tf) || 0)))
         break
@@ -599,7 +678,7 @@ export function createCoop(ctx) {
         f: Math.round(p.facing * 100) / 100,
         hp: Math.round(p.hp),
         mhp: p.maxHp,
-        hid: p.hidden || local.down,
+        hid: p.hidden || local.down || Boolean(local.cutscene), // watching a boss intro: monsters leave us be
         dn: local.down,
         dv: Boolean(p.diving),
         ss: p.sightScale ?? 1,
@@ -608,6 +687,7 @@ export function createCoop(ctx) {
         hero: local.look.hero,
         skin: local.look.skin,
         sw: lastSwingSeq,
+        pt: packPets(local.pets ?? []),
       })
     } else if (local.swingStarted) lastSwingSeq++
     if (isHost() && remotes.size) {
@@ -713,6 +793,8 @@ export function createCoop(ctx) {
     remoteCount: () => remotes.size,
     remoteDowns: () => [...remotes.values()].map((r) => r.proxy.down),
     everyoneDown: (localDown) => isHost() && everyoneDown(localDown, [...remotes.values()].map((r) => r.proxy.down)),
+    sendShots(bullets) { if (active() && bullets.length) link.broadcast({ t: 'sh', b: packShots(bullets) }) },
+    sendAbility(id) { if (active()) link.broadcast({ t: 'ab', id }) },
     sendWaveEvents(msg) { if (isHost()) link.broadcast({ t: 'wave', ...msg }) },
     sendRestart() { if (isHost()) link.broadcast({ t: 'restart' }) },
     sendGameOver() { if (isHost()) link.broadcast({ t: 'over' }) },

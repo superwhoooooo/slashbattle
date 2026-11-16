@@ -390,7 +390,7 @@ function zap(pet, target, ctx) {
 // his hands to the target each frame.
 const BEAM_UP = new THREE.Vector3(0, 1, 0)
 const beamDir = new THREE.Vector3()
-function createBeamMesh(color) {
+export function createBeamMesh(color) {
   const group = new THREE.Group()
   const core = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1, 8, 1, true), new THREE.MeshBasicMaterial({ color: 0xfff6c8, transparent: true, opacity: 0.95, depthWrite: false }))
   const glow = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 1, 10, 1, true), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false }))
@@ -398,6 +398,21 @@ function createBeamMesh(color) {
   group.userData.glow = glow
   group.visible = false
   return group
+}
+
+// Stretches a beam from a beam pet's hands (`mesh`) to the point `to` (also used for a co-op friend's Dylan).
+export function aimBeam(beam, mesh, to, elapsed) {
+  const s = mesh.scale.x
+  const yaw = mesh.rotation.y
+  const from = new THREE.Vector3(mesh.position.x + Math.sin(yaw) * 0.42 * s, mesh.position.y + 0.72 * s, mesh.position.z + Math.cos(yaw) * 0.42 * s)
+  beamDir.set(to.x - from.x, to.y - from.y, to.z - from.z)
+  const length = Math.max(0.01, beamDir.length())
+  beam.position.copy(from).addScaledVector(beamDir, 0.5)
+  beam.quaternion.setFromUnitVectors(BEAM_UP, beamDir.normalize())
+  const flicker = 1 + Math.sin(elapsed * 40) * 0.12
+  beam.scale.set(flicker, length, flicker)
+  beam.userData.glow.material.opacity = 0.35 + Math.sin(elapsed * 23) * 0.1
+  beam.visible = true
 }
 
 // Runs a beam pet's 5 s on / 3 s off cycle (logic/petAI.js's stepBeamCycle) and draws the beam.
@@ -414,18 +429,13 @@ function stepBeam(pet, target, dt, elapsed, ctx) {
   }
   const beam = pet.beamMesh
   beam.visible = firing
-  if (!firing) return
-  const s = mesh.scale.x
-  const yaw = mesh.rotation.y
-  const from = new THREE.Vector3(mesh.position.x + Math.sin(yaw) * 0.42 * s, mesh.position.y + 0.72 * s, mesh.position.z + Math.cos(yaw) * 0.42 * s)
-  const to = new THREE.Vector3(target.position.x, target.position.y + 0.8, target.position.z)
-  beamDir.subVectors(to, from)
-  const length = Math.max(0.01, beamDir.length())
-  beam.position.copy(from).addScaledVector(beamDir, 0.5)
-  beam.quaternion.setFromUnitVectors(BEAM_UP, beamDir.normalize())
-  const flicker = 1 + Math.sin(elapsed * 40) * 0.12
-  beam.scale.set(flicker, length, flicker)
-  beam.userData.glow.material.opacity = 0.35 + Math.sin(elapsed * 23) * 0.1
+  if (!firing) {
+    pet.beamTo = null
+    return
+  }
+  const to = { x: target.position.x, y: target.position.y + 0.8, z: target.position.z }
+  pet.beamTo = to
+  aimBeam(beam, mesh, to, elapsed)
   for (let i = 0; i < hits; i++) {
     burst(ctx.particleSystem, { x: to.x, y: to.y, z: to.z }, def.color, 8, 2.2)
     hitMonster(pet, target, def.damage * (pet.damageMult ?? 1), { x: mesh.position.x, z: mesh.position.z }, ctx)

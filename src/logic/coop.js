@@ -2,7 +2,7 @@
 // host streams, who a monster goes after, smoothing remote movement, and which monster events travel
 // to whom. src/net/link.js moves the messages; src/coop.js applies them to the game.
 
-export const PROTOCOL = 1 // bump when the message format changes; a mismatched joiner is told to refresh
+export const PROTOCOL = 2 // bump when the message format changes; a mismatched joiner is told to refresh
 export const MAX_PLAYERS = 4
 export const CODE_LENGTH = 4
 const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789' // no 0/O, 1/I/L
@@ -46,6 +46,7 @@ export const FLAG = {
   burrowed: 128,
   reflect: 256, // its mirror shield is up
   frozen: 512,
+  submerged: 1024, // an amphibious boss under the water
 }
 
 const round2 = (v) => Math.round(v * 100) / 100
@@ -63,6 +64,7 @@ export function packMonster(ud, pos, rotY, now = 0) {
   if (ud.burrowed) flags |= FLAG.burrowed
   if (ud.reflect) flags |= FLAG.reflect
   if (now < (ud.frozenUntil ?? -Infinity)) flags |= FLAG.frozen
+  if (ud.submerged) flags |= FLAG.submerged
   return [ud.netId, ud.type, round2(pos.x), round2(pos.z), round2(pos.y), round2(rotY), Math.max(0, Math.round(ud.hp)), Math.round(ud.maxHp), flags]
 }
 
@@ -75,7 +77,7 @@ export function unpackMonster(row) {
     id, type, x, z, y, rotY, hp, maxHp,
     spawning: has(FLAG.spawning), dying: has(FLAG.dying), falling: has(FLAG.falling), boss: has(FLAG.boss),
     immune: has(FLAG.immune), phase2: has(FLAG.phase2), dazed: has(FLAG.dazed), burrowed: has(FLAG.burrowed),
-    reflect: has(FLAG.reflect), frozen: has(FLAG.frozen),
+    reflect: has(FLAG.reflect), frozen: has(FLAG.frozen), submerged: has(FLAG.submerged),
   }
 }
 
@@ -185,4 +187,49 @@ export function everyoneDown(hostDown, remoteDowns) {
 export function clampDamage(amount, max = 5000) {
   const n = Number(amount)
   return Number.isFinite(n) ? Math.max(0, Math.min(max, n)) : 0
+}
+
+// ---------- pets and shots (cosmetic: each game only shows what the others' pets and guns are doing) ----------
+// A pet unit row: [model key, x, z, y, rotY, beam target x, beam target z] (the beam pair only while beaming).
+// The model key is the pet's model name, or 'd:<pet id>' for a dragon (its model is built from the pet def).
+export const MAX_NET_PETS = 6
+export function packPets(units) {
+  return units.slice(0, MAX_NET_PETS).map((u) => {
+    const row = [u.key, round2(u.x), round2(u.z), round2(u.y), round2(u.rotY)]
+    if (u.beamTo) row.push(round2(u.beamTo.x), round2(u.beamTo.z))
+    return row
+  })
+}
+export function unpackPets(rows) {
+  if (!Array.isArray(rows)) return []
+  const out = []
+  for (const row of rows.slice(0, MAX_NET_PETS)) {
+    if (!Array.isArray(row) || typeof row[0] !== 'string' || row[0].length > 40) continue
+    const [key, x, z, y, rotY, bx, bz] = row
+    if (![x, z, y, rotY].every(Number.isFinite)) continue
+    out.push({ key, x, z, y, rotY, beamTo: Number.isFinite(bx) && Number.isFinite(bz) ? { x: bx, z: bz } : null })
+  }
+  return out
+}
+
+// A shot row: [x, z, y, vx, vz, vy, life, radius, color]. At most MAX_NET_SHOTS per volley.
+export const MAX_NET_SHOTS = 24
+export function packShots(bullets) {
+  return bullets.slice(0, MAX_NET_SHOTS).map((b) => [round2(b.x), round2(b.z), round2(b.y ?? 0.7), round2(b.vx), round2(b.vz), round2(b.vy ?? 0), round2(b.life), round2(b.radius), b.color | 0])
+}
+export function unpackShots(rows) {
+  if (!Array.isArray(rows)) return []
+  const out = []
+  for (const row of rows.slice(0, MAX_NET_SHOTS)) {
+    if (!Array.isArray(row) || row.length < 9 || !row.every(Number.isFinite)) continue
+    const [x, z, y, vx, vz, vy, life, radius, color] = row
+    out.push({
+      x, z, y, vx, vz, vy,
+      life: Math.min(5, Math.max(0, life)),
+      radius: Math.min(3, Math.max(0.02, radius)),
+      color: color & 0xffffff,
+      ghost: true, damage: 0, knockback: 0, pierce: 99, explode: 0, freeze: 0, traveled: 0, maxRange: 400, cause: 'gun', hitIds: new Set(),
+    })
+  }
+  return out
 }

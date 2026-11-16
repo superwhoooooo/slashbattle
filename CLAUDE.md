@@ -1032,7 +1032,18 @@ connection silent for `SILENCE_TIMEOUT` is dropped; a joiner with a different `P
   (`game.coopOver`); only the host's R restarts, and it restarts everyone. If the host leaves, a joiner carries on solo
   from the same wave.
 - Each player keeps their own hero, gear, crystals, chests, pods, pets and score; others see your hero, skin, weapon,
-  name tag and swing effects (`onSwingFx`). `window.__debug.coop` (dev only) exposes the co-op state.
+  name tag and swing effects (`onSwingFx`), your **pets** (`packPets` rows in the state message: model key, position, facing,
+  Dylan's beam target; drawn by `coop.js`'s `stepRemotePets`), your **shots** (every real volley through `bulletPool.onFire`
+  goes out as `sh`; the others fire them as harmless `ghost` bullets that never hit) and your **abilities** (`ab`: a flash
+  and ring in the ability's colour, `COOP_ABILITY_COLORS`).
+- **Boss intro for joiners**: a `bossIntro` wave event sets `game.remoteCutscene`; once the host's boss puppet streams in,
+  `startRemoteBossCutscene` plays the same carpet / lines / title (`cutscene.remote`: no `beginBossFight`, the host's waves
+  rule). While any player watches an intro they count as hidden, so the boss can't hit them.
+- **Boss loot**: `dropBossLoot` drops TWO free chests (plus a power-up) in co-op, one for each of you, in every player's
+  game (a joiner's when the puppet boss dies, `onPuppetBossDeath`); solo it's one.
+- **Water rooms**: a joiner's puppets take their swim height from the joiner's own `monsterSwimY` (`ctx.puppetY`), so deep
+  dwellers rise to a diving joiner and their shots and swings connect; `FLAG.submerged` carries an amphibious boss's dive,
+  and the host lifts the deep shield for a diving friend's hit on a deep or submerged monster. `window.__debug.coop` (dev only) exposes the co-op state.
 
 ## Hero awakening (mastery 4) and hero abilities
 `src/logic/heroPowers.js` (pure, `test/heroPowers.test.js`). Reaching mastery level `AWAKEN_LEVEL` (4) with a hero AWAKENS it

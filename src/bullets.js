@@ -60,7 +60,13 @@ export function createBulletPool() {
 const layerOf = (pool, bullet) => (bullet.ground && bullet.lift != null ? bullet.ground(bullet.x, bullet.z) + bullet.lift : (bullet.layerY ?? pool.group.position.y))
 const localY = (pool, bullet) => (bullet.y ?? BULLET_HEIGHT) + layerOf(pool, bullet) - pool.group.position.y
 
+// A `ghost` bullet is a co-op friend's shot: drawn and flown, never hitting anything (their game does the hits).
+// `pool.onFire(bullets)` hears every real (non-ghost) volley, so co-op can show it to the others.
 export function fireBullets(pool, bullets) {
+  if (pool.onFire) {
+    const real = bullets.filter((b) => !b.ghost)
+    if (real.length) pool.onFire(real)
+  }
   for (const bullet of bullets) {
     const slot = pool.slots.find((s) => !s.active)
     if (!slot) return
@@ -106,7 +112,7 @@ export function updateBullets(pool, dt, { monsters, obstacles, particleSystem, h
       t.y0 = t.w0 - launchY
       t.y1 = t.w1 - launchY
     }
-    const { alive, hits } = stepBullet(bullet, dt, targets)
+    const { alive, hits } = stepBullet(bullet, dt, bullet.ghost ? [] : targets)
     if (isInsideWall(bullet.x, bullet.z) || segmentBlocked(from, bullet, blockers)) {
       // Spent against a labyrinth wall or a Bulwark wall: a puff, and no hits through it.
       burst(particleSystem, { x: bullet.x, y: localY(pool, bullet), z: bullet.z }, scaleHex(bullet.color, BULLET_BRIGHTNESS), 6, 2)

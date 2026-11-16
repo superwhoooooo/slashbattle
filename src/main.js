@@ -490,6 +490,7 @@ const NOBODY = { hidden: true, diving: false, position: { x: 0, z: 0 }, damagePl
 const shockwavePool = createShockwavePool()
 scene.add(shockwavePool.group)
 const bulletPool = createBulletPool()
+bulletPool.onFire = (bullets) => coop?.sendShots(bullets) // co-op: the others see our shots (as harmless ghosts)
 const scratchLayer = createScratchLayer()
 // A clawed pet's hit: a claw scratch on the screen over the enemy, sized to how big it looks.
 const scratchAt = new THREE.Vector3()
@@ -2278,6 +2279,21 @@ function trySpawnPod(game, at = null) {
   )
 }
 
+// A boss's reward where it fell: a free chest (two in co-op, so there's one for each of you) and a power-up
+// a little off to the side so they don't overlap. Every player's game drops its own (a joiner's on the
+// puppet boss's death, coop.js), and each opens them for their own loot.
+function dropBossLoot(game, at) {
+  const spot = (dx, dz) => clampToPlatform({ x: at.x + dx, z: at.z + dz }, ARENA_RADIUS - CHEST_SPAWN_MARGIN)
+  if (coop?.active) {
+    trySpawnChest(game, { at: spot(-1.4, 0), cost: 0 })
+    trySpawnChest(game, { at: spot(1.4, 0), cost: 0 })
+    trySpawnPerkPickup(game, spot(0, 3))
+  } else {
+    trySpawnChest(game, { at: spot(0, 0), cost: 0 })
+    trySpawnPerkPickup(game, spot(3, 1))
+  }
+}
+
 // Places a chest: at `at` if given (a boss's free reward chest), otherwise
 // somewhere valid on the platform (spaced from other chests/pods, the
 // player and monsters, like pods). `cost` defaults to the next price on
@@ -2660,6 +2676,7 @@ function activateAbility(game, slot, now) {
   if (!used.abilityId) return
   game.inventory = used.inventory
   tutorialEvent('ability')
+  coop?.sendAbility(used.abilityId)
   const { player } = game
   const center = { x: player.position.x, y: 0.8, z: player.position.z }
 
@@ -4361,6 +4378,31 @@ function startBossCutscene(game) {
   }
 }
 
+// Co-op joiner: the host's boss arrived (a puppet here), so play its intro too: the same red carpet,
+// lines and title, framed on our player. Waits up to 8 s for the boss to stream in, then gives up.
+function startRemoteBossCutscene(game, now) {
+  const pending = game.remoteCutscene
+  if (!coop?.isClient) {
+    game.remoteCutscene = null
+    return
+  }
+  const mesh = game.monsters.find((m) => m.userData.netPuppet && m.userData.isBoss && !m.userData.dying)
+  if (!mesh) {
+    if (now - pending.since > 8) game.remoteCutscene = null
+    return
+  }
+  game.remoteCutscene = null
+  const boss = bossById(mesh.userData.type)
+  if (!boss) return
+  const { player } = game
+  const dx = player.position.x - mesh.position.x
+  const dz = player.position.z - mesh.position.z
+  const length = Math.hypot(dx, dz) || 1
+  const carpet = createCarpet({ x: player.position.x, z: player.position.z }, { x: mesh.position.x, z: mesh.position.z })
+  scene.add(carpet.group)
+  game.cutscene = { boss, mesh, dir: { x: dx / length, z: dz / length }, state: createCutscene(), lines: introLines(boss.name, boss.lines), carpet, remote: true }
+}
+
 // Calls a summoner boss's minions in around it (skipped while it already
 // has `maxMinions` alive), each through the usual portal spawn-in.
 // True if a spot in the labyrinth is open floor (not inside a wall or the gate).
@@ -4937,7 +4979,8 @@ function runCutscene(game, advancePressed, deltaSeconds, elapsedSeconds) {
 
   const { phase, lineIndex, lineElapsed } = cutscene.state
   if (phase === 'done') {
-    game.waveState = beginBossFight(game.waveState)
+    if (!cutscene.remote) game.waveState = beginBossFight(game.waveState) // a joiner's waves follow the host's
+
     disposeObject3D(carpet.group)
     game.cutscene = null
     showCutscene(hud, null)
@@ -5659,6 +5702,10 @@ if (import.meta.env.DEV) {
     setSandboxHero(id) { sandboxHeroPick = { hero: id, heroSkins: {} } },
     spawn(type, n = 1) { for (let i = 0; i < n; i++) spawnMonster(game, type, { at: { x: game.player.position.x + Math.sin(i * 1.3) * (4 + i), z: game.player.position.z + Math.cos(i * 1.3) * (4 + i) } }) },
     get heroState() { return heroState },
+    // Co-op browser tests: give this run a pet, or jump straight to the next boss's intro.
+    addPet(id) { game.pets.push(spawnPet(id, game)) },
+    bossNext() { game.waveState = { ...game.waveState, wavesUntilBoss: 0 } },
+    get bulletPool() { return bulletPool },
   }
 }
 
@@ -5782,7 +5829,10 @@ coop = createCoop({
     const events = m.e.filter((e) => typeof e === 'string')
     applyWaveEvents(game, events, Number(m.n) || game.waveState.waveNumber, { name: String(m.boss ?? '') || 'THE BOSS' }, Number.isInteger(m.lvl) ? m.lvl : null)
     if (events.includes('waveCleared') || events.includes('bossDefeated')) attractAllCrystals(crystalSystem)
-    if (events.includes('bossIntro')) questUi.showToast(`${String(m.boss || 'A BOSS').toUpperCase()} HAS CHECKED IN!`)
+    if (events.includes('bossIntro')) {
+      questUi.showToast(`${String(m.boss || 'A BOSS').toUpperCase()} HAS CHECKED IN!`)
+      game.remoteCutscene = { since: timer.getElapsed() } // play the intro once the host's boss shows up here
+    }
   },
   // The host's wave counter (for the HUD) and place (resyncs us if we missed a jump).
   onWaveState(w) {
@@ -5804,9 +5854,31 @@ coop = createCoop({
     playWeaponFx(weaponId, at, facing, { particleSystem, shockwavePool, warp, shake: () => {} })
     sfx.play('swing', at)
   },
+  // A friend's shots: drawn and flown in our game too, but harmless (their game does the hits).
+  onRemoteShots(bullets) {
+    if (!started || !bullets.length) return
+    fireBullets(bulletPool, bullets)
+  },
+  // A friend used an ability: a flash and ring where they stand, in the ability's colour.
+  onRemoteAbility(id, at) {
+    if (!started) return
+    const color = COOP_ABILITY_COLORS[id] ?? 0xfff27a
+    burst(particleSystem, { x: at.x, y: 0.8, z: at.z }, color, 26, 3)
+    spawnShockwave(shockwavePool, at.x, at.z, id === 'shockwave' || id === 'glacier' ? 6 : 3, color)
+    sfx.play('swing', at)
+  },
+  // A joiner's view of the water: monsters float / lurk / rise relative to OUR diver (see monsterSwimY).
+  puppetY(mesh, time) {
+    return waterRoom() ? monsterSwimY(mesh, time) : null
+  },
+  // A joiner: the host's boss died on screen -- our own free chests (and a power-up) where it fell.
+  onPuppetBossDeath(mesh) {
+    if (!started) return
+    dropBossLoot(game, { x: mesh.position.x, z: mesh.position.z })
+  },
   // Host: a joined player's hit on one of our monsters (already scaled by their gear and hero).
   applyRemoteHit(mesh, hit) {
-    const reach = hit.diving && mesh.userData.deep // a diving friend can reach the deep dwellers
+    const reach = hit.diving && (mesh.userData.deep || mesh.userData.submerged) // a diving friend can reach the deep dwellers
     if (reach) setDeepShield(false)
     damageMonster(mesh, hit.damage, { fromPos: hit.fromPos, knockback: hit.knockback, obstacles: game.obstacles, particleSystem, cause: hit.cause, ambush: hit.ambush, raw: true, by: hit.by })
     if (reach) setDeepShield(Boolean(waterRoom()) && !waterState.diving)
@@ -5830,6 +5902,24 @@ touchControls?.addMenuButton(() => coop.toggle(), 'CO-OP')
 
 
 const timer = new THREE.Timer()
+
+// Co-op: what our pets look like right now, for the others to draw (logic/coop.js's packPets).
+function coopPetRows(game) {
+  if (!coop?.active) return []
+  const rows = []
+  for (const pet of game.pets) {
+    for (const unit of [pet, ...(pet.buddies ?? [])]) {
+      if (!unit.mesh) continue
+      rows.push({
+        key: unit.def.model === 'dragon' ? `d:${unit.def.id}` : unit.def.model,
+        x: unit.mesh.position.x, z: unit.mesh.position.z, y: unit.mesh.position.y, rotY: unit.mesh.rotation.y,
+        beamTo: unit.beamTo ?? null,
+      })
+    }
+  }
+  return rows
+}
+const COOP_ABILITY_COLORS = { blink: 0xe9a3ff, shockwave: 0xffd27a, heal: 0x7dffb0, shield: 0x66f0ff, rage: 0xff5a4a, glacier: 0xbfe9ff, frostlance: 0xbfe9ff, timewarp: 0x9fd0ff, vacuum: 0xb48cff, whirl: 0xffffff, storm: 0xfff27a }
 
 // Throws the current run away and starts a fresh one (same map).
 function restartGame() {
@@ -6061,6 +6151,8 @@ function gameFrame(timestamp) {
       weapon: selectedWeaponId(game.inventory),
       look: { hero: heroLook().heroId, skin: heroLook().id },
       swingStarted: coopSwingStarted,
+      cutscene: Boolean(game.cutscene),
+      pets: coopPetRows(game),
     })
     coopSwingStarted = false
   }
@@ -6132,6 +6224,7 @@ function gameFrame(timestamp) {
     return
   }
 
+  if (game.remoteCutscene && !game.cutscene) startRemoteBossCutscene(game, elapsedSeconds)
   if (game.cutscene) {
     const advance = input.wasPressed('Space') || input.wasPressed('Enter') || input.wasMousePressed(0) || input.wasAdvancePressed()
     runCutscene(game, advance, deltaSeconds, elapsedSeconds)
@@ -6629,9 +6722,7 @@ function gameFrame(timestamp) {
     attractAllCrystals(crystalSystem)
     // A boss leaves a free chest where it fell (when it died on the platform).
     if (bossDeathPoint) {
-      trySpawnChest(game, { at: clampToPlatform(bossDeathPoint, ARENA_RADIUS - CHEST_SPAWN_MARGIN), cost: 0 })
-      // ...and a power-up, a little off to the side so the two don't overlap.
-      trySpawnPerkPickup(game, clampToPlatform({ x: bossDeathPoint.x + 3, z: bossDeathPoint.z + 1 }, ARENA_RADIUS - CHEST_SPAWN_MARGIN))
+      dropBossLoot(game, bossDeathPoint)
       if (game.world) {
         // On the hills the loot has to sit on the ground, not at sea level.
         const lift = (item) => item && (item.position.y = heightAt(item.position.x, item.position.z))
