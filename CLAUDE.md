@@ -974,6 +974,19 @@ geode blast with the gem), Tip Jar flings a suitcase, and Thorn Warden's roots r
 Guest's jelly breathes, bulges and splats per vertex: every other hero's body is `updateJelly(..., { still: true })` (vertices
 never move, so nothing pokes out through the mask or costume; the hit spring squashes the whole character group, gear included).
 
+## Legendary heroes (2500-3000)
+Ten pricey heroes at the end of `HEROES`: original characters riffing on famous game heroes' signature moves.
+**Shiro the Limitless** (3000, a blindfolded white-haired sorcerer; Infinity: `infinityPush` holds monsters at a 1.7 m gap
+and `destroyProjectilesNear` eats orbs, every 7 s a hit casts Blue, a small `openBlackHole`; awakened adds Reversal Red; B:
+Hollow Violet, a huge sphere flying 34 m), **Sky Ranger Kai** (2800, Fuse Arrows: bomb arrows that stop on the first monster;
+B: Flurry Rush), **Ragnar Ashfather** (2800, Spartan Rage: `addRage` from hits dealt / taken, then +50% damage, heals and quakes;
+B: Blades of Chaos), **Doomguard Rex** (2600, Glory Kill: `gloryKillReady` finishes staggered monsters for a heal + crystals; B:
+Big Fusion Gun), **Pipeworks Paolo** (Ground Pound; B: Super Star touch damage), **Chompy Champ** (Power Pellet: panic + chomp
+on touch), **Blox the Builder** (Primed TNT blocks), **Hado Haru** (Wave Fist fireballs; B: Heaven Wave beam), **Puffball Poppy**
+(Inhale then spit stars) and **Blaster Blu** (Charge Shot: `chargeLevel`, fired from `onHeroAttack`). Tuning is in
+`heroPowers.js`'s `TUNING`; `main.js`'s legendary section holds the effects, and `launchFlyer` gained `angle` / `stopOnHit` /
+`noHit` / `onHit` / `onStep` / `onEnd` / `y` / `scale` for their shots. Tests: `test/legendaryHeroes.test.js`.
+
 ## Speed and rendering (Shardfall comparison)
 `PLAYER_SPEED` is 6.5 (zippy 5, so no regular chaser outruns you). The medium preset has bloom off (`bloom` in
 `QUALITY_PRESETS`, `?bloom=1` overrides) and the canvas is then antialiased: `composer.render` draws straight to the canvas

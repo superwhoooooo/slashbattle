@@ -29,7 +29,7 @@ import { PICKUP_RADIUS, createPerkPickup, updatePerkPickup } from './pickups.js'
 import { createLoadoutPanel } from './loadout.js'
 import { createHub } from './hub.js'
 import { createHeroBeam, createHeroProjectile, disposeHeroProjectile, dressPlayer } from './heroGear.js'
-import { ATOMIC_REACH, HAMMER_REACH, HOOK_RANGE, HOTFOOT_MAX, HOTFOOT_STEP, HEROES, RAM_REHIT, boomerangPoint, broadsideSpots, chainPath, densestSpot, grantSkin, heroById, heroEffects, heroLook as lookForProfile, inBeam, isBehind, pickMarks, returningPoint, rewindTarget, rootsTriggered, spinReels, tipJarCrystals } from './logic/heroes.js'
+import { ATOMIC_REACH, HAMMER_REACH, HOOK_RANGE, HOTFOOT_MAX, HOTFOOT_STEP, HEROES, RAM_REHIT, boomerangPoint, broadsideSpots, chainPath, densestSpot, grantSkin, heroById, heroEffects, heroLook as lookForProfile, inBeam, isBehind, pickMarks, returningPoint, rewindTarget, rootsTriggered, spinReels, tipJarCrystals, linePoint, fanAngles, infinityPush, addRage, RAGE_PER_HIT, RAGE_PER_HURT, gloryKillReady, chargeLevel } from './logic/heroes.js'
 import { AWAKEN_LEVEL, HERO_ABILITIES, HERO_ABILITY_KEY, awakenedStats, heroAbilityFraction, isAwakened, pointsAlong, ringPoints, steerToward, traitTune, turnToward, useHeroAbility } from './logic/heroPowers.js'
 import { loadProfile, saveProfile } from './profile.js'
 import { DIFFICULTIES, DIFFICULTY_IDS, difficultyById, runPayout } from './logic/difficulty.js'
@@ -984,6 +984,14 @@ const heroState = {
   speedUntil: -Infinity, // Tailwind
   hammer: null, // Thundra's hovering storm hammer
   breath: null, // Kaiju Kiddo's held Atomic Breath
+  // Legendary heroes:
+  blueReady: 0, infinityFxAt: 0, // Shiro the Limitless
+  rage: 0, rageUntil: -Infinity, rageShockAt: -Infinity, // Ragnar Ashfather
+  stompReady: 0, // Pipeworks Paolo
+  pelletUntil: -Infinity, pellet: null, panicNext: 0, // Chompy Champ's power pellet
+  starUntil: -Infinity, // Paolo's Super Star
+  inhaleReady: 0, // Puffball Poppy
+  chargeAt: 0, // Blaster Blu: when the cannon last fired its charge
 }
 function resetHeroState() {
   Object.assign(heroState, {
@@ -992,6 +1000,8 @@ function resetHeroState() {
     footprints: [], footDist: 0, lastFoot: null, rootsReady: 0, hookReady: 0, noonReady: 0, atomic: 0, sabers: 0,
     holeReady: 0, rebirthReady: 0, cutsReady: 0, holes: [], slipUntil: -Infinity,
     abilityReady: 0, focusUntil: -Infinity, noonUntil: -Infinity, echoUntil: -Infinity, vanishUntil: -Infinity, speedUntil: -Infinity,
+    blueReady: 0, rage: 0, rageUntil: -Infinity, rageShockAt: -Infinity, stompReady: 0, pelletUntil: -Infinity, pellet: null,
+    starUntil: -Infinity, inhaleReady: 0, chargeAt: 0,
   })
   clearFlyers()
   clearHeroFx()
@@ -1025,6 +1035,7 @@ setDamageHooks({
       monster.userData.backstabAt = heroNow
     }
     if (trait === 'highnoon' && heroNow < heroState.noonUntil) scale *= t.boost
+    if (trait === 'spartan' && heroNow < heroState.rageUntil) scale *= t.bonus
     if (hexed) scale *= t.bonus
     return scale === 1 ? damage : Math.round(damage * scale)
   },
@@ -1081,7 +1092,40 @@ setDamageHooks({
       const spin = spinReels(Math.random, t.chance)
       if (spin.win) heroState.pending.push({ at: heroNow + 0.05, run: () => jackpotBlast(at, spin.reels) })
     }
+    // Legendary heroes.
+    if (trait === 'limitless' && heroNow >= heroState.blueReady) {
+      heroState.blueReady = heroNow + t.cooldown
+      heroState.pending.push({ at: heroNow, run: () => castBlue(at, t) })
+    }
+    if (trait === 'fuse' && heroState.hits % t.every === 0) heroState.pending.push({ at: heroNow, run: () => fireFuseArrows(heroAimAngle(), t) })
+    if (trait === 'spartan') {
+      if (heroNow < heroState.rageUntil) {
+        const pl = game.player
+        if (pl.hp > 0) pl.hp = Math.min(pl.maxHp, pl.hp + pl.maxHp * t.heal)
+        if (heroNow - heroState.rageShockAt >= 0.3) {
+          heroState.rageShockAt = heroNow
+          heroState.pending.push({ at: heroNow, run: () => heroNova(at, t.radius, t.damage, 2.5, 0xff5a2a) })
+        }
+      } else {
+        const r = addRage(heroState.rage, RAGE_PER_HIT, t.max)
+        heroState.rage = r.rage
+        if (r.full) heroState.pending.push({ at: heroNow, run: () => startRage(t) })
+      }
+    }
+    if (trait === 'stomp' && heroNow >= heroState.stompReady) {
+      heroState.stompReady = heroNow + t.cooldown
+      heroState.pending.push({ at: heroNow + 0.05, run: () => groundPound(monster, t) })
+    }
+    if (trait === 'tnt' && heroState.hits % t.every === 0) heroState.pending.push({ at: heroNow, run: () => dropTnt(at, t) })
+    if (trait === 'hadoken' && heroState.hits % t.every === 0) heroState.pending.push({ at: heroNow + 0.05, run: () => waveFist(heroAimAngle(), t) })
+    if (trait === 'inhale' && heroNow >= heroState.inhaleReady) {
+      heroState.inhaleReady = heroNow + t.cooldown
+      heroState.pending.push({ at: heroNow, run: () => inhale(t) })
+    }
     if (lethal) return
+    if (trait === 'glorykill' && !monster.userData.immune && gloryKillReady(monster.userData.hp, monster.userData.maxHp, !!monster.userData.isBoss, t.below, t.bossBelow)) {
+      heroState.pending.push({ at: heroNow, run: () => gloryKill(monster, t) })
+    }
     if (trait === 'hex') {
       if (heroNow >= (monster.userData.hexUntil ?? -Infinity)) burst(particleSystem, { x: at.x, y: 1.2, z: at.z }, heroLook().glow, 8, 1.5, 0.8)
       monster.userData.hexUntil = Math.max(monster.userData.hexUntil ?? -Infinity, heroNow + t.time)
@@ -1220,12 +1264,19 @@ function blowWhistle(radius, damage, heal) {
 // ---- thrown things (Plasma Wake, Boomerang, Tip Jar's suitcase) ----
 // A flyer follows `point(t)` (t 0..1 over `duration`), spinning, and hits each monster it passes
 // once per leg (`legs` 2 for the boomerang: everything can be hit again on the way back).
-function launchFlyer({ kind, color, duration, radius, damage, knockback = 1, spin = 14, point, legs = 1, arc = 0 }) {
+// Extras for the legendary heroes' shots: `angle` faces the mesh along a fixed heading instead of spinning,
+// `stopOnHit` ends it on the first monster it touches, `noHit` never hits (a TNT block), `onHit(mesh)` runs on
+// each monster hit, `onStep(f, at, now, t)` every frame, `onEnd(at)` when it ends, `y` fixes its height
+// (above the player's height at launch) and `scale` sizes the mesh.
+function launchFlyer({ kind, color, duration, radius, damage, knockback = 1, spin = 14, point, legs = 1, arc = 0, angle = null, stopOnHit = false, noHit = false, onHit = null, onStep = null, onEnd = null, y = null, scale = 1 }) {
   const mesh = createHeroProjectile(kind, color)
   const start = point(0)
-  mesh.position.set(start.x, game.player.mesh.position.y + 0.9, start.z)
+  const fixedY = y === null ? null : game.player.mesh.position.y + y
+  mesh.position.set(start.x, fixedY ?? game.player.mesh.position.y + 0.9, start.z)
+  if (scale !== 1) mesh.scale.setScalar(scale)
+  if (angle !== null) mesh.rotation.y = angle
   scene.add(mesh)
-  heroState.flyers.push({ mesh, born: heroNow, duration, radius, damage, knockback, spin, point, legs, arc, hit: new Set(), leg: 0, lastAt: start, color })
+  heroState.flyers.push({ mesh, born: heroNow, duration, radius, damage, knockback, spin, point, legs, arc, hit: new Set(), leg: 0, lastAt: start, color, angle, stopOnHit, noHit, onHit, onStep, onEnd, fixedY })
 }
 function stepFlyers(now) {
   heroState.flyers = heroState.flyers.filter((f) => {
@@ -1238,18 +1289,29 @@ function stepFlyers(now) {
     const at = f.point(t)
     f.mesh.position.x = at.x
     f.mesh.position.z = at.z
-    f.mesh.position.y = game.player.mesh.position.y + 0.9 + f.arc * Math.sin(Math.PI * t)
-    f.mesh.rotation.y = (now - f.born) * f.spin
-    if (Math.random() < 0.6) burst(particleSystem, { x: at.x, y: f.mesh.position.y, z: at.z }, f.color, 2, 0.6, 0.3)
+    f.mesh.position.y = (f.fixedY ?? game.player.mesh.position.y + 0.9) + f.arc * Math.sin(Math.PI * t)
+    if (f.angle === null) f.mesh.rotation.y = (now - f.born) * f.spin
+    else if (f.spin) f.mesh.rotation.z = (now - f.born) * f.spin
+    if (!f.noHit && Math.random() < 0.6) burst(particleSystem, { x: at.x, y: f.mesh.position.y, z: at.z }, f.color, 2, 0.6, 0.3)
+    f.onStep?.(f, at, now, t)
     const from = f.lastAt
     f.lastAt = at
-    for (const mesh of heroTargets(at.x, at.z, f.radius)) {
-      if (f.hit.has(mesh)) continue
-      f.hit.add(mesh)
-      heroHurt(mesh, f.damage, f.knockback, from)
-      burst(particleSystem, { x: mesh.position.x, y: 1, z: mesh.position.z }, f.color, 10, 2.5, 0.35)
+    let stopped = false
+    if (!f.noHit) {
+      for (const mesh of heroTargets(at.x, at.z, f.radius)) {
+        if (f.hit.has(mesh)) continue
+        f.hit.add(mesh)
+        heroHurt(mesh, f.damage, f.knockback, from)
+        burst(particleSystem, { x: mesh.position.x, y: 1, z: mesh.position.z }, f.color, 10, 2.5, 0.35)
+        f.onHit?.(mesh)
+        if (f.stopOnHit) {
+          stopped = true
+          break
+        }
+      }
     }
-    if (t >= 1) {
+    if (t >= 1 || stopped) {
+      f.onEnd?.(at)
       scene.remove(f.mesh)
       disposeHeroProjectile(f.mesh)
       return false
@@ -1267,6 +1329,10 @@ function clearFlyers() {
 // Dread Lord Vexar's Plasma Wake: called as an attack starts; most of the time a blade follows it out.
 function onHeroAttack(player) {
   const t = tn()
+  if (heroTrait() === 'charge' && chargeLevel(heroNow, heroState.chargeAt, t.charge) >= 1) {
+    heroState.chargeAt = heroNow
+    fireChargeShot(heroAimAngle(), t)
+  }
   if (heroTrait() !== 'saber' || Math.random() >= t.chance) return
   const facing = player.facing
   const twin = ++heroState.sabers % t.twinEvery === 0
@@ -1686,16 +1752,17 @@ function lightningStrike(at, glow, radius = 3.5, damage = 1.8) {
   for (const mesh of heroTargets(at.x, at.z, radius)) heroHurt(mesh, damage * heroBaseDamage(), 2, at)
 }
 // Event Horizon: a black hole that drags everything in, then implodes.
-function openBlackHole(at, t = tn()) {
-  heroState.holes.push({ x: at.x, z: at.z, born: heroNow, pull: t.pull, blast: t.blast, damage: t.damage, life: t.life })
+function openBlackHole(at, t = tn(), label = 'EVENT HORIZON', color = null) {
+  heroState.holes.push({ x: at.x, z: at.z, born: heroNow, pull: t.pull, blast: t.blast, damage: t.damage, life: t.life, color })
   warp.add('swirl', at.x, at.z, t.pull, t.life)
-  showPopup(popupPool, at, 'EVENT HORIZON', '', '#c77dff')
+  showPopup(popupPool, at, label, '', color === null ? '#c77dff' : `#${color.toString(16).padStart(6, '0')}`)
   sfx.play('hyperspace', at)
 }
 function stepBlackHoles(now, dt) {
   if (!heroState.holes.length) return
   const glow = heroLook().glow
   heroState.holes = heroState.holes.filter((h) => {
+    const glow = h.color ?? heroLook().glow
     const age = now - h.born
     if (age >= h.life) {
       burst(particleSystem, { x: h.x, y: 0.8, z: h.z }, 0xffffff, 30, 7, 0.35)
@@ -1813,6 +1880,7 @@ function onHeroKill(mesh, position) {
   const t = tn()
   const at = { x: position.x, z: position.z }
   heroState.kills++
+  if (trait === 'pellet' && heroState.kills % t.every === 0) heroState.pending.push({ at: heroNow + 0.05, run: () => powerPellet(t) })
   if (trait === 'orbital' && heroState.kills % t.every === 0) heroState.pending.push({ at: heroNow + 0.1, run: () => paintOrbital(at) })
   if (trait === 'seconds' && heroState.kills % t.every === 0 && game.player.hp > 0) {
     const p = game.player
@@ -1847,6 +1915,290 @@ function onHeroKill(mesh, position) {
 function flingSuitcase(from, target, damage) {
   const to = { x: target.position.x, z: target.position.z }
   launchFlyer({ kind: 'suitcase', color: heroLook().trim, duration: 0.35, radius: 0.9, damage: damage * heroBaseDamage(), knockback: 5, spin: 9, point: (k) => ({ x: from.x + (to.x - from.x) * k, z: from.z + (to.z - from.z) * k }), arc: 1.2 })
+}
+
+// ---- legendary heroes ----
+// Shiro's Infinity (every frame): monsters are held at the edge of the gap, enemy orbs vanish before they land.
+function stepInfinity(player, now, t) {
+  if (player.hp <= 0 || player.falling || player.hidden) return
+  const c = player.position
+  destroyProjectilesNear(projectilePool, c.x, c.z, t.orbRadius)
+  for (const mesh of heroTargets(c.x, c.z, t.wall + 1)) {
+    const to = infinityPush(c, mesh.position, t.wall, mesh.userData.radius ?? 0.5)
+    if (!to) continue
+    const k = mesh.userData.isBoss ? 0.25 : 1 // bosses lean on it; they're only slowed
+    const moved = resolveArenaMove({ x: mesh.position.x, z: mesh.position.z }, { x: (to.x - mesh.position.x) * k, z: (to.z - mesh.position.z) * k }, mesh.userData.radius ?? 0.6, game.obstacles)
+    mesh.position.x = moved.x
+    mesh.position.z = moved.z
+    if (now >= heroState.infinityFxAt) {
+      heroState.infinityFxAt = now + 0.15
+      const dx = mesh.position.x - c.x
+      const dz = mesh.position.z - c.z
+      const d = Math.hypot(dx, dz) || 1
+      burst(particleSystem, { x: c.x + (dx / d) * t.wall, y: 1, z: c.z + (dz / d) * t.wall }, heroLook().glow, 6, 1.2, 0.3)
+    }
+  }
+}
+// Blue: a quick vortex on the target that drags in and crushes; awakened, Red follows down the aim.
+function castBlue(at, t = tn()) {
+  openBlackHole(at, { pull: t.pull, blast: t.blast, damage: t.damage, life: t.life }, 'BLUE', 0x3a8aff)
+  if (!t.red) return
+  heroState.pending.push({
+    at: heroNow + t.life + 0.1,
+    run: () => {
+      const p = game.player.position
+      const aim = heroAimAngle()
+      showPopup(popupPool, p, 'REVERSAL: RED', '', '#ff3a4a')
+      pointsAlong(p, aim, t.red, 3, 2.5).forEach((pt, i) => heroState.pending.push({ at: heroNow + i * 0.08, run: () => heroNova(pt, 2.8, 1.5, 7, 0xff3a4a) }))
+    },
+  })
+}
+// Hollow Violet: blue and red converge on you, then an enormous violet mass tears down the aim.
+function hollowViolet(aim) {
+  const p = game.player.position
+  const from = { x: p.x, z: p.z }
+  for (const [c, side] of [[0x3a8aff, -1], [0xff3a4a, 1]]) {
+    burst(particleSystem, { x: from.x + Math.cos(aim) * side * 1.5, y: 1.4, z: from.z - Math.sin(aim) * side * 1.5 }, c, 30, 1.2, 0.5)
+  }
+  showPopup(popupPool, from, 'HOLLOW VIOLET', '', '#b44aff')
+  sfx.play('hyperspace', from)
+  heroState.pending.push({
+    at: heroNow + 0.5,
+    run: () => {
+      const start = { x: game.player.position.x, z: game.player.position.z }
+      triggerShake(game.shake, SHAKE_HIT_MAGNITUDE * 2.5, SHAKE_HIT_DURATION * 2)
+      sfx.play('bossSlam', start)
+      launchFlyer({
+        kind: 'violet', color: 0xb44aff, duration: 1.6, radius: 3.2, damage: 6 * heroBaseDamage(), knockback: 7, spin: 3, angle: aim,
+        point: (k) => linePoint(start, aim, k, 34),
+        onStep: (f, at, now) => {
+          destroyProjectilesNear(projectilePool, at.x, at.z, 3.5)
+          burst(particleSystem, { x: at.x, y: 1.2, z: at.z }, 0xb44aff, 4, 3, 0.4)
+          if (now >= (f.warpAt ?? 0)) {
+            f.warpAt = now + 0.2
+            warp.add('swirl', at.x, at.z, 4, 0.4)
+          }
+        },
+        onEnd: (at) => heroNova(at, 4, 0, 0, 0xb44aff),
+      })
+    },
+  })
+}
+// Fuse Arrows: bomb arrows that blow up on the first monster they reach (or at the end of their flight).
+function fireFuseArrows(aim, t = tn()) {
+  const p = game.player.position
+  const from = { x: p.x, z: p.z }
+  sfx.play('swing', from)
+  for (const angle of fanAngles(aim, t.arrows, 0.45)) {
+    launchFlyer({
+      kind: 'arrow', color: 0xff8a1a, duration: t.reach / 32, radius: 0.8, damage: 0.4 * heroBaseDamage(), knockback: 1, spin: 0, angle, stopOnHit: true,
+      point: (k) => linePoint(from, angle, k, t.reach),
+      onEnd: (at) => heroNova(at, t.radius, t.damage, 3, 0xffb547),
+    })
+  }
+}
+// Spartan Rage: full rage turns you loose.
+function startRage(t = tn()) {
+  const p = game.player.position
+  heroState.rage = 0
+  heroState.rageUntil = heroNow + t.time
+  heroNova({ x: p.x, z: p.z }, 3.5, 0, 6, 0xff3a1a)
+  column(p.x, p.z, 0xff3a1a, 4, 8)
+  showPopup(popupPool, p, 'SPARTAN RAGE', '', '#ff3a1a')
+  showLootToast(hud, { title: 'SPARTAN RAGE', name: 'Ragnar Ashfather', blurb: `+${Math.round((t.bonus - 1) * 100)}% damage for ${t.time} s. Every hit heals.` })
+}
+// Blades of Chaos: two burning chained blades whirl twice around you.
+function bladesOfChaos(aim) {
+  const player = game.player
+  for (const offset of [0, Math.PI]) {
+    launchFlyer({
+      kind: 'axe', color: 0xff6a1a, duration: 1.4, legs: 2, radius: 1.4, damage: 2 * heroBaseDamage(), knockback: 3, spin: 16,
+      point: (k) => {
+        const a = aim + offset + k * Math.PI * 4
+        const r = 5.5 * Math.min(1, k * 5)
+        return { x: player.position.x + Math.sin(a) * r, z: player.position.z + Math.cos(a) * r }
+      },
+      onHit: (m) => setBurn(m, 0.6, 4),
+    })
+  }
+  sfx.play('swing', player.position)
+  startRage(traitTune('spartan', true))
+}
+// Glory Kill: finish a staggered monster on the spot; it bursts into health and crystals.
+function gloryKill(mesh, t = tn()) {
+  if (!alive(mesh) || mesh.userData.immune) return
+  const player = game.player
+  const at = { x: mesh.position.x, z: mesh.position.z }
+  burst(particleSystem, { x: at.x, y: 1, z: at.z }, 0xff2a2a, 30, 4, 0.5)
+  burst(particleSystem, { x: at.x, y: 1.2, z: at.z }, 0x7dffa0, 14, 3, 0.6)
+  showPopup(popupPool, at, 'GLORY KILL', '', '#ff3a3a')
+  triggerShake(game.shake, SHAKE_HIT_MAGNITUDE * 1.5, SHAKE_HIT_DURATION)
+  heroHurt(mesh, (mesh.userData.hp ?? 1) + 1, 3)
+  if (player.hp > 0) player.hp = Math.min(player.maxHp, player.hp + player.maxHp * t.heal)
+  dropCrystals(crystalSystem, at.x, at.z, Array(t.gems).fill(1))
+}
+// The Big Fusion Gun: a slow orb that zaps everything near as it flies, then detonates.
+function bigFusionGun(aim) {
+  const p = game.player.position
+  const from = { x: p.x, z: p.z }
+  const green = 0x6fff6a
+  sfx.play('hyperspace', from)
+  launchFlyer({
+    kind: 'orb', color: green, duration: 2.2, radius: 1.2, damage: heroBaseDamage(), knockback: 1, spin: 4, angle: aim,
+    point: (k) => linePoint(from, aim, k, 26),
+    onStep: (f, at, now) => {
+      if (now < (f.zapAt ?? 0)) return
+      f.zapAt = now + 0.25
+      for (const mesh of heroTargets(at.x, at.z, 6)) {
+        sparkLine(at, mesh.position, green, 6)
+        heroHurt(mesh, 0.6 * heroBaseDamage(), 0.5, at)
+      }
+    },
+    onEnd: (at) => heroNova(at, 6, 5, 5, green),
+  })
+}
+// Ground Pound: bounce onto the target and flatten everything round it.
+function groundPound(mesh, t = tn()) {
+  const player = game.player
+  if (!alive(mesh) || player.hp <= 0 || player.falling || player.hidden) return
+  const from = { x: player.position.x, z: player.position.z }
+  const at = { x: mesh.position.x, z: mesh.position.z }
+  const dx = at.x - from.x
+  const dz = at.z - from.z
+  const d = Math.hypot(dx, dz) || 1
+  const stop = Math.max(0, d - (mesh.userData.radius ?? 0.6) - PLAYER_RADIUS - 0.2)
+  const landing = clampToPlatform(resolveArenaMove(from, { x: (dx / d) * stop, z: (dz / d) * stop }, PLAYER_RADIUS, game.obstacles), ARENA_RADIUS - 1)
+  for (let i = 1; i <= 8; i++) {
+    const k = i / 8
+    burst(particleSystem, { x: from.x + (landing.x - from.x) * k, y: 1 + Math.sin(Math.PI * k) * 2.5, z: from.z + (landing.z - from.z) * k }, 0xffd15c, 1, 0.3, 0.25)
+  }
+  player.position = { x: landing.x, z: landing.z }
+  player.mesh.position.x = landing.x
+  player.mesh.position.z = landing.z
+  player.invulnerableUntil = Math.max(player.invulnerableUntil, heroNow + 0.3)
+  showPopup(popupPool, at, 'BOING!', 'GROUND POUND', '#ffd15c')
+  heroNova(at, t.radius, t.damage, 2, 0xffd15c, (m) => {
+    if (!m.userData.isBoss) m.userData.confusedUntil = heroNow + t.daze
+    dropCrystals(crystalSystem, m.position.x, m.position.z, Array(t.coins).fill(1))
+  })
+}
+// Power Pellet: monsters panic, and touching one chomps it.
+function powerPellet(t = tn()) {
+  const p = game.player.position
+  heroState.pelletUntil = heroNow + t.time
+  heroState.pellet = t
+  showPopup(popupPool, p, 'WAKA WAKA!', 'POWER PELLET', '#fff27a')
+  burst(particleSystem, { x: p.x, y: 1, z: p.z }, 0xfff27a, 30, 4, 0.5)
+  spawnShockwave(shockwavePool, p.x, p.z, 6, 0x3a5aff)
+  sfx.play('waveCleared', p)
+}
+// Super Star and Power Pellet: touching monsters hurts them (each at most every 0.45 s); the pellet also scares them.
+function stepTouchPowers(player, now) {
+  const star = now < heroState.starUntil
+  const pellet = now < heroState.pelletUntil && heroState.pellet
+  if (!star && !pellet) return
+  const c = player.position
+  if (Math.random() < 0.7) burst(particleSystem, { x: c.x, y: 1, z: c.z }, star ? [0xff4fa3, 0xfff27a, 0x6fe3ff, 0x7dffa0][Math.floor(now * 12) % 4] : 0xfff27a, 2, 1.2, 0.3)
+  if (pellet && now >= heroState.panicNext) {
+    heroState.panicNext = now + 0.3
+    for (const mesh of heroTargets(c.x, c.z, heroState.pellet.radius)) {
+      if (mesh.userData.isBoss) continue
+      mesh.userData.confusedUntil = Math.max(mesh.userData.confusedUntil ?? 0, now + 0.45)
+      if (Math.random() < 0.3) burst(particleSystem, { x: mesh.position.x, y: 1.4, z: mesh.position.z }, 0x3a5aff, 3, 0.8, 0.4)
+    }
+  }
+  if (player.hp <= 0 || player.hidden || player.falling) return
+  for (const mesh of heroTargets(c.x, c.z, PLAYER_RADIUS + 0.6)) {
+    if (now < (mesh.userData.touchHitAt ?? -Infinity)) continue
+    mesh.userData.touchHitAt = now + 0.45
+    const dmg = star ? 2 : heroState.pellet.damage
+    heroHurt(mesh, dmg * heroBaseDamage(), star ? 10 : 4, c)
+    burst(particleSystem, { x: mesh.position.x, y: 1, z: mesh.position.z }, star ? 0xffffff : 0xfff27a, 12, 3, 0.4)
+    if (!star) showPopup(popupPool, mesh.position, 'CHOMP!', '', '#fff27a')
+    sfx.play(star ? 'cannonball' : 'crystal', mesh.position)
+  }
+}
+// Primed TNT: blocks that blink faster and faster, then blow.
+function dropTnt(at, t = tn()) {
+  for (let i = 0; i < t.blocks; i++) {
+    const a = Math.random() * Math.PI * 2
+    const spot = i ? { x: at.x + Math.sin(a) * 1.6, z: at.z + Math.cos(a) * 1.6 } : { x: at.x, z: at.z }
+    const fuse = t.fuse + i * 0.25
+    launchFlyer({
+      kind: 'tnt', color: 0xd8302a, duration: fuse, radius: 0, damage: 0, noHit: true, spin: 0, angle: Math.random() * Math.PI, y: 0,
+      point: () => spot,
+      onStep: (f, pos, now, k) => {
+        f.mesh.userData.setBlink?.(Math.floor(k * k * 14) % 2 === 1)
+        if (Math.random() < 0.3) burst(particleSystem, { x: pos.x, y: 0.95, z: pos.z }, 0xffb547, 1, 0.5, 0.25)
+      },
+      onEnd: (pos) => heroNova(pos, t.radius, t.damage, 4, 0xff6a2a),
+    })
+  }
+  sfx.play('podIn', at)
+}
+// Wave Fist: a blue fireball down the aim.
+function waveFist(aim, t = tn()) {
+  const p = game.player.position
+  const from = { x: p.x, z: p.z }
+  showPopup(popupPool, from, 'HADO!', '', hexColor(heroLook().glow))
+  sfx.play('swing', from)
+  launchFlyer({
+    kind: 'fireball', color: heroLook().glow, duration: t.reach / 24, radius: 0.9 * t.size, damage: t.damage * heroBaseDamage(), knockback: 6, spin: 0, angle: aim, scale: t.size,
+    stopOnHit: !t.pierce, point: (k) => linePoint(from, aim, k, t.reach),
+    onEnd: (at) => burst(particleSystem, { x: at.x, y: 1, z: at.z }, heroLook().glow, 18, 3, 0.4),
+  })
+}
+// Heaven Wave: a straight wave beam that hits everything along it.
+function waveBeam(aim, reach, damage, width, label) {
+  const p = game.player
+  const from = { x: p.position.x, z: p.position.z }
+  const glow = heroLook().glow
+  addBeam(glow, reach, width * 0.7, 0.7, (mesh) => {
+    mesh.position.set(from.x + Math.sin(aim) * 0.5, p.mesh.position.y + 1, from.z + Math.cos(aim) * 0.5)
+    mesh.rotation.y = aim
+  })
+  warp.add('ripple', from.x + Math.sin(aim) * reach * 0.5, from.z + Math.cos(aim) * reach * 0.5, reach * 0.4, 0.5)
+  triggerShake(game.shake, SHAKE_HIT_MAGNITUDE * 2, SHAKE_HIT_DURATION * 1.5)
+  sfx.play('bossSlam', from)
+  showPopup(popupPool, from, label, '', hexColor(glow))
+  for (const mesh of heroTargets(from.x, from.z, reach + 2)) {
+    if (inBeam(from, aim, mesh.position, reach, width + (mesh.userData.radius ?? 0.5))) heroHurt(mesh, damage * heroBaseDamage(), 8, from)
+  }
+}
+// Inhale: suck everything near to you, gulp, then spit stars down the aim.
+function inhale(t = tn(), life = 0.6) {
+  const p = game.player.position
+  openBlackHole({ x: p.x, z: p.z }, { pull: t.radius, blast: 2.5, damage: 0.5, life }, 'INHALE!', 0xffa0c8)
+  heroState.pending.push({
+    at: heroNow + life + 0.05,
+    run: () => {
+      const pl = game.player
+      if (pl.hp <= 0 || pl.hidden) return
+      const from = { x: pl.position.x, z: pl.position.z }
+      const aim = heroAimAngle()
+      sfx.play('cannonball', from)
+      for (const a of fanAngles(aim, t.stars, 0.6)) {
+        launchFlyer({ kind: 'star', color: heroLook().trim, duration: 0.7, radius: 1.1, damage: t.damage * heroBaseDamage(), knockback: 4, spin: 12, point: (k) => linePoint(from, a, k, 16) })
+      }
+    },
+  })
+}
+// Charge Shot: a pierce-everything plasma shot when the cannon is full.
+function fireChargeShot(aim, t = tn()) {
+  const p = game.player.position
+  const from = { x: p.x, z: p.z }
+  const glow = heroLook().glow
+  burst(particleSystem, { x: from.x + Math.sin(aim), y: 1, z: from.z + Math.cos(aim) }, glow, 14, 2.5, 0.3)
+  sfx.play('cannonball', from)
+  launchFlyer({ kind: 'plasma', color: glow, duration: t.reach / 34, radius: t.width, damage: t.damage * heroBaseDamage(), knockback: 3, spin: 0, angle: aim, scale: t.width / 1.2, point: (k) => linePoint(from, aim, k, t.reach) })
+}
+// Every frame: Infinity, rage hurt-gain and glow, the touch powers.
+function stepLegendaryHeroes(player, now, dt, trait, t) {
+  if (trait === 'limitless') stepInfinity(player, now, t)
+  if (trait === 'spartan' && now < heroState.rageUntil && Math.random() < 0.5) {
+    burst(particleSystem, { x: player.position.x, y: 1.2, z: player.position.z }, 0xff3a1a, 2, 1, 0.4)
+  }
+  stepTouchPowers(player, now)
 }
 
 // ---- hero abilities (B), unlocked by awakening at mastery 4 ----
@@ -1963,6 +2315,27 @@ function triggerHeroAbility(now) {
     case 'singularity': openBlackHole(heroAimPoint(def.range), { pull: 16, blast: 7, damage: 6, life: 3 }); break
     case 'phoebe': phoenixNova(p, 7, 4, false); player.invulnerableUntil = Math.max(player.invulnerableUntil, now + 1); break
     case 'kenji': thousandCuts(9, 12, 2.5); break
+    case 'shiro': hollowViolet(aim); break
+    case 'ranger':
+      setTimeWarp(Math.max(timeWarp.until, now + 3), 0.25)
+      warp.add('swirl', p.x, p.z, 6, 1)
+      showPopup(popupPool, p, 'FLURRY RUSH', '', '#6fffe0')
+      thousandCuts(8, 12, 2)
+      break
+    case 'ragnar': bladesOfChaos(aim); break
+    case 'doomguard': bigFusionGun(aim); break
+    case 'paolo':
+      heroState.starUntil = now + 6
+      heroState.speedUntil = Math.max(heroState.speedUntil, now + 6)
+      player.invulnerableUntil = Math.max(player.invulnerableUntil, now + 6)
+      showPopup(popupPool, p, 'SUPER STAR!', '', '#fff27a')
+      sfx.play('waveCleared', p)
+      break
+    case 'chompy': powerPellet(awake('pellet')); break
+    case 'blox': ringPoints(p, 8, 5, aim).forEach((pt) => dropTnt(pt, { fuse: 1.2, damage: 4, radius: 4, blocks: 1 })); break
+    case 'haru': later(0.35, () => waveBeam(heroAimAngle(), 22, 5, 2, 'HEAVEN WAVE')); burst(particleSystem, { x: p.x, y: 1, z: p.z }, glow, 30, 2, 0.5); break
+    case 'poppy': inhale({ radius: 14, stars: 5, damage: 3.5 }, 1.1); break
+    case 'buster': fanAngles(aim, 5, 0.7).forEach((a) => fireChargeShot(a, awake('charge'))); break
   }
 }
 
@@ -1992,11 +2365,23 @@ function stepHeroTraits(now, dt) {
     heroState.rootsReady = now + t.rootCooldown
     rootBurst()
   }
+  // Spartan Rage: taking a hit builds rage fastest.
+  if (trait === 'spartan' && heroState.lastHp !== null && player.hp < heroState.lastHp - 0.5 && player.hp > 0 && now >= heroState.rageUntil) {
+    const r = addRage(heroState.rage, RAGE_PER_HURT, t.max)
+    heroState.rage = r.rage
+    if (r.full) startRage(t)
+  }
   heroState.lastHp = player.hp
   if (trait === 'hotfoot' || heroState.footprints.length) stepHotFoot(player, now, dt) // Lava Ring's footprints burn out even if you switch away
   if (trait === 'ram') stepRam(player, now)
   const gear = player.mesh.userData.heroGear
-  if (gear) gear.userData.charge = trait === 'atomic' ? (heroState.breath ? 1 : heroState.atomic / t.every) : 0
+  if (gear) {
+    gear.userData.charge = trait === 'atomic' ? (heroState.breath ? 1 : heroState.atomic / t.every)
+      : trait === 'spartan' ? (now < heroState.rageUntil ? 1 : heroState.rage / t.max)
+      : trait === 'charge' ? chargeLevel(now, heroState.chargeAt, t.charge)
+      : 0
+  }
+  stepLegendaryHeroes(player, now, dt, trait, t)
   stepFlyers(now)
   stepYanks(now, dt)
   stepHeroFx(now)
@@ -3617,9 +4002,9 @@ let wildsStatusKey = ''
 const MERCHANT_ID = 'merchant'
 const DISCOVER_REWARD = 10 // crystals for reaching a landmark this run...
 const DISCOVER_REWARD_FIRST = 25 // ...or for the first time ever
+const hexColor = (c) => `#${c.toString(16).padStart(6, '0')}`
 // A world height as the effect layers see it (they ride up with the player: see applyFxDepth).
 const fxY = (game, worldY) => worldY - (game.world?.groundY ?? 0)
-const hexColor = (c) => `#${c.toString(16).padStart(6, '0')}`
 
 const journalUi = createJournalUi({ onClose: () => input.clear() })
 function openJournal(game) {

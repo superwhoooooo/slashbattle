@@ -673,6 +673,206 @@ const GEAR = {
       fringe.userData.swing = true
     }
   },
+  // --- Legendary heroes ---
+  // Shiro the Limitless: spiky white hair swept up, a dark blindfold, a tall coat collar.
+  whiteHair(g, look) {
+    const hair = solid(look.trim, 0.9)
+    part(g, new THREE.SphereGeometry(R * 1.02, 20, 10, 0, Math.PI * 2, 0, Math.PI * 0.36), hair, [0, R * 1.0, -0.02])
+    for (let i = 0; i < 11; i++) {
+      const a = (i / 11) * Math.PI * 2
+      const lean = 0.5 + (i % 3) * 0.12
+      part(g, new THREE.ConeGeometry(0.11, 0.42 + (i % 2) * 0.12, 5), hair, [Math.sin(a) * R * 0.55, TOP - 0.02, Math.cos(a) * R * 0.55 - 0.05], [Math.cos(a) * lean, 0, -Math.sin(a) * lean])
+    }
+    part(g, new THREE.ConeGeometry(0.12, 0.5, 5), hair, [0, TOP + 0.12, 0], [-0.2, 0, 0])
+  },
+  blindfold(g, look) {
+    part(g, new THREE.CylinderGeometry(R * 1.04, R * 1.04, R * 0.26, 28, 1, true), clothMat(look.cloak), [0, R * 1.42, 0])
+    // Six faint eyes glowing through the cloth.
+    for (const side of [-1, 1]) {
+      const eye = part(g, new THREE.CircleGeometry(0.06, 14), glowMat(look.glow), [side * 0.18, R * 1.42, R * 1.045])
+      eye.userData.flicker = true
+    }
+    both((side) => {
+      const tail = part(g, new THREE.BoxGeometry(0.08, 0.02, 0.45), clothMat(look.cloak), [side * 0.08, R * 1.4, -R - 0.18], [0.45, side * 0.25, 0])
+      tail.userData.flap = true
+      return tail
+    })
+  },
+  highCollar(g, look) {
+    part(g, new THREE.CylinderGeometry(R * 0.98, R * 1.12, R * 0.5, 24, 1, true), clothMat(look.cloak), [0, R * 0.98, 0])
+    for (let i = 0; i < 3; i++) part(g, new THREE.SphereGeometry(0.035, 8, 6), solid(0xd8b84a, 0.3, 0.8), [0, R * (0.62 - i * 0.18), R * 1.08 - i * 0.02])
+    const orb = part(g, new THREE.SphereGeometry(0.09, 12, 10), glowMat(look.glow), [R * 1.25, R * 1.0, 0.2])
+    orb.userData.bob = true
+  },
+  // Sky Ranger Kai: long pointed ears, a trailing scarf, and a sword and round shield on the back.
+  pointyEars(g, look) {
+    both((side) => part(g, new THREE.ConeGeometry(0.08, 0.42, 6), solid(0xf0c8a0, 0.7), [side * R * 1.05, R * 1.38, 0], [0, 0, side * -1.25]))
+    part(g, new THREE.SphereGeometry(R * 1.03, 20, 10, 0, Math.PI * 2, 0, Math.PI * 0.3), solid(0xd8b84a, 0.85), [0, R * 1.0, -0.03])
+  },
+  rangerScarf(g, look) {
+    part(g, new THREE.TorusGeometry(R * 0.82, 0.08, 8, 24), clothMat(look.cloak), [0, R * 0.72, 0], [Math.PI / 2, 0, 0])
+    const tail = part(g, new THREE.BoxGeometry(0.16, 0.03, 0.7), clothMat(look.cloak), [0.15, R * 0.7, -R - 0.32], [0.35, 0.2, 0])
+    tail.userData.sway = true
+  },
+  swordShield(g, look) {
+    const shield = new THREE.Group()
+    shield.position.set(0, R * 0.95, -R - 0.05)
+    part(shield, new THREE.CylinderGeometry(0.42, 0.42, 0.06, 20), solid(look.cloak, 0.5, 0.3), [0, 0, 0], [FRONT, 0, 0])
+    part(shield, new THREE.TorusGeometry(0.42, 0.03, 6, 22), solid(look.trim, 0.3, 0.7), [0, 0, -0.03])
+    part(shield, new THREE.ConeGeometry(0.12, 0.2, 3), glowMat(look.glow), [0, 0.03, -0.05], [FRONT, 0, 0])
+    g.add(shield)
+    const sword = new THREE.Group()
+    sword.position.set(-0.15, R * 1.2, -R - 0.12)
+    sword.rotation.z = -0.6
+    part(sword, new THREE.BoxGeometry(0.07, 0.95, 0.03), solid(0xdfe6f5, 0.2, 0.9), [0, 0.15, 0])
+    part(sword, new THREE.BoxGeometry(0.3, 0.05, 0.06), solid(look.trim, 0.3, 0.7), [0, -0.33, 0])
+    part(sword, new THREE.CylinderGeometry(0.03, 0.03, 0.22, 6), solid(0x5a3aa8, 0.6), [0, -0.47, 0])
+    g.add(sword)
+  },
+  // Ragnar Ashfather: a big braided beard, red war paint, and an axe on the back.
+  ashBeard(g, look) {
+    const beard = solid(0x5a3a24, 0.95)
+    part(g, new THREE.SphereGeometry(R * 0.62, 14, 10), beard, [0, R * 0.78, R * 0.62], [0, 0, 0], [1, 0.9, 0.6])
+    part(g, new THREE.ConeGeometry(0.16, 0.42, 6), beard, [0, R * 0.38, R * 0.85], [Math.PI + 0.25, 0, 0])
+    for (let i = 0; i < 2; i++) part(g, new THREE.TorusGeometry(0.06, 0.02, 5, 10), solid(look.trim === 0xc8302a ? 0xc8a050 : look.trim, 0.3, 0.8), [0, R * (0.48 - i * 0.12), R * 0.86], [Math.PI / 2 - 0.25, 0, 0])
+    part(g, new THREE.SphereGeometry(R * 1.02, 20, 8, 0, Math.PI * 2, 0, Math.PI * 0.18), solid(look.body, 0.4), [0, R * 1.0, 0])
+  },
+  warPaint(g, look) {
+    const paint = glowMat(look.trim)
+    // A stripe over the crown and down through one eye, like the tattoo.
+    part(g, new THREE.TorusGeometry(R * 1.015, 0.05, 5, 30, Math.PI * 1.1), paint, [0, R, 0], [0, Math.PI / 2, -Math.PI * 0.05])
+    const rune = part(g, new THREE.OctahedronGeometry(0.08), glowMat(look.glow), [0, R * 0.6, R * 1.02])
+    rune.userData.charge = true
+  },
+  axeBack(g, look) {
+    const axe = new THREE.Group()
+    axe.position.set(R * 0.3, R * 1.0, -R - 0.12)
+    axe.rotation.z = -0.55
+    part(axe, new THREE.CylinderGeometry(0.035, 0.04, 1.0, 8), solid(0x5a3a24, 0.8), [0, 0, 0])
+    part(axe, new THREE.CylinderGeometry(0.3, 0.3, 0.04, 16, 1, false, 0, Math.PI), solid(look.trim === 0xc8302a ? 0xc8ced6 : look.trim, 0.25, 0.85), [0.02, 0.38, 0], [Math.PI / 2, 0, 0])
+    const edge = part(axe, new THREE.TorusGeometry(0.3, 0.015, 4, 16, Math.PI), glowMat(look.glow), [0.02, 0.38, 0], [0, 0, -Math.PI / 2])
+    edge.userData.flicker = true
+    g.add(axe)
+  },
+  // Doomguard Rex: a full slayer helmet with a visor slit and a brow ridge.
+  slayerHelm(g, look) {
+    const armour = new THREE.MeshPhysicalMaterial({ color: look.body, roughness: 0.4, metalness: 0.45, clearcoat: 0.4, flatShading: true })
+    part(g, new THREE.SphereGeometry(R * 1.08, 22, 14, 0, Math.PI * 2, 0, Math.PI * 0.64), armour, [0, R * 0.92, 0])
+    part(g, new THREE.BoxGeometry(R * 1.2, R * 0.16, 0.2), solid(look.cloak, 0.5, 0.5), [0, R * 1.58, R * 0.92], [0.25, 0, 0])
+    const visor = part(g, new THREE.BoxGeometry(R * 1.0, R * 0.14, 0.05), new THREE.MeshPhysicalMaterial({ color: look.glow, emissive: look.glow, emissiveIntensity: 0.6, roughness: 0.1, metalness: 0.8 }), [0, R * 1.4, R * 1.06])
+    visor.castShadow = false
+    for (const side of [-1, 1]) part(g, new THREE.BoxGeometry(0.08, R * 0.5, 0.18), solid(look.trim, 0.5, 0.6), [side * R * 0.55, R * 1.08, R * 0.88], [0, side * 0.5, 0])
+  },
+  // Pipeworks Paolo: a red cap with a round badge, and overall straps with gold buttons.
+  plumberCap(g, look) {
+    const cap = solid(look.cloak, 0.7)
+    part(g, new THREE.SphereGeometry(R * 1.04, 22, 10, 0, Math.PI * 2, 0, Math.PI * 0.38), cap, [0, R * 0.98, 0])
+    part(g, new THREE.CylinderGeometry(0.42, 0.42, 0.04, 20, 1, false, -Math.PI / 2, Math.PI), cap, [0, R * 1.62, R * 0.62], [0.12, 0, 0])
+    part(g, new THREE.CircleGeometry(0.14, 18), solid(0xffffff, 0.6), [0, R * 1.8, R * 0.72], [-0.6, 0, 0])
+    part(g, new THREE.TorusGeometry(0.08, 0.02, 4, 12), glowMat(look.cloak), [0, R * 1.8, R * 0.73], [-0.6, 0, 0])
+  },
+  overalls(g, look) {
+    const denim = clothMat(look.body)
+    part(g, new THREE.CylinderGeometry(R * 1.04, R * 1.0, R * 0.7, 24, 1, true), denim, [0, R * 0.42, 0])
+    both((side) => {
+      part(g, new THREE.BoxGeometry(0.1, R * 0.9, 0.04), denim, [side * 0.22, R * 0.9, R * 0.96], [-0.25, 0, 0])
+      return part(g, new THREE.CylinderGeometry(0.055, 0.055, 0.03, 10), solid(look.trim, 0.3, 0.8), [side * 0.22, R * 0.78, R * 1.0], [FRONT, 0, 0])
+    })
+  },
+  // Chompy Champ: a backwards arcade cap and a little ghost circling him.
+  arcadeCap(g, look) {
+    const cap = solid(look.cloak, 0.6)
+    part(g, new THREE.SphereGeometry(R * 1.02, 20, 10, 0, Math.PI * 2, 0, Math.PI * 0.32), cap, [0, R * 1.0, 0])
+    part(g, new THREE.CylinderGeometry(0.36, 0.36, 0.04, 18, 1, false, Math.PI / 2, Math.PI), cap, [0, R * 1.58, -R * 0.62], [-0.15, 0, 0])
+    part(g, new THREE.SphereGeometry(0.06, 8, 6), solid(look.trim, 0.5), [0, TOP + 0.02, 0])
+  },
+  ghostOrbit(g, look) {
+    const ring = new THREE.Group()
+    ring.position.y = R
+    ring.userData.orbit = true
+    const ghost = new THREE.Group()
+    ghost.position.set(R * 1.7, 0.2, 0)
+    ghost.userData.bob = true
+    const sheet = new THREE.MeshStandardMaterial({ color: look.glow, roughness: 0.4, emissive: look.glow, emissiveIntensity: 0.3 })
+    part(ghost, new THREE.SphereGeometry(0.2, 14, 10, 0, Math.PI * 2, 0, Math.PI / 2), sheet, [0, 0.05, 0])
+    part(ghost, new THREE.CylinderGeometry(0.2, 0.2, 0.18, 14, 1, true), sheet, [0, -0.04, 0])
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2
+      part(ghost, new THREE.ConeGeometry(0.06, 0.1, 5), sheet, [Math.sin(a) * 0.14, -0.17, Math.cos(a) * 0.14], [Math.PI, 0, 0])
+    }
+    for (const side of [-1, 1]) {
+      part(ghost, new THREE.SphereGeometry(0.055, 8, 6), solid(0xffffff, 0.4), [side * 0.07, 0.07, 0.17])
+      part(ghost, new THREE.SphereGeometry(0.03, 6, 5), solid(0x2a3ad8, 0.4), [side * 0.07, 0.07, 0.215])
+    }
+    ring.add(ghost)
+    g.add(ring)
+  },
+  // Blox the Builder: a blocky cube head with a pixel face.
+  blockHead(g, look) {
+    part(g, new THREE.BoxGeometry(R * 1.55, R * 1.2, R * 1.55), solid(look.trim, 0.85), [0, R * 1.35, 0])
+    part(g, new THREE.BoxGeometry(R * 1.6, R * 0.32, R * 1.6), solid(look.cloak, 0.9), [0, R * 1.84, 0])
+    part(g, new THREE.BoxGeometry(R * 1.6, R * 0.5, R * 0.35), solid(look.cloak, 0.9), [0, R * 1.6, -R * 0.63])
+    const front = R * 0.78
+    for (const side of [-1, 1]) {
+      part(g, new THREE.BoxGeometry(0.16, 0.09, 0.02), solid(0xffffff, 0.8), [side * 0.18, R * 1.42, front])
+      part(g, new THREE.BoxGeometry(0.08, 0.09, 0.025), glowMat(look.glow), [side * 0.14, R * 1.42, front])
+    }
+    part(g, new THREE.BoxGeometry(0.24, 0.07, 0.02), solid(0x6a3a2a, 0.8), [0, R * 1.12, front])
+    part(g, new THREE.BoxGeometry(R * 1.5, R * 0.9, R * 1.3), clothMat(look.body), [0, R * 0.45, 0])
+  },
+  // Hado Haru: a black belt knotted at the front (the headband above is his too).
+  blackBelt(g, look) {
+    part(g, new THREE.CylinderGeometry(R * 1.04, R * 1.04, 0.1, 24, 1, true), clothMat(look.trim), [0, R * 0.62, 0])
+    part(g, new THREE.BoxGeometry(0.14, 0.12, 0.06), clothMat(look.trim), [0, R * 0.62, R * 1.04])
+    both((side) => {
+      const end = part(g, new THREE.BoxGeometry(0.06, 0.3, 0.03), clothMat(look.trim), [side * 0.06, R * 0.45, R * 1.04], [0, 0, side * 0.25])
+      end.userData.swing = true
+      return end
+    })
+    part(g, new THREE.CylinderGeometry(R * 0.86, R * 1.04, R * 0.28, 24, 1, true), clothMat(look.body), [0, R * 0.98, 0])
+  },
+  // Puffball Poppy: big red shoes and a little star floating over her head.
+  redShoes(g, look) {
+    both((side) => part(g, new THREE.SphereGeometry(0.3, 14, 10), solid(look.cloak, 0.45), [side * R * 0.5, 0.12, R * 0.2], [0, side * 0.3, 0], [0.9, 0.55, 1.35]))
+    both((side) => part(g, new THREE.SphereGeometry(0.17, 12, 8), new THREE.MeshBasicMaterial({ color: 0xff6a9a, transparent: true, opacity: 0.6 }), [side * 0.33, R * 1.18, R * 0.9], [0, 0, 0], [1, 0.6, 0.3]))
+  },
+  starTiara(g, look) {
+    const star = new THREE.Group()
+    star.position.set(0, TOP + 0.35, 0)
+    star.userData.bob = true
+    const mat = new THREE.MeshStandardMaterial({ color: look.trim, emissive: look.glow, emissiveIntensity: 0.6, roughness: 0.3, metalness: 0.4 })
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI * 2
+      part(star, new THREE.ConeGeometry(0.06, 0.18, 4), mat, [Math.sin(a) * 0.09, Math.cos(a) * 0.09, 0], [0, 0, -a])
+    }
+    part(star, new THREE.SphereGeometry(0.07, 10, 8), mat)
+    const spinner = new THREE.Group()
+    spinner.add(star)
+    spinner.userData.orbit = true
+    g.add(spinner)
+  },
+  // Blaster Blu: a round robot helmet with ear discs and a crest, and the arm cannon.
+  busterHelm(g, look) {
+    const shell = new THREE.MeshPhysicalMaterial({ color: look.cloak, roughness: 0.25, metalness: 0.2, clearcoat: 1, flatShading: true })
+    part(g, new THREE.SphereGeometry(R * 1.08, 24, 14, 0, Math.PI * 2, 0, Math.PI * 0.6), shell, [0, R * 0.94, 0])
+    part(g, new THREE.BoxGeometry(0.12, 0.12, R * 1.6), solid(look.trim, 0.3, 0.3), [0, TOP + 0.02, -0.05])
+    both((side) => part(g, new THREE.CylinderGeometry(0.2, 0.2, 0.08, 18), solid(look.trim, 0.3, 0.3), [side * R * 1.06, R * 1.3, 0], [0, 0, Math.PI / 2]))
+    for (const side of [-1, 1]) {
+      part(g, new THREE.CircleGeometry(0.11, 16), solid(0xffffff, 0.4), [side * 0.2, R * 1.32, R * 1.0])
+      part(g, new THREE.CircleGeometry(0.05, 12), glowMat(look.glow), [side * 0.2, R * 1.32, R * 1.005])
+    }
+    part(g, new THREE.BoxGeometry(0.22, 0.04, 0.02), solid(0x1a1a24, 0.5), [0, R * 1.0, R * 1.0])
+  },
+  armCannon(g, look) {
+    const cannon = new THREE.Group()
+    cannon.position.set(R * 1.05, R * 0.8, 0.15)
+    const shell = new THREE.MeshPhysicalMaterial({ color: look.cloak, roughness: 0.25, metalness: 0.2, clearcoat: 1 })
+    part(cannon, new THREE.CylinderGeometry(0.2, 0.24, 0.7, 16), shell, [0, 0, 0], [FRONT, 0, 0])
+    part(cannon, new THREE.TorusGeometry(0.2, 0.035, 6, 16), solid(look.trim, 0.3, 0.5), [0, 0, 0.36])
+    const muzzle = part(cannon, new THREE.SphereGeometry(0.13, 12, 10), glowMat(look.glow), [0, 0, 0.36])
+    muzzle.userData.charge = true
+    g.add(cannon)
+  },
 }
 
 function hammerModel(metal, glow) {
@@ -731,6 +931,79 @@ export function createHeroProjectile(kind, color) {
     const b = boomerangModel(0xc8603a, color)
     b.scale.setScalar(1.8)
     g.add(b)
+  } else if (kind === 'arrow') {
+    const arrow = new THREE.Group()
+    arrow.add(new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 1.0, 6), solid(0x8a6a3a, 0.7)))
+    const bomb = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 10), solid(0x2a3a5a, 0.4, 0.3))
+    bomb.position.y = 0.55
+    arrow.add(bomb)
+    const fuse = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 6), glowMat(color))
+    fuse.position.set(0, 0.72, 0)
+    arrow.add(fuse)
+    const fletch = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.2, 3), solid(0xf2f0e6, 0.8))
+    fletch.position.y = -0.45
+    arrow.add(fletch)
+    arrow.rotation.x = Math.PI / 2 // points along +z; main.js aims the group's y rotation
+    g.add(arrow)
+    g.userData.aimed = true
+  } else if (kind === 'axe') {
+    const axe = new THREE.Group()
+    axe.add(new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.06, 0.12), solid(0x3a3a40, 0.4, 0.7)))
+    const blade = new THREE.Mesh(new THREE.ConeGeometry(0.32, 0.6, 3), new THREE.MeshBasicMaterial({ color }))
+    blade.position.x = 0.55
+    blade.rotation.z = -Math.PI / 2
+    blade.scale.set(1, 1, 0.3)
+    axe.add(blade)
+    axe.add(new THREE.Mesh(new THREE.SphereGeometry(0.38, 12, 10), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false })))
+    g.add(axe)
+  } else if (kind === 'tnt') {
+    const box = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.8), solid(0xd8302a, 0.7))
+    box.position.y = 0.4
+    g.add(box)
+    const band = new THREE.Mesh(new THREE.BoxGeometry(0.82, 0.26, 0.82), solid(0xf2f0e6, 0.7))
+    band.position.y = 0.4
+    g.add(band)
+    for (const z of [-1, 1]) {
+      const label = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.1, 0.02), solid(0x1a1a1e, 0.8))
+      label.position.set(0, 0.4, z * 0.415)
+      g.add(label)
+    }
+    const flash = new THREE.Mesh(new THREE.BoxGeometry(0.86, 0.86, 0.86), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false }))
+    flash.position.y = 0.4
+    g.add(flash)
+    g.userData.setBlink = (on) => { flash.material.opacity = on ? 0.75 : 0 }
+  } else if (kind === 'star') {
+    const mat = new THREE.MeshBasicMaterial({ color })
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI * 2
+      const spike = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.45, 4), mat)
+      spike.position.set(Math.sin(a) * 0.22, 0, Math.cos(a) * 0.22)
+      spike.rotation.set(Math.PI / 2, a, 0)
+      spike.rotation.order = 'YXZ'
+      spike.rotation.set(Math.PI / 2, a, 0)
+      g.add(spike)
+    }
+    g.add(new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 10), mat))
+    g.add(new THREE.Mesh(new THREE.SphereGeometry(0.5, 12, 10), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.25, blending: THREE.AdditiveBlending, depthWrite: false })))
+  } else if (kind === 'orb' || kind === 'violet' || kind === 'fireball' || kind === 'plasma') {
+    // Glowing energy spheres: a white-hot core in an additive shell (and two swirling rings for the violet).
+    const size = { orb: 0.9, violet: 2.4, fireball: 0.55, plasma: 0.6 }[kind]
+    g.add(new THREE.Mesh(new THREE.SphereGeometry(size * 0.45, 16, 12), new THREE.MeshBasicMaterial({ color: 0xffffff })))
+    g.add(new THREE.Mesh(new THREE.SphereGeometry(size, 18, 14), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false })))
+    if (kind === 'violet') {
+      for (const [c, tilt] of [[0x3a8aff, 0.5], [0xff3a4a, -0.5]]) {
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(size * 1.15, size * 0.08, 8, 32), new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false }))
+        ring.rotation.set(Math.PI / 2 + tilt, 0, 0)
+        g.add(ring)
+      }
+    }
+    if (kind === 'fireball' || kind === 'plasma') {
+      const tail = new THREE.Mesh(new THREE.ConeGeometry(size * 0.8, size * 2.6, 12), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false }))
+      tail.rotation.x = -Math.PI / 2
+      tail.position.z = -size * 1.5
+      g.add(tail)
+      g.userData.aimed = true
+    }
   } else {
     const shell = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.5, 0.3), solid(0xf2e6c8, 0.5))
     g.add(shell)

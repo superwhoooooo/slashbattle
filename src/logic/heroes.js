@@ -487,6 +487,137 @@ export const HEROES = [
       skin('moon', 'Moonlit Blade', 0x2a3048, 0x10141e, 0xc8c8d8, 0xb8f0ff, 300),
     ],
   },
+  // --- Legendary heroes (2500-3000): original characters riffing on famous game heroes' signature moves ---
+  {
+    id: 'shiro', name: 'Shiro the Limitless', cost: 3000,
+    blurb: 'The strongest sorcerer at the resort, and he knows it. The blindfold is for everyone else\'s sake.',
+    stats: { damage: 1.12, maxHp: 20, damageTaken: 0.8, crit: 0.05 }, mask: true,
+    trait: { id: 'limitless', name: 'Infinity', desc: 'Nothing gets within 1.7 m of you: monsters are held back at the edge of an endless gap and enemy orbs vanish before they touch you. Every 7 s a hit casts Blue on its target: a vortex that drags in everything within 6 m, then crushes it for 2x.' },
+    gear: ['whiteHair', 'blindfold', 'highCollar'],
+    skins: [
+      skin('limitless', 'Limitless', 0x23263a, 0x14162a, 0xf4f6ff, 0x6fc8ff),
+      skin('red', 'Reversal Red', 0x2a1a22, 0x14080c, 0xf4f6ff, 0xff3a4a, 400),
+      skin('violet', 'Hollow Violet', 0x2a1f44, 0x150f26, 0xe8e0ff, 0xb44aff, 600),
+      skin('domain', 'Unlimited Void', 0x0c0c14, 0x05050a, 0xffffff, 0xfff27a, 900),
+    ],
+  },
+  {
+    id: 'ranger', name: 'Sky Ranger Kai', cost: 2800,
+    blurb: 'Woke up in a cave with no memory and a very good bow. Glues bombs to arrows. It works.',
+    stats: { speed: 1.06, damage: 1.08, maxHp: 15 },
+    trait: { id: 'fuse', name: 'Fuse Arrows', desc: 'Every 5th hit looses a bomb-fused arrow along your aim: it flies 16 m and blows up on the first monster it meets for 2.2x within 3.5 m.' },
+    gear: ['pointyEars', 'rangerScarf', 'swordShield'],
+    skins: [
+      skin('champion', 'Champion Blue', 0x3a7ac8, 0x24508a, 0xd8c08a, 0x6fffe0),
+      skin('wild', 'Wild Green', 0x4a8a3a, 0x2a5a24, 0xc8a06a, 0xbdff6f, 300),
+      skin('ancient', 'Ancient Tech', 0x3a4048, 0xd86a2a, 0xc8ced6, 0x4fe8ff, 450),
+      skin('sky', 'Sky Islands', 0xf2f0e6, 0x2f8f74, 0xd8b84a, 0x7dffb0, 700),
+    ],
+  },
+  {
+    id: 'ragnar', name: 'Ragnar Ashfather', cost: 2800,
+    blurb: 'Retired from killing gods. Came to the resort for some peace and quiet. Did not get it. BOY.',
+    stats: { maxHp: 40, damage: 1.1, speed: 0.97, damageTaken: 0.92 },
+    trait: { id: 'spartan', name: 'Spartan Rage', desc: 'Every hit you land builds rage, and every hit you take builds more. At 30 you ENRAGE for 8 s: +50% damage, each hit heals 2% and quakes the ground 3 m around it.' },
+    gear: ['ashBeard', 'warPaint', 'axeBack'],
+    skins: [
+      skin('ash', 'Ghost of Ash', 0xe0dcd4, 0x6a4a2a, 0xc8302a, 0xff5a2a),
+      skin('frost', 'Frozen Axe', 0xd8e4ec, 0x3a4a6a, 0x3a6ac8, 0x8fe8ff, 300),
+      skin('valkyrie', 'Valkyrie Gold', 0xe8dcc8, 0x8a5a14, 0xe8b84a, 0xfff27a, 450),
+      skin('chaos', 'Blades of Chaos', 0x2a2224, 0x14080a, 0xff3a1a, 0xff8a1a, 700),
+    ],
+  },
+  {
+    id: 'doomguard', name: 'Doomguard Rex', cost: 2600,
+    blurb: 'Rip. Tear. Check out late. The front desk stopped asking him to keep it down.',
+    stats: { damage: 1.15, maxHp: 30, speed: 1.04, damageTaken: 0.95 }, mask: true,
+    trait: { id: 'glorykill', name: 'Glory Kill', desc: 'Hit a monster at or under 25% health (not a boss) and you finish it on the spot: it bursts into a 6% heal and a shower of crystals.' },
+    gear: ['slayerHelm', 'shoulderPads'],
+    skins: [
+      skin('praetor', 'Praetor Green', 0x4a6a3a, 0x2e3a24, 0x8d8a86, 0xffb547),
+      skin('crimson', 'Crimson Hell', 0x8a2a2a, 0x3a0e0e, 0x4a4040, 0xff5a1a, 300),
+      skin('phobos', 'Phobos Grey', 0x8a8e94, 0x3a3e48, 0xd8dce4, 0x6fe3ff, 450),
+      skin('gold', 'Night Sentinel', 0xc8a050, 0x5a4214, 0x2a2a30, 0xfff27a, 700),
+    ],
+  },
+  {
+    id: 'paolo', name: 'Pipeworks Paolo', cost: 2500,
+    blurb: 'A plumber who jumps on things for a living. The resort called about the pool drains.',
+    stats: { speed: 1.05, maxHp: 10, crystal: 1.15 },
+    trait: { id: 'stomp', name: 'Ground Pound', desc: 'Every 6 s your next hit bounces you onto the target in a ground pound: 2.5x within 4 m, everything flattened dizzy for 1.5 s, and a coin (crystal) pops out of each.' },
+    gear: ['plumberCap', 'mustache', 'overalls'],
+    skins: [
+      skin('classic', 'Classic Red', 0x2f4fd0, 0xd8262a, 0xffd15c, 0xffffff),
+      skin('fire', 'Fire Flower', 0xd8262a, 0xf4f0e6, 0xffd15c, 0xff8a1a, 300),
+      skin('green', 'Little Brother', 0x2a3a9a, 0x2fa04a, 0xffd15c, 0xbdff6f, 450),
+      skin('gold', 'Gold Coin', 0xe8b84a, 0xfff0a0, 0xffffff, 0xfff27a, 700),
+    ],
+  },
+  {
+    id: 'chompy', name: 'Chompy Champ', cost: 2500,
+    blurb: 'Has been running from ghosts in a maze since 1980-something. Finally fighting back.',
+    stats: { speed: 1.08, magnet: 1.3 },
+    trait: { id: 'pellet', name: 'Power Pellet', desc: 'Every 12 kills you gobble a power pellet: for 5 s monsters panic and stumble about, and touching one CHOMPS it for 3x.' },
+    gear: ['arcadeCap', 'ghostOrbit'],
+    skins: [
+      skin('arcade', 'Arcade Yellow', 0xffd83a, 0x2a3ad8, 0xffffff, 0xff4fa3),
+      skin('bow', 'Hair Bow', 0xffd83a, 0xff3a5a, 0x2a3ad8, 0xff8ac8, 300),
+      skin('maze', 'Neon Maze', 0x3a5aff, 0x14143a, 0xffd83a, 0x6fe3ff, 450),
+      skin('cherry', 'Cherry Bonus', 0xe8283a, 0x2f8f3a, 0xffffff, 0xfff27a, 700),
+    ],
+  },
+  {
+    id: 'blox', name: 'Blox the Builder', cost: 2500,
+    blurb: 'Punched a tree on day one. Now punches monsters. Carries a frankly unsafe amount of TNT.',
+    stats: { maxHp: 15, damage: 1.06, crystal: 1.1 }, mask: true,
+    trait: { id: 'tnt', name: 'Primed TNT', desc: 'Every 5th hit drops a block of TNT on the target. It blinks, hisses, and 1.5 s later blows up for 3x within 4 m.' },
+    gear: ['blockHead', 'pickaxe'],
+    skins: [
+      skin('overworld', 'Overworld', 0x3ab0c8, 0x5a3a1e, 0xc8a07a, 0x6fffa0),
+      skin('nether', 'Nether', 0x8a2a2a, 0x2a0e0e, 0xd8a07a, 0xff8a1a, 300),
+      skin('diamond', 'Full Diamond', 0x6fe8e8, 0x3ac8d8, 0xe8ffff, 0xffffff, 450),
+      skin('ender', 'Ender', 0x1e1626, 0x0c0814, 0x2a2232, 0xd84aff, 700),
+    ],
+  },
+  {
+    id: 'haru', name: 'Hado Haru', cost: 2500,
+    blurb: 'A wandering fighter looking for a stronger opponent. The resort keeps sending jellies.',
+    stats: { damage: 1.08, speed: 1.04, crit: 0.04 },
+    trait: { id: 'hadoken', name: 'Wave Fist', desc: 'Every 4th hit you thrust your palms and hurl a blue fireball along your aim: it flies 15 m and slams the first monster for 2x, shoving it hard.' },
+    gear: ['headband', 'blackBelt'],
+    skins: [
+      skin('white', 'White Gi', 0xf2efe6, 0xd82a2a, 0x1a1a1e, 0x6fc8ff),
+      skin('red', 'Red Gi', 0xc8302a, 0x1a1a1e, 0x1a1a1e, 0xffb547, 300),
+      skin('evil', 'Dark Wave', 0x3a2a4a, 0x8a1a2a, 0x1a1a1e, 0xd84aff, 450),
+      skin('gold', 'Golden Fist', 0xe8c04a, 0xffffff, 0x1a1a1e, 0xfff27a, 700),
+    ],
+  },
+  {
+    id: 'poppy', name: 'Puffball Poppy', cost: 2500,
+    blurb: 'Small, round and pink. Will eat anything. Has eaten several things that were trying to eat her.',
+    stats: { maxHp: 20, magnet: 1.2, speed: 1.02 },
+    trait: { id: 'inhale', name: 'Inhale', desc: 'Every 8 s your next hit takes a huge breath: everything within 6 m is sucked to you, gulped for 0.5x, then you spit a star along your aim that pierces for 2.5x.' },
+    gear: ['redShoes', 'starTiara'],
+    skins: [
+      skin('bubblegum', 'Bubblegum', 0xffa0c8, 0xd82a4a, 0xffd83a, 0xfff27a),
+      skin('shadow', 'Mirror Shadow', 0x4a4a5a, 0x1a1a24, 0xc8c8d8, 0xb44aff, 300),
+      skin('mint', 'Mint Puff', 0x8af0c8, 0x2f8f74, 0xffffff, 0xd8fff0, 450),
+      skin('meta', 'Masked Knight', 0x2a3a8a, 0x8a2a5a, 0xd8b84a, 0xffd15c, 700),
+    ],
+  },
+  {
+    id: 'buster', name: 'Blaster Blu', cost: 2500,
+    blurb: 'A helper robot rebuilt for battle. Keeps copying the bosses\' moves and calling it research.',
+    stats: { cooldown: 0.92, maxHp: 15, speed: 1.03 }, mask: true,
+    trait: { id: 'charge', name: 'Charge Shot', desc: 'Your arm cannon charges itself over 3 s; your next attack also fires a fully charged plasma shot that pierces 18 m for 3x.' },
+    gear: ['busterHelm', 'armCannon'],
+    skins: [
+      skin('blue', 'Blue Bomber', 0x3a8ae8, 0x2a5ac8, 0x6fd8ff, 0x6fffe8),
+      skin('proto', 'Proto Red', 0xc8302a, 0x7a1a1a, 0xc8c8d8, 0xfff27a, 300),
+      skin('bass', 'Bass Black', 0x2a2a34, 0x14141e, 0xd8b84a, 0xff4fa3, 450),
+      skin('copy', 'Copy Gold', 0xe8b84a, 0x8a5a14, 0xfff0c0, 0x6fe3ff, 700),
+    ],
+  },
 ]
 
 export const HERO_IDS = HEROES.map((h) => h.id)
@@ -735,3 +866,41 @@ export function chainPath(points, from, max = 7, hop = 8) {
   }
   return path
 }
+
+// --- legendary heroes ---
+const clamp01 = (v) => Math.min(1, Math.max(0, v))
+// A point `t` (0..1) of the way along a straight shot of `reach` from `from` along `angle`.
+export function linePoint(from, angle, t, reach) {
+  return { x: from.x + Math.sin(angle) * reach * t, z: from.z + Math.cos(angle) * reach * t }
+}
+// `count` angles fanned evenly across `spread` radians around `aim` (one shot flies straight).
+export function fanAngles(aim, count, spread = 0.5) {
+  if (count <= 1) return [aim]
+  return Array.from({ length: count }, (_, i) => aim - spread / 2 + (spread * i) / (count - 1))
+}
+// Infinity: where a monster at `at` (body radius `radius`) ends up if it's inside the gap `wall` around
+// `center` -- pushed straight out to its edge. Null if it's already outside.
+export function infinityPush(center, at, wall, radius = 0.5) {
+  const dx = at.x - center.x
+  const dz = at.z - center.z
+  const d = Math.hypot(dx, dz)
+  const keep = wall + radius
+  if (d >= keep) return null
+  if (d < 1e-6) return { x: center.x, z: center.z + keep }
+  return { x: center.x + (dx / d) * keep, z: center.z + (dz / d) * keep }
+}
+// Spartan Rage: rage after gaining `amount` (capped at `max`); `full` once it reaches the top.
+export const RAGE_PER_HIT = 1
+export const RAGE_PER_HURT = 3
+export function addRage(rage, amount, max) {
+  const next = Math.min(max, Math.max(0, rage + amount))
+  return { rage: next, full: next >= max }
+}
+// Glory Kill: is this monster staggered enough to finish? Bosses only when `bossBelow` > 0.
+export function gloryKillReady(hp, maxHp, isBoss, below = 0.25, bossBelow = 0) {
+  if (!(maxHp > 0) || hp <= 0) return false
+  const frac = hp / maxHp
+  return isBoss ? bossBelow > 0 && frac <= bossBelow : frac <= below
+}
+// Charge Shot: how full the arm cannon is (0..1), `charge` seconds to fill since the last release.
+export const chargeLevel = (now, releasedAt, charge) => clamp01((now - releasedAt) / charge)
