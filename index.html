@@ -118,6 +118,31 @@
         0%, 100% { box-shadow: 0 0 5px rgba(229, 72, 77, 0.35); }
         50% { box-shadow: 0 0 14px rgba(229, 72, 77, 0.7); }
       }
+      /* Ragnar Ashfather's Spartan Rage: fills as you hit and get hit, then drains while you're enraged. */
+      #rage-meter { display: none; margin-top: 8px; }
+      #rage-meter.on { display: block; }
+      #rage-bar {
+        position: relative;
+        width: 220px;
+        height: 12px;
+        border: 2px solid rgba(26, 36, 51, 0.12);
+        border-radius: 6px;
+        background: var(--track);
+        overflow: hidden;
+      }
+      #rage-fill {
+        height: 100%;
+        width: 0%;
+        background: linear-gradient(90deg, #8a1a10, #ff3a1a);
+        transition: width 0.12s ease-out;
+      }
+      #rage-meter.raging #rage-label { color: #ff3a1a; }
+      #rage-meter.raging #rage-fill { background: linear-gradient(90deg, #ff3a1a, #ffb547); }
+      #rage-meter.raging #rage-bar { animation: rage-pulse 0.5s ease-in-out infinite; border-color: #ff3a1a; }
+      @keyframes rage-pulse {
+        0%, 100% { box-shadow: 0 0 4px rgba(255, 58, 26, 0.4); }
+        50% { box-shadow: 0 0 14px rgba(255, 58, 26, 0.9); }
+      }
       #health-label {
         display: block;
         margin-top: 6px;
@@ -1133,7 +1158,7 @@
         #hud {
           padding: 10px 12px;
         }
-        #health-bar {
+        #health-bar, #rage-bar {
           width: 160px;
         }
         .overlay h1 {
@@ -1149,7 +1174,7 @@
          readable state (and the loot toast's timed fade, which still
          drives when it disappears). */
       @media (prefers-reduced-motion: reduce) {
-        #health-bar.low {
+        #health-bar.low, #rage-meter.raging #rage-bar {
           animation: none;
         }
         #wave-banner {
@@ -1188,6 +1213,10 @@
         <div id="health-fill"></div>
       </div>
       <span id="health-label">100 / 100</span>
+      <div id="rage-meter">
+        <span class="hud-label" id="rage-label">Rage</span>
+        <div id="rage-bar"><div id="rage-fill"></div></div>
+      </div>
       <div id="hidden-indicator">
         HIDDEN
         <div id="hide-countdown">

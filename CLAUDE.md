@@ -760,7 +760,7 @@ step's gear once (sword, Shockwave, Ember) and keeps its targets, pods and picku
 wherever waves are skipped.
 
 ## Pet limit and pet upgrades
-You carry one pet at a time (`MAX_PETS` and the pet slot limits are 1, so the skill tree's pet-slot skill has no effect). Pets level up (1-5) with banked crystals on the Loadout page's Upgrade buttons (`logic/profile.js`'s `buyPetLevel`, `profile.pets`, cost `PET_UPGRADE_COST` x level). `items.js`'s `petBoost` (+30% power per level: damage, healing, magnet reach, guard reduction) and `petRate` (+8% speed per level) are applied in `pets.js`'s `updatePets` and `petEffects(ids, levels)`.
+You carry one pet at a time (`MAX_PETS` 1), two once you learn the skill tree's Animal Friend (`MAX_SLOTS.pets` 2). Pets level up (1-5) with banked crystals on the Loadout page's Upgrade buttons (`logic/profile.js`'s `buyPetLevel`, `profile.pets`, cost `PET_UPGRADE_COST` x level). `items.js`'s `petBoost` (+30% power per level: damage, healing, magnet reach, guard reduction) and `petRate` (+8% speed per level) are applied in `pets.js`'s `updatePets` and `petEffects(ids, levels)`.
 
 ## New enemies and boss versions
 `config.js` adds three regular enemies (weights in `logic/waves.js`): **hopper** (wave 4: a turquoise,
@@ -980,7 +980,8 @@ Ten pricey heroes at the end of `HEROES`: original characters riffing on famous 
 **Shiro the Limitless** (3000, a blindfolded white-haired sorcerer; Infinity: `infinityPush` holds monsters at a 1.7 m gap
 and `destroyProjectilesNear` eats orbs, every 7 s a hit casts Blue, a small `openBlackHole`; awakened adds Reversal Red; B:
 Hollow Violet, a huge sphere flying 34 m), **Sky Ranger Kai** (2800, Fuse Arrows: bomb arrows that stop on the first monster;
-B: Flurry Rush), **Ragnar Ashfather** (2800, Spartan Rage: `addRage` from hits dealt / taken, then +50% damage, heals and quakes;
+B: Flurry Rush), **Ragnar Ashfather** (2800, Spartan Rage: `addRage` from hits dealt / taken, full at 20, then 10 s of +75% damage,
+30% less damage taken (`guard`), +20% speed, heals and quakes; a rage bar under the health bar, `updateRageMeter`;
 B: Blades of Chaos), **Doomguard Rex** (2600, Glory Kill: `gloryKillReady` finishes staggered monsters for a heal + crystals; B:
 Big Fusion Gun), **Pipeworks Paolo** (Ground Pound; B: Super Star touch damage), **Chompy Champ** (Power Pellet: panic + chomp
 on touch), **Blox the Builder** (Primed TNT blocks), **Hado Haru** (Wave Fist fireballs; B: Heaven Wave beam), **Puffball Poppy**

@@ -112,3 +112,17 @@ describe('trait helpers take the awakened numbers', () => {
     expect(rewindTarget(history, 1, 100, 0.6).hp).toBe(60)
   })
 })
+
+describe('Spartan Rage', () => {
+  it('fills sooner and, while it runs, hits harder, shrugs hits off and moves faster (more when awakened)', () => {
+    const base = traitTune('spartan', false)
+    const awake = traitTune('spartan', true)
+    expect(base.max).toBeLessThanOrEqual(20)
+    expect(base.bonus).toBeGreaterThan(1.5)
+    expect(base.guard).toBeLessThan(1)
+    expect(base.speed).toBeGreaterThan(1)
+    expect(awake.max).toBeLessThan(base.max)
+    expect(awake.guard).toBeLessThan(base.guard)
+    expect(awake.bonus).toBeGreaterThan(base.bonus)
+  })
+})

@@ -1998,6 +1998,27 @@ function fireFuseArrows(aim, t = tn()) {
     })
   }
 }
+// Spartan Rage is running right now (Ragnar Ashfather).
+function heroRaging(now) {
+  return heroTrait() === 'spartan' && now < heroState.rageUntil
+}
+// Ragnar's rage bar under the health bar: fills with rage, then drains over the rage's time.
+const rageMeter = { root: document.getElementById('rage-meter'), fill: document.getElementById('rage-fill'), label: document.getElementById('rage-label'), key: '' }
+function updateRageMeter(now) {
+  if (!rageMeter.root) return
+  const on = heroTrait() === 'spartan'
+  const raging = on && now < heroState.rageUntil
+  const t = on ? tn() : null
+  const frac = !on ? 0 : raging ? (heroState.rageUntil - now) / t.time : heroState.rage / t.max
+  const text = !on ? '' : raging ? `Enraged! ${Math.ceil(heroState.rageUntil - now)}s` : `Rage ${Math.floor(heroState.rage)} / ${t.max}`
+  const key = `${on}|${raging}|${Math.round(frac * 200)}|${text}`
+  if (key === rageMeter.key) return
+  rageMeter.key = key
+  rageMeter.root.classList.toggle('on', on)
+  rageMeter.root.classList.toggle('raging', raging)
+  rageMeter.fill.style.width = `${Math.max(0, Math.min(1, frac)) * 100}%`
+  rageMeter.label.textContent = text
+}
 // Spartan Rage: full rage turns you loose.
 function startRage(t = tn()) {
   const p = game.player.position
@@ -2006,7 +2027,7 @@ function startRage(t = tn()) {
   heroNova({ x: p.x, z: p.z }, 3.5, 0, 6, 0xff3a1a)
   column(p.x, p.z, 0xff3a1a, 4, 8)
   showPopup(popupPool, p, 'SPARTAN RAGE', '', '#ff3a1a')
-  showLootToast(hud, { title: 'SPARTAN RAGE', name: 'Ragnar Ashfather', blurb: `+${Math.round((t.bonus - 1) * 100)}% damage for ${t.time} s. Every hit heals.` })
+  showLootToast(hud, { title: 'SPARTAN RAGE', name: 'Ragnar Ashfather', blurb: `+${Math.round((t.bonus - 1) * 100)}% damage, ${Math.round((1 - t.guard) * 100)}% less damage taken, faster for ${t.time} s. Every hit heals.` })
 }
 // Blades of Chaos: two burning chained blades whirl twice around you.
 function bladesOfChaos(aim) {
@@ -6771,7 +6792,7 @@ function gameFrame(timestamp) {
   if (!sandbox && game.inventory.pets.some((id) => !profile.collection.includes(id))) {
     setProfile(addToCollection(profile, game.inventory.pets))
   }
-  player.speedMultiplier = petFx.speedMultiplier * perk.speed * (holdSprinting() ? SHIFT_SPRINT_MULTIPLIER : 1) * (elapsedSeconds < player.sprintUntil ? SPRINT_SPEED_MULTIPLIER : 1) * (elapsedSeconds < (player.whirlUntil ?? -Infinity) ? 1.3 : 1) * (elapsedSeconds < heroState.speedUntil ? 1.5 : 1) * player.speedFactor(elapsedSeconds)
+  player.speedMultiplier = petFx.speedMultiplier * perk.speed * (holdSprinting() ? SHIFT_SPRINT_MULTIPLIER : 1) * (elapsedSeconds < player.sprintUntil ? SPRINT_SPEED_MULTIPLIER : 1) * (elapsedSeconds < (player.whirlUntil ?? -Infinity) ? 1.3 : 1) * (elapsedSeconds < heroState.speedUntil ? 1.5 : 1) * (heroRaging(elapsedSeconds) ? tn().speed : 1) * player.speedFactor(elapsedSeconds)
   if (player.stepStatus(elapsedSeconds)) burst(particleSystem, { x: player.position.x, y: 1.1, z: player.position.z }, STATUS_COLORS.poison, 3, 1.5)
   if (game.world) {
     const jump = game.world.jump
@@ -7231,7 +7252,8 @@ function gameFrame(timestamp) {
 
   // Pets follow and help, crystals scatter/home/get collected, and chests
   // animate; F opens the nearest one in reach if you can afford it.
-  player.damageTakenMultiplier = tutorial || (sandbox && godMode) ? 0 : Math.max(0.3, petFx.damageTakenMultiplier * perk.damageTaken)
+  player.damageTakenMultiplier = tutorial || (sandbox && godMode) ? 0 : Math.max(0.3, petFx.damageTakenMultiplier * perk.damageTaken) * (heroRaging(elapsedSeconds) ? tn().guard : 1) // Spartan Rage shrugs hits off
+  updateRageMeter(elapsedSeconds)
   player.difficultyDamage = diff().damageTaken
   if (tutorial) stepTutorial()
   if (sandbox) {

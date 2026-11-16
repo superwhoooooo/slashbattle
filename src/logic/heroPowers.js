@@ -57,7 +57,7 @@ const TUNING = {
   // Legendary heroes.
   limitless: [{ wall: 1.7, orbRadius: 2, cooldown: 7, pull: 6, blast: 3.5, damage: 2, life: 1.2, red: 0 }, { wall: 2.6, orbRadius: 3, cooldown: 3.5, pull: 9, blast: 5, damage: 3.5, life: 1.5, red: 3 }],
   fuse: [{ every: 5, arrows: 1, reach: 16, damage: 2.2, radius: 3.5 }, { every: 3, arrows: 3, reach: 20, damage: 3, radius: 4.5 }],
-  spartan: [{ max: 30, time: 8, bonus: 1.5, heal: 0.02, radius: 3, damage: 1 }, { max: 20, time: 10, bonus: 2, heal: 0.04, radius: 4.5, damage: 1.5 }],
+  spartan: [{ max: 20, time: 10, bonus: 1.75, heal: 0.03, radius: 3.5, damage: 1.5, guard: 0.7, speed: 1.2 }, { max: 14, time: 12, bonus: 2.25, heal: 0.05, radius: 5, damage: 2, guard: 0.55, speed: 1.3 }],
   glorykill: [{ below: 0.25, bossBelow: 0, heal: 0.06, gems: 4 }, { below: 0.4, bossBelow: 0.08, heal: 0.1, gems: 8 }],
   stomp: [{ cooldown: 6, damage: 2.5, radius: 4, daze: 1.5, coins: 1 }, { cooldown: 3, damage: 4, radius: 5.5, daze: 2.5, coins: 2 }],
   pellet: [{ every: 12, time: 5, damage: 3, radius: 18 }, { every: 6, time: 8, damage: 5, radius: 24 }],
@@ -119,7 +119,7 @@ export const AWAKENED = {
   kenji: { desc: 'Thousand Cuts every 4 s: up to 12 monsters, 12 m apart, for 2.5x each.' },
   shiro: { desc: 'Infinity widens to 2.6 m and swallows orbs 3 m out. Blue every 3.5 s, 9 m pull, 3.5x crush, and every Blue fires Reversal Red: three repelling blasts down your aim.', stats: { damageTaken: 0.85 } },
   ranger: { desc: 'Every 3rd hit looses THREE fused arrows in a fan: 20 m, 3x within 4.5 m each.' },
-  ragnar: { desc: 'Rage fills at 20 and lasts 10 s: double damage, each hit heals 4% and quakes 4.5 m for 1.5x.' },
+  ragnar: { desc: 'Rage fills at 14 and lasts 12 s: +125% damage, take 45% less, +30% speed, each hit heals 5% and quakes 5 m for 2x.' },
   doomguard: { desc: 'Glory Kill anything at 40% health, and even bosses at 8%: a 10% heal and twice the crystals.' },
   paolo: { desc: 'A ground pound every 3 s: 4x within 5.5 m, dizzy for 2.5 s, two coins each.' },
   chompy: { desc: 'A power pellet every 6 kills: 8 s of panic across 24 m, and every chomp is 5x.' },

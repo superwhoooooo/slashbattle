@@ -117,18 +117,25 @@ describe('skills', () => {
 describe('slot limits', () => {
   it('grow with the slot skills, capped, and reset', () => {
     setSlotBonuses({ powerups: 3, pets: 3, abilities: 2 })
-    expect(SLOT_LIMITS).toEqual({ powerups: 6, pets: 1, abilities: 7 })
+    expect(SLOT_LIMITS).toEqual({ powerups: 6, pets: 2, abilities: 7 })
     setSlotBonuses({ powerups: 99, pets: 99, abilities: 99 })
     expect(SLOT_LIMITS).toEqual(MAX_SLOTS)
     setSlotBonuses({})
     expect(SLOT_LIMITS).toEqual(BASE_SLOTS)
   })
 
-  it('holds at most one pet, whatever the slot bonus', () => {
+  it('holds one pet, two with Animal Friend, never more', () => {
     let p = addToCollection(createProfile(), ['sparky', 'ember', 'bolt'])
-    setSlotBonuses({ pets: 5 })
-    for (const id of ['sparky', 'ember', 'bolt']) p = toggleLoadoutPet(p, id).profile
+    for (const id of ['sparky', 'ember']) p = toggleLoadoutPet(p, id).profile
     expect(activeLoadoutPets(p)).toHaveLength(1)
+    const fx = skillEffects({ friend: 1 })
+    setSlotBonuses({ pets: fx.slotsPets })
+    expect(SLOT_LIMITS.pets).toBe(2)
+    p = addToCollection(createProfile(), ['sparky', 'ember', 'bolt'])
+    for (const id of ['sparky', 'ember', 'bolt']) p = toggleLoadoutPet(p, id).profile
+    expect(activeLoadoutPets(p)).toEqual(['sparky', 'ember'])
+    setSlotBonuses({ pets: 5 })
+    expect(SLOT_LIMITS.pets).toBe(2)
     setSlotBonuses({})
     expect(MAX_PETS).toBe(1)
   })

@@ -518,7 +518,7 @@ export const HEROES = [
     id: 'ragnar', name: 'Ragnar Ashfather', cost: 2800,
     blurb: 'Retired from killing gods. Came to the resort for some peace and quiet. Did not get it. BOY.',
     stats: { maxHp: 40, damage: 1.1, speed: 0.97, damageTaken: 0.92 },
-    trait: { id: 'spartan', name: 'Spartan Rage', desc: 'Every hit you land builds rage, and every hit you take builds more. At 30 you ENRAGE for 8 s: +50% damage, each hit heals 2% and quakes the ground 3 m around it.' },
+    trait: { id: 'spartan', name: 'Spartan Rage', desc: 'Every hit you land builds rage, and every hit you take builds more. At 20 you ENRAGE for 10 s: +75% damage, take 30% less, move 20% faster, and each hit heals 3% and quakes the ground 3.5 m around it for 1.5x.' },
     gear: ['ashBeard', 'warPaint', 'axeBack'],
     skins: [
       skin('ash', 'Ghost of Ash', 0xe0dcd4, 0x6a4a2a, 0xc8302a, 0xff5a2a),
