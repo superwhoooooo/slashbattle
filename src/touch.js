@@ -6,7 +6,7 @@ import { ABILITY_KEYS, HOTBAR_KEYS } from './logic/items.js'
 //   right thumb  - a floating stick that aims AND attacks: touching it
 //                  swings / shoots, dragging picks the direction
 //   HIDE / CHEST - E and F (hide in a pod, open a chest)
-//   DIVE / 1ST   - Shift (dive in a water room) and 0 (first person; the aim stick turns the view)
+//   DIVE / 1ST   - dive in a water room (a virtual 'Dive' key) and 0 (first person; the aim stick turns the view)
 //   AUTO / MUTE  - L (auto-shoot) and M (sound)
 //   hotbar and ability slots - tap to pick a weapon / use an ability
 //   tap the game-over card to restart; tap anywhere to skip cutscene lines
@@ -191,9 +191,9 @@ export function createTouchControls(input, hud) {
   addButton(actions, 'CHEST', 'big', () => input.tapKey('KeyF'))
   layer.appendChild(actions)
 
-  // View buttons: DIVE (water rooms only, Shift) and 1ST (first-person view, key 0).
+  // View buttons: DIVE (water rooms only, the virtual 'Dive' key) and 1ST (first-person view, key 0).
   const view = el('div', 'touch-view')
-  const diveButton = addButton(view, 'DIVE', 'small', () => input.tapKey('ShiftLeft'))
+  const diveButton = addButton(view, 'DIVE', 'small', () => input.tapKey('Dive'))
   diveButton.style.display = 'none'
   addButton(view, '1ST', 'small', () => input.tapKey('Digit0'))
   layer.appendChild(view)

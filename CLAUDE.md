@@ -54,9 +54,9 @@ record.
 - M — mute / unmute all sound, music and effects (remembered in `localStorage`)
 - F — open the nearest chest (costs crystals)
 - [ / ] — cycle the scope / ammo of the rifle in your hands (J opens the Gunsmith)
-- Shift (or E with no suitcase near) — in a water room: dive / surface
+- E (with no suitcase near) — in a water room: dive / surface
 - 1-5 — pick a weapon from the hotbar (melee or firearm)
-- Shift — tap to dash (`DASH_*` in config.js: a 0.17s burst with brief i-frames, 1.8s cooldown); hold to sprint (1.5x speed; in a water room it dives instead)
+- Shift — tap to dash (`DASH_*` in config.js: a 0.17s burst with brief i-frames, 1.8s cooldown); hold to sprint (1.5x speed; not in a water room, where Shift does nothing)
 - Q / Z / X / C / V — use your abilities, in the order you found them
 - 0 — toggle first-person view (pointer-locked mouse look; W moves along the view, every weapon aims where you look; Esc or 0 exits)
 - N — open the Dragon Den (customize your dragons' scale and breath); in the Wilds (free roam) N shoots/swings instead and Space jumps (`logic/jump.js`: a plain hop, not an ability); Space again in the air opens the paraglider (`src/glider.js`: slow steady sink, 1.7x speed; Space folds it); E near a villager talks
@@ -820,7 +820,7 @@ the other places (also in the sandbox level list). `arena.js` swaps the deck and
 `updateArena(arena, pos, time)`), a floor `WATER.depth` below, and per-style scenery. There is no edge to fall off:
 main.js's `clampToWater` keeps the player and monsters inside the wall / buoy ring, and swimmers (player and
 monsters) ride the waves (`waterY`). Swimming has momentum (`stepSwim`, `Player.update`'s `swim` argument) and
-hits shove farther (`setKnockbackWorldScale`). Shift (or E with no pod near) dives (`setDiving`): you go
+hits shove farther (`setKnockbackWorldScale`). E (with no pod near) dives (`setDiving`; Shift no longer does): you go
 first person (`setFirstPerson`, mouse look, every weapon aims where you look), the fog/background turn to the
 room's `under` murk and the sky hides, monsters see you only `WATER.diveSightScale` as far (`player.sightScale`),
 shots are slower, and a limited breath (`stepBreath`, `src/waterUi.js`'s BREATH bar) runs down; at zero you are

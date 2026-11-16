@@ -15,7 +15,7 @@ export const TUTORIAL_STEPS = [
     why: 'The sundeck has no walls. Anyone whose middle leaves the edge falls: monsters die, you lose HP and respawn.' },
   { id: 'sprint', chapter: 0, event: 'sprint', need: 8, title: 'Sprint', desktopOnly: true,
     hint: 'Hold Shift while you move to run 1.5x faster.', touch: '',
-    why: 'Sprinting is how you get out of a slam ring or away from a crowd. In water rooms Shift dives instead.' },
+    why: 'Sprinting is how you get out of a slam ring or away from a crowd. In water rooms, E dives.' },
   { id: 'attack', chapter: 0, event: 'attack', need: 3, title: 'Cast your staff',
     hint: 'Left click or Space. The Wizard Staff fires magic orbs at your mouse cursor.', touch: 'Hold the right stick to aim and attack.',
     why: 'The staff is always in slot 1 and can never be swapped out. Every hit also knocks monsters back.' },
@@ -80,7 +80,7 @@ export const TUTORIAL_STEPS = [
   { id: 'hub', chapter: 4, event: 'next', need: 1, read: true, title: 'Between runs',
     hint: 'Banked crystals (T) stay on this device. On the start card, "Skills & Loadout" opens the hub: the skill tree (more HP, damage, slots...), power-up upgrades, your starting pet and pet levels. J opens the Gunsmith for rifle scopes and ammo, N the Dragon Den for dragon pets.' },
   { id: 'modes', chapter: 4, event: 'next', need: 1, read: true, title: 'Places to play',
-    hint: 'Normal run: the resort sundeck, then a new place after each boss (some are water rooms where Shift dives). The Wilds (O): a huge open world with villages, quests and landmarks. The Labyrinth (K): three maze floors with spike traps. The Sandbox (B): spawn anything and try every weapon. M mutes, a gamepad works too.' },
+    hint: 'Normal run: the resort sundeck, then a new place after each boss (some are water rooms where E dives). The Wilds (O): a huge open world with villages, quests and landmarks. The Labyrinth (K): three maze floors with spike traps. The Sandbox (B): spawn anything and try every weapon. M mutes, a gamepad works too.' },
 ]
 
 export const createTutorial = () => ({ step: 0, progress: 0 })

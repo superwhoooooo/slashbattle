@@ -599,7 +599,7 @@ function swishEelTail(mesh, time) {
     pivot.rotation.y = amp * Math.sin(time * freq - i * 0.9)
   })
 }
-// Holding Shift sprints (a water room keeps Shift for diving).
+// Holding Shift sprints (not in a water room; E dives there).
 const SHIFT_SPRINT_MULTIPLIER = 1.5
 function holdSprinting() {
   return !waterRoom() && !game?.player?.hidden && (input.isDown('ShiftLeft') || input.isDown('ShiftRight'))
@@ -681,7 +681,8 @@ function stepWater(now, dt) {
     waterUi.update({ room: false, diving: false, fraction: 1 })
     return
   }
-  const toggle = input.wasPressed('ShiftLeft') || input.wasPressed('ShiftRight') || (input.wasHidePressed() && !player.hidden && (waterState.diving || !lastHidePrompt))
+  // Shift no longer dives (it would send you under while trying to sprint): E or the touch DIVE button does.
+  const toggle = input.wasPressed('Dive') || (input.wasHidePressed() && !player.hidden && (waterState.diving || !lastHidePrompt))
   if (toggle && !player.hidden && !player.falling) setDiving(!waterState.diving, now)
   const b = stepBreath(waterState.breath, waterState.diving, dt)
   waterState.breath = b.breath

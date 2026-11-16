@@ -1,5 +1,5 @@
 // The water rooms' screen furniture: a blue tint + drifting bubbles overlay while diving,
-// and a BREATH bar (with a "[Shift] DIVE" hint on the surface). Pure DOM; main.js drives it.
+// and a BREATH bar (with a "E: DIVE" hint on the surface). Pure DOM; main.js drives it.
 const CSS = `
 #water-tint { position: fixed; inset: 0; pointer-events: none; z-index: 4; opacity: 0; transition: opacity .35s;
   background: radial-gradient(ellipse at center, rgba(40,150,220,0.10) 35%, rgba(5,40,110,0.55) 100%); }
@@ -34,7 +34,7 @@ export function createWaterUi({ touch = false } = {}) {
       const hint = room && !diving
       breath.style.display = room ? 'flex' : 'none'
       if (!room) return
-      label.textContent = diving ? 'BREATH' : fraction < 0.999 ? 'CATCHING BREATH' : lurking ? (touch ? 'SOMETHING LURKS BELOW: TAP DIVE' : 'SOMETHING LURKS BELOW: DIVE (SHIFT / E)') : touch ? 'TAP DIVE' : 'SHIFT / E: DIVE'
+      label.textContent = diving ? 'BREATH' : fraction < 0.999 ? 'CATCHING BREATH' : lurking ? (touch ? 'SOMETHING LURKS BELOW: TAP DIVE' : 'SOMETHING LURKS BELOW: DIVE (E)') : touch ? 'TAP DIVE' : 'E: DIVE'
       fill.style.width = `${Math.round(Math.max(0, Math.min(1, fraction)) * 100)}%`
       breath.classList.toggle('low', diving && fraction < 0.3)
       breath.style.opacity = show || hint ? '1' : '0'

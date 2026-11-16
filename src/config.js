@@ -716,7 +716,7 @@ export const DRAIN_COLOR = 0xd0104a
 export const FRENZY_COOLDOWN_MULTIPLIER = 0.7 // attack cooldown scale while Frenzy is up
 export const SPRINT_SPEED_MULTIPLIER = 1.6
 // Tapping Shift dashes (like Shardfall): a short burst of speed with a moment of invulnerability,
-// on a cooldown; keep holding Shift and you sprint on. Not in a water room (Shift dives there).
+// on a cooldown; keep holding Shift and you sprint on. Not in a water room.
 export const DASH_SPEED = 26 // world units per second during the burst
 export const DASH_DURATION = 0.17 // seconds
 export const DASH_IFRAMES = 0.3 // seconds untouchable from the start of the dash
