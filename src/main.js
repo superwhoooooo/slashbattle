@@ -599,10 +599,10 @@ function swishEelTail(mesh, time) {
     pivot.rotation.y = amp * Math.sin(time * freq - i * 0.9)
   })
 }
-// Holding Shift sprints (not in a water room; E dives there).
+// Holding Shift sprints (not in a water room; E dives there). Touch: the move stick pushed to its rim holds 'Sprint'.
 const SHIFT_SPRINT_MULTIPLIER = 1.5
 function holdSprinting() {
-  return !waterRoom() && !game?.player?.hidden && (input.isDown('ShiftLeft') || input.isDown('ShiftRight'))
+  return !waterRoom() && !game?.player?.hidden && (input.isDown('ShiftLeft') || input.isDown('ShiftRight') || input.isDown('Sprint'))
 }
 function applyFxDepth() {
   const ground = game?.world?.groundY ?? 0 // on hills, shots / sparks / rings / crystals ride up with the player
@@ -2223,6 +2223,7 @@ function triggerHeroAbility(now) {
   tutorialEvent('ability')
   const p = { x: player.position.x, z: player.position.z }
   const aim = heroAimAngle()
+  coop?.sendHeroAbility(heroId, heroLook().id, aim) // co-op: friends see it go off (onRemoteHeroAbility)
   const glow = heroLook().glow
   const awake = (id) => traitTune(id, true)
   const later = (delay, run) => heroState.pending.push({ at: now + delay, run })
@@ -3357,6 +3358,7 @@ function openChestNow(game, chest, now) {
   shardBurst(particleSystem, point, CHEST_FLASH_COLOR, 16, 3)
 
   const loot = rollChestLoot(game.inventory, Math.random, { ...profile.unlocked, ...game.dragonState.unlocked }, profile.collection)
+  coop?.sendChestOpened(chest.userData.coopId ?? 0, loot ? lootName(loot) : 'LOADOUT FULL') // co-op: friends see what you got
   if (!loot) {
     game.score += CHEST_ALL_OWNED_SCORE
     game.player.hp = Math.min(game.player.maxHp, game.player.hp + CHEST_ALL_OWNED_HEAL)
@@ -3378,6 +3380,12 @@ function openChestNow(game, chest, now) {
 }
 
 let pendingSwapLoot = null
+
+// A rolled chest item's display name (for a co-op friend's "X GOT ..." toast).
+function lootName(loot) {
+  const table = { weapon: WEAPONS, ability: ABILITIES, pet: PETS, powerup: POWERUPS, scope: SCOPES, ammo: AMMO, skin: DRAGON_SKINS, breath: BREATHS }[loot.kind]
+  return table?.[loot.id]?.name ?? String(loot.id ?? '')
+}
 
 // Hands over a rolled item (already swapped into the inventory if the slots
 // were full) and sets up its in-world side: the held weapon model, or the pet.
@@ -6253,6 +6261,32 @@ coop = createCoop({
     spawnShockwave(shockwavePool, at.x, at.z, id === 'shockwave' || id === 'glacier' ? 6 : 3, color)
     sfx.play('swing', at)
   },
+  // A friend used their hero ability (B): its name over them and a big burst in their hero's glow.
+  // (Their game does the real work -- damage, heals, dashes -- so this is the look only.)
+  onRemoteHeroAbility(heroId, at, aim, info) {
+    if (!started) return
+    const def = HERO_ABILITIES[heroId]
+    if (!def) return
+    const color = info.glow
+    const radius = Math.max(5, Math.min(12, def.range ?? 7))
+    showPopup(popupPool, at, def.name.toUpperCase(), `${info.name.toUpperCase()}'S HERO ABILITY`, '#ffd15c')
+    burst(particleSystem, { x: at.x, y: 0.8, z: at.z }, color, 34, radius * 0.8, 0.45)
+    burst(particleSystem, { x: at.x, y: 1.2, z: at.z }, 0xffffff, 14, radius * 0.5, 0.35)
+    spawnShockwave(shockwavePool, at.x, at.z, radius, color)
+    spawnShockwave(shockwavePool, at.x, at.z, radius * 0.55, 0xffffff)
+    column(at.x, at.z, color, 5)
+    const reach = Math.min(def.range ?? 8, 14)
+    streak(at, { x: at.x + Math.sin(aim) * reach, z: at.z + Math.cos(aim) * reach }, color, 10)
+    warp.add('ripple', at.x, at.z, radius + 1, 0.5)
+    sfx.play('bossSlam', at)
+  },
+  // A friend opened one of their chests: a toast saying what they got.
+  onRemoteChestOpened(at, info) {
+    if (!started) return
+    questUi.showToast(info.loot ? `${info.name.toUpperCase()} GOT ${info.loot.toUpperCase()}!` : `${info.name.toUpperCase()} OPENED A CHEST`)
+    sfx.play('chestOpen', at)
+  },
+  chestStyle: () => containerStyle(game),
   // A joiner's view of the water: monsters float / lurk / rise relative to OUR diver (see monsterSwimY).
   puppetY(mesh, time) {
     return waterRoom() ? monsterSwimY(mesh, time) : null
@@ -6304,6 +6338,15 @@ function coopPetRows(game) {
     }
   }
   return rows
+}
+// Co-op: our chests, so friends can see them (logic/coop.js's packChests). Ids are handed out lazily.
+let coopChestSeq = 0
+function coopChestRows(game) {
+  if (!coop?.active) return []
+  return game.chests.map((c) => {
+    c.userData.coopId ??= ++coopChestSeq
+    return { id: c.userData.coopId, x: c.position.x, z: c.position.z, y: c.position.y, cost: c.userData.cost, affordable: game.inventory.crystals >= c.userData.cost, opened: c.userData.opened }
+  })
 }
 const COOP_ABILITY_COLORS = { blink: 0xe9a3ff, shockwave: 0xffd27a, heal: 0x7dffb0, shield: 0x66f0ff, rage: 0xff5a4a, glacier: 0xbfe9ff, frostlance: 0xbfe9ff, timewarp: 0x9fd0ff, vacuum: 0xb48cff, whirl: 0xffffff, storm: 0xfff27a }
 
@@ -6539,6 +6582,7 @@ function gameFrame(timestamp) {
       swingStarted: coopSwingStarted,
       cutscene: Boolean(game.cutscene),
       pets: coopPetRows(game),
+      chests: coopChestRows(game),
     })
     coopSwingStarted = false
   }

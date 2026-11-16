@@ -2,7 +2,7 @@
 // host streams, who a monster goes after, smoothing remote movement, and which monster events travel
 // to whom. src/net/link.js moves the messages; src/coop.js applies them to the game.
 
-export const PROTOCOL = 2 // bump when the message format changes; a mismatched joiner is told to refresh
+export const PROTOCOL = 3 // bump when the message format changes; a mismatched joiner is told to refresh
 export const MAX_PLAYERS = 4
 export const CODE_LENGTH = 4
 const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789' // no 0/O, 1/I/L
@@ -208,6 +208,24 @@ export function unpackPets(rows) {
     const [key, x, z, y, rotY, bx, bz] = row
     if (![x, z, y, rotY].every(Number.isFinite)) continue
     out.push({ key, x, z, y, rotY, beamTo: Number.isFinite(bx) && Number.isFinite(bz) ? { x: bx, z: bz } : null })
+  }
+  return out
+}
+
+// A chest row: [id, x, z, y, cost, affordable (0/1), opened (0/1)] -- a player's own chests, so their
+// friends can see them (and watch them pop open). At most MAX_NET_CHESTS.
+export const MAX_NET_CHESTS = 8
+export function packChests(chests) {
+  return chests.slice(0, MAX_NET_CHESTS).map((c) => [c.id, round2(c.x), round2(c.z), round2(c.y ?? 0), Math.max(0, Math.round(c.cost)), c.affordable ? 1 : 0, c.opened ? 1 : 0])
+}
+export function unpackChests(rows) {
+  if (!Array.isArray(rows)) return []
+  const out = []
+  for (const row of rows.slice(0, MAX_NET_CHESTS)) {
+    if (!Array.isArray(row)) continue
+    const [id, x, z, y, cost, ok, open] = row
+    if (!Number.isInteger(id) || ![x, z, y, cost].every(Number.isFinite)) continue
+    out.push({ id, x, z, y, cost: Math.max(0, Math.min(99999, Math.round(cost))), affordable: ok === 1, opened: open === 1 })
   }
   return out
 }

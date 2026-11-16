@@ -350,7 +350,8 @@ renderer, cached data URLs) and abilities/power-ups as canvas pictograms; the `i
 ## Touch controls
 On a phone or tablet (`src/touch.js`'s `isTouchDevice`: a coarse pointer and no
 fine one, or `#touch` in the address to test on a desktop) a touch layer feeds the
-same `Input`: a floating left stick moves, a floating right stick aims AND attacks
+same `Input`: a floating left stick moves (pushed out to its rim it sprints: the virtual `Sprint` key, read by
+`holdSprinting` like Shift, glowing butter while on), a floating right stick aims AND attacks
 (touching it holds Space; dragging past its deadzone sets `input.touchAim`, which
 `main.js`'s `touchAimAngle` turns into `player.aimAngle` for any weapon), HIDE /
 CHEST are E / F, AUTO / sound are L / M, tapping the hotbar and ability slots picks
@@ -1049,6 +1050,11 @@ connection silent for `SILENCE_TIMEOUT` is dropped; a joiner with a different `P
   Dylan's beam target; drawn by `coop.js`'s `stepRemotePets`), your **shots** (every real volley through `bulletPool.onFire`
   goes out as `sh`; the others fire them as harmless `ghost` bullets that never hit) and your **abilities** (`ab`: a flash
   and ring in the ability's colour, `COOP_ABILITY_COLORS`).
+- **Friends' chests and hero abilities**: each player's own chests ride in their state message (`ch`, `packChests` rows:
+  id, position, cost, affordable, opened); `coop.js`'s `syncRemoteChests` draws them in your world (not solid, not
+  openable) with the owner's name tag, plays their lid opening, and `cho` toasts what they got (`lootName`). A hero ability
+  (B) sends `ha` (hero, skin, aim): the others see its name over that player and a burst in their hero's glow
+  (`onRemoteHeroAbility`, look only; the real effect runs in the caster's own game). `PROTOCOL` 3.
 - **Boss intro for joiners**: a `bossIntro` wave event sets `game.remoteCutscene`; once the host's boss puppet streams in,
   `startRemoteBossCutscene` plays the same carpet / lines / title (`cutscene.remote`: no `beginBossFight`, the host's waves
   rule). While any player watches an intro they count as hidden, so the boss can't hit them.

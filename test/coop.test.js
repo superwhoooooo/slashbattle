@@ -121,3 +121,18 @@ describe('misc', () => {
     expect(clampDamage(1e9)).toBe(5000)
   })
 })
+
+describe('chest rows', () => {
+  it('round-trips a player\'s chests and drops bad rows', async () => {
+    const { packChests, unpackChests, MAX_NET_CHESTS } = await import('../src/logic/coop.js')
+    const rows = packChests([{ id: 3, x: 1.234, z: -5.678, y: 0, cost: 12.4, affordable: true, opened: false }, { id: 4, x: 0, z: 0, cost: 0, affordable: false, opened: true }])
+    expect(unpackChests(rows)).toEqual([
+      { id: 3, x: 1.23, z: -5.68, y: 0, cost: 12, affordable: true, opened: false },
+      { id: 4, x: 0, z: 0, y: 0, cost: 0, affordable: false, opened: true },
+    ])
+    expect(unpackChests([['x', 0, 0, 0, 1, 0, 0], [5, 'a', 0, 0, 1, 0, 0], 'junk'])).toEqual([])
+    expect(unpackChests(null)).toEqual([])
+    const many = Array.from({ length: 20 }, (_, i) => ({ id: i, x: 0, z: 0, cost: 1 }))
+    expect(unpackChests(packChests(many))).toHaveLength(MAX_NET_CHESTS)
+  })
+})

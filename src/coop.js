@@ -22,8 +22,9 @@ import { Link } from './net/link.js'
 import {
   COOP_RESPAWN_SECONDS, INTERP_DELAY, MAX_PLAYERS, PROTOCOL, RELAY_INTERP_DELAY, cleanName, clampDamage, everyoneDown,
   lerp, lerpAngle, normalizeCode, packMonster, packPets, packShots, pickTarget, plainCopy, pushSnapshot, routeEvents, sampleSnapshots,
-  unpackMonster, unpackPets, unpackShots,
+  unpackMonster, unpackPets, unpackShots, packChests, unpackChests,
 } from './logic/coop.js'
+import { createChest, openChest, updateChest } from './chests.js'
 import { createPetModel } from './petModels.js'
 import { createBeamMesh, aimBeam } from './pets.js'
 import { PETS } from './logic/items.js'
@@ -90,6 +91,9 @@ function nameTag(name, color) {
  *   onRestart()                  joiner: the host started a new run
  *   onGameOver()                 everyone is down
  *   onSwingFx(weaponId, at, facing)  someone else swung / fired
+ *   onRemoteHeroAbility(heroId, at, aim, info)  a friend used their hero ability (B); info = { name, glow }
+ *   onRemoteChestOpened(at, info)    a friend opened one of their chests; info = { name, loot }
+ *   chestStyle()                     the container skin for the place we're in
  *   toast(text)
  */
 export function createCoop(ctx) {
@@ -148,6 +152,8 @@ export function createCoop(ctx) {
       weapon: null,
       last: null,
       pets: [], // { key, mesh, beam } for each of their pet units we're showing
+      chests: new Map(), // their chest id -> { mesh, affordable }: their own chests, shown in our world
+      color,
       speed: 0,
       moveDir: { x: 0, z: 1 },
       // What the host's monsters see and swing at: the same fields monster.js reads off the real player.
@@ -180,6 +186,7 @@ export function createCoop(ctx) {
     remotes.delete(id)
     ctx.disposeObject3D(remote.mesh)
     clearRemotePets(remote)
+    clearRemoteChests(remote)
     if (announce) ctx.toast(`${remote.name} LEFT THE GAME`)
     refresh()
   }
@@ -224,6 +231,7 @@ export function createCoop(ctx) {
     p.ghostUntil = m.gh ? Infinity : -Infinity
     remote.hp = m.hp
     remote.maxHp = m.mhp
+    if (m.ch !== undefined) syncRemoteChests(remote, unpackChests(m.ch))
     if (m.sw && m.sw !== remote.swingSeq) {
       const first = remote.swingSeq === undefined
       remote.swingSeq = m.sw
@@ -251,6 +259,7 @@ export function createCoop(ctx) {
       remote.proxy.position.x = x
       remote.proxy.position.z = z
       stepRemotePets(remote, s, dt, now)
+      stepRemoteChests(remote, dt, now)
       const shown = !remote.proxy.hidden && !remote.proxy.down
       mesh.visible = shown
       if (shown) {
@@ -261,6 +270,55 @@ export function createCoop(ctx) {
   }
 
   // ---------- a friend's pets (cosmetic: their own game does the fighting) ----------
+  // ---------- a friend's chests ----------
+  // Every player has their own chests (and opens them for their own loot); these are a friend's, drawn in
+  // our world with their name over them so you can see what they're heading for. Not solid, not openable.
+  function syncRemoteChests(remote, rows) {
+    const seen = new Set()
+    for (const row of rows) {
+      seen.add(row.id)
+      let entry = remote.chests.get(row.id)
+      if (!entry) {
+        if (row.opened) continue // it opened before we ever saw it
+        const mesh = createChest({ x: row.x, z: row.z }, row.cost, ctx.chestStyle?.() ?? 'resort')
+        const tag = nameTag(`${remote.name}'S`, remote.color)
+        tag.scale.set(1.9, 0.48, 1)
+        tag.position.y = 2.15
+        mesh.add(tag)
+        ctx.scene.add(mesh)
+        entry = { mesh, affordable: false }
+        remote.chests.set(row.id, entry)
+      }
+      entry.mesh.position.set(row.x, row.y, row.z)
+      entry.affordable = row.affordable
+      if (row.opened && !entry.mesh.userData.opened) {
+        openChest(entry.mesh)
+        const at = { x: row.x, y: row.y + 0.8, z: row.z }
+        burst(ctx.particleSystem, at, 0xffd15c, 30, 4, 1)
+        shardBurst(ctx.particleSystem, at, 0xffd15c, 10, 3)
+      }
+    }
+    // Gone from their list without opening (a restart, a new place): just take it away.
+    for (const [id, entry] of remote.chests) {
+      if (seen.has(id) || entry.mesh.userData.opened) continue
+      ctx.disposeObject3D(entry.mesh)
+      remote.chests.delete(id)
+    }
+  }
+
+  function stepRemoteChests(remote, dt, now) {
+    for (const [id, entry] of remote.chests) {
+      if (!updateChest(entry.mesh, dt, now, { affordable: entry.affordable, highlighted: false })) continue
+      ctx.disposeObject3D(entry.mesh)
+      remote.chests.delete(id)
+    }
+  }
+
+  function clearRemoteChests(remote) {
+    for (const entry of remote.chests.values()) ctx.disposeObject3D(entry.mesh)
+    remote.chests.clear()
+  }
+
   function buildPetModel(key) {
     try {
       if (key.startsWith('d:')) return PETS[key.slice(2)] ? createPetModel(PETS[key.slice(2)]) : null
@@ -611,6 +669,23 @@ export function createCoop(ctx) {
         if (remote && typeof m.id === 'string' && !remote.proxy.down) ctx.onRemoteAbility?.(m.id.slice(0, 24), { x: remote.mesh.position.x, z: remote.mesh.position.z })
         break
       }
+      case 'ha': {
+        const remote = remotes.get(from)
+        if (!remote || remote.proxy.down || typeof m.h !== 'string') break
+        let glow = 0xffd15c
+        try { glow = lookForProfile({ hero: m.h, heroSkins: { [m.h]: m.s } }).glow ?? glow } catch { /* unknown hero */ }
+        const aim = Number.isFinite(m.a) ? m.a : remote.mesh.rotation.y
+        ctx.onRemoteHeroAbility?.(m.h.slice(0, 40), { x: remote.mesh.position.x, z: remote.mesh.position.z }, aim, { name: remote.name, glow })
+        break
+      }
+      case 'cho': {
+        const remote = remotes.get(from)
+        if (!remote) break
+        const entry = remote.chests.get(m.id)
+        const at = entry ? { x: entry.mesh.position.x, z: entry.mesh.position.z } : { x: remote.mesh.position.x, z: remote.mesh.position.z }
+        ctx.onRemoteChestOpened?.(at, { name: remote.name, loot: typeof m.l === 'string' ? m.l.slice(0, 40) : '' })
+        break
+      }
       case 'hurt':
         if (isClient()) ctx.onHurt(clampDamage(m.d), Math.max(0, Math.min(1, Number(m.tf) || 0)))
         break
@@ -688,6 +763,7 @@ export function createCoop(ctx) {
         skin: local.look.skin,
         sw: lastSwingSeq,
         pt: packPets(local.pets ?? []),
+        ch: packChests(local.chests ?? []),
       })
     } else if (local.swingStarted) lastSwingSeq++
     if (isHost() && remotes.size) {
@@ -795,6 +871,8 @@ export function createCoop(ctx) {
     everyoneDown: (localDown) => isHost() && everyoneDown(localDown, [...remotes.values()].map((r) => r.proxy.down)),
     sendShots(bullets) { if (active() && bullets.length) link.broadcast({ t: 'sh', b: packShots(bullets) }) },
     sendAbility(id) { if (active()) link.broadcast({ t: 'ab', id }) },
+    sendHeroAbility(heroId, skin, aim) { if (active()) link.broadcast({ t: 'ha', h: heroId, s: skin, a: Math.round(aim * 100) / 100 }) },
+    sendChestOpened(id, lootName) { if (active()) link.broadcast({ t: 'cho', id, l: lootName }) },
     sendWaveEvents(msg) { if (isHost()) link.broadcast({ t: 'wave', ...msg }) },
     sendRestart() { if (isHost()) link.broadcast({ t: 'restart' }) },
     sendGameOver() { if (isHost()) link.broadcast({ t: 'over' }) },

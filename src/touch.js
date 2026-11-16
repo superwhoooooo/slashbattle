@@ -2,7 +2,7 @@ import { ABILITY_KEYS, HOTBAR_KEYS } from './logic/items.js'
 
 // On-screen touch controls, for phones and tablets. Everything feeds the
 // same Input the keyboard and gamepad do:
-//   left thumb   - a floating stick that moves you
+//   left thumb   - a floating stick that moves you; pushed out to its rim, you sprint
 //   right thumb  - a floating stick that aims AND attacks: touching it
 //                  swings / shoots, dragging picks the direction
 //   HIDE / CHEST - E and F (hide in a pod, open a chest)
@@ -16,6 +16,8 @@ import { ABILITY_KEYS, HOTBAR_KEYS } from './logic/items.js'
 const STICK_RADIUS = 56 // px a finger can drag from where it landed
 const MOVE_DEADZONE = 0.18
 const AIM_DEADZONE = 0.3 // below this, an attack just uses your facing
+const SPRINT_ON = 0.92 // push the move stick this close to its rim to sprint (the virtual 'Sprint' key = holding Shift)...
+const SPRINT_OFF = 0.75 // ...and it keeps sprinting until you ease back under this, so a wobbling thumb doesn't flicker
 
 // The pure rule: #touch / #desktop force it; an iPad is always touch (iPadOS Safari calls itself a
 // Mac, and with a keyboard / trackpad attached it reports a fine pointer too -- but no real Mac has a
@@ -120,7 +122,7 @@ export function createTouchControls(input, hud) {
 
   const moveZone = el('div', 'touch-move-zone', 'touch-zone')
   const aimZone = el('div', 'touch-aim-zone', 'touch-zone')
-  moveZone.appendChild(el('div', null, 'touch-hint', 'MOVE'))
+  moveZone.appendChild(el('div', null, 'touch-hint', 'MOVE · PUSH FAR TO SPRINT'))
   aimZone.appendChild(el('div', null, 'touch-hint', 'AIM + ATTACK'))
   layer.append(moveZone, aimZone)
 
@@ -132,9 +134,17 @@ export function createTouchControls(input, hud) {
     })
   }
 
+  let sprinting = false
+  const setSprint = (on) => {
+    if (on === sprinting) return
+    sprinting = on
+    input.holdKey('Sprint', on)
+    moveZone.classList.toggle('sprinting', on)
+  }
   attachStick(moveZone, {
     onChange(x, y) {
       const strength = Math.hypot(x, y)
+      setSprint(sprinting ? strength >= SPRINT_OFF : strength >= SPRINT_ON)
       if (strength < MOVE_DEADZONE) {
         input.touchMove.x = 0
         input.touchMove.z = 0
@@ -146,6 +156,7 @@ export function createTouchControls(input, hud) {
     onEnd() {
       input.touchMove.x = 0
       input.touchMove.z = 0
+      setSprint(false)
     },
   })
 
