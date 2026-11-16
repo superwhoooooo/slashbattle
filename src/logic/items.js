@@ -131,7 +131,7 @@ export const PETS = {
     // Once out, the pair splits into two kids who move and throw on their own (pets.js), each
     // at half the pair's rate so the two together hit as hard as before.
     split: [{ model: 'remy', thrown: ['junk'] }, { model: 'benji', thrown: ['banana'] }] },
-  dylan: { id: 'dylan', name: 'Dylan', icon: '🧒', color: 0xffcf3a, model: 'dylan', kind: 'beam', damage: 4, beamTick: 0.5, beamOn: 5, beamOff: 1.825, range: 10, blurb: 'Fires a golden beam for 5 s (4 damage every 0.5 s), then rests 1.825 s' },
+  dylan: { id: 'dylan', name: 'Dylan', icon: '🧒', color: 0xffcf3a, model: 'dylan', kind: 'beam', damage: 5, beamTick: 0.5, beamOn: 5, beamOff: 1.825, range: 10, blurb: 'Fires a golden beam for 5 s (5 damage every 0.5 s), then rests 1.825 s' },
   frosty: { id: 'frosty', name: 'Frosty', icon: '🐺', color: 0xbfe9ff, model: 'wolf', kind: 'lunge', strike: 'bite', damage: 11, interval: 1.4, knockback: 1, blurb: 'An arctic wolf that runs down enemies and gives icy bites' },
   pandy: { id: 'pandy', name: 'Pandy', icon: '🐼', color: 0xeeeeee, model: 'panda', kind: 'pulse', damage: 10, interval: 1.8, radius: 3.4, knockback: 1.2, blurb: 'A panda that rolls up and bonks everything close' },
   polly: { id: 'polly', name: 'Polly', icon: '🦜', color: 0xff4a4a, model: 'parrot', kind: 'shot', projectile: 'squawk', damage: 9, interval: 1, range: 10, blurb: 'A parrot that squawks sound waves at foes' },
