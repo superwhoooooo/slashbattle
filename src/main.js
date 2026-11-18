@@ -29,7 +29,7 @@ import { PICKUP_RADIUS, createPerkPickup, updatePerkPickup } from './pickups.js'
 import { createLoadoutPanel } from './loadout.js'
 import { createHub } from './hub.js'
 import { createHeroBeam, createHeroProjectile, disposeHeroProjectile, dressPlayer } from './heroGear.js'
-import { ATOMIC_REACH, HAMMER_REACH, HOOK_RANGE, HOTFOOT_MAX, HOTFOOT_STEP, HEROES, RAM_REHIT, boomerangPoint, broadsideSpots, chainPath, densestSpot, grantSkin, heroById, heroEffects, heroLook as lookForProfile, inBeam, isBehind, pickMarks, returningPoint, rewindTarget, rootsTriggered, spinReels, tipJarCrystals, linePoint, fanAngles, infinityPush, addRage, RAGE_PER_HIT, RAGE_PER_HURT, gloryKillReady, chargeLevel } from './logic/heroes.js'
+import { ATOMIC_REACH, HAMMER_REACH, HOOK_RANGE, HOTFOOT_MAX, HOTFOOT_STEP, HEROES, RAM_REHIT, boomerangPoint, broadsideSpots, chainPath, densestSpot, grantSkin, heroById, heroEffects, heroLook as lookForProfile, inBeam, isBehind, pickMarks, returningPoint, rewindTarget, rootsTriggered, spinReels, tipJarCrystals, linePoint, fanAngles, infinityPush, addRage, RAGE_PER_HIT, RAGE_PER_HURT, gloryKillReady, chargeLevel, grantHero, heroForCrowns, ownsHero } from './logic/heroes.js'
 import { AWAKEN_LEVEL, HERO_ABILITIES, HERO_ABILITY_KEY, awakenedStats, heroAbilityFraction, isAwakened, pointsAlong, ringPoints, steerToward, traitTune, turnToward, useHeroAbility } from './logic/heroPowers.js'
 import { loadProfile, saveProfile } from './profile.js'
 import { DIFFICULTIES, DIFFICULTY_IDS, difficultyById, runPayout } from './logic/difficulty.js'
@@ -923,11 +923,27 @@ let gameMode = 'resort'
 let profile = loadProfile()
 // The sandbox has every scope and ammo unlocked (for testing); this is the profile as the rifle
 // code and the hub should see it (every pet counts as found, so all dragons can be customised). setProfile keeps the real unlocks so the sandbox never saves them.
-const ALL_HEROES = HEROES.map((h) => h.id)
-const ALL_SKINS = HEROES.flatMap((h) => h.skins.slice(1).map((k) => `${h.id}:${k.id}`))
+// The secret hero: claim every Nimbus Crown in the Wilds and the Nimbus Sovereign is yours (checked on each claim and at
+// startup, so a save that already has them all gets it too). Written to the real profile, never the sandbox view.
+function grantCrownHero(claimed, announce = false) {
+  const id = heroForCrowns(claimed, skyArchipelagos().length)
+  if (!id || ownsHero(profile, id)) return
+  profile = grantHero(profile, id)
+  saveProfile(profile)
+  if (!announce || !hud) return
+  const hero = heroById(id)
+  showLootToast(hud, { title: 'SECRET HERO UNLOCKED', name: hero.name, blurb: 'Every crown of the sky is yours, and so is its Sovereign. Pick them on the Heroes page (Y).' })
+  const p = game?.player?.position
+  if (p) {
+    burst(particleSystem, { x: p.x, y: 2, z: p.z }, 0xfff2a8, 80, 8)
+    spawnShockwave(shockwavePool, p.x, p.z, 12, 0xffd15c)
+  }
+}
+// A secret hero (logic/heroes.js `secret`) stays out of the sandbox too until the real profile owns it.
+const sandboxHeroes = () => HEROES.filter((h) => !h.secret || ownsHero(profile, h.id))
 const sandboxProfile = () =>
   sandbox
-    ? { ...heroProfile(), collection: Object.keys(PETS), unlocked: { scopes: Object.keys(SCOPES), ammo: Object.keys(AMMO) }, heroesOwned: ALL_HEROES, skinsOwned: ALL_SKINS }
+    ? { ...heroProfile(), collection: Object.keys(PETS), unlocked: { scopes: Object.keys(SCOPES), ammo: Object.keys(AMMO) }, heroesOwned: sandboxHeroes().map((h) => h.id), skinsOwned: sandboxHeroes().flatMap((h) => h.skins.slice(1).map((k) => `${h.id}:${k.id}`)) }
     : profile
 function setProfile(next) {
   if (sandbox) {
@@ -953,9 +969,12 @@ const activeFx = (equipped) => {
   return combineEffects(woke, masteryRunFx()) // mastery 8: the run's +10% stat, and a running ultimate's boost
 }
 // ---- mastery 8 (logic/heroUltimates.js): each run, the hero's ultimate (K) or +10% to one stat ----
-const masteryRun = { pick: null, ultReady: 0, buff: null, lockedToastAt: -Infinity } // pick: { kind: 'ult' } | { kind: 'stat', id }
+const masteryRun = { pick: null, hero: null, ultReady: 0, buff: null, lockedToastAt: -Infinity } // pick: { kind: 'ult' } | { kind: 'stat', id }; hero: who it was picked for
+// The pick belongs to the hero it was made for, for the whole run: swap heroes mid-run and it stays with that hero (and is back when you swap to them again).
+const masteryPickActive = () => masteryRun.pick !== null && masteryRun.hero === heroProfile().hero
 function masteryRunFx() {
   const out = {}
+  if (!masteryPickActive()) return out
   const stat = masteryRun.pick?.kind === 'stat' ? statPick(masteryRun.pick.id) : null
   if (stat) {
     for (const [k, v] of Object.entries(stat.fx)) {
@@ -973,7 +992,7 @@ function masteryRunFx() {
   }
   return out
 }
-const ultimateUnlocked = () => sandbox || masteryRun.pick?.kind === 'ult'
+const ultimateUnlocked = () => sandbox || (masteryPickActive() && masteryRun.pick.kind === 'ult')
 const heroMasteryLevel = () => masteryLevel(profile.progress?.mastery?.[heroProfile().hero] ?? 0)
 
 // ---------- heroes (logic/heroes.js): the look, and each hero's one trait ----------
@@ -1016,7 +1035,8 @@ const heroState = {
   hammer: null, // Thundra's hovering storm hammer
   breath: null, // Kaiju Kiddo's held Atomic Breath
   // Legendary heroes:
-  blueReady: 0, infinityFxAt: 0, // Shiro the Limitless
+  blueReady: 0, infinityFxAt: 0, infinityUp: false, // Shiro the Limitless
+  seraphReady: 0, lances: 0, ascend: null, flyLift: 0, // the Nimbus Sovereign (secret hero)
   rage: 0, rageUntil: -Infinity, rageShockAt: -Infinity, // Ragnar Ashfather
   stompReady: 0, // Pipeworks Paolo
   pelletUntil: -Infinity, pellet: null, panicNext: 0, // Chompy Champ's power pellet
@@ -1032,7 +1052,7 @@ function resetHeroState() {
     holeReady: 0, rebirthReady: 0, cutsReady: 0, holes: [], slipUntil: -Infinity,
     abilityReady: 0, focusUntil: -Infinity, noonUntil: -Infinity, echoUntil: -Infinity, vanishUntil: -Infinity, speedUntil: -Infinity,
     blueReady: 0, rage: 0, rageUntil: -Infinity, rageShockAt: -Infinity, stompReady: 0, pelletUntil: -Infinity, pellet: null,
-    starUntil: -Infinity, inhaleReady: 0, chargeAt: 0,
+    starUntil: -Infinity, inhaleReady: 0, chargeAt: 0, infinityUp: false, seraphReady: 0, lances: 0, ascend: null,
   })
   clearFlyers()
   clearHeroFx()
@@ -1952,12 +1972,22 @@ function flingSuitcase(from, target, damage) {
 // Shiro's Infinity (every frame): monsters are held at the edge of the gap, enemy orbs vanish before they land.
 function stepInfinity(player, now, t) {
   if (player.hp <= 0 || player.falling || player.hidden) return
+  // Nerfed: Infinity only flickers on for `on` seconds out of every `on + off`.
+  const up = now % (t.on + t.off) < t.on
+  if (up !== heroState.infinityUp) {
+    heroState.infinityUp = up
+    if (up) {
+      sparkRing(player.position.x, player.position.z, t.wall + 0.5, heroLook().glow)
+    }
+  }
+  if (!up) return
   const c = player.position
   destroyProjectilesNear(projectilePool, c.x, c.z, t.orbRadius)
   for (const mesh of heroTargets(c.x, c.z, t.wall + 1)) {
+    if (mesh.userData.isBoss) continue // bosses walk straight through it
     const to = infinityPush(c, mesh.position, t.wall, mesh.userData.radius ?? 0.5)
     if (!to) continue
-    const k = mesh.userData.isBoss ? 0.25 : 1 // bosses lean on it; they're only slowed
+    const k = 1
     const moved = resolveArenaMove({ x: mesh.position.x, z: mesh.position.z }, { x: (to.x - mesh.position.x) * k, z: (to.z - mesh.position.z) * k }, mesh.userData.radius ?? 0.6, game.obstacles)
     mesh.position.x = moved.x
     mesh.position.z = moved.z
@@ -2000,8 +2030,8 @@ function hollowViolet(aim) {
       triggerShake(game.shake, SHAKE_HIT_MAGNITUDE * 2.5, SHAKE_HIT_DURATION * 2)
       sfx.play('bossSlam', start)
       launchFlyer({
-        kind: 'violet', color: 0xb44aff, duration: 1.6, radius: 3.2, damage: 6 * heroBaseDamage(), knockback: 7, spin: 3, angle: aim,
-        point: (k) => linePoint(start, aim, k, 34),
+        kind: 'violet', color: 0xb44aff, duration: 1.1, radius: 2.4, damage: 3 * heroBaseDamage(), knockback: 5, spin: 3, angle: aim,
+        point: (k) => linePoint(start, aim, k, 20),
         onStep: (f, at, now) => {
           destroyProjectilesNear(projectilePool, at.x, at.z, 3.5)
           burst(particleSystem, { x: at.x, y: 1.2, z: at.z }, 0xb44aff, 4, 3, 0.4)
@@ -2247,10 +2277,121 @@ function fireChargeShot(aim, t = tn()) {
 // Every frame: Infinity, rage hurt-gain and glow, the touch powers.
 function stepLegendaryHeroes(player, now, dt, trait, t) {
   if (trait === 'limitless') stepInfinity(player, now, t)
+  if (trait === 'heavenly') stepHeavenly(player, now, t)
+  applyFlight(player, now, trait === 'heavenly')
   if (trait === 'spartan' && now < heroState.rageUntil && Math.random() < 0.5) {
     burst(particleSystem, { x: player.position.x, y: 1.2, z: player.position.z }, 0xff3a1a, 2, 1, 0.4)
   }
   stepTouchPowers(player, now)
+}
+
+// ---- the secret hero: the Nimbus Sovereign (claim every Nimbus Crown in the Wilds) ----
+const SOVEREIGN_HOVER = 0.55 // how high the Sovereign floats over the ground
+const SOVEREIGN_CLIMB = 10 // Wilds: holding Space with the wings open climbs this fast (m/s)
+const ASCEND = { rise: 0.5, hang: 0.3, dive: 0.25, height: 8, radius: 6, damage: 3, lances: 6, lanceDamage: 1.2 }
+const isFlyer = () => heroTrait() === 'heavenly'
+// Heavenly Host: on each tick every seraph lances a monster in range (the nearest first, spread over them).
+function stepHeavenly(player, now, t) {
+  if (player.hp <= 0 || player.falling || player.hidden || now < heroState.seraphReady) return
+  const c = player.position
+  const pool = heroTargets(c.x, c.z, t.range).sort((a, b) => distTo(a, c) - distTo(b, c))
+  if (!pool.length) return
+  heroState.seraphReady = now + t.every
+  for (let i = 0; i < t.seraphs; i++) {
+    const m = pool[i % pool.length]
+    heroState.pending.push({ at: now + i * 0.09, run: () => seraphLance(i, t.seraphs, m, t.damage, t) })
+  }
+}
+// One lance of light from a seraph orb into a monster; awakened, every judgeEvery-th one is a Pillar of Judgment.
+function seraphLance(i, n, mesh, damage, t = tn()) {
+  if (!alive(mesh) || !game.player) return
+  const pl = game.player
+  const a = heroNow * 1.4 + (i / n) * Math.PI * 2
+  const from = new THREE.Vector3(pl.position.x + Math.cos(a) * 1.45, pl.mesh.position.y + 0.75, pl.position.z + Math.sin(a) * 1.45)
+  const to = new THREE.Vector3(mesh.position.x, mesh.position.y + 0.6, mesh.position.z)
+  const glow = heroLook().glow
+  addBeam(glow, Math.max(0.5, from.distanceTo(to)), 0.08, 0.2, (beam) => {
+    beam.position.copy(from)
+    beam.lookAt(to)
+    // Soft lances: a tinted core at low strength, so a volley of them doesn't bloom out the screen.
+    beam.children[0].material.color.set(glow)
+    const fade = beam.userData.setFade
+    beam.userData.setFade = (f) => fade(f * 0.35)
+  })
+  burst(particleSystem, { x: to.x, y: 1, z: to.z }, glow, 8, 1.6, 0.3)
+  heroState.lances++
+  if (t.judgeEvery && heroState.lances % t.judgeEvery === 0) {
+    const at = { x: mesh.position.x, z: mesh.position.z }
+    showPopup(popupPool, at, 'JUDGMENT', '', '#fff2a8')
+    lightningStrike(at, 0xfff2a8, t.judgeRadius, t.judgeDamage)
+    return
+  }
+  heroHurt(mesh, damage * heroBaseDamage(), 0.6, pl.position)
+}
+// Ascension (B): soar straight up, hang a moment, then fall like a star onto the aim point.
+function ascension(now) {
+  const pl = game.player
+  const p = { x: pl.position.x, z: pl.position.z }
+  heroState.ascend = { start: now, to: heroAimPoint(HERO_ABILITIES.sovereign.range), from: null }
+  pl.invulnerableUntil = Math.max(pl.invulnerableUntil, now + ASCEND.rise + ASCEND.hang)
+  const glow = heroLook().glow
+  column(p.x, p.z, glow, 9, 16)
+  sparkRing(p.x, p.z, 2.5, 0xffffff)
+  spawnShockwave(shockwavePool, p.x, p.z, 4, glow)
+  sfx.play('hyperspace', p)
+}
+// The Ascension's height this frame (0 when not ascending); moves you during the dive and crashes at the end.
+function stepAscension(now) {
+  const a = heroState.ascend
+  if (!a) return 0
+  const pl = game.player
+  if (pl.hp <= 0 || pl.hidden || pl.falling) {
+    heroState.ascend = null
+    return 0
+  }
+  const t = now - a.start
+  if (t < ASCEND.rise) {
+    const k = t / ASCEND.rise
+    if (Math.random() < 0.6) burst(particleSystem, { x: pl.position.x, y: k * ASCEND.height, z: pl.position.z }, heroLook().glow, 2, 1, 0.4)
+    return ASCEND.height * (1 - (1 - k) * (1 - k))
+  }
+  if (t < ASCEND.rise + ASCEND.hang) return ASCEND.height + Math.sin((t - ASCEND.rise) * 12) * 0.1
+  if (!a.from) a.from = { x: pl.position.x, z: pl.position.z }
+  const k = Math.min(1, (t - ASCEND.rise - ASCEND.hang) / ASCEND.dive)
+  const want = { x: a.from.x + (a.to.x - a.from.x) * k, z: a.from.z + (a.to.z - a.from.z) * k }
+  const moved = clampToPlatform(resolveArenaMove(pl.position, { x: want.x - pl.position.x, z: want.z - pl.position.z }, PLAYER_RADIUS, game.obstacles), ARENA_RADIUS - 1)
+  pl.position = { x: moved.x, z: moved.z }
+  pl.mesh.position.x = moved.x
+  pl.mesh.position.z = moved.z
+  burst(particleSystem, { x: moved.x, y: ASCEND.height * (1 - k * k) + 0.5, z: moved.z }, 0xffffff, 3, 0.8, 0.3)
+  if (k < 1) return ASCEND.height * (1 - k * k)
+  heroState.ascend = null
+  heroNow = now
+  const at = { x: moved.x, z: moved.z }
+  const glow = heroLook().glow
+  showPopup(popupPool, at, 'STARFALL', 'ASCENSION', '#fff2a8')
+  column(at.x, at.z, 0xffffff, 10, 14)
+  heroNova(at, ASCEND.radius, ASCEND.damage, 6, glow)
+  triggerShake(game.shake, SHAKE_HIT_MAGNITUDE * 2.5, SHAKE_HIT_DURATION * 2)
+  input.rumble(RUMBLE_STRONG_STRENGTH, RUMBLE_STRONG_DURATION)
+  heroTargets(at.x, at.z, 14).sort((m1, m2) => distTo(m1, at) - distTo(m2, at)).slice(0, ASCEND.lances)
+    .forEach((m, i) => heroState.pending.push({ at: now + 0.15 + i * 0.07, run: () => seraphLance(i, ASCEND.lances, m, ASCEND.lanceDamage) }))
+  return 0
+}
+// Every frame: the Sovereign floats (plus the Ascension's height). In the Wilds and the water rooms the base height
+// was already set this frame, so the lift is added; on the sundeck / labyrinth it's set outright (and reset once
+// you switch to a hero who walks).
+function applyFlight(player, now, flyer) {
+  let lift = 0
+  if (flyer && !player.falling && !player.hidden && player.hp > 0 && !waterState.diving) lift = SOVEREIGN_HOVER + Math.sin(now * 2.4) * 0.08 + stepAscension(now)
+  else heroState.ascend = null
+  if (player.falling) {
+    heroState.flyLift = 0
+    return
+  }
+  if (game.world || waterRoom()) player.mesh.position.y += lift
+  else if (lift || heroState.flyLift) player.mesh.position.y = lift
+  heroState.flyLift = lift
 }
 
 // ---- hero ultimates (K), a mastery-8 run pick (logic/heroUltimates.js) ----
@@ -2264,7 +2405,7 @@ function triggerUltimate(now) {
       masteryRun.lockedToastAt = now
       const level = heroMasteryLevel()
       showLootToast(hud, level >= ULTIMATE_LEVEL
-        ? { title: 'ULTIMATE NOT PICKED', name: def.name, blurb: 'You took a stat boost this run. Pick the ultimate at the start of your next run.' }
+        ? { title: 'ULTIMATE NOT PICKED', name: def.name, blurb: 'You did not pick this hero\'s ultimate for this run. Pick it at the start of your next run.' }
         : { title: 'ULTIMATE LOCKED', name: def.name, blurb: `Reach mastery ${ULTIMATE_LEVEL} with ${heroById(heroId).name} to unlock it (now level ${level}).` })
     }
     return
@@ -2413,6 +2554,7 @@ function runUltimate(steps) {
 // The run-start choice, once your hero is at mastery 8 (normal runs only; the sandbox has every ultimate).
 function offerMasteryPick() {
   masteryRun.pick = null
+  masteryRun.hero = null
   masteryRun.ultReady = 0
   masteryRun.buff = null
   if (sandbox || tutorial || !started) return
@@ -2541,6 +2683,7 @@ function triggerHeroAbility(now, free = false) {
     case 'phoebe': phoenixNova(p, 7, 4, false); player.invulnerableUntil = Math.max(player.invulnerableUntil, now + 1); break
     case 'kenji': thousandCuts(9, 12, 2.5); break
     case 'shiro': hollowViolet(aim); break
+    case 'sovereign': ascension(now); break
     case 'ranger':
       setTimeWarp(Math.max(timeWarp.until, now + 3), 0.25)
       warp.add('swirl', p.x, p.z, 6, 1)
@@ -4362,7 +4505,7 @@ function stepSky(game, now, dt) {
       }
     } else if (!w.jump.air && !isle) s.isleId = null
 
-    // The Sky Relics on the crown isles.
+    // The Nimbus Crowns (Sky Relics) on the crown isles; every one of them brings the secret hero.
     for (const arch of skyArchipelagos()) {
       const r = arch.relic
       if (w.journal.relics.includes(r.id)) continue
@@ -4376,7 +4519,8 @@ function stepSky(game, now, dt) {
       burst(particleSystem, at, 0x5ef2d6, 30, 4)
       spawnShockwave(shockwavePool, r.x, r.z, 8, 0xffd15c)
       sfx.play('waveCleared', { x: r.x, z: r.z })
-      questUi.showToast(`SKY RELIC CLAIMED ${w.journal.relics.length}/${skyArchipelagos().length}  ·  ${arch.name.toUpperCase()}  +${RELIC_REWARD} CRYSTALS, FULLY HEALED`)
+      questUi.showToast(`NIMBUS CROWN CLAIMED ${w.journal.relics.length}/${skyArchipelagos().length}  ·  ${arch.name.toUpperCase()}  +${RELIC_REWARD} CRYSTALS, FULLY HEALED`)
+      grantCrownHero(w.journal.relics.length, true)
     }
 
     // Archipelagos come alive while you're up there with them, and go quiet once you're back on the land.
@@ -6448,6 +6592,7 @@ const swapPanel = createSwapPanel({
 const masteryPanel = createMasteryPickPanel({
   onPick(choice) {
     masteryRun.pick = choice
+    masteryRun.hero = heroProfile().hero
     const def = HERO_ULTIMATES[heroProfile().hero]
     if (choice.kind === 'ult') showLootToast(hud, { title: `ULTIMATE [${input.touchMode ? 'tap ★' : 'K'}]`, name: def.name, blurb: def.desc })
     else showLootToast(hud, { title: 'MASTERY BOOST', name: statPick(choice.id).name, blurb: `${statPick(choice.id).desc} for this run` })
@@ -6655,6 +6800,7 @@ window.addEventListener('touchend', () => {
 }, { passive: true })
 
 let game = createGame()
+grantCrownHero(loadJournal().relics.length) // a save that already holds every Nimbus Crown gets the secret hero
 
 // Dev-server only: lets browser tests (and you, in the console) peek at the state.
 if (import.meta.env.DEV) {
@@ -7391,7 +7537,9 @@ function gameFrame(timestamp) {
     const canHop = !player.hidden && !player.falling && player.hp > 0 && !hub.isOpen()
     // The ground is a sky isle's top when you're on (or above) one; an updraft lifts an open glider.
     const ground = surfaceAt(player.position.x, player.position.z, game.world.jump.alt)
-    const lift = updraftLift(player.position.x, player.position.z, game.world.jump.alt)
+    // The Nimbus Sovereign's wings: hold Space with them spread to climb.
+    const climb = isFlyer() && game.world.jump.gliding && canHop && input.isDown('Space') ? SOVEREIGN_CLIMB : 0
+    const lift = Math.max(climb, updraftLift(player.position.x, player.position.z, game.world.jump.alt))
     const hop = stepJump(game.world.jump, canHop && input.wasPressed('Space'), deltaSeconds, ground, lift)
     game.world.jump = hop.state
     if (lift > 0 && hop.state.gliding && Math.random() < 0.3) burst(particleSystem, { x: player.position.x + (Math.random() - 0.5) * 3, y: hop.state.alt - (game.world.groundY ?? 0) - 1, z: player.position.z + (Math.random() - 0.5) * 3 }, 0xdff8ff, 2, 2.5, 0.5)
@@ -7405,6 +7553,10 @@ function gameFrame(timestamp) {
     if (!player.falling) player.mesh.position.y = hop.state.alt
     if (!game.world.glider.parent) player.mesh.add(game.world.glider)
     updateGlider(game.world.glider, hop.state.gliding && hop.state.air, deltaSeconds, elapsedSeconds)
+    if (isFlyer()) {
+      game.world.glider.visible = false // the Sovereign flies on their own wings
+      if (hop.state.gliding && hop.state.air && Math.random() < 0.5) burst(particleSystem, { x: player.position.x, y: hop.state.alt - (game.world.groundY ?? 0) + 1, z: player.position.z }, heroLook().glow, 2, 1.5, 0.4)
+    }
     if (hop.opened) burst(particleSystem, { x: player.position.x, y: hop.state.alt + 2.8, z: player.position.z }, 0xffd0e0, 18, 3)
     if (hop.jumped || hop.landed) {
       burst(particleSystem, { x: player.position.x, y: hop.state.alt + 0.15, z: player.position.z }, 0xe0d6ff, hop.landed ? 14 : 8, hop.landed ? 3 : 2)
@@ -7419,7 +7571,13 @@ function gameFrame(timestamp) {
     }
     if (!player.falling) player.mesh.position.y = waterY(player.position.x, player.position.z, elapsedSeconds)
   } else if (!player.falling && !player.hidden && !isOnPlatform(player.position, ARENA_RADIUS)) {
-    player.startFalling()
+    if (isFlyer()) {
+      // The Nimbus Sovereign flies: the wings catch them at the edge instead of a fall.
+      const held = clampToPlatform(player.position, ARENA_RADIUS - 0.2)
+      player.position = { x: held.x, z: held.z }
+      player.mesh.position.x = held.x
+      player.mesh.position.z = held.z
+    } else player.startFalling()
   }
   if (player.falling && player.updateFalling(gameplayDelta, elapsedSeconds)) {
     if (game.world && player.hp > 0) respawnAtCheckpoint(game, elapsedSeconds, { toast: false, heal: false }) // hurt, but back at the save point rather than the middle of the world

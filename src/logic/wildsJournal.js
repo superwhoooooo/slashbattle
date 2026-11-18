@@ -72,7 +72,7 @@ export function noteRace(j, courseId, time) {
   const best = !prev || time < prev
   return { journal: best ? { ...j, races: { ...j.races, [courseId]: Math.round(time * 10) / 10 } } : j, first: !prev, best }
 }
-// Skylift towers ridden, sky isles set foot on, Sky Relics taken.
+// Skylift towers ridden, sky isles set foot on, Nimbus Crowns (Sky Relics) taken.
 export function noteTower(j, id) {
   return { journal: { ...j, towers: addTo(j.towers, id) }, first: !j.towers.includes(id) }
 }
@@ -111,8 +111,8 @@ export const MILESTONES = [
   { id: 'towers5', title: 'Tower Hopper', desc: 'Ride 5 different Skylift towers', stat: 'towers', need: 5, crystals: 180, loot: 'ability' },
   { id: 'isles10', title: 'Head in the Clouds', desc: 'Set foot on 10 sky isles', stat: 'isles', need: 10, crystals: 90 },
   { id: 'isles40', title: 'Sky Sailor', desc: 'Set foot on 40 sky isles', stat: 'isles', need: 40, crystals: 300, loot: 'weapon' },
-  { id: 'relics3', title: 'Relic Seeker', desc: 'Claim 3 Sky Relics', stat: 'relics', need: 3, crystals: 150 },
-  { id: 'relics9', title: 'Keeper of the Sky', desc: 'Claim every Sky Relic', stat: 'relics', need: 9, crystals: 500, loot: 'pet' },
+  { id: 'relics3', title: 'Crown Seeker', desc: 'Claim 3 Nimbus Crowns', stat: 'relics', need: 3, crystals: 150 },
+  { id: 'relics9', title: 'Keeper of the Sky', desc: 'Claim every Nimbus Crown (and something in the sky will notice)', stat: 'relics', need: 9, crystals: 500, loot: 'pet' },
 ]
 
 // The number a milestone counts, from the journal.

@@ -491,8 +491,8 @@ export const HEROES = [
   {
     id: 'shiro', name: 'Shiro the Limitless', cost: 3000,
     blurb: 'The strongest sorcerer at the resort, and he knows it. The blindfold is for everyone else\'s sake.',
-    stats: { damage: 1.12, maxHp: 20, damageTaken: 0.8, crit: 0.05 }, mask: true,
-    trait: { id: 'limitless', name: 'Infinity', desc: 'Nothing gets within 1.7 m of you: monsters are held back at the edge of an endless gap and enemy orbs vanish before they touch you. Every 7 s a hit casts Blue on its target: a vortex that drags in everything within 6 m, then crushes it for 2x.' },
+    stats: { damage: 1.03, maxHp: -10, crit: 0.02 }, mask: true,
+    trait: { id: 'limitless', name: 'Infinity', desc: 'Infinity flickers on for 2 s out of every 9: while it is up, regular monsters are held back 1.2 m from you and enemy orbs touching you vanish (bosses walk straight through it). Every 12 s a hit casts Blue on its target: a small vortex that drags in everything within 4 m, then crushes it for 1.2x.' },
     gear: ['whiteHair', 'blindfold', 'highCollar'],
     skins: [
       skin('limitless', 'Limitless', 0x23263a, 0x14162a, 0xf4f6ff, 0x6fc8ff),
@@ -618,6 +618,21 @@ export const HEROES = [
       skin('copy', 'Copy Gold', 0xe8b84a, 0x8a5a14, 0xfff0c0, 0x6fe3ff, 700),
     ],
   },
+  // --- The secret hero: never listed (hub, sandbox) until it's yours. It can't be bought: claim every Nimbus
+  // Crown on the Wilds' crown isles (logic/skyIslands.js) and it comes to you (SECRET_HEROES / heroForCrowns).
+  {
+    id: 'sovereign', name: 'Aurelion, the Nimbus Sovereign', cost: 0, secret: true,
+    blurb: 'Wore every crown the sky ever made, then came down to see what all the fuss was about. Floats. Never touches the deck.',
+    stats: { damage: 1.1, speed: 1.1, maxHp: 15 }, mask: true,
+    trait: { id: 'heavenly', name: 'Heavenly Host', desc: 'You FLY: you hover over the ground, your wings catch you at any edge (you never fall off), and in the Wilds Space spreads your wings (hold Space to climb). Three seraph orbs circle you, and every 1.4 s each one fires a lance of light at a monster within 10 m for 0.5x.' },
+    gear: ['sunHalo', 'floatCrown', 'divineRobe', 'lightWings', 'seraphs'],
+    skins: [
+      skin('dawn', 'Dawnlight', 0xfff4dc, 0xf6f0ff, 0xffd15c, 0xfff2a8),
+      skin('azure', 'Azure Heaven', 0xd8ecff, 0x6fa8ff, 0xf4f6ff, 0x9fe8ff, 600),
+      skin('eclipse', 'Eclipse', 0x2a2440, 0x120e22, 0xffc84a, 0xff9a3a, 900),
+      skin('aurora', 'Aurora Throne', 0xe8fff6, 0x7dffd0, 0xd8b8ff, 0xb8fff0, 1200),
+    ],
+  },
 ]
 
 export const HERO_IDS = HEROES.map((h) => h.id)
@@ -637,6 +652,19 @@ export function heroLook(profile) {
   const hero = heroById(profile?.hero)
   const chosen = hero.skins.find((s) => s.id === profile?.heroSkins?.[hero.id]) ?? hero.skins[0]
   return { heroId: hero.id, gear: hero.gear, mask: hero.mask === true, ...chosen, accent: chosen.glow }
+}
+
+// Secret heroes: hidden everywhere (the hub's Heroes page and mastery list, the sandbox) until owned.
+export const SECRET_HEROES = HEROES.filter((h) => h.secret).map((h) => h.id)
+export const isSecretHero = (id) => BY_ID[id]?.secret === true
+export const visibleHeroes = (profile) => HEROES.filter((h) => !h.secret || ownsHero(profile, h.id))
+// The Nimbus Sovereign comes to whoever has claimed every Nimbus Crown (`claimed` of `total`).
+export const CROWN_HERO = 'sovereign'
+export const heroForCrowns = (claimed, total) => (total > 0 && claimed >= total ? CROWN_HERO : null)
+// Gives a hero for free (no crystals); unchanged if already owned.
+export function grantHero(profile, id) {
+  if (!BY_ID[id] || ownsHero(profile, id)) return profile
+  return { ...profile, heroesOwned: [...(profile.heroesOwned ?? []), id] }
 }
 
 export const ownsHero = (profile, id) => id === DEFAULT_HERO || (profile.heroesOwned ?? []).includes(id)
@@ -669,6 +697,7 @@ export function buyHero(profile, id) {
   const hero = BY_ID[id]
   if (!hero) return fail(profile, 'No such hero')
   if (ownsHero(profile, id)) return selectHero(profile, id)
+  if (hero.secret) return fail(profile, 'Claim every Nimbus Crown')
   if (profile.bank < hero.cost) return fail(profile, `Needs ${hero.cost} ◆`)
   return { profile: { ...profile, bank: profile.bank - hero.cost, heroesOwned: [...(profile.heroesOwned ?? []), id], hero: id }, ok: true }
 }

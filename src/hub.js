@@ -3,7 +3,7 @@
 // crystals buy skill levels and power-up upgrades; the loadout picks the pets
 // you start every run with. Pure DOM; main.js hands in the profile and callbacks.
 import { dragonIconUrl, heroIconUrl, iconImg } from './icons.js'
-import { HEROES, heroById, heroEffects, ownsHero, ownsSkin } from './logic/heroes.js'
+import { heroById, heroEffects, ownsHero, ownsSkin, visibleHeroes } from './logic/heroes.js'
 import { BREATHS, SCALES, describeDragon, dragonSetup, isBreathUnlocked, isDragon, isSkinUnlocked, tuneDragon } from './logic/dragons.js'
 import { skillIconSvg } from './skillIcons.js'
 import { AWAKEN_LEVEL, AWAKENED, HERO_ABILITIES } from './logic/heroPowers.js'
@@ -718,7 +718,7 @@ export function createHub({ getProfile, setProfile, getDragons, setDragons, getR
     wrap.appendChild(detail)
 
     const grid = el('div', 'hero-grid')
-    for (const hero of [...HEROES].sort((a, b) => a.cost - b.cost)) {
+    for (const hero of visibleHeroes(profile).sort((a, b) => (a.secret ? Infinity : a.cost) - (b.secret ? Infinity : b.cost))) { // a secret hero only shows once it's yours, last
       const have = ownsHero(profile, hero.id)
       const isPlaying = profile.hero === hero.id
       const card = el('button', `hero-card${isPlaying ? ' playing' : ''}${hero.id === viewing.id ? ' viewing' : ''}${have ? '' : ' locked'}`)
@@ -729,7 +729,7 @@ export function createHub({ getProfile, setProfile, getDragons, setDragons, getR
       img.src = heroIconUrl(lookOf(hero, worn))
       card.appendChild(img)
       card.appendChild(el('span', 'nm', hero.name))
-      card.appendChild(el('span', 'tag', isPlaying ? 'PLAYING' : have ? 'Owned' : `${hero.cost} ◆`))
+      card.appendChild(el('span', 'tag', isPlaying ? 'PLAYING' : have ? (hero.secret ? '★ Secret' : 'Owned') : `${hero.cost} ◆`))
       card.addEventListener('click', () => {
         heroView = hero.id
         status = ''
@@ -777,7 +777,7 @@ export function createHub({ getProfile, setProfile, getDragons, setDragons, getR
 
     const mastery = sec('Hero mastery')
     const grid = el('div', 'mastery-grid')
-    for (const hero of [...HEROES].sort((a, b) => (prog.mastery[b.id] ?? 0) - (prog.mastery[a.id] ?? 0) || a.cost - b.cost)) {
+    for (const hero of visibleHeroes(profile).sort((a, b) => (prog.mastery[b.id] ?? 0) - (prog.mastery[a.id] ?? 0) || a.cost - b.cost)) {
       const owned = ownsHero(profile, hero.id)
       const { level, into, span } = masteryBar(prog.mastery[hero.id] ?? 0)
       const card = el('div', `mastery-card${owned ? '' : ' locked'}`)

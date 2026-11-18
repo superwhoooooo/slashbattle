@@ -341,8 +341,8 @@ Sanctum, four in the Heartland, four in the Frontier; dry, level, clear of villa
 until you step off); the launch (`logic/jump.js`'s `launchJump`, `launchVelocity`) peaks `LAUNCH_RISE` (215) above the pad. Each
 tower has an **archipelago** above it (`skyArchipelagos`): a main isle (grove with waterfall, ruins, garden, forge with a boss
 guardian, observatory) a short glide from the launch, a chain of islets stepping down (every gap a comfortable glide), and a high
-**crown isle** reached by riding an **updraft** (`updraftLift`; only an open glider rides it) off the main isle, holding a **Sky
-Relic** (`RELIC_REWARD`, a full heal, taken once per device). `isleLayout` places props, chests and guards (sky monsters that
+**crown isle** reached by riding an **updraft** (`updraftLift`; only an open glider rides it) off the main isle, holding a **Nimbus
+Crown** (the code's Sky Relic: `RELIC_REWARD`, a full heal, taken once per device; claiming all nine unlocks the secret hero). `isleLayout` places props, chests and guards (sky monsters that
 can't blink off the edge). Isles are walkable: `surfaceAt(x, z, alt)` is the isle top when your feet are at or above it, else
 `heightAt`; `stepJump` drops you into the air when the ground falls away more than `LEDGE_DROP` (walking off an edge) and caps the
 fall at `TERMINAL_FALL` (a long unglided drop lands with a shockwave). `main.js`'s `stepSky` runs it all: the launch, isle
@@ -1120,6 +1120,20 @@ butter `hero-slot` at the front of the ability bar (`hud.js`'s `updateHeroAbilit
 far mastery has to go. The level-4 mastery toast announces the awakening. `window.__debug` (dev) has `setSandboxHero(id)`,
 `spawn(type, n)` and `heroState` for browser tests.
 
+
+## The secret hero: the Nimbus Sovereign
+`sovereign` in `HEROES` has `secret: true`: `visibleHeroes(profile)` keeps it off the hub's Heroes page and mastery list, and
+`main.js`'s `sandboxHeroes` keeps it out of the sandbox, until it's owned. It can't be bought (`buyHero` refuses); `main.js`'s
+`grantCrownHero` grants it (`grantHero`, `heroForCrowns`) when the last Nimbus Crown is claimed in the Wilds, and at startup for a
+journal that already has them all. It plays in every mode. Look: `heroGear.js`'s `sunHalo`, `floatCrown`, `divineRobe`, `lightWings`,
+`seraphs`. Trait `heavenly` (Heavenly Host): it FLIES -- `applyFlight` hovers it `SOVEREIGN_HOVER` over the ground (set outright on
+the sundeck / labyrinth, added on top in the Wilds and water rooms), the edge clamps it instead of a fall, and in the Wilds an open
+glider (hidden: its own wings) climbs `SOVEREIGN_CLIMB` while Space is held. Seraph orbs fire lances (`stepHeavenly`, `seraphLance`;
+awakened, every `judgeEvery`-th one is a lightning Pillar of Judgment). B: Ascension (`ascension` / `stepAscension`: rise 8 m with
+brief i-frames, then dive onto the aim point for a 6 m nova plus 6 lances). K: Final Judgment. Not immortal: no damage reduction
+or long invulnerability. Shiro the Limitless was nerfed hard at the same time: no damage reduction, Infinity only flickers on
+(`on` / `off` in `TUNING.limitless`) and bosses ignore it, a smaller Blue, Hollow Violet 3x over 20 m on a 45 s cooldown, and a
+smaller Domain Expansion. Tests: `test/secretHero.test.js`.
 
 ## Hero ultimates and the mastery-8 pick
 `src/logic/heroUltimates.js` (pure, `test/heroUltimates.test.js`). With a hero at mastery `ULTIMATE_LEVEL` (8), every normal run

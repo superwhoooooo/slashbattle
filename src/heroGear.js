@@ -673,6 +673,94 @@ const GEAR = {
       fringe.userData.swing = true
     }
   },
+  // --- The secret hero: the Nimbus Sovereign ---
+  // A turning sunburst halo behind the head, and two eyes of pure light in the masked face.
+  sunHalo(g, look) {
+    const halo = new THREE.Group()
+    halo.position.set(0, R * 1.62, -R - 0.28)
+    halo.userData.spin = true
+    const add = (color, opacity) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false })
+    part(halo, new THREE.TorusGeometry(0.62, 0.04, 8, 48), glowMat(look.trim))
+    part(halo, new THREE.TorusGeometry(0.44, 0.02, 6, 40), glowMat(look.glow))
+    part(halo, new THREE.CircleGeometry(0.6, 40), add(look.glow, 0.22))
+    for (let i = 0; i < 16; i++) {
+      const a = (i / 16) * Math.PI * 2
+      const long = i % 2 === 0
+      const ray = part(halo, new THREE.ConeGeometry(0.035, long ? 0.42 : 0.24, 4), add(long ? look.trim : look.glow, 0.9), [Math.cos(a) * (0.68 + (long ? 0.2 : 0.11)), Math.sin(a) * (0.68 + (long ? 0.2 : 0.11)), 0], [0, 0, a - Math.PI / 2])
+      ray.castShadow = false
+    }
+    halo.traverse((o) => { o.castShadow = false })
+    g.add(halo)
+    for (const side of [-1, 1]) {
+      part(g, new THREE.CircleGeometry(0.075, 16), glowMat(look.glow), [side * 0.17, R * 1.42, R * 0.93], [-0.4, side * 0.18, 0], [1.5, 0.6, 1])
+    }
+  },
+  // A golden crown floating over the head, slowly turning, set with glowing gems.
+  floatCrown(g, look) {
+    const crown = new THREE.Group()
+    crown.position.set(0, TOP + 0.42, 0)
+    crown.userData.bob = true
+    crown.userData.orbit = true
+    const gold = solid(look.trim, 0.2, 0.9)
+    part(crown, new THREE.CylinderGeometry(0.34, 0.3, 0.12, 24, 1, true), new THREE.MeshStandardMaterial({ color: look.trim, roughness: 0.2, metalness: 0.9, side: THREE.DoubleSide }))
+    part(crown, new THREE.TorusGeometry(0.34, 0.025, 6, 28), gold, [0, 0.06, 0], [Math.PI / 2, 0, 0])
+    part(crown, new THREE.TorusGeometry(0.3, 0.025, 6, 28), gold, [0, -0.06, 0], [Math.PI / 2, 0, 0])
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2
+      part(crown, new THREE.ConeGeometry(0.06, i % 2 ? 0.18 : 0.3, 4), gold, [Math.sin(a) * 0.33, 0.12 + (i % 2 ? 0.06 : 0.12), Math.cos(a) * 0.33])
+      if (i % 2 === 0) part(crown, new THREE.OctahedronGeometry(0.045), glowMat(look.glow), [Math.sin(a) * 0.35, 0.3, Math.cos(a) * 0.35])
+      part(crown, new THREE.SphereGeometry(0.035, 8, 6), glowMat(i % 2 ? look.glow : 0xffffff), [Math.sin(a) * 0.345, 0, Math.cos(a) * 0.345])
+    }
+    g.add(crown)
+  },
+  // A flowing robe of light that trails below the body (the Sovereign never touches the ground), gold pauldrons.
+  divineRobe(g, look) {
+    const robe = part(g, new THREE.CylinderGeometry(R * 1.02, R * 1.35, R * 1.5, 24, 2, true), clothMat(look.cloak), [0, R * 0.55, 0])
+    robe.userData.sway = true
+    part(g, new THREE.TorusGeometry(R * 1.35, 0.035, 6, 32), glowMat(look.trim), [0, R * 0.55 - R * 0.75, 0], [Math.PI / 2, 0, 0])
+    part(g, new THREE.TorusGeometry(R * 1.03, 0.03, 6, 32), glowMat(look.glow), [0, R * 1.28, 0], [Math.PI / 2, 0, 0])
+    const trail = part(g, new THREE.ConeGeometry(R * 1.2, 0.7, 24, 1, true), new THREE.MeshBasicMaterial({ color: look.glow, transparent: true, opacity: 0.28, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }), [0, -0.35, 0], [Math.PI, 0, 0])
+    trail.castShadow = false
+    trail.userData.flicker = true
+    for (const side of [-1, 1]) {
+      part(g, new THREE.SphereGeometry(0.26, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), solid(look.trim, 0.25, 0.85), [side * R * 0.88, R * 1.3, 0], [0, 0, -side * 0.5], [1, 0.7, 1.1])
+      part(g, new THREE.OctahedronGeometry(0.06), glowMat(look.glow), [side * R * 1.02, R * 1.38, 0.05])
+    }
+  },
+  // Six-bladed wings of light on each side, beating slowly (harder when you move).
+  lightWings(g, look) {
+    for (const side of [-1, 1]) {
+      const wing = new THREE.Group()
+      wing.position.set(side * R * 0.45, R * 1.3, -R * 0.85)
+      wing.userData.wing = side
+      for (let i = 0; i < 6; i++) {
+        const len = 1.25 - i * 0.13
+        const mat = new THREE.MeshBasicMaterial({ color: i % 2 ? look.glow : 0xffffff, transparent: true, opacity: 0.85 - i * 0.07, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide })
+        const f = part(wing, new THREE.ConeGeometry(0.11, len, 4), mat, [side * (0.35 + i * 0.16 + len * 0.3), 0.32 - i * 0.12, 0], [0, 0, side * (-0.6 - i * 0.2)], [1, 1, 0.25])
+        f.castShadow = false
+      }
+      part(wing, new THREE.SphereGeometry(0.09, 10, 8), glowMat(look.trim), [side * 0.15, 0.25, 0])
+      g.add(wing)
+    }
+  },
+  // Three seraph orbs circling the Sovereign (they fire the Heavenly Host's lances).
+  seraphs(g, look) {
+    const ring = new THREE.Group()
+    ring.position.y = R * 1.1
+    ring.userData.orbit = true
+    for (let i = 0; i < 3; i++) {
+      const a = (i / 3) * Math.PI * 2
+      const orb = new THREE.Group()
+      orb.position.set(Math.cos(a) * 1.45, (i - 1) * 0.18, Math.sin(a) * 1.45)
+      part(orb, new THREE.IcosahedronGeometry(0.11, 1), glowMat(0xffffff))
+      const shell = part(orb, new THREE.IcosahedronGeometry(0.2, 1), new THREE.MeshBasicMaterial({ color: look.glow, transparent: true, opacity: 0.4, blending: THREE.AdditiveBlending, depthWrite: false }))
+      shell.userData.flicker = true
+      part(orb, new THREE.TorusGeometry(0.26, 0.012, 4, 24), glowMat(look.trim), [0, 0, 0], [Math.PI / 2 + 0.4, 0, 0])
+      orb.traverse((o) => { o.castShadow = false })
+      ring.add(orb)
+    }
+    g.add(ring)
+  },
   // --- Legendary heroes ---
   // Shiro the Limitless: spiky white hair swept up, a dark blindfold, a tall coat collar.
   whiteHair(g, look) {

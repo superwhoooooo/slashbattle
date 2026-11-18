@@ -55,7 +55,8 @@ const TUNING = {
   rebirth: [{ burnChance: 0.25, cooldown: 60, riseHp: 0.5, damage: 3, radius: 6 }, { burnChance: 0.5, cooldown: 25, riseHp: 1, damage: 6, radius: 9 }],
   thousandcuts: [{ cooldown: 9, max: 7, hop: 8, damage: 1.6 }, { cooldown: 4, max: 12, hop: 12, damage: 2.5 }],
   // Legendary heroes.
-  limitless: [{ wall: 1.7, orbRadius: 2, cooldown: 7, pull: 6, blast: 3.5, damage: 2, life: 1.2, red: 0 }, { wall: 2.6, orbRadius: 3, cooldown: 3.5, pull: 9, blast: 5, damage: 3.5, life: 1.5, red: 3 }],
+  // Shiro was nerfed hard: Infinity only flickers on (`on` s up out of every `on + off`), bosses ignore it.
+  limitless: [{ wall: 1.2, orbRadius: 1.1, on: 2, off: 7, cooldown: 12, pull: 4, blast: 2.5, damage: 1.2, life: 1, red: 0 }, { wall: 1.5, orbRadius: 1.4, on: 2.5, off: 5.5, cooldown: 8, pull: 5, blast: 3, damage: 1.6, life: 1.2, red: 2 }],
   fuse: [{ every: 5, arrows: 1, reach: 16, damage: 2.2, radius: 3.5 }, { every: 3, arrows: 3, reach: 20, damage: 3, radius: 4.5 }],
   spartan: [{ max: 20, time: 10, bonus: 1.75, heal: 0.03, radius: 3.5, damage: 1.5, guard: 0.7, speed: 1.2 }, { max: 14, time: 12, bonus: 2.25, heal: 0.05, radius: 5, damage: 2, guard: 0.55, speed: 1.3 }],
   glorykill: [{ below: 0.25, bossBelow: 0, heal: 0.06, gems: 4 }, { below: 0.4, bossBelow: 0.08, heal: 0.1, gems: 8 }],
@@ -64,6 +65,8 @@ const TUNING = {
   tnt: [{ every: 5, fuse: 1.5, damage: 3, radius: 4, blocks: 1 }, { every: 3, fuse: 1.2, damage: 5, radius: 5.5, blocks: 2 }],
   hadoken: [{ every: 4, reach: 15, damage: 2, pierce: false, size: 1 }, { every: 2, reach: 20, damage: 3, pierce: true, size: 1.4 }],
   inhale: [{ cooldown: 8, radius: 6, stars: 1, damage: 2.5 }, { cooldown: 4, radius: 9, stars: 3, damage: 3.5 }],
+  // The secret hero (Nimbus Sovereign): seraph orbs fire lances of light; awakened, every `judgeEvery`-th lance is a pillar.
+  heavenly: [{ seraphs: 3, every: 1.4, range: 10, damage: 0.5, judgeEvery: 0, judgeRadius: 3, judgeDamage: 2 }, { seraphs: 5, every: 1, range: 13, damage: 0.8, judgeEvery: 6 }],
   charge: [{ charge: 3, reach: 18, damage: 3, width: 1.2 }, { charge: 1.5, reach: 22, damage: 5, width: 1.8 }],
 }
 const cache = new Map()
@@ -117,7 +120,7 @@ export const AWAKENED = {
   singularity: { desc: 'A black hole every 4 s: it pulls 12 m for 3 s, then implodes 6 m wide for 5x.' },
   phoebe: { desc: 'Half your hits burn. Rebirth every 25 s, at full health, in a 9 m nova for 6x.' },
   kenji: { desc: 'Thousand Cuts every 4 s: up to 12 monsters, 12 m apart, for 2.5x each.' },
-  shiro: { desc: 'Infinity widens to 2.6 m and swallows orbs 3 m out. Blue every 3.5 s, 9 m pull, 3.5x crush, and every Blue fires Reversal Red: three repelling blasts down your aim.', stats: { damageTaken: 0.85 } },
+  shiro: { desc: 'Infinity is up 2.5 s out of every 8 and holds monsters 1.5 m off. Blue every 8 s, 5 m pull, 1.6x crush, and every Blue fires Reversal Red: two repelling blasts down your aim.' },
   ranger: { desc: 'Every 3rd hit looses THREE fused arrows in a fan: 20 m, 3x within 4.5 m each.' },
   ragnar: { desc: 'Rage fills at 14 and lasts 12 s: +125% damage, take 45% less, +30% speed, each hit heals 5% and quakes 5 m for 2x.' },
   doomguard: { desc: 'Glory Kill anything at 40% health, and even bosses at 8%: a 10% heal and twice the crystals.' },
@@ -127,6 +130,7 @@ export const AWAKENED = {
   haru: { desc: 'A fireball every 2nd hit: bigger, 20 m, 3x, and it tears through everything in its path.' },
   poppy: { desc: 'Inhale every 4 s across 9 m, then spit three stars for 3.5x each.' },
   buster: { desc: 'The cannon charges in 1.5 s, and the shot is a wide 22 m beam of plasma for 5x.' },
+  sovereign: { desc: 'Five seraphs, a lance every second each, 13 m, 0.8x; every 6th lance becomes a Pillar of Judgment, 2x within 3 m.' },
 }
 
 // Each hero's active ability, unlocked at AWAKEN_LEVEL. `range` (if any) is how far from you it can be aimed.
@@ -169,7 +173,7 @@ export const HERO_ABILITIES = {
   singularity: { name: 'Big Crunch', cooldown: 30, range: 14, desc: 'A huge black hole where you aim: pulls 16 m for 3 s, implodes 7 m wide for 6x.' },
   phoebe: { name: 'Phoenix Dive', cooldown: 20, desc: 'A 7 m fire nova for 4x that sets everything alight, and 1 s of invulnerability.' },
   kenji: { name: 'Ninefold Strike', cooldown: 18, desc: 'Thousand Cuts right now, through up to 9 monsters.' },
-  shiro: { name: 'Hollow Violet', cooldown: 30, desc: 'Blue and Red collide into an imaginary mass: a huge violet sphere tears 34 m along your aim, erasing everything in its way for 6x.' },
+  shiro: { name: 'Hollow Violet', cooldown: 45, desc: 'Blue and Red collide into an imaginary mass: a violet sphere tears 20 m along your aim for 3x.' },
   ranger: { name: 'Flurry Rush', cooldown: 20, desc: 'Time slows to a crawl and you flash-slash the 8 nearest monsters within 12 m for 2x each.' },
   ragnar: { name: 'Blades of Chaos', cooldown: 18, desc: 'Two burning chained blades whirl around you twice, 5.5 m out, 2x each pass and setting monsters alight; rage fills.' },
   doomguard: { name: 'Big Fusion Gun', cooldown: 30, desc: 'A slow green orb that zaps everything within 6 m as it flies 26 m along your aim, then detonates 6 m wide for 5x.' },
@@ -178,6 +182,7 @@ export const HERO_ABILITIES = {
   blox: { name: 'TNT Ring', cooldown: 22, desc: 'Eight blocks of TNT around you, 5 m out, all blowing at once for 4x.' },
   haru: { name: 'Heaven Wave', cooldown: 22, desc: 'Gather your energy and unleash a 22 m wave beam for 5x that shoves everything back.' },
   poppy: { name: 'Mega Inhale', cooldown: 22, desc: 'Inhale everything within 14 m, then spit five stars in a fan for 3.5x each.' },
+  sovereign: { name: 'Ascension', cooldown: 20, range: 14, desc: 'Soar 8 m into the sky (untouchable while you rise), then fall like a star onto where you aim: 3x within 6 m, and your seraphs lance the 6 nearest monsters for 1.2x.' },
   buster: { name: 'Buster Barrage', cooldown: 18, desc: 'Five fully charged shots fan out along your aim, awakened strength.' },
 }
 

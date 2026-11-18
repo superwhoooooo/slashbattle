@@ -384,11 +384,32 @@ function buildArchipelago(arch, puff) {
   draftRing.position.set(u.x, u.y0 + 22, u.z)
   g.add(draft, draftRing)
 
-  // The Sky Relic: a gold ring round a teal heart, turning over its pedestal, with a beam you can see from afar.
+  // The Nimbus Crown (the Sky Relic): a floating gold crown round a teal heart, turning over its pedestal, a halo
+  // orbiting it, and a beam you can see from afar. Claim all nine for the secret hero.
   const relic = new THREE.Group()
   relic.position.set(arch.relic.x, arch.relic.y + 3.8, arch.relic.z)
-  const relicRing = new THREE.Mesh(new THREE.TorusGeometry(1.1, 0.16, 6, 24), new THREE.MeshStandardMaterial({ color: 0xffd15c, metalness: 0.9, roughness: 0.25, emissive: 0x6a4a00 }))
-  const relicRing2 = new THREE.Mesh(new THREE.TorusGeometry(0.8, 0.1, 6, 20), relicRing.material)
+  const gold = new THREE.MeshStandardMaterial({ color: 0xffd15c, metalness: 0.9, roughness: 0.25, emissive: 0x6a4a00 })
+  const relicRing = new THREE.Group()
+  const band = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.0, 0.5, 24, 1, true), new THREE.MeshStandardMaterial({ color: 0xffd15c, metalness: 0.9, roughness: 0.25, emissive: 0x6a4a00, side: THREE.DoubleSide }))
+  relicRing.add(band)
+  for (const y of [-0.25, 0.25]) {
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(y < 0 ? 1.0 : 1.1, 0.08, 6, 28), gold)
+    rim.rotation.x = Math.PI / 2
+    rim.position.y = y
+    relicRing.add(rim)
+  }
+  const gemMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(TEAL).multiplyScalar(2) })
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2
+    const tall = i % 2 === 0
+    const point = new THREE.Mesh(new THREE.ConeGeometry(0.2, tall ? 0.95 : 0.55, 4), gold)
+    point.position.set(Math.sin(a) * 1.08, 0.25 + (tall ? 0.47 : 0.27), Math.cos(a) * 1.08)
+    relicRing.add(point)
+    const gem = new THREE.Mesh(new THREE.OctahedronGeometry(tall ? 0.14 : 0.1), gemMat)
+    gem.position.set(Math.sin(a) * 1.12, tall ? 1.2 : 0, Math.cos(a) * 1.12)
+    relicRing.add(gem)
+  }
+  const relicRing2 = new THREE.Mesh(new THREE.TorusGeometry(1.6, 0.05, 6, 32), gold)
   const relicHeart = new THREE.Mesh(new THREE.OctahedronGeometry(0.55, 0), new THREE.MeshBasicMaterial({ color: new THREE.Color(TEAL).multiplyScalar(2) }))
   relicHeart.scale.y = 1.5
   const relicBeam = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.9, 120, 10, 1, true), new THREE.MeshBasicMaterial({ color: 0xffe08a, transparent: true, opacity: 0.12, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, side: THREE.DoubleSide }))
@@ -479,7 +500,7 @@ export function createSkyWorld() {
         a.draftTex.offset.y -= dt * 1.2
         if (a.relic.visible) {
           a.relicRing.rotation.y = time * 1.4
-          a.relicRing.rotation.x = Math.sin(time * 0.7) * 0.6
+          a.relicRing.rotation.x = Math.sin(time * 0.7) * 0.2
           a.relicRing2.rotation.x = time * 1.9
           a.relicHeart.rotation.y = -time * 2
           a.relic.position.y = a.def.relic.y + 3.8 + Math.sin(time * 1.8) * 0.3

@@ -69,7 +69,7 @@ export function createJournalUi({ onClose } = {}) {
         const tower = skyTowers().find((t) => t.id === a.towerId)
         const seen = a.isles.filter((i) => islesSeen.has(i.id)).length
         const ridden = towersRidden.has(a.towerId)
-        return `<li class="${relics.has(a.relic.id) ? 'gold' : ridden ? 'silver' : ''}">${ridden ? esc(a.name) : '???'}<small>${ridden ? `${esc(tower.name)} · ${seen}/${a.isles.length} isles${relics.has(a.relic.id) ? ' · RELIC' : ''}` : 'ride its tower to find it'}</small></li>`
+        return `<li class="${relics.has(a.relic.id) ? 'gold' : ridden ? 'silver' : ''}">${ridden ? esc(a.name) : '???'}<small>${ridden ? `${esc(tower.name)} · ${seen}/${a.isles.length} isles${relics.has(a.relic.id) ? ' · CROWN' : ''}` : 'ride its tower to find it'}</small></li>`
       })
       .join('')
     body.innerHTML = `

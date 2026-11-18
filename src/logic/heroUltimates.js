@@ -199,10 +199,10 @@ export const HERO_ULTIMATES = {
     { k: 'cast', times: 3, gap: 0.7 },
     { k: 'buff', secs: 10, damage: 1.5 },
   ]),
-  shiro: U('Domain Expansion', 60, 'Everything within 20 m freezes for 5 s, then Hollow Violet twice, and a 16 m void for 8x.', [
-    { k: 'freeze', r: 20, secs: 5 },
-    { k: 'cast', times: 2, gap: 0.8 },
-    { k: 'nova', r: 16, dmg: 8, kb: 8, at: 1.8 },
+  shiro: U('Domain Expansion', 75, 'Everything within 10 m freezes for 2 s, then one Hollow Violet and a 10 m void for 4x.', [
+    { k: 'freeze', r: 10, secs: 2 },
+    { k: 'cast', times: 1, gap: 0.8 },
+    { k: 'nova', r: 10, dmg: 4, kb: 6, at: 1.8 },
   ]),
   ranger: U('Champion\'s Ballad', 50, 'Flurry Rush twice, and 12 bomb arrows rain down for 4x each.', [
     { k: 'cast', times: 2, gap: 1 },
@@ -240,6 +240,12 @@ export const HERO_ULTIMATES = {
   buster: U('Hyper Buster', 45, 'Buster Barrage three times over, and 10 s of +40% attack speed.', [
     { k: 'cast', times: 3, gap: 0.4 },
     { k: 'buff', secs: 10, attack: 0.6 },
+  ]),
+  sovereign: U('Final Judgment', 60, 'The heavens open: time slows to a crawl for 4 s, 14 pillars of light fall on monsters within 20 m for 3x each, then you Ascend and crash down, and 8 s of +30% damage.', [
+    { k: 'timewarp', secs: 4, factor: 0.3 },
+    { k: 'strikes', n: 14, range: 20, r: 3, dmg: 3, pick: 'random', gap: 0.15 },
+    { k: 'cast', times: 1, at: 2.4 },
+    { k: 'buff', secs: 8, damage: 1.3 },
   ]),
 }
 
