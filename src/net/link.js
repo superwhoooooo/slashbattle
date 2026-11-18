@@ -29,7 +29,7 @@ const ICE_SERVERS = [
 ]
 const RELAY_BROKERS = ['wss://broker.hivemq.com:8884/mqtt', 'wss://broker.emqx.io:8084/mqtt', 'wss://test.mosquitto.org:8081/mqtt']
 const RELAY_PREFIX = 'slashbattle-relay/v1/'
-const DIRECT_TIMEOUT = 9000 // ms to wait for a direct connection before switching to the relay
+const DIRECT_TIMEOUT = 15000 // ms to wait for a direct connection before switching to the relay (direct often takes 5-9 s)
 
 async function relayConnect(url) {
   return new Promise((resolve) => {
@@ -176,8 +176,10 @@ export class Link {
         return
       }
       const conn = peer.connect(ROOM_PREFIX + code, { reliable: true, metadata: { name: this.name, v: PROTOCOL } })
+      let gaveUp = false
       const timeout = setTimeout(() => {
         if (conn.open || this.peer !== peer) return
+        gaveUp = true
         // A wrong code fails fast with 'peer-unavailable', so getting here means the room exists but the
         // network blocks the direct route: go through a relay instead.
         try { conn.close() } catch { /* ignore */ }
@@ -185,6 +187,7 @@ export class Link {
       }, DIRECT_TIMEOUT)
       conn.on('open', () => {
         clearTimeout(timeout)
+        if (gaveUp) { try { conn.close() } catch { /* ignore */ } return } // too late: we've gone to the relay
         this.conns.set('host', conn)
         this.lastHeard.set('host', performance.now())
         this.h.onStatus?.(`Connected to room ${code}!`)
@@ -223,13 +226,23 @@ export class Link {
         setTimeout(() => conn.close(), 400)
         return
       }
+      // A direct connection that finally opens after the joiner already gave up on it and got in through
+      // the relay: they've moved on, so keep the relay one (overwriting it would strand them).
+      const existing = this.conns.get(conn.peer)
+      if (existing && existing !== conn) {
+        try { conn.close() } catch { /* ignore */ }
+        return
+      }
       this.conns.set(conn.peer, conn)
       this.lastHeard.set(conn.peer, performance.now())
       this.h.onPeerJoin?.(conn.peer, cleanName(conn.metadata?.name))
     })
     conn.on('data', (m) => this._receive(m, conn.peer))
-    conn.on('close', () => this._dropPeer(conn.peer))
-    conn.on('error', () => this._dropPeer(conn.peer))
+    // Only the connection we're actually using for that player can drop them: a stale one closing late
+    // (the race between a slow direct connection and the relay) must not take the live one with it.
+    const drop = () => { if (this.conns.get(conn.peer) === conn) this._dropPeer(conn.peer) }
+    conn.on('close', drop)
+    conn.on('error', drop)
   }
 
   _dropPeer(id) {
@@ -283,7 +296,19 @@ export class Link {
         if (!d || typeof d.from !== 'string') return
         let conn = this.relayConns.get(d.from)
         if (d.k === 'hello') {
-          if (conn || this.conns.has(d.from)) return // they repeat hello until welcomed
+          if (conn && conn.client === client) return // they repeat hello until welcomed
+          // ...or they gave up on another relay server and moved to this one: forget the old one.
+          if (conn) {
+            this.relayConns.delete(d.from)
+            conn = null
+          }
+          // A relay hello from someone we think is connected directly: their direct connection timed out on
+          // their side just as it opened on ours, and they've switched to the relay. Swap to it quietly.
+          const stale = this.conns.get(d.from)
+          if (stale) {
+            this.conns.delete(d.from)
+            try { stale.close() } catch { /* ignore */ }
+          }
           conn = new RelayConn(client, `${RELAY_PREFIX}${code}/c/${d.from}`, 'host', d.from, { name: d.name, v: d.v })
           this.relayConns.set(d.from, conn)
           this._acceptClient(conn)

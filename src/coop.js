@@ -20,7 +20,7 @@
 import * as THREE from 'three'
 import { Link } from './net/link.js'
 import {
-  COOP_RESPAWN_SECONDS, INTERP_DELAY, MAX_PLAYERS, PROTOCOL, RELAY_INTERP_DELAY, cleanName, clampDamage, everyoneDown,
+  COOP_RESPAWN_SECONDS, INTERP_DELAY, KEEPALIVE_SECONDS, MAX_PLAYERS, PROTOCOL, RELAY_INTERP_DELAY, cleanName, clampDamage, everyoneDown,
   lerp, lerpAngle, normalizeCode, packMonster, packPets, packShots, pickTarget, plainCopy, pushSnapshot, routeEvents, sampleSnapshots,
   unpackMonster, unpackPets, unpackShots, packChests, unpackChests,
 } from './logic/coop.js'
@@ -121,12 +121,27 @@ export function createCoop(ctx) {
       clearPuppets()
       welcomed = false
       hostDifficulty = null
-      if (reason === 'hostLeft') setStatus('The host left the game.')
+      if (reason === 'hostLeft' && wasClient) setStatus('The host left the game.')
       else if (reason === 'left') setStatus('Left the game.')
       ctx.onEnded(reason, wasClient)
       refresh()
+      // Turned away or cut off before we ever got in (a different version, a full room, no answer):
+      // pop the panel open so the reason (in its status line) is actually seen.
+      if (reason !== 'left' && !wasClient && !wasHost) toggle(true)
     },
   })
+
+  // Keepalive. Everything else is sent from frame(), which the game's requestAnimationFrame loop drives --
+  // and browsers stop that loop in a background tab (say the host switched to a chat app to share the
+  // code). Without this, the others hear nothing and drop that player after SILENCE_TIMEOUT. Timers keep
+  // running (about once a second) in a background tab, so this keeps the connection alive and noticed.
+  let lastFrameAt = 0
+  setInterval(() => {
+    if (!link.active) return
+    if (performance.now() - lastFrameAt < 500) return // the frame loop is running and sending plenty
+    link.tick()
+    if (link.connected && (isHost() || welcomed)) link.broadcast({ t: 'ka', hostOnly: true })
+  }, KEEPALIVE_SECONDS * 1000)
 
   // ---------- roles ----------
   const isHost = () => link.isHost && link.active
@@ -736,6 +751,7 @@ export function createCoop(ctx) {
 
   // ---------- every frame ----------
   function frame(dt, now, local) {
+    lastFrameAt = performance.now()
     link.tick()
     if (!link.active) return
     stepRemotes(dt)

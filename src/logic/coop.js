@@ -13,7 +13,8 @@ export const COOP_RESPAWN_IFRAMES = 3
 export const TARGET_SWITCH_MARGIN = 3 // a monster only switches to another player this much closer than its current one
 export const INTERP_DELAY = 0.12 // s: draw remote things this far in the past so movement is smooth
 export const RELAY_INTERP_DELAY = 0.3 // ...more over the slower relay
-export const SILENCE_TIMEOUT = 10 // s without a message = that connection is gone
+export const SILENCE_TIMEOUT = 25 // s without a message = that connection is gone (keepalives arrive every KEEPALIVE_SECONDS)
+export const KEEPALIVE_SECONDS = 1 // a timer pings everyone this often while the game's frame loop isn't running (a background tab)
 
 export function makeRoomCode(rng = Math.random) {
   let code = ''

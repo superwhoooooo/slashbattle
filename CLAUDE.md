@@ -1025,7 +1025,11 @@ up to three friends join with it. It plays the Orbital Sundeck waves only (`canC
 the labyrinth and the Wilds). Modeled on flopsim's multiplayer: `src/net/link.js` is peer to peer over WebRTC (PeerJS; the
 free public PeerJS server only matches codes), the host relays everyone's messages (a star), and when a network blocks the
 direct route a joiner falls back by itself to free public MQTT brokers (`RELAY_BROKERS`, slower update rates). A
-connection silent for `SILENCE_TIMEOUT` is dropped; a joiner with a different `PROTOCOL` is told to refresh.
+connection silent for `SILENCE_TIMEOUT` (25 s) is dropped; a timer keepalive (`ka`, every `KEEPALIVE_SECONDS`) keeps a
+player whose tab is in the background (no frame loop) connected. A joiner with a different `PROTOCOL` is told to refresh
+(the co-op panel pops open with the reason). A direct connection gets `DIRECT_TIMEOUT` (15 s) before the relay; `link.js`
+handles the race where it opens on the host just as the joiner gives up (the host swaps to the relay connection, and only
+the live connection for a player can drop them).
 - **The host's game is the real one**: waves, monsters, bosses, splits, summons. `spawnMonster` gives every monster a
   `netId` and the host streams them ~15x a second (`packMonster` rows + the wave counter / place). A joiner's
   `noWaves()` is true; its monsters are **puppets** (`userData.netPuppet`) in `game.monsters`, interpolated
