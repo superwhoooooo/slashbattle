@@ -61,10 +61,15 @@ export function createHud() {
   const heroSlot = createSlot('B', 'small hero-slot')
   heroSlot.element.style.display = 'none'
   document.getElementById('ability-bar').prepend(heroSlot.element)
+  // The hero ultimate (logic/heroUltimates.js), a mastery-8 run pick: on K, right after the hero slot.
+  const ultSlot = createSlot('K', 'small hero-slot ult-slot')
+  ultSlot.element.style.display = 'none'
+  heroSlot.element.after(ultSlot.element)
   return {
     hotbarSlots,
     abilitySlots,
     heroSlot,
+    ultSlot,
     petBar: document.getElementById('pet-bar'),
     crystalCounter: document.getElementById('crystal-counter'),
     chestPrompt: document.getElementById('chest-prompt'),
@@ -241,6 +246,27 @@ export function updateHeroAbilityHud(hud, state) {
   if (!state) return
   setIfChanged(hud, 'heroCd', Math.round(state.fraction * 50), (v) => (slot.cooldown.style.height = `${v * 2}%`))
   setIfChanged(hud, 'heroReady', state.fraction === 0, (v) => slot.element.classList.toggle('ready', v))
+}
+
+// The ultimate's slot: hidden unless you picked it this run; the hero portrait, a star, the cooldown sweep.
+export function updateUltimateHud(hud, state) {
+  const slot = hud.ultSlot
+  setIfChanged(hud, 'ultSlot', state?.key ?? '', (key) => {
+    slot.element.style.display = key ? '' : 'none'
+    slot.element.classList.toggle('empty', !key)
+    if (!key) return
+    const img = document.createElement('img')
+    img.alt = ''
+    img.src = heroIconUrl(state.look)
+    const star = document.createElement('span')
+    star.className = 'ult-star'
+    star.textContent = '★'
+    slot.icon.replaceChildren(img, star)
+    slot.element.title = `${state.name} [K] (ultimate)`
+  })
+  if (!state) return
+  setIfChanged(hud, 'ultCd', Math.round(state.fraction * 50), (v) => (slot.cooldown.style.height = `${v * 2}%`))
+  setIfChanged(hud, 'ultReady', state.fraction === 0, (v) => slot.element.classList.toggle('ready', v))
 }
 
 // Shows (or hides, with null) the chest prompt; `poor` styles it red.

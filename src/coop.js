@@ -91,7 +91,7 @@ function nameTag(name, color) {
  *   onRestart()                  joiner: the host started a new run
  *   onGameOver()                 everyone is down
  *   onSwingFx(weaponId, at, facing)  someone else swung / fired
- *   onRemoteHeroAbility(heroId, at, aim, info)  a friend used their hero ability (B); info = { name, glow }
+ *   onRemoteHeroAbility(heroId, at, aim, info)  a friend used their hero ability (B) or ultimate (K); info = { name, glow, ultimate }
  *   onRemoteChestOpened(at, info)    a friend opened one of their chests; info = { name, loot }
  *   chestStyle()                     the container skin for the place we're in
  *   toast(text)
@@ -675,7 +675,7 @@ export function createCoop(ctx) {
         let glow = 0xffd15c
         try { glow = lookForProfile({ hero: m.h, heroSkins: { [m.h]: m.s } }).glow ?? glow } catch { /* unknown hero */ }
         const aim = Number.isFinite(m.a) ? m.a : remote.mesh.rotation.y
-        ctx.onRemoteHeroAbility?.(m.h.slice(0, 40), { x: remote.mesh.position.x, z: remote.mesh.position.z }, aim, { name: remote.name, glow })
+        ctx.onRemoteHeroAbility?.(m.h.slice(0, 40), { x: remote.mesh.position.x, z: remote.mesh.position.z }, aim, { name: remote.name, glow, ultimate: m.u === 1 })
         break
       }
       case 'cho': {
@@ -871,7 +871,7 @@ export function createCoop(ctx) {
     everyoneDown: (localDown) => isHost() && everyoneDown(localDown, [...remotes.values()].map((r) => r.proxy.down)),
     sendShots(bullets) { if (active() && bullets.length) link.broadcast({ t: 'sh', b: packShots(bullets) }) },
     sendAbility(id) { if (active()) link.broadcast({ t: 'ab', id }) },
-    sendHeroAbility(heroId, skin, aim) { if (active()) link.broadcast({ t: 'ha', h: heroId, s: skin, a: Math.round(aim * 100) / 100 }) },
+    sendHeroAbility(heroId, skin, aim, ultimate = false) { if (active()) link.broadcast({ t: 'ha', h: heroId, s: skin, a: Math.round(aim * 100) / 100, u: ultimate ? 1 : 0 }) },
     sendChestOpened(id, lootName) { if (active()) link.broadcast({ t: 'cho', id, l: lootName }) },
     sendWaveEvents(msg) { if (isHost()) link.broadcast({ t: 'wave', ...msg }) },
     sendRestart() { if (isHost()) link.broadcast({ t: 'restart' }) },

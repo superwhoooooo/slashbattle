@@ -170,9 +170,14 @@ export class Input {
     return this._gamepadActions.abilities[slot] === true
   }
 
-  // The hero ability: a click of either stick, edge-triggered (like B).
+  // The hero ability: a left-stick click, edge-triggered (like B).
   wasHeroAbilityPressed() {
     return this._gamepadActions.heroAbility === true
+  }
+
+  // The hero ultimate (mastery 8): a right-stick click, edge-triggered (like K).
+  wasUltimatePressed() {
+    return this._gamepadActions.ultimate === true
   }
 
   // Restart after losing: edge-triggered, like R.

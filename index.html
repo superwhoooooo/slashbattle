@@ -791,6 +791,19 @@
       .slot.hero-slot { border-color: var(--butter, #ffd15c); }
       .slot.hero-slot.ready { box-shadow: 0 0 10px var(--butter, #ffd15c); }
       .slot.hero-slot .slot-icon img { width: 100%; height: 100%; object-fit: contain; }
+      .slot.ult-slot { border-color: #ff5fa8; }
+      .slot.ult-slot.ready { box-shadow: 0 0 12px #ff5fa8; animation: ult-ready 1.2s ease-in-out infinite; }
+      .slot.ult-slot .slot-icon { position: relative; }
+      .ult-star { position: absolute; right: -2px; top: -4px; font-size: 13px; color: #ff5fa8; text-shadow: 0 0 4px #fff; }
+      @keyframes ult-ready { 0%, 100% { box-shadow: 0 0 6px #ff5fa8; } 50% { box-shadow: 0 0 16px #ff5fa8; } }
+      @media (prefers-reduced-motion: reduce) { .slot.ult-slot.ready { animation: none; } }
+      /* The mastery-8 run pick (src/masteryPick.js): centred, above everything, pauses the game. */
+      #mastery-pick { top: 50%; left: 50%; right: auto; bottom: auto; transform: translate(-50%, -50%); width: min(560px, calc(100vw - 24px)); max-height: calc(100vh - 24px); z-index: 31; }
+      #mastery-pick .mp-ult { flex-direction: column; justify-content: flex-start; width: 100%; margin: 8px 0 10px; border: 2px solid #ff5fa8; background: rgba(255, 95, 168, 0.1); }
+      #mastery-pick .mp-ult .lo-name { color: #d6307c; }
+      #mastery-pick .mp-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 6px; }
+      #mastery-pick .mp-stats .lo-btn { flex-direction: column; justify-content: flex-start; }
+      body.touch #mastery-pick { pointer-events: auto; }
       #ability-bar .slot.empty, #ability-bar:empty { display: none; }
       #perk-bar { position: fixed; left: 16px; bottom: 16px; display: flex; gap: 6px; z-index: 4; pointer-events: none; }
       .perk-chip { width: 38px; height: 38px; padding: 4px; border: 2px solid var(--perk, var(--teal)); box-shadow: 0 0 10px color-mix(in srgb, var(--perk, #19b5a5) 55%, transparent); }

@@ -62,7 +62,8 @@ record.
 - N — open the Dragon Den (customize your dragons' scale and breath); in the Wilds (free roam) N shoots/swings instead and Space jumps (`logic/jump.js`: a plain hop, not an ability); Space again in the air opens the paraglider (`src/glider.js`: slow steady sink, 1.7x speed; Space folds it); E near a villager talks
 - U — in the Wilds: open the Wilds journal (goals, landmarks, bestiary, races); F inside a treasure map's circle digs
 - Y — open the hub's Heroes page (pick a hero and skin; see Heroes below)
-- B — use your hero's ability (unlocked at mastery 4; see Hero awakening below; gamepad: click either stick; touch: the hero slot)
+- B — use your hero's ability (unlocked at mastery 4; see Hero awakening below; gamepad: click the left stick; touch: the hero slot)
+- K — use your hero's ULTIMATE, if you picked it this run (mastery 8; see Hero ultimates below; gamepad: click the right stick; touch: the ★ slot)
 - I — open the hub's Contracts page (contracts, hero mastery, records; see Difficulty and progress below)
 - P — online co-op: host a game or join a friend's with a 4-letter room code (see Online co-op below)
 - Tab — open the power-up menu (pauses the game): click a power-up to equip / unequip it (in sandbox mode Tab opens the sandbox menu instead)
@@ -1077,9 +1078,22 @@ Noon nearly stops time for 6 s (`setTimeWarp` factor 0.2), marks 12 and boosts y
 Ember's burning kills spread fire, Hex curses spread on death, a Shadow Valet backstab kill turns you invisible, Void Walker bursts
 at both ends of a dash, and so on. `AWAKENED[id].stats` (only the Guest and Cosmo Nova) fold into `activeFx` when awake.
 Awakening also unlocks the hero's **ability** (`HERO_ABILITIES`: name, desc, cooldown, optional `range`) on B
-(`HERO_ABILITY_KEY`; gamepad LS/RS click via `gamepadActions().heroAbility`; touch: the hero slot). `main.js`'s
+(`HERO_ABILITY_KEY`; gamepad LS click via `gamepadActions().heroAbility`, RS is the ultimate; touch: the hero slot). `main.js`'s
 `triggerHeroAbility` switches on the hero id; the cooldown is `heroState.abilityReady` (`useHeroAbility`, scaled by haste), shown in a
 butter `hero-slot` at the front of the ability bar (`hud.js`'s `updateHeroAbilityHud`, the hero's portrait). A locked press toasts how
 far mastery has to go. The level-4 mastery toast announces the awakening. `window.__debug` (dev) has `setSandboxHero(id)`,
 `spawn(type, n)` and `heroState` for browser tests.
 
+
+## Hero ultimates and the mastery-8 pick
+`src/logic/heroUltimates.js` (pure, `test/heroUltimates.test.js`). With a hero at mastery `ULTIMATE_LEVEL` (8), every normal run
+(not the sandbox or tutorial) starts paused on `src/masteryPick.js`'s panel (`main.js`'s `offerMasteryPick`, from
+`dismissStartCard` and `restartGame`): take that hero's **ultimate** or +10% to one stat (`MASTERY_STAT_PICKS`: damage, max HP,
+move speed, attack speed, toughness, ability haste, crits, crystals). The pick lives in `masteryRun` for that run only;
+`masteryRunFx` folds the stat (and a running ultimate's `buff`) into `activeFx`. Each of the 48 heroes has its own ultimate
+(`HERO_ULTIMATES`: name, cooldown 45-60 s, desc, `steps`), an extra ability on K (`ULTIMATE_KEY`) on top of B, far stronger.
+Steps are generic effects (`nova`, `waves`, `ring`, `line`, `strikes`, `rain`, `hole`, `blades`, `fan`, `pull`, `freeze`,
+`confuse`, `heal`, `buff`, `invuln`, `timewarp`, and `cast`, which fires the hero's own B ability free via
+`triggerHeroAbility(now, true)`), played out by `main.js`'s `runUltimate`. HUD: a pink ★ `ult-slot` after the hero slot
+(`hud.js`'s `updateUltimateHud`). The hub's Heroes page lists each ultimate, and co-op friends see it (`ha` with `u: 1`).
+The sandbox has every ultimate unlocked.

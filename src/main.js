@@ -48,6 +48,8 @@ import { BREATHS, SCALES as DRAGON_SKINS, SKIN_IDS, BREATH_IDS, createDragonStat
 import { combineEffects, skillEffects } from './logic/skills.js'
 import { createPauseMenu, loadBrightness } from './pauseMenu.js'
 import { createSwapPanel } from './swap.js'
+import { createMasteryPickPanel } from './masteryPick.js'
+import { HERO_ULTIMATES, ULTIMATE_KEY, ULTIMATE_LEVEL, hasMasteryChoice, statPick, ultimateFraction, useUltimate } from './logic/heroUltimates.js'
 import { createWarp } from './warp.js'
 import { playBulletTrail, playHitFx, playWeaponFx } from './weaponFx.js'
 import { clampTargetToRange, inCircle } from './logic/warp.js'
@@ -217,7 +219,7 @@ import {
   triggerDamageFlash,
   updateHud,
   updateInventoryHud,
-  updateHeroAbilityHud,
+  updateHeroAbilityHud, updateUltimateHud,
 } from './hud.js'
 import { Input } from './input.js'
 import { bossEnrage, bossSpeedScale, immunityThresholdsFor, BOSS_HEAD_START, BOSS_IMMUNITY_MINIONS, BOSS_IMMUNITY_SECONDS, BOSS_IMMUNITY_THRESHOLDS, bossById, immunityPhaseReached, bossCooldownScale, bossDamageScale, bossHpScale, bossSpecialsFor } from './logic/bosses.js'
@@ -724,7 +726,7 @@ window.addEventListener('mousemove', (event) => {
 })
 window.addEventListener('keydown', (event) => {
   if (event.repeat || (event.code !== 'Digit0' && event.code !== 'Numpad0')) return
-  if (!started || hub.isOpen() || pauseMenu.isOpen() || swapPanel.isOpen()) return
+  if (!started || hub.isOpen() || pauseMenu.isOpen() || blockingPanelOpen()) return
   setFirstPerson(!firstPerson)
 })
 const cameraTarget = new THREE.Vector3()
@@ -943,8 +945,32 @@ const hideLimit = () => POD_HIDE_LIMIT + activeFx(game.inventory.equipped).hideT
 // The equipped power-ups (at their upgrade levels) plus the learned skills, as one effect set.
 const activeFx = (equipped) => {
   const fx = combineEffects(combineEffects(powerupEffects(equipped, profile.powerups), skillEffects(profile.skills)), heroEffects(heroProfile().hero))
-  return heroAwake() ? combineEffects(fx, awakenedStats(heroProfile().hero)) : fx // mastery 4 (logic/heroPowers.js)
+  const woke = heroAwake() ? combineEffects(fx, awakenedStats(heroProfile().hero)) : fx // mastery 4 (logic/heroPowers.js)
+  return combineEffects(woke, masteryRunFx()) // mastery 8: the run's +10% stat, and a running ultimate's boost
 }
+// ---- mastery 8 (logic/heroUltimates.js): each run, the hero's ultimate (K) or +10% to one stat ----
+const masteryRun = { pick: null, ultReady: 0, buff: null, lockedToastAt: -Infinity } // pick: { kind: 'ult' } | { kind: 'stat', id }
+function masteryRunFx() {
+  const out = {}
+  const stat = masteryRun.pick?.kind === 'stat' ? statPick(masteryRun.pick.id) : null
+  if (stat) {
+    for (const [k, v] of Object.entries(stat.fx)) {
+      if (k === 'maxHpFrac') out.maxHp = Math.round(PLAYER_MAX_HP * v)
+      else out[k] = v
+    }
+  }
+  const b = masteryRun.buff
+  if (b && heroNow < b.until) {
+    if (b.damage) out.damage = (out.damage ?? 1) * b.damage
+    if (b.speed) out.speed = (out.speed ?? 1) * b.speed
+    if (b.guard) out.damageTaken = (out.damageTaken ?? 1) * b.guard
+    if (b.haste) out.haste = (out.haste ?? 1) * b.haste
+    if (b.attack) out.cooldown = (out.cooldown ?? 1) * b.attack
+  }
+  return out
+}
+const ultimateUnlocked = () => sandbox || masteryRun.pick?.kind === 'ult'
+const heroMasteryLevel = () => masteryLevel(profile.progress?.mastery?.[heroProfile().hero] ?? 0)
 
 // ---------- heroes (logic/heroes.js): the look, and each hero's one trait ----------
 // The sandbox lets you try every hero and skin for free, but those picks live only for that session:
@@ -2223,13 +2249,183 @@ function stepLegendaryHeroes(player, now, dt, trait, t) {
   stepTouchPowers(player, now)
 }
 
+// ---- hero ultimates (K), a mastery-8 run pick (logic/heroUltimates.js) ----
+function triggerUltimate(now) {
+  const heroId = heroProfile().hero
+  const def = HERO_ULTIMATES[heroId]
+  const player = game.player
+  if (!def || player.hidden || player.hp <= 0 || player.falling) return
+  if (!ultimateUnlocked()) {
+    if (now - masteryRun.lockedToastAt > 3) {
+      masteryRun.lockedToastAt = now
+      const level = heroMasteryLevel()
+      showLootToast(hud, level >= ULTIMATE_LEVEL
+        ? { title: 'ULTIMATE NOT PICKED', name: def.name, blurb: 'You took a stat boost this run. Pick the ultimate at the start of your next run.' }
+        : { title: 'ULTIMATE LOCKED', name: def.name, blurb: `Reach mastery ${ULTIMATE_LEVEL} with ${heroById(heroId).name} to unlock it (now level ${level}).` })
+    }
+    return
+  }
+  const used = useUltimate(heroId, true, now, masteryRun.ultReady, activeFx(game.inventory.equipped).haste)
+  if (!used.used) return
+  masteryRun.ultReady = used.readyAt
+  heroNow = now
+  const p = { x: player.position.x, z: player.position.z }
+  coop?.sendHeroAbility(heroId, heroLook().id, heroAimAngle(), true)
+  showPopup(popupPool, player.position, def.name.toUpperCase(), 'ULTIMATE', '#ff5fa8')
+  showLootToast(hud, { title: 'ULTIMATE', name: def.name, blurb: def.desc })
+  column(p.x, p.z, heroLook().glow, 7, 16)
+  warp.add('swirl', p.x, p.z, 6, 0.8)
+  triggerShake(game.shake, SHAKE_HIT_MAGNITUDE * 2, SHAKE_HIT_DURATION * 2)
+  input.rumble(RUMBLE_STRONG_STRENGTH, RUMBLE_STRONG_DURATION)
+  sfx.play('hyperspace', p)
+  runUltimate(def.steps)
+}
+// Plays out an ultimate's steps (see logic/heroUltimates.js for the kinds).
+function runUltimate(steps) {
+  // Delays count from when they're scheduled (heroNow is the play clock), so nested gaps stack properly.
+  const later = (delay, run) => (delay > 0 ? heroState.pending.push({ at: heroNow + delay, run }) : run())
+  const glow = () => heroLook().glow
+  const here = () => ({ x: game.player.position.x, z: game.player.position.z })
+  const status = (kind, secs = 3) => (m) => {
+    if (kind === 'burn') setBurn(m, 0.8, 6)
+    else if (kind === 'freeze') applyFreeze(m.userData, heroNow, secs)
+    else if (kind === 'confuse' && !m.userData.isBoss) m.userData.confusedUntil = Math.max(m.userData.confusedUntil ?? -Infinity, heroNow + secs)
+    else if (kind === 'slow') applySlow(m.userData, heroNow, 4, 0.4)
+    else if (kind === 'hex') m.userData.hexUntil = Math.max(m.userData.hexUntil ?? -Infinity, heroNow + 10)
+  }
+  const blast = (at, s) => heroNova(at, s.r, s.dmg ?? 0, s.kb ?? 3, glow(), s.status ? status(s.status) : null)
+  for (const s of steps) {
+    later(s.at ?? 0, () => {
+      const p = here()
+      const aim = heroAimAngle()
+      const gap = s.gap ?? 0
+      switch (s.k) {
+        case 'nova': blast(p, s); break
+        case 'waves': for (let i = 0; i < s.n; i++) later(i * gap, () => blast(here(), s)); break
+        case 'ring': ringPoints(p, s.n, s.radius, aim).forEach((pt, i) => later(i * gap, () => blast(pt, s))); break
+        case 'line': pointsAlong(p, aim, s.n, s.step, s.step).forEach((pt, i) => later(i * gap, () => blast(pt, s))); break
+        case 'strikes': {
+          const pool = heroTargets(p.x, p.z, s.range)
+          if (s.pick === 'nearest') pool.sort((a, b) => distTo(a, p) - distTo(b, p))
+          else if (s.pick === 'farthest') pool.sort((a, b) => distTo(b, p) - distTo(a, p))
+          else pool.sort(() => Math.random() - 0.5)
+          for (let i = 0; i < s.n && pool.length; i++) {
+            const m = pool[i % pool.length]
+            later(i * gap, () => {
+              if (!alive(m)) return
+              const at = { x: m.position.x, z: m.position.z }
+              lightningStrike(at, glow(), s.r, s.dmg)
+              if (s.status) heroTargets(at.x, at.z, s.r).forEach(status(s.status))
+            })
+          }
+          break
+        }
+        case 'rain':
+          for (let i = 0; i < s.n; i++) {
+            later(i * gap, () => {
+              const c = here()
+              // Half the drops go for a monster in range, the rest land at random.
+              const targets = heroTargets(c.x, c.z, s.range)
+              const m = i % 2 === 0 && targets.length ? targets[Math.floor(Math.random() * targets.length)] : null
+              const a = Math.random() * Math.PI * 2
+              const d = Math.sqrt(Math.random()) * s.range
+              const at = m ? { x: m.position.x, z: m.position.z } : clampToPlatform({ x: c.x + Math.sin(a) * d, z: c.z + Math.cos(a) * d }, ARENA_RADIUS - 1)
+              column(at.x, at.z, glow(), 6, 8)
+              blast(at, s)
+            })
+          }
+          break
+        case 'hole': {
+          const d = Math.min(s.range, 20)
+          const at = clampToPlatform({ x: p.x + Math.sin(aim) * d, z: p.z + Math.cos(aim) * d }, ARENA_RADIUS - 1)
+          openBlackHole(at, { pull: s.pull, blast: s.blast, damage: s.dmg, life: s.life }, 'SINGULARITY', glow())
+          break
+        }
+        case 'blades':
+          for (let i = 0; i < s.n; i++) {
+            const offset = (i / s.n) * Math.PI * 2
+            launchFlyer({
+              kind: 'saber', color: glow(), duration: s.dur, legs: s.turns, radius: 1.5, damage: s.dmg * heroBaseDamage(), knockback: 3, spin: 20,
+              point: (k) => {
+                const a = aim + offset + k * Math.PI * 2 * s.turns
+                const r = s.radius * Math.min(1, k * 6)
+                return { x: game.player.position.x + Math.sin(a) * r, z: game.player.position.z + Math.cos(a) * r }
+              },
+              onHit: s.status ? status(s.status) : null,
+            })
+          }
+          break
+        case 'fan':
+          for (let i = 0; i < s.n; i++) {
+            const a = s.spread >= Math.PI * 2 - 0.01 ? aim + (i / s.n) * Math.PI * 2 : aim + (s.n > 1 ? i / (s.n - 1) - 0.5 : 0) * s.spread
+            throwSaber(a, s.reach, s.dmg)
+          }
+          sfx.play('swing', p)
+          break
+        case 'pull':
+          for (const m of heroTargets(p.x, p.z, s.r)) {
+            const d = distTo(m, p)
+            if (d < 2 || m.userData.isBoss) continue
+            const k = (d - 1.6) / d
+            const to = clampToPlatform({ x: m.position.x + (p.x - m.position.x) * k, z: m.position.z + (p.z - m.position.z) * k }, ARENA_RADIUS - 2)
+            streak(m.position, to, glow(), 6)
+            m.position.x = to.x
+            m.position.z = to.z
+            m.userData.confusedUntil = Math.max(m.userData.confusedUntil ?? -Infinity, heroNow + 1)
+          }
+          warp.add('swirl', p.x, p.z, s.r * 0.6, 0.6)
+          break
+        case 'freeze':
+          heroNova(p, s.r, 0, 0, 0x9fe8ff, status('freeze', s.secs))
+          break
+        case 'confuse':
+          heroNova(p, s.r, 0, 0, glow(), status('confuse', s.secs))
+          break
+        case 'heal': {
+          const pl = game.player
+          const amount = pl.maxHp * s.frac
+          pl.hp = Math.min(pl.maxHp, pl.hp + amount)
+          showPopup(popupPool, pl.position, `+${Math.round(amount)} HP`, '', '#7dffa0')
+          column(p.x, p.z, 0x7dffb0, 5)
+          break
+        }
+        case 'buff':
+          masteryRun.buff = { until: heroNow + s.secs, damage: s.damage, speed: s.speed, guard: s.guard, haste: s.haste, attack: s.attack }
+          sparkRing(p.x, p.z, 2.5, glow())
+          break
+        case 'invuln':
+          game.player.invulnerableUntil = Math.max(game.player.invulnerableUntil, heroNow + s.secs)
+          break
+        case 'timewarp':
+          setTimeWarp(Math.max(timeWarp.until, heroNow + s.secs), s.factor)
+          break
+        case 'cast':
+          for (let i = 0; i < s.times; i++) later(i * gap, () => triggerHeroAbility(heroNow, true))
+          break
+      }
+    })
+  }
+}
+// The run-start choice, once your hero is at mastery 8 (normal runs only; the sandbox has every ultimate).
+function offerMasteryPick() {
+  masteryRun.pick = null
+  masteryRun.ultReady = 0
+  masteryRun.buff = null
+  if (sandbox || tutorial || !started) return
+  const heroId = heroProfile().hero
+  const ultimate = HERO_ULTIMATES[heroId]
+  if (!ultimate || !hasMasteryChoice(heroMasteryLevel())) return
+  masteryPanel.show({ heroName: heroById(heroId).name, ultimate })
+}
+
 // ---- hero abilities (B), unlocked by awakening at mastery 4 ----
-function triggerHeroAbility(now) {
+// `free`: an ultimate casting it (no lock, cooldown, popup or co-op message).
+function triggerHeroAbility(now, free = false) {
   const heroId = heroProfile().hero
   const def = HERO_ABILITIES[heroId]
   const player = game.player
   if (!def || player.hidden || player.hp <= 0 || player.falling) return
-  if (!heroAwake()) {
+  if (!free && !heroAwake()) {
     if (now - heroState.lockedToastAt > 3) {
       heroState.lockedToastAt = now
       const level = masteryLevel(profile.progress?.mastery?.[heroId] ?? 0)
@@ -2237,14 +2433,16 @@ function triggerHeroAbility(now) {
     }
     return
   }
-  const used = useHeroAbility(heroId, true, now, heroState.abilityReady, activeFx(game.inventory.equipped).haste)
-  if (!used.used) return
-  heroState.abilityReady = used.readyAt
+  if (!free) {
+    const used = useHeroAbility(heroId, true, now, heroState.abilityReady, activeFx(game.inventory.equipped).haste)
+    if (!used.used) return
+    heroState.abilityReady = used.readyAt
+    tutorialEvent('ability')
+  }
   heroNow = now
-  tutorialEvent('ability')
   const p = { x: player.position.x, z: player.position.z }
   const aim = heroAimAngle()
-  coop?.sendHeroAbility(heroId, heroLook().id, aim) // co-op: friends see it go off (onRemoteHeroAbility)
+  if (!free) coop?.sendHeroAbility(heroId, heroLook().id, aim) // co-op: friends see it go off (onRemoteHeroAbility)
   const glow = heroLook().glow
   const awake = (id) => traitTune(id, true)
   const later = (delay, run) => heroState.pending.push({ at: now + delay, run })
@@ -2253,7 +2451,7 @@ function triggerHeroAbility(now) {
     showPopup(popupPool, player.position, `+${Math.round(amount)} HP`, '', '#7dffa0')
   }
   const nearest = (range, count) => heroTargets(p.x, p.z, range).sort((a, b) => distTo(a, p) - distTo(b, p)).slice(0, count)
-  showPopup(popupPool, player.position, def.name.toUpperCase(), 'HERO ABILITY', '#ffd15c')
+  if (!free) showPopup(popupPool, player.position, def.name.toUpperCase(), 'HERO ABILITY', '#ffd15c')
   input.rumble(RUMBLE_STRONG_STRENGTH, RUMBLE_STRONG_DURATION)
   switch (heroId) {
     case 'guest': heroNova(p, 6, 2, 5); break
@@ -4443,7 +4641,7 @@ function handleMerchantButton(game, id) {
     questUi.showToast('DELICIOUS. FULLY HEALED')
   } else {
     giveWildsLoot(game, { kind: good.kind, id: good.itemId })
-    if (swapPanel.isOpen()) return
+    if (blockingPanelOpen()) return
   }
   questUi.update(merchantDialog(game))
 }
@@ -4479,7 +4677,7 @@ function updateWildsStatus(game, now, treasure) {
 function stepActivities(game, now) {
   const w = game.world
   if (!w.fx) return
-  if (w.lootQueue.length && !swapPanel.isOpen()) giveWildsLoot(game, w.lootQueue.shift())
+  if (w.lootQueue.length && !blockingPanelOpen()) giveWildsLoot(game, w.lootQueue.shift())
   stepLanterns(game)
   stepShrines(game, now)
   const treasure = stepTreasure(game, now)
@@ -5912,6 +6110,19 @@ const swapPanel = createSwapPanel({
       : { title: 'KEPT YOUR LOADOUT', name: 'Swap declined', blurb: 'The chest is empty now' })
   },
 })
+const masteryPanel = createMasteryPickPanel({
+  onPick(choice) {
+    masteryRun.pick = choice
+    const def = HERO_ULTIMATES[heroProfile().hero]
+    if (choice.kind === 'ult') showLootToast(hud, { title: `ULTIMATE [${input.touchMode ? 'tap ★' : 'K'}]`, name: def.name, blurb: def.desc })
+    else showLootToast(hud, { title: 'MASTERY BOOST', name: statPick(choice.id).name, blurb: `${statPick(choice.id).desc} for this run` })
+    input.clear()
+  },
+})
+// A panel that pauses everything (the chest swap, the mastery-8 pick).
+function blockingPanelOpen() {
+  return swapPanel.isOpen() || masteryPanel.isOpen()
+}
 window.addEventListener('keydown', (event) => {
   if (event.code === 'Escape' && swapPanel.isOpen()) {
     pendingSwapLoot = null
@@ -5920,7 +6131,7 @@ window.addEventListener('keydown', (event) => {
 })
 function toggleMenu() {
   if (sandbox) return sandboxPanel.toggle()
-  if (!started || game.player.hp <= 0 || swapPanel.isOpen() || hub.isOpen()) return
+  if (!started || game.player.hp <= 0 || blockingPanelOpen() || hub.isOpen()) return
   loadoutPanel.refresh(game.inventory)
   loadoutPanel.toggle()
   tutorialEvent('loadout')
@@ -5964,7 +6175,7 @@ const hub = createHub({
 })
 const HUB_KEYS = { Digit6: 'skills', Numpad6: 'skills', Digit7: 'powerups', Numpad7: 'powerups', KeyJ: 'gunsmith', KeyN: 'dragons', KeyY: 'heroes', KeyI: 'contracts', Digit9: 'loadout', Numpad9: 'loadout' }
 function canOpenHub() {
-  return !swapPanel.isOpen() && !pauseMenu.isOpen() && !(started && game.player.hp <= 0) && !(started && !sandbox && loadoutPanel.isOpen()) && !(started && sandbox && sandboxPanel?.isOpen?.())
+  return !blockingPanelOpen() && !pauseMenu.isOpen() && !(started && game.player.hp <= 0) && !(started && !sandbox && loadoutPanel.isOpen()) && !(started && sandbox && sandboxPanel?.isOpen?.())
 }
 window.addEventListener('keydown', (event) => {
   if (event.repeat) return
@@ -6025,14 +6236,14 @@ const pauseMenu = createPauseMenu({
   onMainMenu: () => window.location.reload(),
 })
 function togglePause() {
-  if (!started || swapPanel.isOpen() || hub.isOpen() || (!sandbox && loadoutPanel.isOpen())) return
+  if (!started || blockingPanelOpen() || hub.isOpen() || (!sandbox && loadoutPanel.isOpen())) return
   pauseMenu.toggle()
 }
 window.addEventListener('keydown', (event) => {
   if (event.repeat) return
   if (event.code === 'Digit8' || event.code === 'Numpad8') togglePause()
   else if (event.code === 'Escape' && pauseMenu.isOpen()) pauseMenu.setOpen(false)
-  else if (event.code === 'Escape' && !swapPanel.isOpen() && !event.hubClosed) togglePause()
+  else if (event.code === 'Escape' && !blockingPanelOpen() && !event.hubClosed) togglePause()
 })
 touchControls?.addMenuButton(togglePause, 'PAUSE')
 // The Wilds journal (U on a keyboard); the button only shows in the Wilds.
@@ -6093,6 +6304,7 @@ function dismissStartCard(event) {
   })
   if (!sandbox && !tutorial) guard('loadout pets', () => applyLoadoutPets(game)) // the loadout may have changed on the start card
   guard('music', () => music.start())
+  guard('mastery pick', () => offerMasteryPick()) // mastery 8: the ultimate or a +10% stat for this run
   // The key/click that dismisses the card shouldn't also register as a
   // held attack button or key on gameplay's first frame.
   input.clear()
@@ -6286,11 +6498,12 @@ coop = createCoop({
   // (Their game does the real work -- damage, heals, dashes -- so this is the look only.)
   onRemoteHeroAbility(heroId, at, aim, info) {
     if (!started) return
-    const def = HERO_ABILITIES[heroId]
+    const def = info.ultimate ? HERO_ULTIMATES[heroId] : HERO_ABILITIES[heroId]
     if (!def) return
     const color = info.glow
-    const radius = Math.max(5, Math.min(12, def.range ?? 7))
-    showPopup(popupPool, at, def.name.toUpperCase(), `${info.name.toUpperCase()}'S HERO ABILITY`, '#ffd15c')
+    const radius = info.ultimate ? 14 : Math.max(5, Math.min(12, def.range ?? 7))
+    if (info.ultimate) column(at.x, at.z, color, 7, 16)
+    showPopup(popupPool, at, def.name.toUpperCase(), `${info.name.toUpperCase()}'S ${info.ultimate ? 'ULTIMATE' : 'HERO ABILITY'}`, info.ultimate ? '#ff5fa8' : '#ffd15c')
     burst(particleSystem, { x: at.x, y: 0.8, z: at.z }, color, 34, radius * 0.8, 0.45)
     burst(particleSystem, { x: at.x, y: 1.2, z: at.z }, 0xffffff, 14, radius * 0.5, 0.35)
     spawnShockwave(shockwavePool, at.x, at.z, radius, color)
@@ -6335,7 +6548,7 @@ coop = createCoop({
 })
 window.addEventListener('keydown', (event) => {
   if (event.repeat || event.code !== 'KeyP' || event.target?.closest?.('input, textarea')) return
-  if (hub.isOpen() || swapPanel.isOpen()) return
+  if (hub.isOpen() || blockingPanelOpen()) return
   coop.toggle()
 })
 document.getElementById('coop-btn')?.addEventListener('click', () => coop.toggle(true))
@@ -6397,6 +6610,7 @@ function restartGame() {
   bulwarkWalls.splice(0).forEach(removeBulwarkWall)
   pendingSummons.length = 0
   clearSwingTrail(swingTrail)
+  offerMasteryPick() // a fresh run: the mastery-8 choice again
 }
 
 // The equipped power-ups, as a little strip of icons on the HUD.
@@ -6691,8 +6905,8 @@ function gameFrame(timestamp) {
   // the frame it ends partway through, so no time is lost overall).
   // The Tab power-up menu pauses the world (freeze the frame, still render).
   // U opens the Wilds journal (it freezes the game like the other panels).
-  if (game.world && input.wasPressed('KeyU') && !questUi.isOpen() && !swapPanel.isOpen() && !hub.isOpen()) openJournal(game)
-  if (loadoutOpen() || swapPanel.isOpen() || hub.isOpen() || questUi.isOpen() || journalUi.isOpen()) {
+  if (game.world && input.wasPressed('KeyU') && !questUi.isOpen() && !blockingPanelOpen() && !hub.isOpen()) openJournal(game)
+  if (loadoutOpen() || blockingPanelOpen() || hub.isOpen() || questUi.isOpen() || journalUi.isOpen()) {
     renderMenuBackdrop(timestamp, MENU_FROZEN_FPS)
     input.endFrame()
     return
@@ -6923,6 +7137,7 @@ function gameFrame(timestamp) {
   }
   // The hero ability (B / a stick click / the hero slot), unlocked at mastery 4.
   if (!downed && (input.wasPressed(HERO_ABILITY_KEY) || input.wasHeroAbilityPressed())) triggerHeroAbility(elapsedSeconds)
+  if (!downed && (input.wasPressed(ULTIMATE_KEY) || input.wasUltimatePressed())) triggerUltimate(elapsedSeconds)
 
   // [ and ] cycle the scope / ammo (the ones you've unlocked) of the rifle in your hands.
   const heldId = selectedWeaponId(game.inventory)
@@ -7346,6 +7561,8 @@ function gameFrame(timestamp) {
     const heroId = heroProfile().hero
     const ability = HERO_ABILITIES[heroId]
     updateHeroAbilityHud(hud, heroAwake() && ability ? { key: `${heroId}:${heroLook().id}`, look: heroLook(), name: ability.name, fraction: heroAbilityFraction(heroId, elapsedSeconds, heroState.abilityReady, activeFx(game.inventory.equipped).haste) } : null)
+    const ult = HERO_ULTIMATES[heroId]
+    updateUltimateHud(hud, ultimateUnlocked() && ult ? { key: `${heroId}:${heroLook().id}`, look: heroLook(), name: ult.name, fraction: ultimateFraction(heroId, elapsedSeconds, masteryRun.ultReady, activeFx(game.inventory.equipped).haste) } : null)
   }
   updatePerkBar(game.inventory.equipped)
 

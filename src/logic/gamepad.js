@@ -114,6 +114,7 @@ export function gamepadActions(prev, curr, deadzone) {
     restart: pressedThisFrame(prev, curr, BUTTONS.START),
     mute: pressedThisFrame(prev, curr, BUTTONS.BACK),
     advance: (!ltHeld && aEdge) || pressedThisFrame(prev, curr, BUTTONS.START),
-    heroAbility: pressedThisFrame(prev, curr, BUTTONS.LS) || pressedThisFrame(prev, curr, BUTTONS.RS),
+    heroAbility: pressedThisFrame(prev, curr, BUTTONS.LS),
+    ultimate: pressedThisFrame(prev, curr, BUTTONS.RS), // the mastery-8 hero ultimate (K)
   }
 }

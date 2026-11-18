@@ -237,6 +237,11 @@ export function createTouchControls(input, hud) {
     event.stopPropagation()
     input.tapKey('KeyB')
   })
+  hud.ultSlot?.element.addEventListener('pointerdown', (event) => {
+    event.preventDefault()
+    event.stopPropagation()
+    input.tapKey('KeyK') // the mastery-8 hero ultimate
+  })
 
   // The game-over card: tap to play again.
   const lose = document.getElementById('lose-screen')

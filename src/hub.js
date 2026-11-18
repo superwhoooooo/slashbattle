@@ -7,6 +7,7 @@ import { HEROES, heroById, heroEffects, ownsHero, ownsSkin } from './logic/heroe
 import { BREATHS, SCALES, describeDragon, dragonSetup, isBreathUnlocked, isDragon, isSkinUnlocked, tuneDragon } from './logic/dragons.js'
 import { skillIconSvg } from './skillIcons.js'
 import { AWAKEN_LEVEL, AWAKENED, HERO_ABILITIES } from './logic/heroPowers.js'
+import { HERO_ULTIMATES, ULTIMATE_LEVEL } from './logic/heroUltimates.js'
 import { MASTERY_MAX, MASTERY_SKIN_LEVELS, contractText, contractTier, isBestKind, masteryBar, masteryReward } from './logic/progress.js'
 import { DIFFICULTY_IDS, difficultyById } from './logic/difficulty.js'
 import { getDifficulty } from './difficulty.js'
@@ -672,6 +673,15 @@ export function createHub({ getProfile, setProfile, getDragons, setDragons, getR
       const line = el('p', `trait${awake ? '' : ' locked'}`)
       line.appendChild(el('b', null, `${awake ? '★' : '🔒'} [B] ${ability.name}${lockNote}: `))
       line.appendChild(document.createTextNode(`${ability.desc} (${ability.cooldown} s cooldown)`))
+      detail.appendChild(line)
+    }
+    // Mastery 8: each run starts with a choice, this ultimate (K) or +10% to one stat (logic/heroUltimates.js).
+    const ultimate = HERO_ULTIMATES[viewing.id]
+    if (ultimate) {
+      const open = mastered.level >= ULTIMATE_LEVEL
+      const line = el('p', `trait${open ? '' : ' locked'}`)
+      line.appendChild(el('b', null, `${open ? '★' : '🔒'} [K] Ultimate: ${ultimate.name}${open ? '' : ` (mastery ${ULTIMATE_LEVEL})`}: `))
+      line.appendChild(document.createTextNode(`${ultimate.desc} (${ultimate.cooldown} s cooldown) Each run, pick this or +10% to one stat.`))
       detail.appendChild(line)
     }
     detail.appendChild(el('p', 'hub-note', `Mastery level ${mastered.level}${mastered.span ? ` (${mastered.into} / ${mastered.span} XP to the next)` : ' (max)'} · see Contracts [I]`))
