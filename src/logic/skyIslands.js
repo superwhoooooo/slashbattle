@@ -17,7 +17,8 @@ export const TOWER_PILLARS = 6
 export const PILLAR_RADIUS = 0.9
 export const PAD_RADIUS = 2.6 // stand inside this to charge the lift
 export const CHARGE_SECONDS = 1.8 // hold still on the pad this long
-export const LAUNCH_RISE = 215 // a launch peaks this far above the tower's base
+export const LAUNCH_RISE = 360 // a launch peaks this far above the tower's base (well over the isles, so you can look down on the archipelago)
+export const ISLE_APEX = 215 // the height the isles are laid out against (they stay put; the launch just carries you past them)
 export const ISLE_STEP = 2.5 // you land on an isle when your feet are no more than this below its top
 export const UPDRAFT_LIFT = 10 // how fast an updraft carries an open glider up
 export const UPDRAFT_RADIUS = 4.2
@@ -132,7 +133,7 @@ const insideWorld = (x, z, r) => Math.hypot(x, z) + r < WORLD_RADIUS - 24
 
 function planArchipelago(tower, others = []) {
   const rand = mulberry32(9001 + tower.index * 131)
-  const apex = tower.y + LAUNCH_RISE
+  const apex = tower.y + ISLE_APEX
   const kind = MAIN_KINDS[tower.index % MAIN_KINDS.length]
   const archId = `arch${tower.index}`
   const isles = []

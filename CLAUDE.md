@@ -338,7 +338,7 @@ Status chips (`#wilds-status`) show the race clock, the event, treasure heat and
 `src/logic/skyIslands.js` (pure, `test/skyIslands.test.js`) seeds nine **Skylift towers** (`skyTowers`: one just outside the
 Sanctum, four in the Heartland, four in the Frontier; dry, level, clear of villages / sites / roads). Walk between the pillars
 (`towerObstacles`) onto the glowing pad and hold still for `CHARGE_SECONDS` (`stepLaunch`: charge / cancel / launch, with a lockout
-until you step off); the launch (`logic/jump.js`'s `launchJump`, `launchVelocity`) peaks `LAUNCH_RISE` (215) above the pad. Each
+until you step off); the launch (`logic/jump.js`'s `launchJump`, `launchVelocity`) peaks `LAUNCH_RISE` (360) above the pad, well over the isles (laid out against `ISLE_APEX`, 215, so they did not move). Each
 tower has an **archipelago** above it (`skyArchipelagos`): a main isle (grove with waterfall, ruins, garden, forge with a boss
 guardian, observatory) a short glide from the launch, a chain of islets stepping down (every gap a comfortable glide), and a high
 **crown isle** reached by riding an **updraft** (`updraftLift`; only an open glider rides it) off the main isle, holding a **Nimbus

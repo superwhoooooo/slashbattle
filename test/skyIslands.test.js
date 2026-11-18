@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { heightAt, WORLD_RADIUS } from '../src/logic/world.js'
 import {
-  CHARGE_SECONDS, LAUNCH_RISE, PAD_RADIUS, chargeFraction, createLaunchState, isAloft, isleAt, isleLayout, isleUnder, launchVelocity,
+  CHARGE_SECONDS, ISLE_APEX, LAUNCH_RISE, PAD_RADIUS, chargeFraction, createLaunchState, isAloft, isleAt, isleLayout, isleUnder, launchVelocity,
   skyArchipelagos, skyIsles, skyTowers, stepLaunch, surfaceAt, towerObstacles, updraftLift,
 } from '../src/logic/skyIslands.js'
 import { JUMP_GRAVITY, GLIDE_SINK, GLIDE_SPEED_MULTIPLIER } from '../src/logic/jump.js'
@@ -37,7 +37,8 @@ describe('Skylift towers', () => {
     expect(out.events).toEqual([])
     out = stepLaunch(out.state, { x: t.x, z: t.z, alt: t.y, now: 10 + CHARGE_SECONDS + 0.01 })
     expect(out.events[0].type).toBe('launch')
-    // Peaks LAUNCH_RISE above the pad.
+    // Peaks LAUNCH_RISE above the pad (higher than the isles' ISLE_APEX).
+    expect(LAUNCH_RISE).toBeGreaterThan(ISLE_APEX)
     expect((out.events[0].vy * out.events[0].vy) / (2 * JUMP_GRAVITY)).toBeCloseTo(LAUNCH_RISE)
     // Landing back on the pad does not fire again until you step off it.
     out = stepLaunch(out.state, { x: t.x, z: t.z, alt: t.y, now: 30 })
@@ -75,7 +76,7 @@ describe('sky isles', () => {
       const tower = skyTowers().find((t) => t.id === arch.towerId)
       const main = arch.isles.find((i) => i.main)
       const crown = arch.isles.find((i) => i.crown)
-      const apex = tower.y + LAUNCH_RISE
+      const apex = tower.y + ISLE_APEX
       const edge = Math.hypot(main.x - tower.x, main.z - tower.z) - main.radius
       expect((apex - main.y) / glideRatio).toBeGreaterThan(edge * 1.5)
       expect(crown.y).toBeGreaterThan(main.y + 20)
