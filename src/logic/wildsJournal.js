@@ -12,7 +12,7 @@ export const JOURNAL_KEY = 'slashbattle:journal'
 export const BESTIARY_FIRST_REWARD = 8 // crystals for the first of a kind you ever fell
 
 export function createJournal() {
-  return { landmarks: [], biomes: [], bestiary: {}, lanterns: [], races: {}, treasures: 0, events: 0, shrines: 0, claimed: [] }
+  return { landmarks: [], biomes: [], bestiary: {}, lanterns: [], races: {}, treasures: 0, events: 0, shrines: 0, claimed: [], towers: [], isles: [], relics: [] }
 }
 
 const strings = (v) => (Array.isArray(v) ? v.filter((s) => typeof s === 'string') : [])
@@ -43,6 +43,9 @@ export function parseJournal(text) {
     events: count(data.events),
     shrines: count(data.shrines),
     claimed: strings(data.claimed),
+    towers: strings(data.towers),
+    isles: strings(data.isles),
+    relics: strings(data.relics),
   }
 }
 export const serializeJournal = (j) => JSON.stringify(j)
@@ -69,6 +72,16 @@ export function noteRace(j, courseId, time) {
   const best = !prev || time < prev
   return { journal: best ? { ...j, races: { ...j.races, [courseId]: Math.round(time * 10) / 10 } } : j, first: !prev, best }
 }
+// Skylift towers ridden, sky isles set foot on, Sky Relics taken.
+export function noteTower(j, id) {
+  return { journal: { ...j, towers: addTo(j.towers, id) }, first: !j.towers.includes(id) }
+}
+export function noteIsle(j, id) {
+  return { journal: { ...j, isles: addTo(j.isles, id) }, first: !j.isles.includes(id) }
+}
+export function noteRelic(j, id) {
+  return { journal: { ...j, relics: addTo(j.relics, id) }, first: !j.relics.includes(id) }
+}
 export const noteTreasure = (j) => ({ ...j, treasures: j.treasures + 1 })
 export const noteEvent = (j) => ({ ...j, events: j.events + 1 })
 export const noteShrine = (j) => ({ ...j, shrines: j.shrines + 1 })
@@ -94,11 +107,17 @@ export const MILESTONES = [
   { id: 'events3', title: 'Trouble Magnet', desc: 'See off 3 roaming events', stat: 'events', need: 3, crystals: 60 },
   { id: 'events12', title: 'Storm Chaser', desc: 'See off 12 roaming events', stat: 'events', need: 12, crystals: 240, loot: 'pet' },
   { id: 'shrines5', title: 'Pilgrim', desc: 'Take 5 wayshrine boons', stat: 'shrines', need: 5, crystals: 50 },
+  { id: 'towers1', title: 'Liftoff', desc: 'Ride a Skylift tower into the sky', stat: 'towers', need: 1, crystals: 40 },
+  { id: 'towers5', title: 'Tower Hopper', desc: 'Ride 5 different Skylift towers', stat: 'towers', need: 5, crystals: 180, loot: 'ability' },
+  { id: 'isles10', title: 'Head in the Clouds', desc: 'Set foot on 10 sky isles', stat: 'isles', need: 10, crystals: 90 },
+  { id: 'isles40', title: 'Sky Sailor', desc: 'Set foot on 40 sky isles', stat: 'isles', need: 40, crystals: 300, loot: 'weapon' },
+  { id: 'relics3', title: 'Relic Seeker', desc: 'Claim 3 Sky Relics', stat: 'relics', need: 3, crystals: 150 },
+  { id: 'relics9', title: 'Keeper of the Sky', desc: 'Claim every Sky Relic', stat: 'relics', need: 9, crystals: 500, loot: 'pet' },
 ]
 
 // The number a milestone counts, from the journal.
 export function journalStat(j, stat) {
-  if (stat === 'landmarks' || stat === 'biomes' || stat === 'lanterns') return j[stat].length
+  if (stat === 'landmarks' || stat === 'biomes' || stat === 'lanterns' || stat === 'towers' || stat === 'isles' || stat === 'relics') return (j[stat] ?? []).length
   if (stat === 'bestiary' || stat === 'races') return Object.keys(j[stat]).length
   return j[stat] ?? 0
 }
@@ -119,7 +138,7 @@ export function pickUnowned(kind, inventory, seed = '') {
 
 // ---- names --------------------------------------------------------------------------------------
 
-const NAME_OVERRIDES = { bandit: 'Bellhop Bandit', paparazzo: 'Paparazzo', gopher: 'Golf Gopher', splitling: 'Splitling', urchin: 'Urchin', eel: 'Eel', angler: 'Angler' }
+const NAME_OVERRIDES = { bandit: 'Bellhop Bandit', paparazzo: 'Paparazzo', gopher: 'Golf Gopher', splitling: 'Splitling', urchin: 'Urchin', eel: 'Eel', angler: 'Angler', skyfin: 'Skyfin' }
 const CRAZY_NAMES = Object.fromEntries(CRAZY_ENEMIES.map((e) => [e.id, e.name]))
 const titleCase = (s) => s.toLowerCase().replace(/(^|\s)\S/g, (c) => c.toUpperCase())
 

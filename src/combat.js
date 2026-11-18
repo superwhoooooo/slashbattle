@@ -233,6 +233,7 @@ export function damageMonster(monster, damage, { fromPos, knockback = 0, obstacl
     const resolved = resolveArenaMove(targetPos, push, monster.userData.radius, obstacles)
     monster.position.x = resolved.x
     monster.position.z = resolved.z
+    monster.userData.knocked = true // a sky isle's monster knocked past the edge falls (main.js)
   }
 
   monster.userData.hitFlashElapsed = 0
@@ -267,6 +268,8 @@ function resolveAttackHits(player, monsters, obstacles, now, particleSystem, wea
 
   for (const monster of monsters) {
     if (monster.userData.dying || monster.userData.spawning || isUntouchable(monster)) continue
+    // A Skyfin circling overhead is out of a swing's reach (it has to swoop in close first).
+    if (monster.userData.flight && Math.abs(monster.position.y - ((player.mesh?.position.y ?? 0) + 1)) > 3) continue
 
     const targetPos = { x: monster.position.x, z: monster.position.z }
     if (!isInAttackArc(attackerPos, player.facing, targetPos, weapon.range + (monster.userData.reachBonus ?? 0), weapon.arc)) {

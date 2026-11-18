@@ -511,7 +511,8 @@ export function updateArena(arena, playerPos, time = 0) {
   if (playerPos) {
     const snappedX = snapToTexel(playerPos.x)
     const snappedZ = snapToTexel(playerPos.z)
-    arena.keyLight.target.position.set(snappedX, 0, snappedZ)
-    arena.keyLight.position.set(snappedX + KEY_LIGHT_OFFSET.x, KEY_LIGHT_OFFSET.y, snappedZ + KEY_LIGHT_OFFSET.z)
+    const y = arena.shadowY ?? 0 // the Wilds: follows you up the hills and onto the sky isles
+    arena.keyLight.target.position.set(snappedX, y, snappedZ)
+    arena.keyLight.position.set(snappedX + KEY_LIGHT_OFFSET.x, KEY_LIGHT_OFFSET.y + y, snappedZ + KEY_LIGHT_OFFSET.z)
   }
 }

@@ -65,12 +65,15 @@ import { updateFace3D } from './face3d.js'
 import { animateAlive } from './alive.js'
 import { loadHighScore, saveHighScore } from './highScore.js'
 import { createWorldArena, WORLD_LEVEL } from './worldArena.js'
-import { GLIDE_SPEED_MULTIPLIER, createJumpState, isGliding, stepJump } from './logic/jump.js'
+import { GLIDE_SPEED_MULTIPLIER, createJumpState, isGliding, launchJump, stepJump } from './logic/jump.js'
+import { RELIC_CATCH_RADIUS, RELIC_REWARD, TOWER_HEIGHT, chargeFraction, createLaunchState, isAloft, isleLayout, isleUnder, skyArchipelagos, skyTowers, stepLaunch, surfaceAt, towerObstacles, updraftLift } from './logic/skyIslands.js'
+import { createSkyWorld } from './skyIslands.js'
+import { ROCK_DAMAGE_SCALE, ROCK_HIT_RADIUS, SKYFIN, createFlight, createFlyerDirector, flyerSpawnPoint, stepFlight, stepFlyerDirector, stepRock } from './logic/skyFlyers.js'
 import { createGlider, updateGlider } from './glider.js'
 import { createNpc, setNpcMarker, updateNpc, TALK_RANGE } from './npcs.js'
 import { createQuestUi } from './questUi.js'
 import { acceptQuest, claimQuest, createQuestLog, npcDialog, npcMarker, questEvent, questsToClaim, questWeaponFor } from './logic/quests.js'
-import { BIOMES, BOSS_RESPAWN_SECONDS, SANCTUM_RADIUS, SKYSTAR_CATCH_RADIUS, SKYSTAR_REWARD, UNLOAD_RADIUS, VILLAGE_SAFE_RADIUS, WATER_LEVEL, WORLD_RADIUS, biomeAt, canRespawn, chunkContent, chunkKey, dangerAt, dayName, diffChunks, groundColorAt, heightAt, lakeAt, landmarkById, landmarks, nearestLandmark, nearestVillage, ruins, skystars, villageById, villages } from './logic/world.js'
+import { BIOMES, BOSS_RESPAWN_SECONDS, SANCTUM_RADIUS, SKYSTAR_CATCH_RADIUS, SKYSTAR_REWARD, UNLOAD_RADIUS, VILLAGE_SAFE_RADIUS, WATER_LEVEL, WORLD_RADIUS, biomeAt, canRespawn, chunkContent, chunkKey, propHeight, dangerAt, dayName, diffChunks, groundColorAt, heightAt, lakeAt, landmarkById, landmarks, nearestLandmark, nearestVillage, ruins, skystars, villageById, villages } from './logic/world.js'
 import { createWildsActivities } from './wildsActivities.js'
 import { createJournalUi } from './journalUi.js'
 import { LANTERN_CATCH_RADIUS, LANTERN_COUNT, lanternReward, lanternsNear } from './logic/lanterns.js'
@@ -78,7 +81,7 @@ import { BOONS, SHRINE_RADIUS, activeBoons, boonEffects, createShrineState, fold
 import { HEAT_TEXT, MAX_MAPS, addMap, digAt, makeTreasureMap, nearestMap } from './logic/treasure.js'
 import { createRaceState, raceCourses, raceReward, stepRace } from './logic/races.js'
 import { EVENTS, STAR_SHARD_VALUE, createEventDirector, endEvent, hordePlan, merchantName, merchantStock, meteorPlan, stepEventDirector, wandererPlan } from './logic/wildEvents.js'
-import { BESTIARY_FIRST_REWARD, JOURNAL_KEY, claimMilestone, creatureName, noteBiome, noteEvent, noteKill, noteLandmark, noteLantern, noteRace, noteShrine, noteTreasure, parseJournal, pickUnowned, readyMilestones, serializeJournal } from './logic/wildsJournal.js'
+import { BESTIARY_FIRST_REWARD, JOURNAL_KEY, claimMilestone, creatureName, noteBiome, noteEvent, noteIsle, noteKill, noteLandmark, noteLantern, noteRace, noteRelic, noteShrine, noteTower, noteTreasure, parseJournal, pickUnowned, readyMilestones, serializeJournal } from './logic/wildsJournal.js'
 import { formatTime } from './logic/wildsSpots.js'
 import { createMusic } from './music.js'
 import { createSfx } from './sfx.js'
@@ -265,8 +268,8 @@ import {
   waveSize,
 } from './logic/waves.js'
 import { enemyScale, SPLITS } from './logic/enemies.js'
-import { createMonsterAIState, separateMonsters, setDeepShield, setMonsterNavigator, setSurfaceShield, setTimeWarp, setWaterRoom, timeWarp, updateMonster, upgradeBossSpecials } from './monster.js'
-import { applyFreeze, applySlow, isFrozen } from './logic/status.js'
+import { createMonsterAIState, separateMonsters, setDeepShield, setMonsterNavigator, setPlayerAloft, setSurfaceShield, setTimeWarp, setWaterRoom, timeWarp, updateMonster, upgradeBossSpecials } from './monster.js'
+import { applyFreeze, applySlow, isFrozen, statusTimeScale } from './logic/status.js'
 import { createCoop } from './coop.js'
 import { COOP_RESPAWN_HP, COOP_RESPAWN_IFRAMES } from './logic/coop.js'
 import { burst, createParticleSystem, resetParticles, setParticleViewScale, shardBurst, updateParticles } from './particles.js'
@@ -610,7 +613,7 @@ function applyFxDepth() {
   const ground = game?.world?.groundY ?? 0 // on hills, shots / sparks / rings / crystals ride up with the player
   crystalSystem.mesh.position.y = ground
   const y = fxDepthOffset() + ground
-  const hug = game?.world ? heightAt : null // enemy orbs, and third-person shots, follow the hills instead of flying into them
+  const hug = game?.world && !game.world.aloft ? heightAt : null // enemy orbs, and third-person shots, follow the hills instead of flying into them (up in the sky they fly straight)
   bulletPool.groundAt = firstPerson ? null : hug // first-person shots fly the crosshair's straight ray
   bulletPool.terrainAt = hug
   projectilePool.groundAt = hug
@@ -678,6 +681,7 @@ function stepWater(now, dt) {
   setWaterRoom(Boolean(room))
   setDeepShield(Boolean(room) && !waterState.diving)
   setSurfaceShield(Boolean(room) && waterState.diving)
+  setPlayerAloft(Boolean(game?.world?.aloft)) // up on a sky isle: the land's monsters and the sky's can't reach across
   applyFxDepth()
   if (!room) {
     waterUi.update({ room: false, diving: false, fraction: 1 })
@@ -825,7 +829,7 @@ function aimSlopeFor(player, game) {
     if (distance < bestDistance) {
       bestDistance = distance
       // a hugging shot's height is measured from the ground under it, so use the monster's height above its own ground
-      best = { y: game.world ? aimSphere.center.y - mesh.position.y - (layerY - heightAt(player.position.x, player.position.z)) : aimSphere.center.y - layerY, x: mesh.position.x, z: mesh.position.z }
+      best = { y: game.world && !game.world.aloft ? aimSphere.center.y - mesh.position.y - (layerY - heightAt(player.position.x, player.position.z)) : aimSphere.center.y - layerY, x: mesh.position.x, z: mesh.position.z }
     }
   }
   if (!best) return 0
@@ -2775,6 +2779,15 @@ function createGame() {
     game.player.hp = game.player.maxHp
     game.world.fx = createWildsActivities()
     game.arena.group.add(game.world.fx.group)
+    game.world.sky.fx = createSkyWorld()
+    game.arena.group.add(game.world.sky.fx.group)
+    game.world.sky.fx.setRidden(new Set(game.world.journal.towers))
+    game.world.sky.fx.setRelicsTaken(new Set(game.world.journal.relics))
+    for (const tower of skyTowers()) {
+      const pillars = towerObstacles(tower).map((o) => ({ ...o, top: tower.y + TOWER_HEIGHT }))
+      game.obstacles.push(...pillars)
+      game.props.push(...pillars)
+    }
     stepWorld(game, 0)
     camera.position.set(player.position.x + CAMERA_OFFSET.x, CAMERA_OFFSET.y, player.position.z + CAMERA_OFFSET.z)
     return game
@@ -3743,6 +3756,8 @@ function respawnAtCheckpoint(game, now, { toast = true, heal = true } = {}) {
   player.invulnerableUntil = Math.max(player.invulnerableUntil, now + RESPAWN_IFRAMES)
   player.slowUntil = player.weakUntil = player.poisonUntil = -Infinity // shake off every status
   w.jump = createJumpState()
+  w.jump.alt = groundY
+  w.sky.launch = createLaunchState()
   w.groundY = groundY
   w.camGround = groundY
   w.talkingTo = null
@@ -3790,6 +3805,9 @@ function createWorldState(savedSpot = null) {
     lanternsAt: null, // where the lit-lantern list was last rebuilt
     lootQueue: [], // gear rewards waiting for the swap panel to be free
     fx: null, // src/wildsActivities.js, built with the game
+    // Skylift towers and sky isles (see stepSky; rules in logic/skyIslands.js, the look in src/skyIslands.js).
+    aloft: false, // up in the sky (on an isle, or high over the land): the land's monsters can't see you
+    sky: { launch: createLaunchState(), active: new Map(), isleId: null, fx: null, chargeFxAt: 0, hintAt: 0, flyers: createFlyerDirector(), rocks: [], warned: false },
   }
 }
 
@@ -3944,7 +3962,8 @@ function spawnWildMonster(game, type, at, m) {
 function loadWorldChunk(game, cx, cz, now) {
   const w = game.world
   const content = chunkContent(cx, cz)
-  const obstacles = content.props.filter((p) => p.radius > 0).map((p) => ({ x: p.x, z: p.z, radius: p.radius }))
+  // Each solid prop knows how high its top is, so a jump or a glide over it clears it (clearsObstacle).
+  const obstacles = content.props.filter((p) => p.radius > 0).map((p) => ({ x: p.x, z: p.z, radius: p.radius, top: heightAt(p.x, p.z) + propHeight(p.kind) * (p.scale ?? 1) }))
   game.obstacles.push(...obstacles)
   game.props.push(...obstacles)
   const chunk = { content, obstacles, treasure: [], npcIds: [] }
@@ -4150,6 +4169,7 @@ function drawMinimap(game, now = 0) {
     ctx.fillRect(x - 2.5, y - 2.5, 5, 5)
   }
   drawActivityMarks(ctx, game, at, onMap, size, now)
+  drawSkyMarks(ctx, game, at, onMap)
   // The Sanctum is always findable: an arrow on the rim when it is off the map.
   if (!onMap(at(0, 0), -10)) drawMinimapPointer(ctx, size, Math.atan2(-p0.z, -p0.x), '#c9b8ff')
   const p = game.player
@@ -4219,6 +4239,316 @@ function stepSkystars(game, now) {
     burst(particleSystem, at, 0xffffff, 16, 3)
     sfx.play('chestOpen', { x: star.x, z: star.z })
     questUi.showToast(`SKYSTAR CAUGHT ${w.starsCaught.size}/${skystars().length}  +${SKYSTAR_REWARD} CRYSTALS`)
+  }
+}
+
+// ---- Skylift towers and sky isles (rules in logic/skyIslands.js, the look in src/skyIslands.js) ----------------
+const TOWER_FIRST_REWARD = 20 // crystals for the first ride on each tower, ever
+const ISLE_FIRST_REWARD = 6 // ...and for first setting foot on each isle
+
+// Is a point with your feet at `alt` above an obstacle's top? (Chests, pods and the like stand about 2.5 m tall.)
+function clearsObstacle(o, alt) {
+  return alt > (o.top ?? heightAt(o.x, o.z) + 2.5) - 0.2
+}
+
+// Is a chest / pickup on the level you're at? (In the Wilds a sky isle's chest hangs right over the land.)
+function onMyLevel(obj) {
+  return !game?.world || Math.abs(obj.position.y - (game.world.jump.air ? game.world.jump.alt : game.world.groundY)) < 5
+}
+
+// Brings an archipelago's chests and monsters in (when you're up there with it).
+function activateArchipelago(game, arch, now) {
+  const w = game.world
+  const live = { treasure: [] }
+  for (const isle of arch.isles) {
+    const layout = isleLayout(isle)
+    for (const t of layout.treasure) {
+      if (w.opened.has(t.id)) continue
+      const before = game.chests.length
+      trySpawnChest(game, { at: { x: t.x, z: t.z } })
+      if (game.chests.length === before) continue
+      const mesh = game.chests[game.chests.length - 1]
+      mesh.position.y = isle.y
+      mesh.userData.worldTreasure = t
+      // No collision: a chest's circle would block the land far below it too.
+      if (mesh.userData.obstacle) removeFrom(game.obstacles, mesh.userData.obstacle)
+      mesh.userData.obstacle = null
+      live.treasure.push(mesh)
+    }
+    for (const g of layout.guards) {
+      if (w.live.has(g.id) || !canRespawn(w.killed.get(g.id), now, g.boss ? BOSS_RESPAWN_SECONDS : undefined)) continue
+      const danger = arch.danger
+      const mesh = spawnWildMonster(game, g.type, { x: g.x, z: g.z }, { danger, elite: g.elite, boss: g.boss, hpScale: g.boss ? 0.9 + danger * 1.1 : (1 + danger * 1.6) * (g.elite ? 2.4 : 1) })
+      mesh.userData.skyIsle = true
+      mesh.userData.skyHome = isle
+      mesh.userData.skyArch = arch.id
+      mesh.userData.worldId = g.id
+      mesh.position.y = isle.y
+      const effect = game.spawnEffects[game.spawnEffects.length - 1]
+      if (effect?.monster === mesh) effect.effect.group.position.y = isle.y
+      w.live.set(g.id, mesh)
+    }
+  }
+  w.sky.active.set(arch.id, live)
+}
+
+// ...and lets them go again once you're back on the land (opened chests stay opened; the slain return in time).
+function deactivateArchipelago(game, arch) {
+  const w = game.world
+  const live = w.sky.active.get(arch.id)
+  if (!live) return
+  for (const mesh of live.treasure) {
+    if (mesh.userData.opened) w.opened.add(mesh.userData.worldTreasure.id)
+    if (!game.chests.includes(mesh)) continue
+    removeFrom(game.chests, mesh)
+    disposeObject3D(mesh)
+  }
+  for (const mesh of [...game.monsters]) {
+    if (mesh.userData.skyArch !== arch.id || mesh.userData.dying || mesh.userData.falling) continue
+    dropWorldMonster(game, mesh)
+  }
+  w.sky.active.delete(arch.id)
+}
+
+function stepSky(game, now, dt) {
+  const w = game.world
+  const s = w.sky
+  if (!s.fx) return
+  const p = game.player.position
+  const player = game.player
+  if (dt > 0) {
+    // The towers: stand on the pad, hold still while it charges, and up you go.
+    const ok = !player.hidden && !player.falling && player.hp > 0 && !w.jump.air && !blockingPanelOpen() && !game.cutscene
+    const out = stepLaunch(s.launch, { x: p.x, z: p.z, alt: w.groundY, now, ok })
+    s.launch = out.state
+    for (const ev of out.events) {
+      if (ev.type === 'charge') {
+        sfx.play('hyperspace', { x: ev.tower.x, z: ev.tower.z })
+        spawnShockwave(shockwavePool, ev.tower.x, ev.tower.z, 3, 0x5ef2d6)
+      } else if (ev.type === 'launch') {
+        const t = ev.tower
+        w.jump = launchJump(w.jump, ev.vy)
+        spawnShockwave(shockwavePool, t.x, t.z, 9, 0x5ef2d6)
+        burst(particleSystem, { x: p.x, y: 0.4, z: p.z }, 0x5ef2d6, 60, 9, 0.8)
+        burst(particleSystem, { x: p.x, y: 0.4, z: p.z }, 0xffffff, 30, 6, 0.6)
+        triggerShake(game.shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
+        input.rumble(RUMBLE_STRONG_STRENGTH, RUMBLE_STRONG_DURATION)
+        sfx.play('arrive', { x: t.x, z: t.z })
+        const note = noteTower(w.journal, t.id)
+        if (note.first) {
+          game.inventory = addCrystals(game.inventory, TOWER_FIRST_REWARD)
+          questUi.showToast(`SKYLIFT ACTIVATED: ${t.name.toUpperCase()}  +${TOWER_FIRST_REWARD} CRYSTALS`)
+          setJournal(game, note.journal)
+          s.fx.setRidden(new Set(w.journal.towers))
+        }
+        questUi.showToast(`${t.isles.toUpperCase()} AHEAD · SPACE OPENS THE GLIDER`)
+      }
+    }
+    // Charging: sparks rise up the column.
+    if (s.launch.charging && now > s.chargeFxAt) {
+      s.chargeFxAt = now + 0.08
+      burst(particleSystem, { x: p.x + (Math.random() - 0.5) * 3, y: 0.3, z: p.z + (Math.random() - 0.5) * 3 }, 0x5ef2d6, 4, 5, 0.6)
+    }
+
+    // Which isle you're standing on (the first visit pays a little and goes in the journal).
+    const isle = !w.jump.air ? isleUnder(p.x, p.z, w.groundY + 0.1) : null
+    if (isle && isle.id !== s.isleId) {
+      s.isleId = isle.id
+      biomeBannerShow(isle.name, 0x9ff2ff, now)
+      const note = noteIsle(w.journal, isle.id)
+      if (note.first) {
+        game.inventory = addCrystals(game.inventory, ISLE_FIRST_REWARD)
+        setJournal(game, note.journal)
+      }
+    } else if (!w.jump.air && !isle) s.isleId = null
+
+    // The Sky Relics on the crown isles.
+    for (const arch of skyArchipelagos()) {
+      const r = arch.relic
+      if (w.journal.relics.includes(r.id)) continue
+      if (Math.hypot(r.x - p.x, r.z - p.z) > RELIC_CATCH_RADIUS || Math.abs(w.groundY - r.y) > 4.5) continue
+      setJournal(game, noteRelic(w.journal, r.id).journal)
+      s.fx.setRelicsTaken(new Set(w.journal.relics))
+      game.inventory = addCrystals(game.inventory, RELIC_REWARD)
+      player.hp = player.maxHp
+      const at = { x: r.x, y: r.y + 3.8 - w.groundY, z: r.z }
+      burst(particleSystem, at, 0xffd15c, 60, 7)
+      burst(particleSystem, at, 0x5ef2d6, 30, 4)
+      spawnShockwave(shockwavePool, r.x, r.z, 8, 0xffd15c)
+      sfx.play('waveCleared', { x: r.x, z: r.z })
+      questUi.showToast(`SKY RELIC CLAIMED ${w.journal.relics.length}/${skyArchipelagos().length}  ·  ${arch.name.toUpperCase()}  +${RELIC_REWARD} CRYSTALS, FULLY HEALED`)
+    }
+
+    // Archipelagos come alive while you're up there with them, and go quiet once you're back on the land.
+    for (const arch of skyArchipelagos()) {
+      const d = Math.hypot(arch.x - p.x, arch.z - p.z)
+      const on = s.active.has(arch.id)
+      if (!on && d < arch.radius + 60 && w.groundY > arch.low - 70) activateArchipelago(game, arch, now)
+      else if (on && (d > arch.radius + 120 || w.groundY < arch.low - 110)) deactivateArchipelago(game, arch)
+    }
+  }
+  if (dt > 0) stepSkyfins(game, now, dt)
+  s.fx.update({ x: p.x, z: p.z, y: w.groundY }, now, s.launch.charging ? { towerId: s.launch.charging, fraction: chargeFraction(s.launch, now) } : null)
+}
+
+// ---- Skyfins: the sky's hunters (rules in logic/skyFlyers.js) ----
+const rockGeometry = new THREE.DodecahedronGeometry(0.75, 0)
+const rockMaterial = new THREE.MeshStandardMaterial({ color: 0x8a7a6a, roughness: 0.9, flatShading: true })
+
+// Sends packs in while you're up in the sky, and drops their rocks.
+function stepSkyfins(game, now, dt) {
+  const w = game.world
+  const s = w.sky
+  const player = game.player
+  const p = player.position
+  const alive = game.monsters.filter((m) => m.userData.flight && !m.userData.dying).length
+  const danger = Math.min(1, dangerAt(p.x, p.z) + 0.2)
+  const out = stepFlyerDirector(s.flyers, { now, aloft: w.aloft && player.hp > 0 && !game.cutscene, alive, danger })
+  s.flyers = out.state
+  for (let i = 0; i < out.spawn; i++) {
+    const at = flyerSpawnPoint(p.x, w.groundY, p.z)
+    const mesh = spawnWildMonster(game, SKYFIN, { x: at.x, z: at.z }, { danger, hpScale: 1 + danger * 1.2 })
+    mesh.userData.skyIsle = true // lives up in the sky: it can only reach you (and be reached) while you're up there too
+    mesh.userData.flight = createFlight(at, Math.random, now)
+    mesh.rotation.order = 'YXZ' // turn, then pitch nose-down into a dive
+    mesh.position.y = at.y
+    const effect = game.spawnEffects[game.spawnEffects.length - 1]
+    if (effect?.monster === mesh) effect.effect.group.position.y = at.y
+  }
+  if (out.spawn > 0) {
+    sfx.play('announcement', { x: p.x, z: p.z })
+    if (!s.warned) {
+      s.warned = true
+      questUi.showToast('SKYFINS! THEY SWOOP AFTER A SHRIEK — DODGE, THEN HIT BACK')
+    }
+  }
+  // Their rocks fall until they hit you or the ground (or an isle) below.
+  const me = { x: p.x, y: (w.jump.air ? w.jump.alt : w.groundY) + 1, z: p.z }
+  s.rocks = s.rocks.filter((r) => {
+    const step = stepRock(r.state, { p: me, dt, floor: surfaceAt(r.state.x, r.state.z, r.state.y) })
+    r.state = step.rock
+    r.mesh.position.set(r.state.x, r.state.y, r.state.z)
+    r.mesh.rotation.x += dt * 4
+    r.mesh.rotation.z += dt * 3
+    if (step.hit && !player.hidden && w.aloft && player.damagePlayer(r.damage, now)) playerHurtFx(game)
+    if (step.hit || step.landed) {
+      const at = { x: r.state.x, y: r.state.y - w.groundY, z: r.state.z }
+      shardBurst(particleSystem, at, 0x8a7a6a, 10, 4)
+      burst(particleSystem, at, 0xd8c8b0, 14, 3)
+      if (Math.abs(r.state.y - w.groundY) < 30) sfx.play('hit', { x: r.state.x, z: r.state.z })
+      r.mesh.removeFromParent()
+      return false
+    }
+    return true
+  })
+}
+
+// One Skyfin's frame: fly, shriek, bite, drop rocks, leave.
+function flySkyfin(game, mesh, dt0, now) {
+  const ud = mesh.userData
+  const w = game.world
+  const player = game.player
+  const dt = dt0 * statusTimeScale(ud, now) // frozen ones hang still
+  ud.flight.x = mesh.position.x // a knockback moves it
+  ud.flight.z = mesh.position.z
+  const alt = w ? (w.jump.air ? w.jump.alt : w.groundY) : 0
+  const p = { x: player.position.x, y: alt + 1, z: player.position.z }
+  const leave = !w || !w.aloft || player.hp <= 0
+  const { flight, events } = stepFlight(ud.flight, { p, dt, now, leave })
+  ud.flight = flight
+  for (const ev of events) {
+    if (ev.type === 'wind') {
+      sfx.play('swing', { x: flight.x, z: flight.z })
+      burst(particleSystem, { x: flight.x, y: flight.y - (w?.groundY ?? 0), z: flight.z }, 0xff6b6b, 10, 3)
+    } else if (ev.type === 'bite') {
+      const ghost = now < (player.ghostUntil ?? -Infinity)
+      if (!player.hidden && !ghost && player.damagePlayer(Math.round(MONSTER_TYPES[SKYFIN].damage * (ud.damageScale ?? 1)), now)) playerHurtFx(game)
+    } else if (ev.type === 'drop' && w) {
+      const rock = new THREE.Mesh(rockGeometry, rockMaterial)
+      rock.castShadow = true
+      // It lets go right over you: the red ring shows where it will land, about a second's fall away.
+      rock.position.set(p.x, ev.y, p.z)
+      game.arena.group.add(rock) // goes with the world when the run ends
+      w.sky.rocks.push({ mesh: rock, state: { x: p.x, y: ev.y, z: p.z, vy: 0 }, damage: Math.round(MONSTER_TYPES[SKYFIN].damage * ROCK_DAMAGE_SCALE * (ud.damageScale ?? 1)) })
+      spawnShockwave(shockwavePool, p.x, p.z, ROCK_HIT_RADIUS, 0xff5a5a) // where it will land
+    } else if (ev.type === 'gone') {
+      dropWorldMonster(game, mesh)
+      return false
+    }
+  }
+  mesh.position.set(flight.x, flight.y, flight.z)
+  mesh.rotation.y = Math.atan2(flight.dir.x, flight.dir.z)
+  mesh.rotation.x = -Math.asin(Math.max(-1, Math.min(1, flight.dir.y))) * 0.85
+  mesh.rotation.z = Math.sin(now * 1.7 + flight.orbit) * 0.12
+  ud.speed = 0
+  updateFrozenLook(mesh, now)
+  updateJelly(mesh, dt0, now, { speed: 0, moveDir: ud.moveDir })
+  updateFace3D(mesh, dt0, now)
+  updateMonsterHitReaction(mesh, dt0)
+  return true
+}
+
+// The banner that names a biome also names the sky isle you step onto.
+function biomeBannerShow(text, glow, now) {
+  if (!biomeBanner || !game?.world) return
+  biomeBanner.textContent = text
+  biomeBanner.style.setProperty('--biome-glow', `#${glow.toString(16).padStart(6, '0')}`)
+  game.world.bannerUntil = now + 3.2
+}
+
+// Status chips for the sky: the lift charging, a tower's pad nearby, an updraft to ride.
+function skyChips(game, now) {
+  const w = game.world
+  const s = w.sky
+  const p = game.player.position
+  const chips = []
+  if (s.launch.charging) chips.push(['#5ef2d6', `<b>SKYLIFT</b> charging ${Math.round(chargeFraction(s.launch, now) * 100)}% · hold still`])
+  else if (!w.jump.air) {
+    for (const t of skyTowers()) {
+      if (Math.hypot(t.x - p.x, t.z - p.z) < 14 && Math.abs(w.groundY - t.y) < 6) chips.push(['#5ef2d6', `<b>${t.name.toUpperCase()}</b> step onto the glowing pad to launch`])
+    }
+  }
+  if (w.jump.air && !w.jump.gliding) {
+    for (const a of skyArchipelagos()) {
+      const u = a.updraft
+      if (Math.hypot(u.x - p.x, u.z - p.z) < u.radius + 8 && w.jump.alt > u.y0 && w.jump.alt < u.y1) chips.push(['#cff8ff', '<b>UPDRAFT</b> open the glider (Space) to ride it up'])
+    }
+  }
+  if (w.jump.air && w.aloft && w.jump.vy < -20 && !w.jump.gliding) chips.push(['#ffd0e0', '<b>FALLING</b> Space opens the glider'])
+  return chips
+}
+
+// Minimap: towers (a teal spire) and, near them, the isles above (pale rings; gold for an unclaimed relic).
+function drawSkyMarks(ctx, game, at, onMap) {
+  const w = game.world
+  if (!w?.sky?.fx) return
+  for (const arch of skyArchipelagos()) {
+    for (const isle of arch.isles) {
+      const [x, y] = at(isle.x, isle.z)
+      if (!onMap([x, y], 10)) continue
+      const r = Math.max(2, isle.radius * (ctx.canvas.width / (MINIMAP_VIEW * 2)))
+      ctx.strokeStyle = isle.crown && !w.journal.relics.includes(arch.relic.id) ? '#ffd15c' : 'rgba(207, 248, 255, 0.75)'
+      ctx.lineWidth = 1.5
+      ctx.setLineDash([3, 2])
+      ctx.beginPath()
+      ctx.arc(x, y, r, 0, Math.PI * 2)
+      ctx.stroke()
+      ctx.setLineDash([])
+    }
+  }
+  for (const t of skyTowers()) {
+    const [x, y] = at(t.x, t.z)
+    if (!onMap([x, y])) continue
+    ctx.fillStyle = w.journal.towers.includes(t.id) ? '#5ef2d6' : '#2f8a7a'
+    ctx.strokeStyle = '#241b3a'
+    ctx.lineWidth = 1.5
+    ctx.beginPath()
+    ctx.moveTo(x, y - 7)
+    ctx.lineTo(x + 4, y + 4)
+    ctx.lineTo(x - 4, y + 4)
+    ctx.closePath()
+    ctx.fill()
+    ctx.stroke()
   }
 }
 
@@ -4574,7 +4904,7 @@ function stepWildEvents(game, now) {
   w.events ??= createEventDirector(now)
   const safe = Math.hypot(p.x, p.z) < SANCTUM_RADIUS + 20 || Boolean(nearestVillage(p.x, p.z, VILLAGE_SAFE_RADIUS + 10))
   const danger = dangerAt(p.x, p.z)
-  const out = stepEventDirector(w.events, { now, safe, busy: Boolean(w.race.active) || Boolean(lakeAt(p.x, p.z, 0.3)) || game.player.hp <= 0, danger })
+  const out = stepEventDirector(w.events, { now, safe, busy: Boolean(w.race.active) || Boolean(lakeAt(p.x, p.z, 0.3)) || game.player.hp <= 0 || w.aloft, danger })
   w.events = out.state
   if (out.start) startWildEvent(game, out.start, now, danger)
   if (w.event) updateWildEvent(game, now)
@@ -4668,6 +4998,7 @@ function updateWildsStatus(game, now, treasure) {
     chips.push(['#ffd15c', inCircle ? `<b>TREASURE</b> ${digAt(m, game.player.position.x, game.player.position.z).heat === 'here' ? HEAT_TEXT.here : `${HEAT_TEXT[digAt(m, game.player.position.x, game.player.position.z).heat]} · F digs`}` : `<b>MAP</b> ${w.maps.length} treasure map${w.maps.length === 1 ? '' : 's'} · gold circle on the minimap`])
   }
   for (const b of activeBoons(w.shrines, now)) chips.push([hexColor(BOONS[b.id].color), `<b>${BOONS[b.id].name}</b> ${Math.ceil(b.left)}s`])
+  chips.push(...skyChips(game, now))
   const html = chips.map(([c, text]) => `<div class="ws-chip" style="--c:${c}">${text}</div>`).join('')
   if (html === wildsStatusKey) return
   wildsStatusKey = html
@@ -4804,8 +5135,11 @@ function stepWorld(game, now, dt = 0) {
   scene.background?.copy?.(game.arena.fog.color)
 
   // The ground under the player (the effect layers and the camera ride on it).
-  w.groundY = w.jump.air ? w.jump.alt : heightAt(p.x, p.z)
-  w.camGround += (w.groundY - w.camGround) * (dt > 0 ? 1 - Math.exp(-(w.jump.air ? 12 : 5) * dt) : 1) // keeps up with a glide down a hill
+  w.groundY = w.jump.air ? w.jump.alt : surfaceAt(p.x, p.z, w.jump.alt)
+  w.camGround += (w.groundY - w.camGround) * (dt > 0 ? 1 - Math.exp(-(w.jump.air ? (Math.abs(w.jump.vy) > 25 ? 30 : 12) : 5) * dt) : 1) // keeps up with a glide down a hill (and a Skylift launch)
+  w.aloft = isAloft(p.x, p.z, w.groundY)
+  game.arena.shadowY = w.camGround // the sun's shadow box follows you up to the isles
+  game.arena.world.setAltitude?.(w.camGround - heightAt(p.x, p.z), w.camGround)
 
   // Villagers: they amble, look at you, wear a marker for their quest state, and E talks to the nearest.
   let nearest = null
@@ -4881,6 +5215,7 @@ function stepWorld(game, now, dt = 0) {
   biomeBanner?.classList.toggle('show', now < w.bannerUntil)
   if (dt > 0) stepSkystars(game, now)
   if (dt > 0) stepActivities(game, now)
+  stepSky(game, now, dt)
   if (dt > 0) drawMinimap(game, now)
 }
 
@@ -7038,14 +7373,35 @@ function gameFrame(timestamp) {
       sfx.play('swing', { x: player.position.x, z: player.position.z })
     }
   }
-  if (!downed) player.update(input, cameraYaw, deltaSeconds, room ? true : null)
+  if (!downed) {
+    // In the Wilds an obstacle only blocks you up to its top: hop or glide over a rock, a tree, a cottage...
+    const allObstacles = player.obstacles
+    // (Landing on top of one, you're inside its circle: it lets you walk off rather than trapping you.)
+    if (game.world) {
+      const { x, z } = player.position
+      const air = game.world.jump.air
+      player.obstacles = allObstacles.filter((o) => !(air && clearsObstacle(o, game.world.jump.alt)) && Math.hypot(o.x - x, o.z - z) > o.radius + PLAYER_RADIUS * 0.5)
+    }
+    player.update(input, cameraYaw, deltaSeconds, room ? true : null)
+    player.obstacles = allObstacles
+  }
   if (game.world) {
     // Space: a plain hop; Space again in the air opens the paraglider (no cooldown, no ability slot). Not while hiding,
     // falling off the edge, or paused in a menu.
     const canHop = !player.hidden && !player.falling && player.hp > 0 && !hub.isOpen()
-    const ground = heightAt(player.position.x, player.position.z)
-    const hop = stepJump(game.world.jump, canHop && input.wasPressed('Space'), deltaSeconds, ground)
+    // The ground is a sky isle's top when you're on (or above) one; an updraft lifts an open glider.
+    const ground = surfaceAt(player.position.x, player.position.z, game.world.jump.alt)
+    const lift = updraftLift(player.position.x, player.position.z, game.world.jump.alt)
+    const hop = stepJump(game.world.jump, canHop && input.wasPressed('Space'), deltaSeconds, ground, lift)
     game.world.jump = hop.state
+    if (lift > 0 && hop.state.gliding && Math.random() < 0.3) burst(particleSystem, { x: player.position.x + (Math.random() - 0.5) * 3, y: hop.state.alt - (game.world.groundY ?? 0) - 1, z: player.position.z + (Math.random() - 0.5) * 3 }, 0xdff8ff, 2, 2.5, 0.5)
+    if (hop.landed && hop.impact > 30) {
+      // A long drop without the glider: a superhero landing.
+      spawnShockwave(shockwavePool, player.position.x, player.position.z, 6, 0xe0d6ff)
+      triggerShake(shake, SHAKE_DAMAGE_MAGNITUDE * 1.4, SHAKE_DAMAGE_DURATION)
+      sfx.play('bossSlam', { x: player.position.x, z: player.position.z })
+      input.rumble(RUMBLE_STRONG_STRENGTH, RUMBLE_STRONG_DURATION)
+    }
     if (!player.falling) player.mesh.position.y = hop.state.alt
     if (!game.world.glider.parent) player.mesh.add(game.world.glider)
     updateGlider(game.world.glider, hop.state.gliding && hop.state.air, deltaSeconds, elapsedSeconds)
@@ -7222,7 +7578,7 @@ function gameFrame(timestamp) {
     if (mesh.userData.netPuppet) return coop.stepPuppet(mesh, gameplayDelta, elapsedSeconds, player.position)
     if (mesh.userData.spawning) {
       if (room) mesh.position.y = monsterSwimY(mesh, elapsedSeconds)
-      else if (game.world) mesh.position.y = mesh.userData.lake ? WATER_LEVEL - 0.3 : heightAt(mesh.position.x, mesh.position.z)
+      else if (game.world) mesh.position.y = mesh.userData.flight ? mesh.userData.flight.y : mesh.userData.skyHome ? mesh.userData.skyHome.y : mesh.userData.lake ? WATER_LEVEL - 0.3 : heightAt(mesh.position.x, mesh.position.z)
       updateJelly(mesh, gameplayDelta, elapsedSeconds, { speed: 0, moveDir: mesh.userData.moveDir })
       updateFace3D(mesh, gameplayDelta, elapsedSeconds)
       return true
@@ -7245,7 +7601,7 @@ function gameFrame(timestamp) {
         if (SPLITS[mesh.userData.type] && mesh.userData.lastHitBy) pendingSplits.push({ type: mesh.userData.type, x: mesh.position.x, z: mesh.position.z })
         if (mesh.userData.isBoss) {
           bossGone = true
-          bossDeathPoint = { x: mesh.position.x, z: mesh.position.z }
+          bossDeathPoint = { x: mesh.position.x, z: mesh.position.z, y: mesh.userData.skyHome?.y }
         }
         return false
       }
@@ -7254,10 +7610,10 @@ function gameFrame(timestamp) {
 
     if (mesh.userData.falling) {
       mesh.userData.fallState = stepFall(mesh.userData.fallState, gameplayDelta, FALL_GRAVITY)
-      mesh.position.y = -mesh.userData.fallState.fallenY
+      mesh.position.y = (mesh.userData.fallBaseY ?? 0) - mesh.userData.fallState.fallenY
       mesh.rotation.x += gameplayDelta * MONSTER_FALL_TUMBLE_SPEED
       mesh.rotation.z += gameplayDelta * MONSTER_FALL_TUMBLE_SPEED * 0.6
-      if (mesh.userData.fallState.fallenY >= FALL_DESPAWN_DEPTH) {
+      if (mesh.userData.fallState.fallenY >= (mesh.userData.skyHome ? 26 : FALL_DESPAWN_DEPTH)) {
         rememberWorldKill(game, mesh, elapsedSeconds)
         const friendsKill = coop?.creditKill(mesh, 'fall') // co-op: a friend knocked it off
         if (!friendsKill) scoreKill(game, mesh, 'fall', { x: mesh.position.x, y: 0, z: mesh.position.z }, elapsedSeconds)
@@ -7273,6 +7629,9 @@ function gameFrame(timestamp) {
       }
       return true
     }
+
+    // Skyfins fly their own course (logic/skyFlyers.js), not the walking AI.
+    if (mesh.userData.flight) return flySkyfin(game, mesh, gameplayDelta, elapsedSeconds)
 
     // Immunity phases: at 75 / 50 / 25% health a boss throws up a shield, calls minions, and can't be hurt until they are beaten.
     if (mesh.userData.isBoss && !mesh.userData.spawning && !mesh.userData.immune) {
@@ -7343,6 +7702,24 @@ function gameFrame(timestamp) {
       const targetY = monsterSwimY(mesh, elapsedSeconds)
       mesh.userData.sinkY = (mesh.userData.sinkY ?? targetY) + (targetY - (mesh.userData.sinkY ?? targetY)) * Math.min(1, deltaSeconds * 4)
       mesh.position.y = mesh.userData.sinkY + (mesh.userData.leapY ?? 0)
+    } else if (mesh.userData.skyHome) {
+      // A sky isle's monster keeps to its isle; knocked off the edge, it falls (a ring-out like any other).
+      const isle = mesh.userData.skyHome
+      const dx = mesh.position.x - isle.x
+      const dz = mesh.position.z - isle.z
+      const d = Math.hypot(dx, dz)
+      const keep = isle.radius - 1 - mesh.userData.radius * 0.5
+      if (d > isle.radius + 0.2 && mesh.userData.knocked && !mesh.userData.immune) {
+        mesh.userData.falling = true
+        mesh.userData.fallBaseY = isle.y
+        mesh.userData.fallState = { velocityY: 0, fallenY: 0 }
+        burst(particleSystem, { x: mesh.position.x, y: isle.y - (game.world.groundY ?? 0) + mesh.userData.radius, z: mesh.position.z }, FALL_PUFF_COLOR, FALL_PUFF_COUNT, FALL_PUFF_SPEED)
+      } else if (d > keep) {
+        mesh.position.x = isle.x + (dx / d) * keep
+        mesh.position.z = isle.z + (dz / d) * keep
+      }
+      mesh.userData.knocked = false
+      if (!mesh.userData.falling) mesh.position.y = isle.y + (mesh.userData.leapY ?? 0)
     } else {
       const home = mesh.userData.lake
       if (home) {
@@ -7391,7 +7768,7 @@ function gameFrame(timestamp) {
       dropBossLoot(game, bossDeathPoint)
       if (game.world) {
         // On the hills the loot has to sit on the ground, not at sea level.
-        const lift = (item) => item && (item.position.y = heightAt(item.position.x, item.position.z))
+        const lift = (item) => item && (item.position.y = bossDeathPoint.y ?? heightAt(item.position.x, item.position.z)) // a sky isle's guardian leaves it on the isle
         lift(game.chests[game.chests.length - 1])
         lift(game.pickups[game.pickups.length - 1])
       }
@@ -7483,7 +7860,7 @@ function gameFrame(timestamp) {
   updatePets(game.pets, { petDamage: perk.petDamage, levels: profile.pets, dt: gameplayDelta, elapsed: elapsedSeconds, player, monsters: game.monsters, obstacles, particleSystem, hitstop: game.hitstop, shockwavePool, onScratch: petScratch })
   if (game.world) {
     for (const pet of game.pets) {
-      pet.groundLift = heightAt(pet.mesh.position.x, pet.mesh.position.z)
+      pet.groundLift = surfaceAt(pet.mesh.position.x, pet.mesh.position.z, (game.world.groundY ?? 0) + 0.5) // up on a sky isle with you
       pet.mesh.position.y += pet.groundLift
     }
   }
@@ -7509,7 +7886,7 @@ function gameFrame(timestamp) {
   if (pickupSpawnNow && !freePlay() && !game.world) trySpawnPerkPickup(game)
   game.pickups = game.pickups.filter((pickup) => {
     updatePerkPickup(pickup, gameplayDelta)
-    if (player.hidden || downed || Math.hypot(pickup.position.x - player.position.x, pickup.position.z - player.position.z) > PICKUP_RADIUS) return true
+    if (player.hidden || downed || Math.hypot(pickup.position.x - player.position.x, pickup.position.z - player.position.z) > PICKUP_RADIUS || !onMyLevel(pickup)) return true
     burst(particleSystem, { x: pickup.position.x, y: 1, z: pickup.position.z }, 0xffffff, 18, 3.5)
     sfx.play('chestOpen', { x: pickup.position.x, z: pickup.position.z })
     receiveLoot(game, { kind: 'powerup', id: pickup.userData.id })
@@ -7522,7 +7899,7 @@ function gameFrame(timestamp) {
   if (!player.hidden) {
     let nearestDistance = CHEST_INTERACT_RANGE
     for (const chest of game.chests) {
-      if (chest.userData.opened) continue
+      if (chest.userData.opened || !onMyLevel(chest)) continue
       const distance = Math.hypot(chest.position.x - player.position.x, chest.position.z - player.position.z)
       if (distance < nearestDistance) {
         nearestDistance = distance

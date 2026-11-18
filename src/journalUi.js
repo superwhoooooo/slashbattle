@@ -6,6 +6,7 @@ import { MILESTONES, creatureName, isBossType, milestoneProgress } from './logic
 import { LANTERN_COUNT } from './logic/lanterns.js'
 import { raceCourses } from './logic/races.js'
 import { formatTime } from './logic/wildsSpots.js'
+import { skyArchipelagos, skyIsles, skyTowers } from './logic/skyIslands.js'
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
 
@@ -60,6 +61,17 @@ export function createJournalUi({ onClose } = {}) {
         return `<li class="${medal}">${esc(c.name)}<small>${best ? `${formatTime(best)} ${medal.toUpperCase()}` : `gold ${formatTime(c.gold)}`}</small></li>`
       })
       .join('')
+    const towersRidden = new Set(journal.towers ?? [])
+    const islesSeen = new Set(journal.isles ?? [])
+    const relics = new Set(journal.relics ?? [])
+    const sky = skyArchipelagos()
+      .map((a) => {
+        const tower = skyTowers().find((t) => t.id === a.towerId)
+        const seen = a.isles.filter((i) => islesSeen.has(i.id)).length
+        const ridden = towersRidden.has(a.towerId)
+        return `<li class="${relics.has(a.relic.id) ? 'gold' : ridden ? 'silver' : ''}">${ridden ? esc(a.name) : '???'}<small>${ridden ? `${esc(tower.name)} · ${seen}/${a.isles.length} isles${relics.has(a.relic.id) ? ' · RELIC' : ''}` : 'ride its tower to find it'}</small></li>`
+      })
+      .join('')
     body.innerHTML = `
       <div class="j-stats">
         <div><b>${journal.landmarks.length}/${landmarks().length}</b><span>Landmarks</span></div>
@@ -68,11 +80,14 @@ export function createJournalUi({ onClose } = {}) {
         <div><b>${journal.lanterns.length}/${LANTERN_COUNT}</b><span>Lanterns lit</span></div>
         <div><b>${journal.treasures}</b><span>Treasures</span></div>
         <div><b>${journal.events}</b><span>Events</span></div>
+        <div><b>${islesSeen.size}/${skyIsles().length}</b><span>Sky isles</span></div>
+        <div><b>${relics.size}/${skyArchipelagos().length}</b><span>Sky relics</span></div>
       </div>
       <p class="j-run">This run: ${run.discovered} landmarks found &middot; ${run.maps} treasure map${run.maps === 1 ? '' : 's'} carried${run.boons ? ` &middot; ${esc(run.boons)}` : ''}</p>
       <h3>Goals</h3><div class="j-goals">${goals}</div>
       <h3>Biomes</h3><div class="j-chips">${biomes}</div>
       <h3>Landmarks</h3><ul class="j-list">${sights}</ul>
+      <h3>Sky isles</h3><ul class="j-list">${sky}</ul>
       <h3>Sky-ring races</h3><ul class="j-list">${races || '<li>No courses</li>'}</ul>
       <h3>Bestiary</h3><ul class="j-list">${beasts || '<li>Nothing felled yet</li>'}</ul>`
   }

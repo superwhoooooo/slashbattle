@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { GLIDE_SINK, JUMP_GRAVITY, JUMP_VELOCITY, createJumpState, isAirborne, isGliding, stepJump } from '../src/logic/jump.js'
+import { GLIDE_SINK, JUMP_GRAVITY, JUMP_VELOCITY, TERMINAL_FALL, createJumpState, isAirborne, isGliding, launchJump, stepJump } from '../src/logic/jump.js'
 
 const run = (state, seconds, { ground = 0, presses = [] } = {}, dt = 1 / 60) => {
   let s = state
@@ -67,7 +67,44 @@ describe('jump', () => {
   it('rides the ground up and down while walking', () => {
     let s = createJumpState()
     s = stepJump(s, false, 1 / 60, 4).state
-    s = stepJump(s, false, 1 / 60, 2).state
-    expect(s.alt).toBe(2)
+    s = stepJump(s, false, 1 / 60, 3).state
+    expect(s.alt).toBe(3)
+    expect(s.air).toBe(false)
+  })
+
+  it('walking off a ledge (a sky isle edge) falls instead of snapping down', () => {
+    let s = stepJump(createJumpState(), false, 1 / 60, 200).state
+    const r = stepJump(s, false, 1 / 60, 5)
+    expect(r.state.air).toBe(true)
+    expect(r.state.alt).toBeGreaterThan(199)
+    s = r.state
+    let landed = null
+    for (let i = 0; i < 600 && s.air; i++) {
+      const step = stepJump(s, false, 1 / 60, 5)
+      expect(step.state.vy).toBeGreaterThanOrEqual(-TERMINAL_FALL)
+      if (step.landed) landed = step
+      s = step.state
+    }
+    expect(s.alt).toBe(5)
+    expect(landed.impact).toBeGreaterThan(30)
+  })
+
+  it('an updraft carries an open glider up, but not a folded one', () => {
+    let s = stepJump(createJumpState(), true, 1 / 60, 0).state
+    s = stepJump(s, true, 1 / 60, 0, 10).state // open the glider
+    const start = s.alt
+    for (let i = 0; i < 60; i++) s = stepJump(s, false, 1 / 60, 0, 10).state
+    expect(s.alt).toBeGreaterThan(start + 5)
+    s = stepJump(s, true, 1 / 60, 0, 10).state // fold it
+    const folded = s.alt
+    for (let i = 0; i < 90; i++) s = stepJump(s, false, 1 / 60, 0, 10).state
+    expect(s.alt).toBeLessThan(folded)
+  })
+
+  it('a launch flies you up with the glider folded', () => {
+    const s = launchJump(createJumpState(), 100)
+    expect(s.air).toBe(true)
+    expect(s.gliding).toBe(false)
+    expect(stepJump(s, false, 1 / 60, 0).state.alt).toBeGreaterThan(1)
   })
 })

@@ -6,6 +6,7 @@
 import { bossForFight, bossById, shuffleBossOrder, shuffleWaterBossOrder, waterBossForFight, wavesBeforeBoss } from './bosses.js'
 import { CRAZY_SCORES, crazyWeights } from './crazyEnemies.js'
 import { SHADY_SCORES, shadyWeights } from './shadyGuests.js'
+import { FLYER_SCORES } from './skyFlyers.js'
 
 export const WAVE_BASE_SIZE = 4
 export const WAVE_GROWTH = 4
@@ -195,7 +196,7 @@ export function stepWaves(state, dt, aliveCount, rng = Math.random) {
   return { state: next, spawns, events }
 }
 
-const SCORE_BY_TYPE = { blobbo: 100, zippy: 75, grumpus: 150, bloater: 200, spinner: 175, splitter: 225, splitling: 40, angler: 230, urchin: 200, eel: 180, hopper: 210, mirror: 220, glimmer: 190, ...CRAZY_SCORES, ...SHADY_SCORES }
+const SCORE_BY_TYPE = { blobbo: 100, zippy: 75, grumpus: 150, bloater: 200, spinner: 175, splitter: 225, splitling: 40, angler: 230, urchin: 200, eel: 180, hopper: 210, mirror: 220, glimmer: 190, ...CRAZY_SCORES, ...SHADY_SCORES, ...FLYER_SCORES }
 
 // Points awarded for killing one monster of `type` (including falling
 // off the platform's edge), 0 for an unrecognized type.

@@ -1122,6 +1122,19 @@ export function chunksAround(x, z, radius = LOAD_RADIUS) {
 }
 
 // Collision radius per prop kind (0 = walk-through decoration). `scale` multiplies it.
+// About how tall each solid prop stands at scale 1 (metres), so a jump or a glide clears what's under it instead
+// of hitting an endless column. Anything not listed counts as PROP_HEIGHT_DEFAULT.
+export const PROP_HEIGHT_DEFAULT = 4
+export const PROP_HEIGHT = {
+  blocker: 8, obelisk: 6, standingStone: 3.5, mooncap: 4, gloomTree: 6, crystal: 3, dunerock: 2.2, iceSpire: 5, frostPine: 6,
+  obsidian: 3, emberRock: 2, deadTree: 5, ruinArch: 6, roadLantern: 2.4, signpost: 2.2, windmill: 10, column: 5, columnBroken: 2.5,
+  ruinWall: 3, shrine: 3, tower: 14, cottage: 6, cottageTeal: 6, cottageAmber: 6, hall: 9, well: 2, lampPost: 3.2, noticeBoard: 2.4,
+  giantShroom: 8, shroomCluster: 2.5, saltPillar: 5, saltCrystal: 2.5, mangrove: 6, sunkenColumn: 4, stormRod: 7, slateStack: 2.5,
+  chargedRock: 2.2, boneSpike: 3, skull: 2.5, shardPillar: 5, colossusHead: 9, colossusHand: 5, runeAltar: 2, bonfire: 1.5,
+  campTent: 3, campBanner: 3.5, caveMound: 8, elderShroom: 14, stormSpire: 16, skyAnchor: 8,
+}
+export const propHeight = (kind) => PROP_HEIGHT[kind] ?? PROP_HEIGHT_DEFAULT
+
 export const PROP_RADIUS = {
   blocker: 1, // an invisible obstacle (radius set per prop)
   obelisk: 1.4, standingStone: 1.1,

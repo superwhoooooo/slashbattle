@@ -138,12 +138,21 @@ let inWaterRoom = false
 export function setWaterRoom(on) {
   inWaterRoom = on
 }
+// True while the player is up in the sky in the Wilds (on a sky isle, or gliding high over the land). The
+// monsters of the land and those of the sky isles (`skyIsle`) can't see or reach each other's level: main.js
+// sets it every frame.
+let playerAloft = false
+export function setPlayerAloft(on) {
+  playerAloft = on
+}
+const otherLevel = (data) => playerAloft !== (data.skyIsle === true)
 // A water boss reaches you wherever you are (it hits from underneath); everything else is shielded by depth.
-const shieldedFrom = (ai) => !ai.reachAll && ((deepShield && ai.deep === true) || (surfaceShield && ai.deep !== true))
+const shieldedFrom = (ai) => otherLevel(ai) || (!ai.reachAll && ((deepShield && ai.deep === true) || (surfaceShield && ai.deep !== true)))
 // Out of reach right now: a deep dweller, or a submerged water boss, while you're not diving.
 export function isUntouchable(monster) {
   if (monster.userData.immune === true) return true // a boss's immunity phase
   if (monster.userData.burrowed === true) return true // a gopher tunnelling under the deck
+  if (otherLevel(monster.userData)) return true // up on a sky isle while you're on the land, or the other way round
   return deepShield && (monster.userData.deep === true || monster.userData.submerged === true)
 }
 

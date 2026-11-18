@@ -1028,6 +1028,35 @@ const BEASTS = {
     },
   },
 
+  // A Skyfin: a sleek sky-barracuda with a long underbite full of needle teeth, broad finned wings that beat
+  // slow and strong, a sail of a dorsal fin, a forked tail and a glowing line of spots down each flank.
+  skyfin: {
+    build(f, c, boss) {
+      f.add(blob('skyfin', (x, y, z) => (1 + 0.04 * lumpy(x * 2, y * 2, z * 2)) * (z > 0 ? 1 - z * 0.22 : 1 + z * 0.3)), c, { s: [0.48, 0.46, 1.5], p: [0, 0.1, 0] })
+      f.add(blob('belly', () => 1), shade(c, 1.45), { s: [0.38, 0.26, 1.25], p: [0, -0.12, 0.05] })
+      // The long snout and the jutting lower jaw, both lined with teeth.
+      f.add(blob('finSnout', (x, y, z) => 1 + 0.03 * lumpy(x * 3, y * 3, z * 3)), shade(c, 0.9), { s: [0.26, 0.2, 0.55], p: [0, 0.16, 1.45] })
+      f.add(blob('finJaw', () => 1), shade(c, 0.75), { s: [0.24, 0.12, 0.6], p: [0, -0.06, 1.5] })
+      f.both((s) => {
+        for (let i = 0; i < 5; i++) f.spike([s * 0.16, 0.0, 1.15 + i * 0.16], [0, 1, 0.15], 0.03, 0.12, BONE)
+        for (let i = 0; i < 4; i++) f.spike([s * 0.15, 0.12, 1.22 + i * 0.16], [0, -1, 0.1], 0.026, 0.1, BONE)
+      })
+      eyes(f, { at: [0.25, 0.32, 0.98], size: 0.12, boss })
+      brows(f, shade(c, 0.4), { at: [0.24, 0.45, 0.95], w: 0.28, tilt: 0.5 })
+      // Glowing spots down each flank.
+      f.both((s) => {
+        for (let i = 0; i < 6; i++) f.add(sph(6), 0xbff6ff, { p: [s * 0.44 * (1 - i * 0.06), 0.08, 0.7 - i * 0.32], s: 0.05, glow: 1.3 })
+      })
+      // The dorsal sail, small belly fins and the forked tail (they sway on the clock).
+      f.add(cone(5), shade(c, 0.6), { p: [0, 0.75, -0.1], s: [0.05, 0.75, 0.6], r: [-0.5, 0, 0], wig: [0, 0, 3, 0], side: 0.06, ramp: [0, 1] })
+      f.both((s) => f.add(cone(5), shade(c, 0.6), { p: [s * 0.22, -0.38, 0.2], s: [0.04, 0.32, 0.25], r: [0.6, 0, s * 0.5] }))
+      f.limb([0, 0.08, -1.2], [0, 0.1, -1.75], 0.18, 0.06, shade(c, 0.85), { wig: [0, 0, 5, 0.4], side: 0.12, ramp: [0, 1] })
+      f.both((s) => f.add(cone(5), shade(c, 0.55), { p: [0, 0.1 + s * 0.38, -2.0], s: [0.04, 0.6, 0.32], r: [s > 0 ? -0.75 : -2.4, 0, 0], wig: [0, 0, 5, 0.9], side: 0.22 }))
+      // Broad pectoral wings, with dark veins.
+      wings(f, shade(c, 1.15), { at: [0.38, 0.2, 0.15], span: 1.7, chord: 0.85, speed: 7, flap: 0.5, glow: 0.12, tilt: 0.15, veins: shade(c, 0.45) })
+    },
+  },
+
   // A fuzzy striped bee-beast: a round fur body, a stinger, buzzing glassy wings and six legs.
   bumble: {
     float: 0.15,

@@ -18,7 +18,7 @@ export const CRYSTAL_SETTLE_TIME = 0.45 // seconds before a dropped crystal can 
 // of 1s, a grumpus a few 2s, a boss a shower of 5s.
 export function crystalDrops(type, isBoss = false) {
   if (isBoss) return Array(8).fill(5)
-  if (type === 'grumpus') return [2, 2, 2]
+  if (type === 'grumpus' || type === 'skyfin') return [2, 2, 2]
   if (type === 'zippy') return [2]
   if (type === 'bloater' || type === 'spinner' || type === 'splitter' || type === 'hopper' || type === 'angler' || type === 'urchin' || type === 'eel' || type === 'mirror' || type === 'glimmer' || CRAZY_TYPE_IDS.includes(type) || SHADY_TYPE_IDS.includes(type)) return [2, 2]
   if (type === 'splitling') return [1]

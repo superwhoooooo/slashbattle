@@ -926,6 +926,8 @@ export function createWorldArena() {
   const euler = new THREE.Euler()
   const up = new THREE.Vector3(0, 1, 0)
 
+  let altitude = 0
+  let altitudeY = 0
   const world = {
     // Rebuilds every instanced prop from the props of the chunks that are alive right now.
     setProps(props) {
@@ -980,8 +982,14 @@ export function createWorldArena() {
     lastStrike: null,
     // 1 by day, 0 at night (eased, so a scene change never snaps).
     daylight: () => light,
+    // How far above the land you are (and your height): up in the sky the haze thins so the land spreads out
+    // below you, and the sky dome rises with you.
+    setAltitude(above, y) {
+      altitude = Math.max(0, above)
+      altitudeY = y
+    },
     update(pos, time) {
-      sky.position.set(pos.x, 0, pos.z)
+      sky.position.set(pos.x, altitudeY, pos.z)
       light += (daylight(time) - light) * 0.05
       keyLight.intensity = 1.8 * (0.3 + 0.75 * light)
       keyLight.color.copy(nightKey).lerp(dayKey, light)
@@ -1029,8 +1037,10 @@ export function createWorldArena() {
       targetFog.set(biome.fog).multiplyScalar(0.55 + 0.6 * light)
       fog.color.lerp(targetFog, 0.03)
       const [fogNear, fogFar] = biome.fogRange ?? FOG_RANGE
-      fog.near += (fogNear - fog.near) * 0.02
-      fog.far += (fogFar - fog.far) * 0.02
+      const thin = 1 + Math.min(1, altitude / 160) * 2.2 // up in the sky the haze thins, so the land is spread out below
+      const ease = altitude > 20 ? 0.06 : 0.02
+      fog.near += (fogNear * thin - fog.near) * ease
+      fog.far += (fogFar * thin - fog.far) * ease
       // Auroras ripple in the sky over the biomes that have them (brighter by night).
       aurora.level += ((biome.aurora ?? 0) * (0.35 + 0.65 * (1 - light)) - aurora.level) * 0.02
       aurora.group.visible = aurora.level > 0.01

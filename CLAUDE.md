@@ -60,6 +60,7 @@ record.
 - Q / Z / X / C / V — use your abilities, in the order you found them
 - 0 — toggle first-person view (pointer-locked mouse look; W moves along the view, every weapon aims where you look; Esc or 0 exits)
 - N — open the Dragon Den (customize your dragons' scale and breath); in the Wilds (free roam) N shoots/swings instead and Space jumps (`logic/jump.js`: a plain hop, not an ability); Space again in the air opens the paraglider (`src/glider.js`: slow steady sink, 1.7x speed; Space folds it); E near a villager talks
+- In the Wilds: stand on a Skylift tower's glowing pad to launch into the sky; open the glider in an updraft to ride it up
 - U — in the Wilds: open the Wilds journal (goals, landmarks, bestiary, races); F inside a treasure map's circle digs
 - Y — open the hub's Heroes page (pick a hero and skin; see Heroes below)
 - B — use your hero's ability (unlocked at mastery 4; see Hero awakening below; gamepad: click the left stick; touch: the hero slot)
@@ -121,6 +122,8 @@ slashbattle/
     wildsActivities.js # the Wilds' lanterns, wayshrines, race rings, star shards (look only)
     journalUi.js       # the Wilds journal panel (U)
     logic/wildsJournal.js # journal + milestones + bestiary (saved); logic/lanterns.js, wayshrines.js, treasure.js, races.js, wildEvents.js, wildsSpots.js: the activities' rules
+    logic/skyIslands.js # Skylift towers + sky isles: placement, isle layouts, surfaceAt / updraftLift, the launch rules (pure)
+    skyIslands.js      # the towers' and isles' look: merged rock + props per archipelago, waterfalls, updrafts, relics, clouds
     logic/quests.js    # villager quests: generation, the quest log, dialogue (pure)
     logic/jump.js      # the Wilds' jump physics (pure)
     npcs.js            # the villagers: the player's jelly model in pastel colours, name tags, quest markers
@@ -330,6 +333,35 @@ pay a weapon you don't own (`questWeaponFor`); a full hotbar opens the swap pane
   (an NPC with id `merchant`; the dialogue panel lists `merchantStock`: gear you lack, a map, a tonic = boon, or a stew), and the
   **Wandering Titan** (a roaming boss via `spawnWildMonster`, bounty on top of its chest; it leaves if ignored).
 Status chips (`#wilds-status`) show the race clock, the event, treasure heat and boons; toasts now queue (`questUi.showToast`).
+
+## Skylift towers and sky isles (the Wilds)
+`src/logic/skyIslands.js` (pure, `test/skyIslands.test.js`) seeds nine **Skylift towers** (`skyTowers`: one just outside the
+Sanctum, four in the Heartland, four in the Frontier; dry, level, clear of villages / sites / roads). Walk between the pillars
+(`towerObstacles`) onto the glowing pad and hold still for `CHARGE_SECONDS` (`stepLaunch`: charge / cancel / launch, with a lockout
+until you step off); the launch (`logic/jump.js`'s `launchJump`, `launchVelocity`) peaks `LAUNCH_RISE` (215) above the pad. Each
+tower has an **archipelago** above it (`skyArchipelagos`): a main isle (grove with waterfall, ruins, garden, forge with a boss
+guardian, observatory) a short glide from the launch, a chain of islets stepping down (every gap a comfortable glide), and a high
+**crown isle** reached by riding an **updraft** (`updraftLift`; only an open glider rides it) off the main isle, holding a **Sky
+Relic** (`RELIC_REWARD`, a full heal, taken once per device). `isleLayout` places props, chests and guards (sky monsters that
+can't blink off the edge). Isles are walkable: `surfaceAt(x, z, alt)` is the isle top when your feet are at or above it, else
+`heightAt`; `stepJump` drops you into the air when the ground falls away more than `LEDGE_DROP` (walking off an edge) and caps the
+fall at `TERMINAL_FALL` (a long unglided drop lands with a shockwave). `main.js`'s `stepSky` runs it all: the launch, isle
+banners, relics, and archipelagos coming alive (chests + monsters, `activateArchipelago`) while you're up there and going quiet
+when you're back on the land. Sky monsters carry `userData.skyIsle` / `skyHome`: kept on their isle, but knocked past the edge
+(`userData.knocked`, set by `damageMonster`'s knockback) they fall (a ring-out). `w.aloft` (`isAloft`: more than
+`ALOFT_HEIGHT` over the land) feeds `monster.js`'s `setPlayerAloft`: the land's monsters and the sky's can't see, hit or be hit
+across levels; chests / pickups only open on your level (`onMyLevel`); events don't start while aloft. Up high the land's fog
+thins (`world.setAltitude`), the sky dome and the sun's shadow box rise with you (`arena.shadowY`), and shots fly straight.
+Solid props in the Wilds carry a `top` (`logic/world.js`'s `PROP_HEIGHT` / `propHeight`; tower pillars the tower's crown): while you're airborne `main.js` drops every obstacle you're above (`clearsObstacle`) from the player's move, and one you're standing inside never traps you, so jumps and glides sail over rocks, trees and roofs. The journal keeps `towers`, `isles` and `relics` (with milestones); the minimap shows towers (teal spires) and isle outlines.
+
+**Skyfins** (`src/logic/skyFlyers.js`, pure, `test/skyFlyers.test.js`; inspired by the flying fish-birds that harry gliders): a
+flying monster type (`FLYER_TYPES`, folded into `MONSTER_TYPES`; a Realist body in `beasts.js`: a winged sky-barracuda) that only
+exists while you're aloft. `stepFlyerDirector` sends packs (bigger with danger, at most `MAX_FLYERS`) once you've been up a moment;
+main.js's `stepSkyfins` spawns them high off to one side (`userData.skyIsle`, `userData.flight`) and drops their rocks. Each is flown by
+`stepFlight` (`flySkyfin` in main.js, instead of monster.js's walking AI): it circles above you, then either shrieks (`wind`) and
+SWOOPS (a committed dive; `bite` if it reaches you), or BOMBS (flies over you and drops a rock onto a red warning ring, `stepRock`),
+then climbs away (the moment to hit back); back on the land it flees and is gone. A cursor on one aims your shot up at it (while
+aloft shots fly straight from your height), and a melee swing only reaches one within 3 m of your height (`combat.js`).
 
 ## Labyrinth map
 Pick it on the start card (button or K). `src/logic/maze.js` (pure) builds a seeded 7x7 maze per
