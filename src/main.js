@@ -740,14 +740,21 @@ const cameraTarget = new THREE.Vector3()
 // the mouse has moved. Used to aim ranged weapons.
 const aimRaycaster = new THREE.Raycaster()
 const aimPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -0.7)
+const aimAirPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
 const aimPoint = new THREE.Vector3()
 const aimNdc = new THREE.Vector2()
 function screenAimAngle(player, clientX, clientY) {
   aimNdc.set((clientX / window.innerWidth) * 2 - 1, -(clientY / window.innerHeight) * 2 + 1)
   aimRaycaster.setFromCamera(aimNdc, camera)
   if (game?.world) {
-    // On the hills the cursor points at the terrain itself: march the ray down onto the ground.
-    if (!rayOntoTerrain(aimRaycaster.ray, aimPoint)) return null
+    // High in the sky (a Skylift launch, a sky isle) the ground is hundreds of metres down and shots fly level from your
+    // height, so the cursor points at your own altitude. Down on the hills it points at the terrain itself: march the
+    // ray down onto the ground.
+    const jump = game.world.jump
+    if (jump && isAloft(player.position.x, player.position.z, jump.alt)) {
+      aimAirPlane.constant = -(jump.alt + 0.7)
+      if (!aimRaycaster.ray.intersectPlane(aimAirPlane, aimPoint)) return null
+    } else if (!rayOntoTerrain(aimRaycaster.ray, aimPoint)) return null
   } else if (!aimRaycaster.ray.intersectPlane(aimPlane, aimPoint)) return null
   const dx = aimPoint.x - player.position.x
   const dz = aimPoint.z - player.position.z
@@ -761,7 +768,7 @@ function rayOntoTerrain(ray, out) {
   if (direction.y >= -1e-4) return false
   let t = 0
   for (let i = 0; i < 400; i++) {
-    t += i < 60 ? 1 : 3
+    t += i < 60 ? 1 : i < 200 ? 3 : 12 // out to the far plane, so a cursor aimed at the distance still finds the ground
     const x = origin.x + direction.x * t
     const y = origin.y + direction.y * t
     const z = origin.z + direction.z * t
