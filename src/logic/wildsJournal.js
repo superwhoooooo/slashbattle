@@ -12,7 +12,7 @@ export const JOURNAL_KEY = 'slashbattle:journal'
 export const BESTIARY_FIRST_REWARD = 8 // crystals for the first of a kind you ever fell
 
 export function createJournal() {
-  return { landmarks: [], biomes: [], bestiary: {}, lanterns: [], races: {}, treasures: 0, events: 0, shrines: 0, claimed: [], towers: [], isles: [], relics: [] }
+  return { landmarks: [], biomes: [], bestiary: {}, lanterns: [], races: {}, treasures: 0, events: 0, shrines: 0, claimed: [], towers: [], isles: [], relics: [], chasms: [], depthRelics: [] }
 }
 
 const strings = (v) => (Array.isArray(v) ? v.filter((s) => typeof s === 'string') : [])
@@ -46,6 +46,8 @@ export function parseJournal(text) {
     towers: strings(data.towers),
     isles: strings(data.isles),
     relics: strings(data.relics),
+    chasms: strings(data.chasms),
+    depthRelics: strings(data.depthRelics),
   }
 }
 export const serializeJournal = (j) => JSON.stringify(j)
@@ -82,6 +84,13 @@ export function noteIsle(j, id) {
 export function noteRelic(j, id) {
   return { journal: { ...j, relics: addTo(j.relics, id) }, first: !j.relics.includes(id) }
 }
+// A chasm fallen into (the first time ever pays a little), and an Umbral Heart claimed in the Depths.
+export function noteChasm(j, id) {
+  return { journal: { ...j, chasms: addTo(j.chasms, id) }, first: !j.chasms.includes(id) }
+}
+export function noteDepthRelic(j, id) {
+  return { journal: { ...j, depthRelics: addTo(j.depthRelics, id) }, first: !j.depthRelics.includes(id) }
+}
 export const noteTreasure = (j) => ({ ...j, treasures: j.treasures + 1 })
 export const noteEvent = (j) => ({ ...j, events: j.events + 1 })
 export const noteShrine = (j) => ({ ...j, shrines: j.shrines + 1 })
@@ -112,12 +121,16 @@ export const MILESTONES = [
   { id: 'isles10', title: 'Head in the Clouds', desc: 'Set foot on 10 sky isles', stat: 'isles', need: 10, crystals: 90 },
   { id: 'isles40', title: 'Sky Sailor', desc: 'Set foot on 40 sky isles', stat: 'isles', need: 40, crystals: 300, loot: 'weapon' },
   { id: 'relics3', title: 'Crown Seeker', desc: 'Claim 3 Nimbus Crowns', stat: 'relics', need: 3, crystals: 150 },
+  { id: 'chasms1', title: 'Into the Dark', desc: 'Fall into a chasm', stat: 'chasms', need: 1, crystals: 50 },
+  { id: 'chasms6', title: 'Spelunker', desc: 'Drop into 6 different chasms', stat: 'chasms', need: 6, crystals: 220, loot: 'ability' },
+  { id: 'hearts3', title: 'Heart Hunter', desc: 'Claim 3 Umbral Hearts in the Depths', stat: 'depthRelics', need: 3, crystals: 200 },
+  { id: 'hearts5', title: 'Lord of the Depths', desc: 'Claim every Umbral Heart (and something below will answer)', stat: 'depthRelics', need: 5, crystals: 500, loot: 'weapon' },
   { id: 'relics9', title: 'Keeper of the Sky', desc: 'Claim every Nimbus Crown (and something in the sky will notice)', stat: 'relics', need: 9, crystals: 500, loot: 'pet' },
 ]
 
 // The number a milestone counts, from the journal.
 export function journalStat(j, stat) {
-  if (stat === 'landmarks' || stat === 'biomes' || stat === 'lanterns' || stat === 'towers' || stat === 'isles' || stat === 'relics') return (j[stat] ?? []).length
+  if (stat === 'landmarks' || stat === 'biomes' || stat === 'lanterns' || stat === 'towers' || stat === 'isles' || stat === 'relics' || stat === 'chasms' || stat === 'depthRelics') return (j[stat] ?? []).length
   if (stat === 'bestiary' || stat === 'races') return Object.keys(j[stat]).length
   return j[stat] ?? 0
 }

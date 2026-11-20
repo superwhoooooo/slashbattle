@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CROWN_HERO, HEROES, SECRET_HEROES, buyHero, grantHero, heroById, heroForCrowns, isSecretHero, normalizeHeroFields, ownsHero, visibleHeroes } from '../src/logic/heroes.js'
+import { CROWN_HERO, HEROES, SECRET_HEROES, buyHero, grantHero, heroById, heroForCrowns, heroForHearts, isSecretHero, normalizeHeroFields, ownsHero, visibleHeroes } from '../src/logic/heroes.js'
 import { AWAKENED, HERO_ABILITIES, traitTune } from '../src/logic/heroPowers.js'
 import { HERO_ULTIMATES } from '../src/logic/heroUltimates.js'
 import { GEAR_PARTS } from '../src/heroGear.js'
@@ -8,7 +8,7 @@ const fresh = { bank: 999999, heroesOwned: [], skinsOwned: [], heroSkins: {}, he
 
 describe('the secret hero (Nimbus Sovereign)', () => {
   it('is the one secret hero, with its trait, awakening, ability, ultimate and gear', () => {
-    expect(SECRET_HEROES).toEqual([CROWN_HERO])
+    expect(SECRET_HEROES).toEqual([CROWN_HERO, 'umbral'])
     const hero = heroById(CROWN_HERO)
     expect(hero.id).toBe('sovereign')
     expect(isSecretHero('sovereign')).toBe(true)
@@ -25,7 +25,7 @@ describe('the secret hero (Nimbus Sovereign)', () => {
 
   it('stays hidden until owned, and cannot be bought', () => {
     expect(visibleHeroes(fresh).some((h) => h.id === 'sovereign')).toBe(false)
-    expect(visibleHeroes(fresh)).toHaveLength(HEROES.length - 1)
+    expect(visibleHeroes(fresh)).toHaveLength(HEROES.length - SECRET_HEROES.length)
     const tried = buyHero(fresh, 'sovereign')
     expect(tried.ok).toBe(false)
     expect(tried.profile.bank).toBe(fresh.bank)
@@ -55,5 +55,37 @@ describe('Shiro the Limitless, nerfed', () => {
     expect(base.cooldown).toBeGreaterThanOrEqual(12)
     expect(HERO_ABILITIES.shiro.cooldown).toBeGreaterThanOrEqual(45)
     expect(HERO_ULTIMATES.shiro.cooldown).toBeGreaterThanOrEqual(75)
+  })
+})
+
+describe('the second secret hero (Veyra, the Hollow Queen)', () => {
+  it('has a trait, awakening, ability, ultimate and gear that all exist', () => {
+    const hero = heroById('umbral')
+    expect(hero.secret).toBe(true)
+    expect(AWAKENED.umbral.desc).toBeTruthy()
+    expect(HERO_ABILITIES.umbral.name).toBe('Eclipse')
+    expect(HERO_ULTIMATES.umbral.steps.length).toBeGreaterThan(0)
+    for (const g of hero.gear) expect(GEAR_PARTS, g).toContain(g)
+    expect(hero.skins.length).toBe(4)
+    const base = traitTune('abyss', false)
+    const awake = traitTune('abyss', true)
+    expect(awake.hunger).toBeGreaterThan(base.hunger)
+    expect(awake.every).toBeLessThan(base.every)
+    expect(awake.tendrils).toBeGreaterThan(base.tendrils)
+    // Not immortal: no damage reduction and no invulnerability.
+    expect(hero.stats.damageTaken ?? 1).toBe(1)
+    expect(HERO_ULTIMATES.umbral.steps.some((s) => s.k === 'invuln')).toBe(false)
+  })
+  it('stays hidden, cannot be bought, and comes only with every Umbral Heart', () => {
+    expect(visibleHeroes(fresh).some((h) => h.id === 'umbral')).toBe(false)
+    const tried = buyHero(fresh, 'umbral')
+    expect(tried.ok).toBe(false)
+    expect(tried.profile.bank).toBe(fresh.bank)
+    expect(heroForHearts(4, 5)).toBe(null)
+    expect(heroForHearts(5, 5)).toBe('umbral')
+    expect(heroForHearts(0, 0)).toBe(null)
+    const owned = grantHero(fresh, 'umbral')
+    expect(ownsHero(owned, 'umbral')).toBe(true)
+    expect(visibleHeroes(owned).some((h) => h.id === 'umbral')).toBe(true)
   })
 })

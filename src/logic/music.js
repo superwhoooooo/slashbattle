@@ -1,3 +1,5 @@
+import { WILDS_TRACKS } from './wildsMusic.js'
+
 // The background track as pure data: a 16-step-per-bar, 8-bar loop in D
 // minor at a bouncy, Brawl Stars-ish tempo. `eventsForStep` turns an
 // absolute step counter into the notes/drum hits that land on it; the
@@ -219,8 +221,9 @@ export function chillEventsForStep(stepIndex) {
   return events
 }
 
-// The tracks the music player can switch between.
+// The tracks the music player can switch between (the Wilds' own are in logic/wildsMusic.js; the resort's are unchanged).
 export const MUSIC_TRACKS = {
+  ...WILDS_TRACKS,
   chill: { bpm: CHILL_BPM, events: chillEventsForStep },
   normal: { bpm: MUSIC_BPM, events: eventsForStep },
   boss: { bpm: BOSS_BPM, events: bossEventsForStep },

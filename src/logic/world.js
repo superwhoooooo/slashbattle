@@ -42,6 +42,19 @@ export const BIOMES = {
     monsters: [],
     landmarks: [],
   },
+  // The Depths under the chasms (never returned by biomeAt on the surface; see setDepthsMode).
+  depths: {
+    name: 'The Depths',
+    ring: 'depths',
+    ground: [0.2, 0.17, 0.34],
+    glow: 0x9a5aff,
+    fog: 0x1a1236,
+    grass: 0,
+    props: [['mooncap', 4], ['giantShroom', 3], ['shroomCluster', 4], ['crystal', 4], ['boneSpike', 3], ['skull', 1], ['shardPillar', 2], ['obsidian', 3], ['chargedRock', 2], ['saltCrystal', 1]],
+    monsters: [['boogle', 5, 0], ['grumpus', 3, 0], ['wispy', 4, 0], ['sporeling', 3, 0], ['spinner', 3, 0], ['bloater', 3, 0], ['drillbit', 2, 0], ['prickle', 2, 0], ['splitter', 2, 0], ['glimmer', 2, 0], ['mirror', 2, 0]],
+    landmarks: [],
+    fogRange: [8, 78],
+  },
   whisperwood: {
     name: 'Whisperwood',
     ring: 'heart',
@@ -260,7 +273,43 @@ const innerCoordinate = (x, z) => sectorCoordinate(x, z, OUTER_BIOMES.length, WO
 const farCoordinate = (x, z) => sectorCoordinate(x, z, FAR_BIOMES.length, WORLD_SEED + 50, 0.37)
 const slotOf = (coordinate, n) => ((Math.floor(coordinate) % n) + n) % n
 
+// ---- the Depths ------------------------------------------------------------------------------------
+// Under the chasms lies a second, dark world on the same coordinates. Rather than thread a "where am I" flag through
+// every system, the Depths is a MODE of this module: while it is on, the ground height, biome, ground colour and the
+// land's features (villages, ruins, lakes, roads) answer for the Depths instead. main.js flips it (enterDepths /
+// leaveDepths) with everything unloaded; src/logic/depths.js holds what lives down there.
+let depthsOn = false
+export const setDepthsMode = (on) => {
+  depthsOn = Boolean(on)
+}
+export const inDepths = () => depthsOn
+// Runs `fn` as if on the surface (for seeded layouts that must never depend on which world is showing).
+export function withSurface(fn) {
+  const was = depthsOn
+  depthsOn = false
+  try {
+    return fn()
+  } finally {
+    depthsOn = was
+  }
+}
+// The cavern floor: broad rolling swells with small bumps, never far from y = 0 (so everything that rides the
+// ground still works) but never flat either.
+export function depthsFloor(x, z) {
+  const swell = (valueNoise(x * 0.018, z * 0.018, WORLD_SEED + 900) - 0.5) * 7
+  const bump = (valueNoise(x * 0.09, z * 0.09, WORLD_SEED + 901) - 0.5) * 1.8
+  return swell + bump
+}
+// The cavern floor's colour: near-black violet, with veins of glowing blue-violet.
+export function depthsGround(x, z) {
+  const vein = Math.max(0, valueNoise(x * 0.06, z * 0.06, WORLD_SEED + 902) - 0.62) * 2.2
+  const dapple = 0.8 + valueNoise(x * 0.2, z * 0.2, WORLD_SEED + 903) * 0.4
+  const [r, g, b] = BIOMES.depths.ground
+  return [Math.min(1, r * dapple + vein * 0.18), Math.min(1, g * dapple + vein * 0.12), Math.min(1, b * dapple + vein * 0.42)]
+}
+
 export function biomeAt(x, z) {
+  if (depthsOn) return 'depths'
   const r = Math.hypot(x, z)
   if (r < SANCTUM_RADIUS) return 'sanctum'
   if (r < ringBorder(x, z)) return OUTER_BIOMES[slotOf(innerCoordinate(x, z), OUTER_BIOMES.length)]
@@ -297,6 +346,7 @@ function sectorColor(list, coordinate) {
 // Ground colour [r, g, b] (0-1) at a point: the biome's colour, blended with its neighbours near a border (across
 // the ring border too) and with the sanctum near the centre, then dappled by noise so the ground isn't flat.
 export function groundColorAt(x, z) {
+  if (depthsOn) return depthsGround(x, z)
   const r = Math.hypot(x, z)
   const toFar = smooth(clamp01((r - ringBorder(x, z) + 16) / 32))
   let color
@@ -474,6 +524,7 @@ function lakeDistance(lake, x, z) {
 
 // The lake whose bed contains this point (the ground is below the surface), else null.
 export function lakeAt(x, z, margin = 0) {
+  if (depthsOn) return null
   for (const lake of gridAt(lakeGrid, x, z)) {
     if (Math.hypot(x - lake.x, z - lake.z) > lake.radius * 1.9) continue
     if (lakeDistance(lake, x, z) < 0.85 + margin) return lake
@@ -578,6 +629,7 @@ export const villageById = (id) => villages().find((v) => v.id === id) ?? null
 
 // The village (if any) whose centre is within `radius` of a point, with the distance.
 export function nearestVillage(x, z, radius = Infinity) {
+  if (depthsOn) return null
   villages()
   const pool = radius <= 60 ? gridAt(villageGrid, x, z) : villageCache
   let best = null
@@ -591,6 +643,7 @@ export function nearestVillage(x, z, radius = Infinity) {
 // Ground height at any point: the hills, levelled flat under each village's plaza and every ruin / landmark,
 // easing back into the land.
 export function heightAt(x, z) {
+  if (depthsOn) return depthsFloor(x, z)
   let h = terrainHeight(x, z)
   villages()
   for (const v of gridAt(villageGrid, x, z)) {
@@ -625,6 +678,7 @@ function siteIndex() {
 
 // The ruin or landmark whose floor (its radius, plus `margin`) covers (x, z), with the distance, else null.
 export function nearestSite(x, z, margin = 0) {
+  if (depthsOn) return null
   let best = null
   for (const site of gridAt(siteIndex(), x, z)) {
     const d = Math.hypot(site.x - x, site.z - z)
@@ -796,6 +850,7 @@ export const landmarkById = (id) => landmarks().find((l) => l.id === id) ?? null
 
 // The landmark (if any) within `radius` of a point (default: standing on its floor), with the distance.
 export function nearestLandmark(x, z, radius = null) {
+  if (depthsOn) return null
   let best = null
   for (const l of landmarks()) {
     const d = Math.hypot(l.x - x, l.z - z)
@@ -1037,6 +1092,7 @@ function segmentDistance(x, z, s) {
 
 // How far (x, z) is from the nearest road's centre line (Infinity when no road passes close).
 export function roadDistance(x, z) {
+  if (depthsOn) return Infinity
   roadCache ??= buildRoads()
   const list = roadCache.grid.get(`${Math.floor(x / ROAD_CELL)},${Math.floor(z / ROAD_CELL)}`)
   if (!list) return Infinity

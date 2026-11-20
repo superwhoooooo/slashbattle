@@ -6,13 +6,34 @@
 // (src/sfx.js) through src/audio.js; only the game-over ducking filter
 // below belongs to music alone.
 import { createNoiseBuffer } from './audio.js'
+import { noteSaved } from './saveSync.js'
 import { MUSIC_TRACKS, midiToFreq, stepDuration } from './logic/music.js'
+import { DEFAULT_MUSIC_STYLE, WILDS_TRACK_IDS, parseMusicStyle } from './logic/wildsMusic.js'
 
 const MUSIC_VOLUME = 0.32
 const LOOKAHEAD_SECONDS = 0.15
 const TICK_MS = 25
 const MUFFLED_CUTOFF = 500
 const OPEN_CUTOFF = 18000
+const STYLE_KEY = 'slashbattle:music-style' // 'places' | 'classic' (see logic/wildsMusic.js)
+const FADE_SECONDS = 0.4 // a change to or from one of the Wilds' tracks fades out and back in instead of cutting
+
+function loadStyle() {
+  try {
+    return parseMusicStyle(localStorage.getItem(STYLE_KEY))
+  } catch (_) {
+    return DEFAULT_MUSIC_STYLE
+  }
+}
+function saveStyle(style) {
+  try {
+    localStorage.setItem(STYLE_KEY, style)
+    noteSaved()
+  } catch (_) {
+    // storage unavailable: the choice just lasts this session
+  }
+}
+const isWildsTrack = (id) => WILDS_TRACK_IDS.includes(id)
 
 // `audio` is the shared src/audio.js instance: its context and master
 // gain (the one the M key mutes) are reused rather than creating a
@@ -26,6 +47,9 @@ export function createMusic(audio) {
   let nextStepTime = 0
   let stepIndex = 0
   let mode = 'normal' // which MUSIC_TRACKS entry is playing
+  let fadeTimer = null
+  let pendingMode = null // the track a fade is heading to
+  let style = loadStyle()
 
   function buildGraph() {
     ctx = audio.context
@@ -147,6 +171,41 @@ export function createMusic(audio) {
       tone('sine', freq * 2, time, len * 0.7, 0.03, { attack: 0.01 })
     },
     crackle: (time, e) => noise(time, 0.012, 0.05 * e.velocity, 'highpass', 3500),
+    // The Wilds' tracks: a soft swelling pad, a dark drone, plucks, glassy shimmers, drips and a slow heartbeat.
+    air: (time, e, len) => {
+      const freq = midiToFreq(e.note)
+      tone('sine', freq, time, len, 0.06 * e.velocity, { attack: len * 0.3, detune: -5 })
+      tone('triangle', freq, time, len, 0.028 * e.velocity, { attack: len * 0.35, cutoff: 1800, detune: 6 })
+    },
+    drone: (time, e, len) => {
+      const freq = midiToFreq(e.note)
+      tone('sawtooth', freq, time, len, 0.06 * e.velocity, { attack: len * 0.35, cutoff: 360, detune: -9 })
+      tone('sawtooth', freq, time, len, 0.06 * e.velocity, { attack: len * 0.35, cutoff: 360, detune: 9 })
+      tone('sine', freq / 2, time, len, 0.07 * e.velocity, { attack: len * 0.3 })
+    },
+    pluck: (time, e) => tone('triangle', midiToFreq(e.note), time, 0.4, 0.16 * e.velocity, { attack: 0.004, cutoff: 3000 }),
+    shimmer: (time, e) => {
+      const freq = midiToFreq(e.note)
+      tone('sine', freq, time, 1.0, 0.07 * e.velocity, { attack: 0.01 })
+      tone('sine', freq * 2, time, 0.55, 0.025 * e.velocity, { attack: 0.01, detune: 7 })
+    },
+    drip: (time, e) => {
+      const osc = ctx.createOscillator()
+      const freq = midiToFreq(e.note)
+      osc.frequency.setValueAtTime(freq, time)
+      osc.frequency.exponentialRampToValueAtTime(freq * 0.62, time + 0.16)
+      osc.connect(envelope(time, 0.11 * e.velocity, 0.004, 0.45))
+      osc.start(time)
+      osc.stop(time + 0.5)
+    },
+    thud: (time, e) => {
+      const osc = ctx.createOscillator()
+      osc.frequency.setValueAtTime(95, time)
+      osc.frequency.exponentialRampToValueAtTime(40, time + 0.2)
+      osc.connect(envelope(time, 0.6 * e.velocity, 0.004, 0.4))
+      osc.start(time)
+      osc.stop(time + 0.45)
+    },
     lead: (time, e, len) => {
       const freq = midiToFreq(e.note)
       tone('square', freq, time, len, 0.13, { attack: 0.012, cutoff: 3200 })
@@ -199,11 +258,45 @@ export function createMusic(audio) {
     // Switches between the 'normal', 'boss' and 'chill' (pause) tracks, restarting the loop
     // from its top (with the boss track's opening crash) on a change.
     setMode(next) {
-      if (next === mode || !MUSIC_TRACKS[next]) return
-      mode = next
-      stepIndex = 0
-      if (ctx) nextStepTime = ctx.currentTime + 0.05
+      if (!MUSIC_TRACKS[next]) return
+      if (next === (pendingMode ?? mode)) return
+      if (next === mode && pendingMode) {
+        // Changed back before the fade finished: stay on this track and bring it back up.
+        clearTimeout(fadeTimer)
+        pendingMode = null
+        master.gain.cancelScheduledValues(ctx.currentTime)
+        master.gain.setTargetAtTime(MUSIC_VOLUME, ctx.currentTime, FADE_SECONDS / 2)
+        return
+      }
+      const restart = () => {
+        pendingMode = null
+        mode = next
+        stepIndex = 0
+        if (ctx) nextStepTime = ctx.currentTime + 0.05
+      }
+      // The resort's own switches (fight, pause) are instant, as ever; anything to or from a Wilds track fades.
+      if (!ctx || !(isWildsTrack(mode) || isWildsTrack(next))) {
+        restart()
+        return
+      }
+      clearTimeout(fadeTimer)
+      pendingMode = next
+      master.gain.cancelScheduledValues(ctx.currentTime)
+      master.gain.setTargetAtTime(0.0001, ctx.currentTime, FADE_SECONDS / 4)
+      fadeTimer = setTimeout(() => {
+        restart()
+        master.gain.cancelScheduledValues(ctx.currentTime)
+        master.gain.setValueAtTime(0.0001, ctx.currentTime)
+        master.gain.setTargetAtTime(MUSIC_VOLUME, ctx.currentTime, FADE_SECONDS / 2)
+      }, FADE_SECONDS * 1000)
     },
+    // 'places' (every place has its own music) or 'classic' (the resort's music always); remembered on this device.
+    getStyle: () => style,
+    setStyle(next) {
+      style = parseMusicStyle(next)
+      saveStyle(style)
+    },
+    currentMode: () => mode,
     isMuted: () => audio.isMuted(),
   }
 }

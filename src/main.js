@@ -29,7 +29,7 @@ import { PICKUP_RADIUS, createPerkPickup, updatePerkPickup } from './pickups.js'
 import { createLoadoutPanel } from './loadout.js'
 import { createHub } from './hub.js'
 import { createHeroBeam, createHeroProjectile, disposeHeroProjectile, dressPlayer } from './heroGear.js'
-import { ATOMIC_REACH, HAMMER_REACH, HOOK_RANGE, HOTFOOT_MAX, HOTFOOT_STEP, HEROES, RAM_REHIT, boomerangPoint, broadsideSpots, chainPath, densestSpot, grantSkin, heroById, heroEffects, heroLook as lookForProfile, inBeam, isBehind, pickMarks, returningPoint, rewindTarget, rootsTriggered, spinReels, tipJarCrystals, linePoint, fanAngles, infinityPush, addRage, RAGE_PER_HIT, RAGE_PER_HURT, gloryKillReady, chargeLevel, grantHero, heroForCrowns, ownsHero } from './logic/heroes.js'
+import { ATOMIC_REACH, HAMMER_REACH, HOOK_RANGE, HOTFOOT_MAX, HOTFOOT_STEP, HEROES, RAM_REHIT, boomerangPoint, broadsideSpots, chainPath, densestSpot, grantSkin, heroById, heroEffects, heroLook as lookForProfile, inBeam, isBehind, pickMarks, returningPoint, rewindTarget, rootsTriggered, spinReels, tipJarCrystals, linePoint, fanAngles, infinityPush, addRage, RAGE_PER_HIT, RAGE_PER_HURT, gloryKillReady, chargeLevel, grantHero, heroForCrowns, heroForHearts, ownsHero } from './logic/heroes.js'
 import { AWAKEN_LEVEL, HERO_ABILITIES, HERO_ABILITY_KEY, awakenedStats, heroAbilityFraction, isAwakened, pointsAlong, ringPoints, steerToward, traitTune, turnToward, useHeroAbility } from './logic/heroPowers.js'
 import { loadProfile, saveProfile } from './profile.js'
 import { DIFFICULTIES, DIFFICULTY_IDS, difficultyById, runPayout } from './logic/difficulty.js'
@@ -73,17 +73,20 @@ import { createGlider, updateGlider } from './glider.js'
 import { createNpc, setNpcMarker, updateNpc, TALK_RANGE } from './npcs.js'
 import { createQuestUi } from './questUi.js'
 import { acceptQuest, claimQuest, createQuestLog, npcDialog, npcMarker, questEvent, questsToClaim, questWeaponFor } from './logic/quests.js'
-import { BIOMES, BOSS_RESPAWN_SECONDS, SANCTUM_RADIUS, SKYSTAR_CATCH_RADIUS, SKYSTAR_REWARD, UNLOAD_RADIUS, VILLAGE_SAFE_RADIUS, WATER_LEVEL, WORLD_RADIUS, biomeAt, canRespawn, chunkContent, chunkKey, propHeight, dangerAt, dayName, diffChunks, groundColorAt, heightAt, lakeAt, landmarkById, landmarks, nearestLandmark, nearestVillage, ruins, skystars, villageById, villages } from './logic/world.js'
+import { BIOMES, BOSS_RESPAWN_SECONDS, SANCTUM_RADIUS, SKYSTAR_CATCH_RADIUS, SKYSTAR_REWARD, UNLOAD_RADIUS, VILLAGE_SAFE_RADIUS, WATER_LEVEL, WORLD_RADIUS, biomeAt, canRespawn, chunkContent, chunkKey, propHeight, dangerAt, dayName, diffChunks, groundColorAt, heightAt, inDepths, lakeAt, landmarkById, landmarks, nearestLandmark, nearestVillage, ruins, setDepthsMode, skystars, villageById, villages } from './logic/world.js'
 import { createWildsActivities } from './wildsActivities.js'
+import { createDepthsFx } from './depthsFx.js'
+import { ASCEND_RADIUS, DEPTH_FIRST_REWARD, DEPTH_RELIC_REWARD, RELIC_CLAIM_RADIUS, arrivalSpot, ascendFraction, beacons, chasmById, chasmFalls, chasmRim, chasms, createAscendState, depthsChunk, depthsLairs, stepAscend } from './logic/depths.js'
 import { createJournalUi } from './journalUi.js'
 import { LANTERN_CATCH_RADIUS, LANTERN_COUNT, lanternReward, lanternsNear } from './logic/lanterns.js'
 import { BOONS, SHRINE_RADIUS, activeBoons, boonEffects, createShrineState, foldBoons, grantBoon, shrineCharge, useShrine, wayshrines } from './logic/wayshrines.js'
 import { HEAT_TEXT, MAX_MAPS, addMap, digAt, makeTreasureMap, nearestMap } from './logic/treasure.js'
 import { createRaceState, raceCourses, raceReward, stepRace } from './logic/races.js'
 import { EVENTS, STAR_SHARD_VALUE, createEventDirector, endEvent, hordePlan, merchantName, merchantStock, meteorPlan, stepEventDirector, wandererPlan } from './logic/wildEvents.js'
-import { BESTIARY_FIRST_REWARD, JOURNAL_KEY, claimMilestone, creatureName, noteBiome, noteEvent, noteIsle, noteKill, noteLandmark, noteLantern, noteRace, noteRelic, noteShrine, noteTower, noteTreasure, parseJournal, pickUnowned, readyMilestones, serializeJournal } from './logic/wildsJournal.js'
+import { BESTIARY_FIRST_REWARD, JOURNAL_KEY, claimMilestone, creatureName, noteBiome, noteChasm, noteDepthRelic, noteEvent, noteIsle, noteKill, noteLandmark, noteLantern, noteRace, noteRelic, noteShrine, noteTower, noteTreasure, parseJournal, pickUnowned, readyMilestones, serializeJournal } from './logic/wildsJournal.js'
 import { formatTime } from './logic/wildsSpots.js'
 import { createMusic } from './music.js'
+import { MUSIC_STYLE_LABELS, nextMusicStyle, pickTrack } from './logic/wildsMusic.js'
 import { createSfx } from './sfx.js'
 import { jellyHit, updateJelly } from './jelly.js'
 import {
@@ -946,6 +949,21 @@ function grantCrownHero(claimed, announce = false) {
     spawnShockwave(shockwavePool, p.x, p.z, 12, 0xffd15c)
   }
 }
+// The Hollow Queen: claim every Umbral Heart in the Depths (checked on each claim and at startup, like the crowns).
+function grantDepthsHero(claimed, announce = false) {
+  const id = heroForHearts(claimed, depthsLairs().length)
+  if (!id || ownsHero(profile, id)) return
+  profile = grantHero(profile, id)
+  saveProfile(profile)
+  if (!announce || !hud) return
+  const hero = heroById(id)
+  showLootToast(hud, { title: 'SECRET HERO UNLOCKED', name: hero.name, blurb: 'Every heart of the dark is yours, and so is its Queen. Pick her on the Heroes page (Y).' })
+  const p = game?.player?.position
+  if (p) {
+    burst(particleSystem, { x: p.x, y: 2, z: p.z }, 0xb64aff, 80, 8)
+    spawnShockwave(shockwavePool, p.x, p.z, 12, 0xb64aff)
+  }
+}
 // A secret hero (logic/heroes.js `secret`) stays out of the sandbox too until the real profile owns it.
 const sandboxHeroes = () => HEROES.filter((h) => !h.secret || ownsHero(profile, h.id))
 const sandboxProfile = () =>
@@ -1094,6 +1112,7 @@ setDamageHooks({
     }
     if (trait === 'highnoon' && heroNow < heroState.noonUntil) scale *= t.boost
     if (trait === 'spartan' && heroNow < heroState.rageUntil) scale *= t.bonus
+    if (trait === 'abyss') scale *= 1 + t.hunger * (1 - Math.max(0, game.player.hp) / Math.max(1, game.player.maxHp)) // the emptier she is, the harder she bites
     if (hexed) scale *= t.bonus
     return scale === 1 ? damage : Math.round(damage * scale)
   },
@@ -1174,6 +1193,7 @@ setDamageHooks({
       heroState.stompReady = heroNow + t.cooldown
       heroState.pending.push({ at: heroNow + 0.05, run: () => groundPound(monster, t) })
     }
+    if (trait === 'abyss' && heroState.hits % t.every === 0) heroState.pending.push({ at: heroNow, run: () => shadowTendrils(at, t) })
     if (trait === 'tnt' && heroState.hits % t.every === 0) heroState.pending.push({ at: heroNow, run: () => dropTnt(at, t) })
     if (trait === 'hadoken' && heroState.hits % t.every === 0) heroState.pending.push({ at: heroNow + 0.05, run: () => waveFist(heroAimAngle(), t) })
     if (trait === 'inhale' && heroNow >= heroState.inhaleReady) {
@@ -1230,6 +1250,30 @@ function heroNova(at, radius, damage, knockback, color = heroLook().glow, each =
     if (damage > 0) heroHurt(mesh, damage * heroBaseDamage(), knockback, at)
     each?.(mesh)
   }
+}
+// Abyssal Hunger: shadow tendrils erupt under the monsters around a hit, and each one feeds her.
+function shadowTendrils(at, t = tn()) {
+  const glow = heroLook().glow
+  const victims = heroTargets(at.x, at.z, t.reach).sort((a, b) => distTo(a, at) - distTo(b, at)).slice(0, t.tendrils)
+  const pl = game.player
+  for (const mesh of victims) {
+    const x = mesh.position.x
+    const z = mesh.position.z
+    for (let i = 0; i < 5; i++) burst(particleSystem, { x: x + (Math.random() - 0.5) * 0.7, y: 0.3 + i * 0.45, z: z + (Math.random() - 0.5) * 0.7 }, i % 2 ? glow : 0x14101e, 3, 1.2, 0.5)
+    spawnShockwave(shockwavePool, x, z, 1.8, glow)
+    heroHurt(mesh, t.damage * heroBaseDamage(), 3, at)
+    if (pl.hp > 0) pl.hp = Math.min(pl.maxHp, pl.hp + pl.maxHp * t.heal)
+  }
+  if (victims.length) sfx.play('hit', at)
+}
+// Eclipse (Veyra's B): a wave of shadow that slows everything it touches, and she drinks in some health.
+function eclipse(p, r, dmg, heal) {
+  const glow = heroLook().glow
+  heroNova(p, r, dmg, 3, glow, (m) => applySlow(m.userData, heroNow, 4, 0.4))
+  column(p.x, p.z, glow, 5, 10)
+  showPopup(popupPool, p, 'ECLIPSE', '', `#${glow.toString(16).padStart(6, '0')}`)
+  const pl = game.player
+  pl.hp = Math.min(pl.maxHp, pl.hp + pl.maxHp * heal)
 }
 // Static Charge: lightning from where the hit landed into the nearest monsters.
 function staticArc(from, t = tn()) {
@@ -2691,6 +2735,7 @@ function triggerHeroAbility(now, free = false) {
     case 'kenji': thousandCuts(9, 12, 2.5); break
     case 'shiro': hollowViolet(aim); break
     case 'sovereign': ascension(now); break
+    case 'umbral': eclipse(p, 10, 4, 0.12); break
     case 'ranger':
       setTimeWarp(Math.max(timeWarp.until, now + 3), 0.25)
       warp.add('swirl', p.x, p.z, 6, 1)
@@ -2858,6 +2903,7 @@ function createGame() {
   const lab = gameMode === 'labyrinth'
   const worldMode = gameMode === 'world'
   setArenaRadius(worldMode ? WORLD_RADIUS : SUNDECK_RADIUS)
+  setDepthsMode(false) // a new run always starts on the surface
   setWildsLook(worldMode) // the Wilds' monsters are always Realist creatures
   document.body.classList.toggle('world', worldMode)
   const labFloor = lab ? buildLabyrinthFloor(0) : null
@@ -2933,11 +2979,17 @@ function createGame() {
     game.arena.group.add(game.world.sky.fx.group)
     game.world.sky.fx.setRidden(new Set(game.world.journal.towers))
     game.world.sky.fx.setRelicsTaken(new Set(game.world.journal.relics))
+    game.world.sky.pillars = []
     for (const tower of skyTowers()) {
       const pillars = towerObstacles(tower).map((o) => ({ ...o, top: tower.y + TOWER_HEIGHT }))
+      game.world.sky.pillars.push(...pillars)
       game.obstacles.push(...pillars)
       game.props.push(...pillars)
     }
+    // The chasms (and, below them, the Depths' Lightroots and Umbral Hearts).
+    game.world.depths.fx = createDepthsFx()
+    game.arena.group.add(game.world.depths.fx.group)
+    game.world.depths.fx.setRelicsTaken(new Set(game.world.journal.depthRelics))
     stepWorld(game, 0)
     camera.position.set(player.position.x + CAMERA_OFFSET.x, CAMERA_OFFSET.y, player.position.z + CAMERA_OFFSET.z)
     return game
@@ -3895,6 +3947,7 @@ function saveCheckpoint(spot) {
 // Gets the player back up at the Wilds' save point with full health: used when HP hits zero and after a fall off the world.
 function respawnAtCheckpoint(game, now, { toast = true, heal = true } = {}) {
   const { player, world: w } = game
+  if (w.depths.on) switchWorldLayer(game, false) // dying (or falling off the rim) down in the Depths brings you back up to the surface
   const spot = respawnSpot(w.checkpoint)
   const groundY = heightAt(spot.x, spot.z)
   player.position.x = spot.x
@@ -3957,6 +4010,8 @@ function createWorldState(savedSpot = null) {
     fx: null, // src/wildsActivities.js, built with the game
     // Skylift towers and sky isles (see stepSky; rules in logic/skyIslands.js, the look in src/skyIslands.js).
     aloft: false, // up in the sky (on an isle, or high over the land): the land's monsters can't see you
+    // The Depths under the chasms (see stepDepths): on = you are down there; descent = the fall in progress.
+    depths: { on: false, descent: null, ascend: createAscendState(), fx: null, hintAt: 0, bannerAt: 0 },
     sky: { launch: createLaunchState(), active: new Map(), isleId: null, fx: null, chargeFxAt: 0, hintAt: 0, flyers: createFlyerDirector(), rocks: [], warned: false },
   }
 }
@@ -4111,7 +4166,7 @@ function spawnWildMonster(game, type, at, m) {
 
 function loadWorldChunk(game, cx, cz, now) {
   const w = game.world
-  const content = chunkContent(cx, cz)
+  const content = inDepths() ? depthsChunk(cx, cz) : chunkContent(cx, cz)
   // Each solid prop knows how high its top is, so a jump or a glide over it clears it (clearsObstacle).
   const obstacles = content.props.filter((p) => p.radius > 0).map((p) => ({ x: p.x, z: p.z, radius: p.radius, top: heightAt(p.x, p.z) + propHeight(p.kind) * (p.scale ?? 1) }))
   game.obstacles.push(...obstacles)
@@ -4232,6 +4287,18 @@ function drawMinimap(game, now = 0) {
   ctx.imageSmoothingEnabled = true
   const texelsPerUnit = MINIMAP_RES / (WORLD_RADIUS * 2)
   ctx.drawImage(minimapBase, (p0.x - MINIMAP_VIEW + WORLD_RADIUS) * texelsPerUnit, (p0.z - MINIMAP_VIEW + WORLD_RADIUS) * texelsPerUnit, MINIMAP_VIEW * 2 * texelsPerUnit, MINIMAP_VIEW * 2 * texelsPerUnit, 0, 0, size, size)
+  // Chasms: a dark pit with a violet ring.
+  for (const c of chasms()) {
+    const [x, y] = at(c.x, c.z)
+    if (!onMap([x, y], 10)) continue
+    ctx.fillStyle = '#05020c'
+    ctx.strokeStyle = '#9a5aff'
+    ctx.lineWidth = 2
+    ctx.beginPath()
+    ctx.arc(x, y, Math.max(3.5, c.radius * k), 0, Math.PI * 2)
+    ctx.fill()
+    ctx.stroke()
+  }
   for (const m of game.monsters) {
     if (m.userData.dying || m.userData.falling) continue
     const [x, y] = at(m.position.x, m.position.z)
@@ -4540,6 +4607,299 @@ function stepSky(game, now, dt) {
   }
   if (dt > 0) stepSkyfins(game, now, dt)
   s.fx.update({ x: p.x, z: p.z, y: w.groundY }, now, s.launch.charging ? { towerId: s.launch.charging, fraction: chargeFraction(s.launch, now) } : null)
+}
+
+// In the Wilds the fight music kicks in when a boss is close (and stays until you are well clear, so it never flaps).
+let bossMusicOn = false
+function bossNearby(game) {
+  if (!game.world || game.labyrinth) return false
+  const p = game.player.position
+  const limit = bossMusicOn ? 48 : 30
+  bossMusicOn = game.monsters.some((m) => m.userData.isBoss && !m.userData.dying && !m.userData.falling && Math.hypot(m.position.x - p.x, m.position.z - p.z) < limit)
+  return bossMusicOn
+}
+
+// ---- The Depths: chasms take you down, Lightroots bring you up (rules in logic/depths.js, the look in src/depthsFx.js) ----
+const DESCENT_SECONDS = 1.5 // how long the fall into a chasm lasts before the Depths take over
+const depthsFade = (() => {
+  const el = document.createElement('div')
+  el.id = 'depths-fade'
+  el.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:45;opacity:0;background:#000'
+  document.body.appendChild(el)
+  return {
+    // Fades the whole screen to `opacity` over `ms` (0 ms = at once) in `color`.
+    to(opacity, ms, color = '#000') {
+      el.style.transition = ms ? `opacity ${ms}ms ease` : 'none'
+      el.style.background = color
+      el.style.opacity = String(opacity)
+    },
+  }
+})()
+
+// Swaps which world is showing, the surface or the Depths: everything of the one you leave is let go (chunks, monsters,
+// the sky isles' chests), the terrain mode flips (logic/world.js), and the arena and effects change over.
+function switchWorldLayer(game, toDepths) {
+  const w = game.world
+  for (const key of [...w.chunks.keys()]) unloadWorldChunk(game, key)
+  for (const arch of skyArchipelagos()) if (w.sky.active.has(arch.id)) deactivateArchipelago(game, arch)
+  for (const mesh of [...game.monsters]) dropWorldMonster(game, mesh)
+  w.live.clear()
+  // The Skylift towers' pillars are solid on the surface only.
+  for (const o of w.sky.pillars ?? []) {
+    removeFrom(game.obstacles, o)
+    removeFrom(game.props, o)
+    if (!toDepths) {
+      game.obstacles.push(o)
+      game.props.push(o)
+    }
+  }
+  setDepthsMode(toDepths)
+  game.arena.world.setDepths(toDepths)
+  w.depths.fx.setDepths(toDepths)
+  if (w.fx) w.fx.group.visible = !toDepths
+  if (w.sky.fx) w.sky.fx.group.visible = !toDepths
+  w.depths.on = toDepths
+  w.depths.descent = null
+  w.depths.ascend = createAscendState()
+  w.sky.launch = createLaunchState()
+  w.sky.isleId = null
+  w.aloft = false
+  w.biome = null // the banner announces where you arrive
+  w.landmark = null
+  w.lanternsAt = null
+  game.arena.world.setProps([])
+  game.arena.world.setGrass([])
+  resetProjectiles(projectilePool)
+  document.body.classList.toggle('in-depths', toDepths)
+}
+
+// You have fallen far enough: the Depths take over, and you land with a thump.
+function enterDepths(game, chasm, now) {
+  const w = game.world
+  const player = game.player
+  switchWorldLayer(game, true)
+  const at = arrivalSpot(player.position.x, player.position.z)
+  player.position.x = at.x
+  player.position.z = at.z
+  player.mesh.position.x = at.x
+  player.mesh.position.z = at.z
+  player.vel = { x: 0, z: 0 }
+  const alt = heightAt(at.x, at.z) + 50
+  w.jump = { alt, vy: -6, air: true, gliding: false }
+  w.groundY = w.camGround = alt
+  player.mesh.position.y = alt
+  w.bannerUntil = now + 3.6
+  if (biomeBanner) {
+    biomeBanner.textContent = BIOMES.depths.name
+    biomeBanner.style.setProperty('--biome-glow', `#${BIOMES.depths.glow.toString(16).padStart(6, '0')}`)
+  }
+  const note = noteChasm(w.journal, chasm.id)
+  setJournal(game, note.journal)
+  if (note.first) {
+    game.inventory = addCrystals(game.inventory, DEPTH_FIRST_REWARD)
+    questUi.showToast(`THE DEPTHS  ·  ${chasm.name.toUpperCase()}  +${DEPTH_FIRST_REWARD} CRYSTALS  ·  FIND A LIGHTROOT TO GO HOME`)
+  } else questUi.showToast(`THE DEPTHS  ·  FIND A LIGHTROOT TO GO HOME`)
+  setTimeout(() => depthsFade.to(0, 1100), 80)
+}
+
+// A Lightroot lifts you home, to the rim of the chasm it belongs to.
+function leaveDepths(game, beacon, now) {
+  const w = game.world
+  const player = game.player
+  const chasm = chasmById(beacon.chasmId)
+  switchWorldLayer(game, false)
+  const rim = chasmRim(chasm)
+  const ground = heightAt(rim.x, rim.z)
+  player.position.x = rim.x
+  player.position.z = rim.z
+  player.mesh.position.set(rim.x, ground, rim.z)
+  player.vel = { x: 0, z: 0 }
+  w.jump = launchJump({ alt: ground, vy: 0, air: false, gliding: false }, 22)
+  w.groundY = w.camGround = ground
+  burst(particleSystem, { x: rim.x, y: 1, z: rim.z }, 0xcfe8ff, 50, 6, 0.9)
+  spawnShockwave(shockwavePool, rim.x, rim.z, 7, 0xcfe8ff)
+  sfx.play('arrive', { x: rim.x, z: rim.z })
+  questUi.showToast(`BACK ON THE SURFACE  ·  ${chasm.name.toUpperCase()}`)
+  setTimeout(() => depthsFade.to(0, 1000), 60)
+}
+
+// On the surface: walking into a chasm starts the fall.
+function stepChasms(game, now) {
+  const w = game.world
+  const player = game.player
+  const d = w.depths
+  if (d.descent) {
+    if (!d.descent.faded && now - d.descent.start > 0.75) {
+      d.descent.faded = true
+      depthsFade.to(1, 650)
+    }
+    if (now - d.descent.start >= DESCENT_SECONDS) enterDepths(game, d.descent.chasm, now)
+    return
+  }
+  if (player.hidden || player.falling || player.hp <= 0 || game.cutscene || blockingPanelOpen()) return
+  const p = player.position
+  const c = chasmFalls(p.x, p.z)
+  if (!c || w.jump.alt - heightAt(p.x, p.z) > 2.5) return // gliding over one carries you across
+  d.descent = { start: now, chasm: c, faded: false }
+  w.jump = { alt: w.jump.alt, vy: -4, air: true, gliding: false }
+  spawnShockwave(shockwavePool, p.x, p.z, 4, 0x9a5aff)
+  sfx.play('hyperspace', { x: p.x, z: p.z })
+  triggerShake(game.shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
+  questUi.showToast(`THE GROUND GIVES WAY  ·  ${c.name.toUpperCase()}`)
+}
+
+// Down in the Depths: Lightroots to climb out by, Umbral Hearts to claim, and the dark.
+function stepDepths(game, now, dt) {
+  const w = game.world
+  const d = w.depths
+  const player = game.player
+  const p = player.position
+  biomeBanner?.classList.toggle('show', now < w.bannerUntil)
+  let charging = null
+  if (dt > 0) {
+    const ok = !player.hidden && !player.falling && player.hp > 0 && !w.jump.air && !blockingPanelOpen() && !game.cutscene
+    const out = stepAscend(d.ascend, { x: p.x, z: p.z, now, ok })
+    d.ascend = out.state
+    for (const ev of out.events) {
+      if (ev.type === 'charge') {
+        sfx.play('hyperspace', { x: ev.beacon.x, z: ev.beacon.z })
+        spawnShockwave(shockwavePool, ev.beacon.x, ev.beacon.z, 3, 0xcfe8ff)
+      } else if (ev.type === 'ascend') {
+        depthsFade.to(1, 0, '#e8f4ff')
+        leaveDepths(game, ev.beacon, now)
+        return
+      }
+    }
+    if (d.ascend.charging) charging = { beaconId: d.ascend.charging, fraction: ascendFraction(d.ascend, now) }
+
+    // The Umbral Hearts: each lies in its lair, and is yours once the guardian is down.
+    for (const lair of depthsLairs()) {
+      const r = lair.relic
+      if (w.journal.depthRelics.includes(r.id)) continue
+      if (Math.hypot(r.x - p.x, r.z - p.z) > RELIC_CLAIM_RADIUS || Math.abs(w.groundY - heightAt(r.x, r.z)) > 4.5) continue
+      if (!w.killed.has(`${lair.id}:boss`)) {
+        if (now > d.hintAt) {
+          d.hintAt = now + 5
+          questUi.showToast('THE GUARDIAN STILL STANDS  ·  DEFEAT IT TO TAKE THE HEART')
+        }
+        continue
+      }
+      setJournal(game, noteDepthRelic(w.journal, r.id).journal)
+      d.fx.setRelicsTaken(new Set(w.journal.depthRelics))
+      game.inventory = addCrystals(game.inventory, DEPTH_RELIC_REWARD)
+      player.hp = player.maxHp
+      const at = { x: r.x, y: 3 - 0, z: r.z }
+      burst(particleSystem, at, 0xd23aff, 60, 7)
+      burst(particleSystem, at, 0xffffff, 24, 4)
+      spawnShockwave(shockwavePool, r.x, r.z, 9, 0xd23aff)
+      sfx.play('waveCleared', { x: r.x, z: r.z })
+      questUi.showToast(`UMBRAL HEART ${w.journal.depthRelics.length}/${depthsLairs().length}  ·  ${lair.name.toUpperCase()}  +${DEPTH_RELIC_REWARD} CRYSTALS, FULLY HEALED`)
+      grantDepthsHero(w.journal.depthRelics.length, true)
+    }
+
+    // The status chips: where you are, the way out, how many hearts.
+    const hearts = w.journal.depthRelics.length
+    const html = [
+      ['#b48aff', '<b>THE DEPTHS</b> a Lightroot (pale beam) lifts you home'],
+      ['#e08aff', `<b>UMBRAL HEARTS</b> ${hearts}/${depthsLairs().length}`],
+      ...(charging ? [['#cfe8ff', '<b>LIGHTROOT</b> hold still...']] : []),
+    ].map(([c, text]) => `<div class="ws-chip" style="--c:${c}">${text}</div>`).join('')
+    if (html !== wildsStatusKey) {
+      wildsStatusKey = html
+      if (wildsStatus) wildsStatus.innerHTML = html
+    }
+    drawDepthsMinimap(game, now)
+  }
+  d.fx.update(now, charging)
+}
+
+// The minimap while you are down there: no land to paint, just the dark with the way out and the hearts.
+function drawDepthsMinimap(game, now) {
+  if (!minimap) return
+  const ctx = minimap.getContext('2d')
+  const size = minimap.width
+  const p0 = game.player.position
+  const k = size / (MINIMAP_VIEW * 2)
+  const at = (x, z) => [size / 2 + (x - p0.x) * k, size / 2 + (z - p0.z) * k]
+  const onMap = ([x, y], pad = 6) => x > -pad && y > -pad && x < size + pad && y < size + pad
+  ctx.fillStyle = '#07050f'
+  ctx.fillRect(0, 0, size, size)
+  const [cx, cy] = at(0, 0)
+  ctx.strokeStyle = 'rgba(154, 90, 255, 0.5)'
+  ctx.lineWidth = 3
+  ctx.beginPath()
+  ctx.arc(cx, cy, WORLD_RADIUS * k, 0, Math.PI * 2)
+  ctx.stroke()
+  for (const m of game.monsters) {
+    if (m.userData.dying || m.userData.falling) continue
+    const [x, y] = at(m.position.x, m.position.z)
+    if (!onMap([x, y])) continue
+    ctx.fillStyle = m.userData.isBoss ? '#ffd15c' : '#ff4d6d'
+    ctx.fillRect(x - 1.5, y - 1.5, 3, 3)
+  }
+  for (const c of game.chests) {
+    if (c.userData.opened) continue
+    const [x, y] = at(c.position.x, c.position.z)
+    if (!onMap([x, y])) continue
+    ctx.fillStyle = '#ffd15c'
+    ctx.fillRect(x - 2.5, y - 2.5, 5, 5)
+  }
+  // Lightroots: pale diamonds; an arrow on the rim points at the nearest when none is on the map.
+  let nearest = null
+  for (const b of beacons()) {
+    const dist = Math.hypot(b.x - p0.x, b.z - p0.z)
+    if (!nearest || dist < nearest.dist) nearest = { b, dist }
+    const [x, y] = at(b.x, b.z)
+    if (!onMap([x, y])) continue
+    ctx.fillStyle = '#e8f4ff'
+    ctx.strokeStyle = '#241b3a'
+    ctx.lineWidth = 1.5
+    ctx.beginPath()
+    ctx.moveTo(x, y - 6)
+    ctx.lineTo(x + 5, y)
+    ctx.lineTo(x, y + 6)
+    ctx.lineTo(x - 5, y)
+    ctx.closePath()
+    ctx.fill()
+    ctx.stroke()
+  }
+  if (nearest && !onMap(at(nearest.b.x, nearest.b.z), -10)) drawMinimapPointer(ctx, size, Math.atan2(nearest.b.z - p0.z, nearest.b.x - p0.x), '#e8f4ff')
+  // The Umbral Hearts not yet claimed: magenta rings.
+  for (const lair of depthsLairs()) {
+    if (game.world.journal.depthRelics.includes(lair.relic.id)) continue
+    const [x, y] = at(lair.x, lair.z)
+    if (!onMap([x, y], 12)) continue
+    ctx.strokeStyle = '#e08aff'
+    ctx.lineWidth = 2.5
+    ctx.beginPath()
+    ctx.arc(x, y, 8, 0, Math.PI * 2)
+    ctx.stroke()
+  }
+  const p = game.player
+  const [px, py] = at(p0.x, p0.z)
+  ctx.save()
+  ctx.translate(px, py)
+  ctx.rotate(Math.PI - p.facing)
+  ctx.fillStyle = '#ffffff'
+  ctx.strokeStyle = '#241b3a'
+  ctx.lineWidth = 2
+  ctx.beginPath()
+  ctx.moveTo(0, -7)
+  ctx.lineTo(5, 5)
+  ctx.lineTo(-5, 5)
+  ctx.closePath()
+  ctx.stroke()
+  ctx.fill()
+  ctx.restore()
+  ctx.font = '600 11px Sora, sans-serif'
+  ctx.textBaseline = 'bottom'
+  ctx.fillStyle = 'rgba(16, 10, 36, 0.7)'
+  ctx.fillRect(0, size - 17, size, 17)
+  ctx.fillStyle = '#d8c8ff'
+  ctx.textAlign = 'left'
+  ctx.fillText('The Depths', 6, size - 3)
+  ctx.textAlign = 'right'
+  ctx.fillText(`♥ ${game.world.journal.depthRelics.length}/${depthsLairs().length}`, size - 6, size - 3)
 }
 
 // ---- Skyfins: the sky's hunters (rules in logic/skyFlyers.js) ----
@@ -5291,6 +5651,11 @@ function stepWorld(game, now, dt = 0) {
   w.aloft = isAloft(p.x, p.z, w.groundY)
   game.arena.shadowY = w.camGround // the sun's shadow box follows you up to the isles
   game.arena.world.setAltitude?.(w.camGround - heightAt(p.x, p.z), w.camGround)
+  if (!w.depths.on && dt > 0) stepChasms(game, now)
+  if (w.depths.on) {
+    stepDepths(game, now, dt)
+    return
+  }
 
   // Villagers: they amble, look at you, wear a marker for their quest state, and E talks to the nearest.
   let nearest = null
@@ -6712,6 +7077,8 @@ touchControls?.addMenuButton(bankRunCrystals, 'BANK')
 const pauseMenu = createPauseMenu({
   getMuted: () => music.isMuted(),
   onToggleMute: () => music.toggleMuted(),
+  getMusicStyle: () => MUSIC_STYLE_LABELS[music.getStyle()],
+  onToggleMusicStyle: () => music.setStyle(nextMusicStyle(music.getStyle())),
   onBrightness: (v) => {
     renderer.toneMappingExposure = TONE_MAPPING_EXPOSURE * v
   },
@@ -6807,6 +7174,7 @@ window.addEventListener('touchend', () => {
 }, { passive: true })
 
 let game = createGame()
+grantDepthsHero(loadJournal().depthRelics.length)
 grantCrownHero(loadJournal().relics.length) // a save that already holds every Nimbus Crown gets the secret hero
 
 // Dev-server only: lets browser tests (and you, in the console) peek at the state.
@@ -6817,6 +7185,7 @@ if (import.meta.env.DEV) {
     setSandboxHero(id) { sandboxHeroPick = { hero: id, heroSkins: {} } },
     spawn(type, n = 1) { for (let i = 0; i < n; i++) spawnMonster(game, type, { at: { x: game.player.position.x + Math.sin(i * 1.3) * (4 + i), z: game.player.position.z + Math.cos(i * 1.3) * (4 + i) } }) },
     get heroState() { return heroState },
+    get music() { return music },
     // Co-op browser tests: give this run a pet, or jump straight to the next boss's intro.
     addPet(id) { game.pets.push(spawnPet(id, game)) },
     bossNext() { game.waveState = { ...game.waveState, wavesUntilBoss: 0 } },
@@ -7338,7 +7707,17 @@ function gameFrame(timestamp) {
   // Paused (pause menu or the hub): a chill lo-fi loop instead of the fight music.
   const chillOut = gameState === 'playing' && started && (pauseMenu.isOpen() || hub.isOpen())
   music.setMuffled(gameState !== 'playing')
-  music.setMode(chillOut ? 'chill' : game.waveState.phase === 'bossFight' && gameState === 'playing' ? 'boss' : 'normal')
+  music.setMode(pickTrack({
+    style: music.getStyle(),
+    paused: chillOut,
+    bossFight: game.waveState.phase === 'bossFight' && gameState === 'playing',
+    bossNear: gameState === 'playing' && bossNearby(game),
+    world: Boolean(game.world),
+    depths: Boolean(game.world?.depths.on),
+    aloft: Boolean(game.world?.aloft),
+    labyrinth: Boolean(game.labyrinth),
+    biome: game.world?.biome ?? 'sanctum',
+  }))
 
   // Recorded once, the frame the player dies: compares this run against
   // the saved high score, persists the new best, and freezes the stats
@@ -7543,7 +7922,7 @@ function gameFrame(timestamp) {
     // falling off the edge, or paused in a menu.
     const canHop = !player.hidden && !player.falling && player.hp > 0 && !hub.isOpen()
     // The ground is a sky isle's top when you're on (or above) one; an updraft lifts an open glider.
-    const ground = surfaceAt(player.position.x, player.position.z, game.world.jump.alt)
+    const ground = game.world.depths.descent ? -1e9 : surfaceAt(player.position.x, player.position.z, game.world.jump.alt) // (falling into a chasm: nothing to land on)
     // The Nimbus Sovereign's wings: hold Space with them spread to climb.
     const climb = isFlyer() && game.world.jump.gliding && canHop && input.isDown('Space') ? SOVEREIGN_CLIMB : 0
     const lift = Math.max(climb, updraftLift(player.position.x, player.position.z, game.world.jump.alt))

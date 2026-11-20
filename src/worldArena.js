@@ -408,6 +408,7 @@ const ROCK = {
   sanctum: { rock: [0.42, 0.4, 0.58], peak: [0.82, 0.8, 0.96] },
   whisperwood: { rock: [0.27, 0.31, 0.34], peak: [0.7, 0.84, 0.8] },
   amethyst: { rock: [0.4, 0.28, 0.48], peak: [0.92, 0.78, 0.96] },
+  depths: { rock: [0.12, 0.1, 0.2], peak: [0.2, 0.16, 0.34] },
   frostveil: { rock: [0.42, 0.5, 0.6], peak: [0.97, 0.99, 1] },
   emberwaste: { rock: [0.15, 0.09, 0.09], peak: [0.08, 0.05, 0.06] },
   gloomfen: { rock: [0.27, 0.29, 0.22], peak: [0.58, 0.62, 0.52] },
@@ -799,6 +800,7 @@ const LEAF_COUNT = 150
 const LEAF_RANGE = 46
 // What floats down (or, for embers, up) around the player in each biome.
 const DRIFT = {
+  depths: { colors: [0x9a5aff, 0x5ac8ff, 0xd23aff], dir: 1, speed: 0.5, size: 0.1, spin: 1.4 },
   sanctum: { colors: [0xe0d6ff, 0xb9a6ff], dir: -0.5, speed: 0.6, size: 0.1, spin: 1.2 },
   whisperwood: { colors: [0x2fd0b0, 0x6dffc9, 0xff9ae0, 0x8a6cf0], dir: -1, speed: 0.9, size: 0.16, spin: 2.4 },
   amethyst: { colors: [0xf0a8ff, 0xd89aff, 0xff8be2], dir: -0.7, speed: 0.7, size: 0.13, spin: 2.0 },
@@ -880,12 +882,20 @@ export function createWorldArena() {
   group.add(keyLight)
   group.add(keyLight.target)
 
-  group.add(createGround(), createUnderside())
-  group.add(createRoads(groundDetail))
+  const surfaceGround = createGround()
+  const underside = createUnderside()
+  group.add(surfaceGround, underside)
+  const roadsMesh = createRoads(groundDetail)
+  group.add(roadsMesh)
   const lakes = createLakes()
   group.add(lakes)
   const sky = createSky()
   group.add(sky)
+  // Down in the Depths you carry a violet-white lantern light, so the dark has a pool of light around you.
+  const lantern = new THREE.PointLight(0xcdb8ff, 0, 34, 1.4)
+  group.add(lantern)
+  let depthsGroundMesh = null // the cavern floor, baked the first time you drop in (while the Depths mode is on)
+  let depthsView = false
 
   const batches = {}
   for (const kind of Object.keys(MODELS)) {
@@ -988,12 +998,25 @@ export function createWorldArena() {
       altitude = Math.max(0, above)
       altitudeY = y
     },
+    // The Depths are showing (call AFTER logic/world.js's setDepthsMode, so the cavern floor is baked from its heights):
+    // the land's ground, roads, lakes, sky and stars go, the cavern's floor comes.
+    setDepths(on) {
+      depthsView = Boolean(on)
+      if (depthsView && !depthsGroundMesh) {
+        depthsGroundMesh = createGround()
+        group.add(depthsGroundMesh)
+      }
+      if (depthsGroundMesh) depthsGroundMesh.visible = depthsView
+      for (const m of [surfaceGround, underside, roadsMesh, lakes, sky, starSpirits.group]) m.visible = !depthsView
+    },
     update(pos, time) {
       sky.position.set(pos.x, altitudeY, pos.z)
-      light += (daylight(time) - light) * 0.05
-      keyLight.intensity = 1.8 * (0.3 + 0.75 * light)
+      lantern.intensity = depthsView ? 55 : 0
+      lantern.position.set(pos.x, altitudeY + 3.5, pos.z)
+      light += ((depthsView ? 0 : daylight(time)) - light) * 0.05
+      keyLight.intensity = 1.8 * (0.3 + 0.75 * light) * (depthsView ? 0.9 : 1)
       keyLight.color.copy(nightKey).lerp(dayKey, light)
-      hemi.intensity = hemiBase * (0.55 + 0.55 * light)
+      hemi.intensity = hemiBase * (0.55 + 0.55 * light) * (depthsView ? 1.5 : 1)
       sky.userData.dome.material.color.setScalar(0.45 + 0.75 * light)
       sky.userData.stars.material.opacity = 0.3 + 0.7 * (1 - light)
       flies.points.material.opacity = 0.55 + 0.45 * (1 - light)

@@ -55,6 +55,7 @@ record.
 - F — open the nearest chest (costs crystals)
 - [ / ] — cycle the scope / ammo of the rifle in your hands (J opens the Gunsmith)
 - E (with no suitcase near) — in a water room: dive / surface
+- Pause menu — "Music: Different for every place / Same music always" (the music style, remembered in `localStorage`; see Music in the Wilds below)
 - 1-5 — pick a weapon from the hotbar (melee or firearm)
 - Shift — tap to dash (`DASH_*` in config.js: a 0.17s burst with brief i-frames, 1.8s cooldown); hold to sprint (1.5x speed; not in a water room, where Shift does nothing)
 - Q / Z / X / C / V — use your abilities, in the order you found them
@@ -122,6 +123,8 @@ slashbattle/
     wildsActivities.js # the Wilds' lanterns, wayshrines, race rings, star shards (look only)
     journalUi.js       # the Wilds journal panel (U)
     logic/wildsJournal.js # journal + milestones + bestiary (saved); logic/lanterns.js, wayshrines.js, treasure.js, races.js, wildEvents.js, wildsSpots.js: the activities' rules
+    logic/depths.js    # chasms, the Depths' Lightroots / Umbral lairs / chunks (pure); depthsFx.js is their look
+    logic/wildsMusic.js # the Wilds' generated music tracks + pickTrack / the music style (pure)
     logic/skyIslands.js # Skylift towers + sky isles: placement, isle layouts, surfaceAt / updraftLift, the launch rules (pure)
     skyIslands.js      # the towers' and isles' look: merged rock + props per archipelago, waterfalls, updrafts, relics, clouds
     logic/quests.js    # villager quests: generation, the quest log, dialogue (pure)
@@ -362,6 +365,42 @@ main.js's `stepSkyfins` spawns them high off to one side (`userData.skyIsle`, `u
 SWOOPS (a committed dive; `bite` if it reaches you), or BOMBS (flies over you and drops a rock onto a red warning ring, `stepRock`),
 then climbs away (the moment to hit back); back on the land it flees and is gone. A cursor on one aims your shot up at it (while
 aloft shots fly straight from your height), and a melee swing only reaches one within 3 m of your height (`combat.js`).
+
+## Chasms and the Depths (the Wilds)
+`src/logic/depths.js` (pure, `test/depths.test.js`) seeds ~13 **chasms** (`chasms()`: wide pits on dry, level ground in the
+Heartland and Frontier, clear of villages, sites, roads and towers; the first is close to the Sanctum). Walk into one (`chasmFalls`,
+inside `CHASM_FALL_FRACTION` of its radius, feet near the ground; a glide over one carries you across) and you fall for
+`DESCENT_SECONDS`, the screen fades, and `main.js`'s `enterDepths` drops you into **the Depths**, a second dark world on the same
+coordinates. It is a MODE of `logic/world.js` (`setDepthsMode` / `inDepths` / `withSurface`): while on, `heightAt` (the cavern floor,
+`depthsFloor`), `biomeAt` ('depths', a `BIOMES` entry with its own props, monsters and fog), `groundColorAt` and every land feature
+(`lakeAt`, `nearestVillage` / `Site` / `Landmark`, `roadDistance`) answer for the Depths, so everything that rides the ground just works.
+`switchWorldLayer` swaps worlds: unloads every chunk and monster, hides the surface (ground, roads, lakes, sky, towers, activities) and
+removes the towers' pillars, flips the mode, and `worldArena.js`'s `setDepths` shows a lazily baked cavern ground (a violet lantern
+light follows you). Chunks stream from `depthsChunk` (dwellers that never saw the sun, a few chests). `stepWorld` hands over to
+`stepDepths` (no villages, quests, activities or sky while down there). Getting out: a **Lightroot** (`beacons()`, one a short walk from
+each chasm's drop, `stepAscend`: stand in it ~`ASCEND_SECONDS`) lifts you home to that chasm's rim (`chasmRim`); dying or falling off
+the rim down there respawns you at the save point on the surface. Five **Umbral lairs** (`depthsLairs`, `lairLayout`: a pillar ring, a chest,
+a boss and two elites) each hold an **Umbral Heart**; it is yours once the guardian is down (`w.killed`), and all five bring the secret hero
+Veyra (see below). The look is `src/depthsFx.js` (the pits with a glowing lip and rim rocks, Lightroot pillars, floating Hearts with
+beams). The journal keeps `chasms` and `depthRelics` (with milestones); the minimap shows chasms, and in the Depths its own dark map with
+Lightroots and Hearts.
+
+## The second secret hero: Veyra, the Hollow Queen
+`umbral` in `HEROES` (`secret: true`, `secretHint`, `heroForHearts` / `DEPTHS_HERO`; `main.js`'s `grantDepthsHero`, also at startup) is
+granted by claiming every Umbral Heart. Trait `abyss` (Abyssal Hunger): damage rises as her health runs out (`hunger`), and every
+`every`-th hit shadow tendrils erupt under up to `tendrils` monsters near the target (`shadowTendrils`), each feeding her `heal` of max
+health. B: Eclipse (`eclipse`: a wave of shadow that slows, plus a heal). K: Total Eclipse. Gear in `heroGear.js` (`voidMask`, `voidCrown`,
+`umbralCloak`, `hungerWisps`). Not immortal. Tests: `test/secretHero.test.js`.
+
+## Music in the Wilds
+The Orbital Resort's loops (`normal`, `boss`, `chill`) are untouched. `src/logic/wildsMusic.js` (pure, `test/wildsMusic.test.js`) adds 15
+generated tracks from one small generator (`DEFS`: tempo, tonic, scale, eight-bar progression, pad, drums, arpeggio, seeded melody walk):
+one per Wilds biome (`WILDS_BIOME_TRACKS`), `sky` (sky isles: airy bells, no drums), `depths` (drone, heartbeat, drips) and `dungeon` (the
+Labyrinth). `pickTrack` chooses: paused -> chill, a wave boss fight -> boss, then (style 'places') the Labyrinth, or in the Wilds a boss
+within 30 m -> boss, the Depths, the sky, else the biome's track; everything else -> `normal`. The music style (`MUSIC_STYLES`:
+'places' | 'classic', `slashbattle:music-style`, a save key, toggled in the pause menu) 'classic' = **same music always**: the resort loop
+everywhere, exactly as before. `src/music.js` voices the new kinds (`air`, `drone`, `pluck`, `shimmer`, `drip`, `thud`) and fades out and
+in on any switch to or from a Wilds track (the resort's own switches stay instant).
 
 ## Labyrinth map
 Pick it on the start card (button or K). `src/logic/maze.js` (pure) builds a seeded 7x7 maze per

@@ -247,6 +247,12 @@ export const HERO_ULTIMATES = {
     { k: 'cast', times: 1, at: 2.4 },
     { k: 'buff', secs: 8, damage: 1.3 },
   ]),
+  umbral: U('Total Eclipse', 60, 'Everything within 18 m is slowed for 6 s as the world goes dark: three waves of shadow for 4x each, you heal 35%, and 8 s of +40% damage.', [
+    { k: 'nova', r: 18, dmg: 1, kb: 0, status: 'slow' },
+    { k: 'waves', n: 3, gap: 0.55, r: 14, dmg: 4, kb: 3, status: 'slow', at: 0.2 },
+    { k: 'heal', frac: 0.35, at: 1.4 },
+    { k: 'buff', secs: 8, damage: 1.4, at: 1.4 },
+  ]),
 }
 
 // The +10% stat choices, in activeFx's effect shape (maxHp is a share of base HP; main.js turns it into points).

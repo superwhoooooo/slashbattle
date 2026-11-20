@@ -77,7 +77,7 @@ describe('boss track', () => {
   const bossKinds = (step) => bossEventsForStep(step).map((e) => e.kind)
 
   it('is registered next to the normal track and runs faster', () => {
-    expect(Object.keys(MUSIC_TRACKS)).toEqual(['chill', 'normal', 'boss'])
+    expect(['chill', 'normal', 'boss'].every((id) => id in MUSIC_TRACKS)).toBe(true) // (the Wilds' own tracks sit beside them; see wildsMusic.test.js)
     expect(MUSIC_TRACKS.boss.bpm).toBe(BOSS_BPM)
     expect(BOSS_BPM).toBeGreaterThan(MUSIC_BPM)
     expect(MUSIC_TRACKS.boss.events).toBe(bossEventsForStep)

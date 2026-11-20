@@ -34,7 +34,7 @@ function el(tag, className, text) {
 
 // Returns { isOpen, setOpen, toggle }. `getMuted` / `onToggleMute` / `onBrightness(v)` /
 // `onRestart` / `onResume` are supplied by main.js.
-export function createPauseMenu({ getMuted, onToggleMute, onBrightness, onRestart, onMainMenu, onClose }) {
+export function createPauseMenu({ getMuted, onToggleMute, getMusicStyle, onToggleMusicStyle, onBrightness, onRestart, onMainMenu, onClose }) {
   const root = el('div', 'overlay')
   root.id = 'pause-screen'
   root.style.display = 'none'
@@ -47,7 +47,8 @@ export function createPauseMenu({ getMuted, onToggleMute, onBrightness, onRestar
   const restart = el('button', 'pause-btn', 'Restart run')
   const mainMenu = el('button', 'pause-btn', 'Main menu')
   const sound = el('button', 'pause-btn', '')
-  for (const b of [resume, restart, mainMenu, sound]) b.type = 'button'
+  const musicStyle = el('button', 'pause-btn', '')
+  for (const b of [resume, restart, mainMenu, sound, musicStyle]) b.type = 'button'
 
   const brightRow = el('label', 'pause-row')
   const brightLabel = el('span', null, 'Brightness')
@@ -102,13 +103,17 @@ export function createPauseMenu({ getMuted, onToggleMute, onBrightness, onRestar
   })
   saveRow.append(exportBtn, importBtn, filePicker)
 
-  card.append(resume, restart, mainMenu, sound, brightRow, saveRow, saveStatus)
+  card.append(resume, restart, mainMenu, sound, musicStyle, brightRow, saveRow, saveStatus)
   card.appendChild(el('p', 'hint', '8 / Esc: resume'))
   root.appendChild(card)
   document.body.appendChild(root)
 
   let open = false
-  const refreshSound = () => (sound.textContent = getMuted() ? 'Sound: OFF' : 'Sound: ON')
+  const refreshSound = () => {
+    sound.textContent = getMuted() ? 'Sound: OFF' : 'Sound: ON'
+    musicStyle.textContent = `Music: ${getMusicStyle?.() ?? ''}`
+    musicStyle.style.display = getMusicStyle ? '' : 'none'
+  }
   const setOpen = (value) => {
     open = value
     root.style.display = open ? 'flex' : 'none'
@@ -130,8 +135,12 @@ export function createPauseMenu({ getMuted, onToggleMute, onBrightness, onRestar
     onToggleMute()
     refreshSound()
   })
+  musicStyle.addEventListener('click', () => {
+    onToggleMusicStyle?.()
+    refreshSound()
+  })
   // Space / Enter on a focused button shouldn't leak into gameplay on resume.
-  for (const b of [resume, restart, mainMenu, sound]) b.addEventListener('click', () => b.blur())
+  for (const b of [resume, restart, mainMenu, sound, musicStyle]) b.addEventListener('click', () => b.blur())
   slider.addEventListener('change', () => slider.blur())
 
   return { isOpen: () => open, setOpen, toggle: () => setOpen(!open) }

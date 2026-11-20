@@ -632,6 +632,22 @@ export const HEROES = [
       skin('eclipse', 'Eclipse', 0x2a2440, 0x120e22, 0xffc84a, 0xff9a3a, 900),
       skin('aurora', 'Aurora Throne', 0xe8fff6, 0x7dffd0, 0xd8b8ff, 0xb8fff0, 1200),
     ],
+    secretHint: 'Claim every Nimbus Crown',
+  },
+  // --- The second secret hero: claim every Umbral Heart in the Depths under the Wilds' chasms (logic/depths.js).
+  {
+    id: 'umbral', name: 'Veyra, the Hollow Queen', cost: 0, secret: true,
+    blurb: 'Ruled the dark under the world until somebody finally turned the lights on. Hungry, patient, and rather fond of you.',
+    stats: { damage: 1.1, crit: 0.06, maxHp: 10 }, mask: true,
+    trait: { id: 'abyss', name: 'Abyssal Hunger', desc: 'The lower your health, the harder you hit: up to +60% damage as it runs out. Every 4th hit the dark erupts as shadow tendrils under up to 3 monsters within 7 m of the target for 0.9x each, and each tendril feeds you 1% health.' },
+    gear: ['voidMask', 'voidCrown', 'umbralCloak', 'hungerWisps'],
+    skins: [
+      skin('hollow', 'Hollow Queen', 0x1d1233, 0x0d0818, 0xb48aff, 0xb64aff),
+      skin('ember', 'Cinder Court', 0x2a0e16, 0x14060a, 0xff9a5a, 0xff4a3a, 600),
+      skin('glacial', 'Glacial Abyss', 0x10263c, 0x08141f, 0x9ae8ff, 0x4ac8ff, 900),
+      skin('gilded', 'Gilded Dusk', 0x2a2010, 0x140f06, 0xffd15c, 0xffb83a, 1200),
+    ],
+    secretHint: 'Claim every Umbral Heart in the Depths',
   },
 ]
 
@@ -661,6 +677,9 @@ export const visibleHeroes = (profile) => HEROES.filter((h) => !h.secret || owns
 // The Nimbus Sovereign comes to whoever has claimed every Nimbus Crown (`claimed` of `total`).
 export const CROWN_HERO = 'sovereign'
 export const heroForCrowns = (claimed, total) => (total > 0 && claimed >= total ? CROWN_HERO : null)
+// The Hollow Queen comes to whoever has claimed every Umbral Heart in the Depths.
+export const DEPTHS_HERO = 'umbral'
+export const heroForHearts = (claimed, total) => (total > 0 && claimed >= total ? DEPTHS_HERO : null)
 // Gives a hero for free (no crystals); unchanged if already owned.
 export function grantHero(profile, id) {
   if (!BY_ID[id] || ownsHero(profile, id)) return profile
@@ -697,7 +716,7 @@ export function buyHero(profile, id) {
   const hero = BY_ID[id]
   if (!hero) return fail(profile, 'No such hero')
   if (ownsHero(profile, id)) return selectHero(profile, id)
-  if (hero.secret) return fail(profile, 'Claim every Nimbus Crown')
+  if (hero.secret) return fail(profile, hero.secretHint ?? 'A secret hero')
   if (profile.bank < hero.cost) return fail(profile, `Needs ${hero.cost} ◆`)
   return { profile: { ...profile, bank: profile.bank - hero.cost, heroesOwned: [...(profile.heroesOwned ?? []), id], hero: id }, ok: true }
 }

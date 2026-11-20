@@ -761,6 +761,65 @@ const GEAR = {
     }
     g.add(ring)
   },
+  // --- The secret hero of the Depths: Veyra, the Hollow Queen ---
+  // A faceplate of black glass with two slit eyes of violet light.
+  voidMask(g, look) {
+    part(g, new THREE.SphereGeometry(R * 1.04, 24, 14, 0, Math.PI * 2, Math.PI * 0.2, Math.PI * 0.42), solid(look.cloak, 0.15, 0.6), [0, R * 1.18, 0.02], [0.18, 0, 0])
+    for (const side of [-1, 1]) {
+      const eye = part(g, new THREE.CircleGeometry(0.085, 3), glowMat(look.glow), [side * 0.2, R * 1.4, R * 1.0], [-0.3, side * 0.22, side * (Math.PI / 2 + 0.5)], [1.7, 0.6, 1])
+      eye.userData.flicker = true
+    }
+  },
+  // A floating ring of black crystal thorns over the head, turning slowly, with a violet gem at each tip.
+  voidCrown(g, look) {
+    const crown = new THREE.Group()
+    crown.position.set(0, TOP + 0.4, 0)
+    crown.userData.bob = true
+    crown.userData.orbit = true
+    const dark = solid(look.cloak, 0.12, 0.7)
+    for (let i = 0; i < 9; i++) {
+      const a = (i / 9) * Math.PI * 2
+      const tall = i % 3 === 0
+      part(crown, new THREE.ConeGeometry(0.07, tall ? 0.46 : 0.28, 5), dark, [Math.sin(a) * 0.34, tall ? 0.22 : 0.12, Math.cos(a) * 0.34], [Math.cos(a) * 0.22, 0, -Math.sin(a) * 0.22])
+      if (tall) part(crown, new THREE.OctahedronGeometry(0.05), glowMat(look.glow), [Math.sin(a) * 0.4, 0.5, Math.cos(a) * 0.4])
+    }
+    part(crown, new THREE.TorusGeometry(0.33, 0.03, 6, 30), glowMat(look.trim), [0, 0.02, 0], [Math.PI / 2, 0, 0])
+    g.add(crown)
+  },
+  // A tattered cloak of shadow: long ragged panels with a glowing hem, and shard pauldrons.
+  umbralCloak(g, look) {
+    const cloak = part(g, new THREE.CylinderGeometry(R * 1.0, R * 1.3, R * 1.6, 14, 2, true), clothMat(look.cloak), [0, R * 0.5, 0])
+    cloak.userData.sway = true
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2
+      const len = 0.28 + (i % 3) * 0.14
+      const rag = part(g, new THREE.ConeGeometry(0.1, len, 3), clothMat(look.cloak), [Math.sin(a) * R * 1.28, R * 0.5 - R * 0.8 - len * 0.35, Math.cos(a) * R * 1.28], [Math.PI, a, 0])
+      rag.userData.swing = true
+    }
+    part(g, new THREE.TorusGeometry(R * 1.3, 0.03, 6, 32), glowMat(look.glow), [0, R * 0.5 - R * 0.78, 0], [Math.PI / 2, 0, 0])
+    for (const side of [-1, 1]) {
+      for (let k = 0; k < 3; k++) {
+        part(g, new THREE.ConeGeometry(0.07, 0.4 - k * 0.07, 4), solid(look.trim, 0.2, 0.7), [side * (R * 0.95 + k * 0.1), R * 1.34 - k * 0.04, -0.02], [0, 0, -side * (1.0 + k * 0.28)])
+      }
+    }
+  },
+  // Four violet flames circling low around the Hollow Queen (the Hunger's eyes).
+  hungerWisps(g, look) {
+    const ring = new THREE.Group()
+    ring.position.y = R * 0.7
+    ring.userData.orbit = true
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2
+      const wisp = new THREE.Group()
+      wisp.position.set(Math.cos(a) * 1.35, Math.sin(i * 1.7) * 0.25, Math.sin(a) * 1.35)
+      part(wisp, new THREE.SphereGeometry(0.1, 10, 8), glowMat(0xffffff))
+      const flame = part(wisp, new THREE.ConeGeometry(0.17, 0.5, 8, 1, true), new THREE.MeshBasicMaterial({ color: look.glow, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }), [0, 0.2, 0])
+      flame.userData.flicker = true
+      wisp.traverse((o) => { o.castShadow = false })
+      ring.add(wisp)
+    }
+    g.add(ring)
+  },
   // --- Legendary heroes ---
   // Shiro the Limitless: spiky white hair swept up, a dark blindfold, a tall coat collar.
   whiteHair(g, look) {

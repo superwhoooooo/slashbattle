@@ -67,6 +67,9 @@ const TUNING = {
   inhale: [{ cooldown: 8, radius: 6, stars: 1, damage: 2.5 }, { cooldown: 4, radius: 9, stars: 3, damage: 3.5 }],
   // The secret hero (Nimbus Sovereign): seraph orbs fire lances of light; awakened, every `judgeEvery`-th lance is a pillar.
   heavenly: [{ seraphs: 3, every: 1.4, range: 10, damage: 0.5, judgeEvery: 0, judgeRadius: 3, judgeDamage: 2 }, { seraphs: 5, every: 1, range: 13, damage: 0.8, judgeEvery: 6 }],
+  // The second secret hero (Veyra): `hunger` is the extra damage at zero health; every `every`-th hit shadow tendrils
+  // erupt under up to `tendrils` monsters within `reach` of the target, each feeding her `heal` of max health.
+  abyss: [{ hunger: 0.6, every: 4, tendrils: 3, reach: 7, damage: 0.9, heal: 0.01 }, { hunger: 1, every: 2, tendrils: 5, reach: 9, damage: 1.4, heal: 0.02 }],
   charge: [{ charge: 3, reach: 18, damage: 3, width: 1.2 }, { charge: 1.5, reach: 22, damage: 5, width: 1.8 }],
 }
 const cache = new Map()
@@ -129,6 +132,7 @@ export const AWAKENED = {
   blox: { desc: 'Every 3rd hit drops TWO TNT blocks with shorter fuses: 5x within 5.5 m each.' },
   haru: { desc: 'A fireball every 2nd hit: bigger, 20 m, 3x, and it tears through everything in its path.' },
   poppy: { desc: 'Inhale every 4 s across 9 m, then spit three stars for 3.5x each.' },
+  umbral: { desc: 'Up to +100% damage as your health runs out. Every 2nd hit five tendrils erupt within 9 m of the target for 1.4x, and each feeds you 2% health.' },
   buster: { desc: 'The cannon charges in 1.5 s, and the shot is a wide 22 m beam of plasma for 5x.' },
   sovereign: { desc: 'Five seraphs, a lance every second each, 13 m, 0.8x; every 6th lance becomes a Pillar of Judgment, 2x within 3 m.' },
 }
@@ -183,6 +187,7 @@ export const HERO_ABILITIES = {
   haru: { name: 'Heaven Wave', cooldown: 22, desc: 'Gather your energy and unleash a 22 m wave beam for 5x that shoves everything back.' },
   poppy: { name: 'Mega Inhale', cooldown: 22, desc: 'Inhale everything within 14 m, then spit five stars in a fan for 3.5x each.' },
   sovereign: { name: 'Ascension', cooldown: 20, range: 14, desc: 'Soar 8 m into the sky (untouchable while you rise), then fall like a star onto where you aim: 3x within 6 m, and your seraphs lance the 6 nearest monsters for 1.2x.' },
+  umbral: { name: 'Eclipse', cooldown: 22, desc: 'The light dies: a 10 m wave of shadow for 4x that slows everything it touches for 4 s, and you drink in 12% of your health.' },
   buster: { name: 'Buster Barrage', cooldown: 18, desc: 'Five fully charged shots fan out along your aim, awakened strength.' },
 }
 
