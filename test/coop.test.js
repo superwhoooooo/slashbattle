@@ -136,3 +136,50 @@ describe('chest rows', () => {
     expect(unpackChests(packChests(many))).toHaveLength(MAX_NET_CHESTS)
   })
 })
+
+describe('co-op in every mode', () => {
+  it('knows the modes and cleans up junk', async () => {
+    const { COOP_MODES, cleanMode } = await import('../src/logic/coop.js')
+    expect(COOP_MODES).toEqual(['resort', 'labyrinth', 'world', 'sandbox', 'tutorial'])
+    expect(cleanMode('world')).toBe('world')
+    expect(cleanMode('???')).toBe('resort')
+    expect(cleanMode(undefined)).toBe('resort')
+  })
+  it('leaves a player alone within reach of every friend', async () => {
+    const { COOP_MAX_DISTANCE, leashPosition } = await import('../src/logic/coop.js')
+    const r = leashPosition({ x: 10, z: 0 }, [{ x: 0, z: 0 }, { x: 20, z: 5 }])
+    expect(r).toEqual({ x: 10, z: 0, held: false })
+    expect(leashPosition({ x: 5, z: 5 }, []).held).toBe(false)
+    expect(COOP_MAX_DISTANCE).toBeLessThan(125)
+  })
+  it('pulls a player back to the edge of the leash, along the line to the friend', async () => {
+    const { COOP_MAX_DISTANCE, leashPosition } = await import('../src/logic/coop.js')
+    const r = leashPosition({ x: 200, z: 0 }, [{ x: 0, z: 0 }])
+    expect(r.held).toBe(true)
+    expect(r.x).toBeCloseTo(COOP_MAX_DISTANCE)
+    expect(r.z).toBeCloseTo(0)
+  })
+  it('holds against two friends at once', async () => {
+    const { COOP_MAX_DISTANCE, leashPosition } = await import('../src/logic/coop.js')
+    const a = { x: 0, z: 0 }
+    const b = { x: 80, z: 0 }
+    const r = leashPosition({ x: 40, z: 300 }, [a, b])
+    expect(Math.hypot(r.x - a.x, r.z - a.z)).toBeLessThanOrEqual(COOP_MAX_DISTANCE + 0.5)
+    expect(Math.hypot(r.x - b.x, r.z - b.z)).toBeLessThanOrEqual(COOP_MAX_DISTANCE + 0.5)
+  })
+  it('stands a downed player up beside a friend who is up, else at the save point', async () => {
+    const { standUpBeside } = await import('../src/logic/coop.js')
+    expect(standUpBeside([{ x: 10, z: 10, down: true }])).toBeNull()
+    expect(standUpBeside([])).toBeNull()
+    expect(standUpBeside([{ x: 1, z: 1, down: true }, { x: 10, z: 20, down: false }])).toEqual({ x: 12, z: 22 })
+  })
+})
+
+describe('the level a monster is on', () => {
+  it('carries the sky-isle flag across the wire', async () => {
+    const { packMonster, unpackMonster } = await import('../src/logic/coop.js')
+    const row = (ud) => unpackMonster(packMonster({ netId: 1, type: 'zippy', hp: 5, maxHp: 5, ...ud }, { x: 1, y: 100, z: 2 }, 0))
+    expect(row({ skyIsle: true }).skyIsle).toBe(true)
+    expect(row({}).skyIsle).toBe(false)
+  })
+})

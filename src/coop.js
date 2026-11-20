@@ -1,4 +1,5 @@
-// Online co-op (P): up to four players fight the same waves on the Orbital Sundeck.
+// Online co-op (P): up to four players play together in any mode (the Orbital Sundeck waves, the Labyrinth, the Wilds, the
+// sandbox, the tutorial); the host's mode is the one everyone plays. In the Wilds players must stay within COOP_MAX_DISTANCE.
 //
 // The HOST's game is the real one: it runs the waves, every monster and every boss, and streams them to
 // everyone ~15 times a second. A joined player's monsters are PUPPETS that follow the host's: they sit in
@@ -82,6 +83,9 @@ function nameTag(name, color) {
  *   scene, particleSystem, getGame(), now(), disposeObject3D(obj)
  *   localLook() -> { hero, skin }, localWeapon() -> id
  *   canCoop() -> null | reason it can't start now
+ *   layer() -> bit 1: the host is in the Depths, bit 2: up in the sky (the Wilds; a guest follows)
+ *   mode() -> 'resort' | 'labyrinth' | 'world' | 'sandbox' | 'tutorial'  (what we are playing; the host's is everyone's)
+ *   onFloor()                    labyrinth: the party goes down to the next floor
  *   onJoined(welcome)            joiner: the host welcomed us (reset to their run)
  *   onEnded(reason, wasClient)   the session is over
  *   onHurt(amount, trueFraction) joiner: a monster's melee landed on us in the host's game
@@ -218,6 +222,7 @@ export function createCoop(ctx) {
       v: PROTOCOL,
       you: id,
       level: game.levelIndex ?? 0,
+      mode: ctx.mode(),
       difficulty: ctx.difficultyId(),
       players: [{ id: 'host', name: link.name }, ...[...remotes.values()].map((r) => ({ id: r.id, name: r.name }))],
     })
@@ -433,7 +438,7 @@ export function createCoop(ctx) {
       rows.push(packMonster(mesh.userData, mesh.position, mesh.rotation.y, now))
     }
     const w = game.waveState
-    link.broadcast({ t: 'mon', m: rows, w: [w.waveNumber, w.phase, Math.round(w.phaseElapsed * 100) / 100, w.spawnedCount, game.levelIndex ?? 0, game.levelTransition ? 1 : 0] })
+    link.broadcast({ t: 'mon', m: rows, w: [w.waveNumber, w.phase, Math.round(w.phaseElapsed * 100) / 100, w.spawnedCount, game.levelIndex ?? 0, game.levelTransition ? 1 : 0, ctx.layer?.() ?? 0] })
   }
 
   // ---------- joiner: puppets ----------
@@ -516,6 +521,7 @@ export function createCoop(ctx) {
       ud.netFrozen = row.frozen
       ud.reflect = row.reflect ? ud.reflectCfg : null
       ud.submerged = row.submerged
+      ud.skyIsle = row.skyIsle
       if (row.phase2 && !ud.phase2) {
         ud.phase2 = true
         const material = ud.jelly?.body?.material
@@ -534,7 +540,7 @@ export function createCoop(ctx) {
     for (const [id, mesh] of puppets) {
       if (!seen.has(id) && !mesh.userData.dying && !mesh.userData.falling) mesh.userData.netGone = true
     }
-    if (Array.isArray(m.w)) ctx.onWaveState({ waveNumber: m.w[0], phase: m.w[1], phaseElapsed: m.w[2], spawnedCount: m.w[3], levelIndex: m.w[4], transitioning: m.w[5] === 1 })
+    if (Array.isArray(m.w)) ctx.onWaveState({ waveNumber: m.w[0], phase: m.w[1], phaseElapsed: m.w[2], spawnedCount: m.w[3], levelIndex: m.w[4], transitioning: m.w[5] === 1, layer: Number(m.w[6]) || 0 })
   }
 
   // Joiner: one frame of a puppet. Returns false once it should leave game.monsters (it has been disposed).
@@ -653,6 +659,12 @@ export function createCoop(ctx) {
         ctx.onJoined(m)
         ctx.toast(`JOINED ${link.code}! FIGHT TOGETHER`)
         refresh()
+        break
+      case 'floor':
+        if (isClient()) ctx.onFloor?.()
+        break
+      case 'floorReq':
+        if (isHost()) ctx.onFloorRequest?.()
         break
       case 'nope':
         setStatus(`The host can't take players right now: ${m.why}`)
@@ -890,6 +902,15 @@ export function createCoop(ctx) {
     sendHeroAbility(heroId, skin, aim, ultimate = false) { if (active()) link.broadcast({ t: 'ha', h: heroId, s: skin, a: Math.round(aim * 100) / 100, u: ultimate ? 1 : 0 }) },
     sendChestOpened(id, lootName) { if (active()) link.broadcast({ t: 'cho', id, l: lootName }) },
     sendWaveEvents(msg) { if (isHost()) link.broadcast({ t: 'wave', ...msg }) },
+    // Where the host stands (x, y, z) once their first state has arrived, else null: a guest follows the host to the Depths or the sky.
+    hostSpot() {
+      const h = remotes.get('host')
+      return h && h.mesh.position.y > -40 ? { x: h.mesh.position.x, y: h.mesh.position.y, z: h.mesh.position.z } : null
+    },
+    sendFloor() { if (isHost()) link.broadcast({ t: 'floor' }) },
+    requestFloor() { if (isClient()) link.broadcast({ t: 'floorReq', hostOnly: true }) },
+    // Everyone else who is up and where they stand (for the Wilds' leash, and standing up beside a friend).
+    peers: () => [...remotes.values()].map((r) => ({ x: r.mesh.position.x, z: r.mesh.position.z, down: r.proxy.down, ready: r.mesh.position.y > -40 })).filter((p) => p.ready),
     sendRestart() { if (isHost()) link.broadcast({ t: 'restart' }) },
     sendGameOver() { if (isHost()) link.broadcast({ t: 'over' }) },
     leave: () => link.leave(),

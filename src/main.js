@@ -274,7 +274,7 @@ import { enemyScale, SPLITS } from './logic/enemies.js'
 import { createMonsterAIState, separateMonsters, setDeepShield, setMonsterNavigator, setPlayerAloft, setSurfaceShield, setTimeWarp, setWaterRoom, timeWarp, updateMonster, upgradeBossSpecials } from './monster.js'
 import { applyFreeze, applySlow, isFrozen, statusTimeScale } from './logic/status.js'
 import { createCoop } from './coop.js'
-import { COOP_RESPAWN_HP, COOP_RESPAWN_IFRAMES } from './logic/coop.js'
+import { COOP_MAX_DISTANCE, COOP_RESPAWN_HP, COOP_RESPAWN_IFRAMES, cleanMode, leashPosition, standUpBeside } from './logic/coop.js'
 import { burst, createParticleSystem, resetParticles, setParticleViewScale, shardBurst, updateParticles } from './particles.js'
 import { createPet, disposePets, updatePets } from './pets.js'
 import { Player } from './player.js'
@@ -3945,10 +3945,11 @@ function saveCheckpoint(spot) {
 }
 
 // Gets the player back up at the Wilds' save point with full health: used when HP hits zero and after a fall off the world.
-function respawnAtCheckpoint(game, now, { toast = true, heal = true } = {}) {
+function respawnAtCheckpoint(game, now, { toast = true, heal = true, near = false } = {}) {
   const { player, world: w } = game
-  if (w.depths.on) switchWorldLayer(game, false) // dying (or falling off the rim) down in the Depths brings you back up to the surface
-  const spot = respawnSpot(w.checkpoint)
+  const beside = near ? standUpBeside(coop.peers()) : null // in co-op you get back up beside a friend who is still standing (in their level)
+  if (w.depths.on && !beside) switchWorldLayer(game, false) // dying (or falling off the rim) down in the Depths brings you back up to the surface
+  const spot = beside ? { ...beside, name: 'your friend' } : respawnSpot(w.checkpoint)
   const groundY = heightAt(spot.x, spot.z)
   player.position.x = spot.x
   player.position.z = spot.z
@@ -4011,6 +4012,7 @@ function createWorldState(savedSpot = null) {
     // Skylift towers and sky isles (see stepSky; rules in logic/skyIslands.js, the look in src/skyIslands.js).
     aloft: false, // up in the sky (on an isle, or high over the land): the land's monsters can't see you
     // The Depths under the chasms (see stepDepths): on = you are down there; descent = the fall in progress.
+    hostLayer: 0, // co-op guest: the level (bit 1 Depths, bit 2 sky) the host was last in, so a change brings us along
     depths: { on: false, descent: null, ascend: createAscendState(), fx: null, hintAt: 0, bannerAt: 0 },
     sky: { launch: createLaunchState(), active: new Map(), isleId: null, fx: null, chargeFxAt: 0, hintAt: 0, flyers: createFlyerDirector(), rocks: [], warned: false },
   }
@@ -4174,7 +4176,7 @@ function loadWorldChunk(game, cx, cz, now) {
   const chunk = { content, obstacles, treasure: [], npcIds: [] }
   w.chunks.set(content.key, chunk)
 
-  for (const m of content.monsters) {
+  for (const m of coop?.isClient ? [] : content.monsters) { // a co-op joiner's monsters are the host's (puppets)
     if (w.live.has(m.id) || !canRespawn(w.killed.get(m.id), now, m.boss ? BOSS_RESPAWN_SECONDS : undefined)) continue
     const stats = MONSTER_TYPES[m.type]
     // Nudge a camp member out of any tree or crystal it was seeded inside.
@@ -4492,7 +4494,7 @@ function activateArchipelago(game, arch, now) {
       mesh.userData.obstacle = null
       live.treasure.push(mesh)
     }
-    for (const g of layout.guards) {
+    for (const g of coop?.isClient ? [] : layout.guards) { // (a guest's sky monsters are the host's puppets)
       if (w.live.has(g.id) || !canRespawn(w.killed.get(g.id), now, g.boss ? BOSS_RESPAWN_SECONDS : undefined)) continue
       const danger = arch.danger
       const mesh = spawnWildMonster(game, g.type, { x: g.x, z: g.z }, { danger, elite: g.elite, boss: g.boss, hpScale: g.boss ? 0.9 + danger * 1.1 : (1 + danger * 1.6) * (g.elite ? 2.4 : 1) })
@@ -4535,7 +4537,7 @@ function stepSky(game, now, dt) {
   const player = game.player
   if (dt > 0) {
     // The towers: stand on the pad, hold still while it charges, and up you go.
-    const ok = !player.hidden && !player.falling && player.hp > 0 && !w.jump.air && !blockingPanelOpen() && !game.cutscene
+    const ok = !coop?.isClient && !player.hidden && !player.falling && player.hp > 0 && !w.jump.air && !blockingPanelOpen() && !game.cutscene
     const out = stepLaunch(s.launch, { x: p.x, z: p.z, alt: w.groundY, now, ok })
     s.launch = out.state
     for (const ev of out.events) {
@@ -4605,8 +4607,52 @@ function stepSky(game, now, dt) {
       else if (on && (d > arch.radius + 120 || w.groundY < arch.low - 110)) deactivateArchipelago(game, arch)
     }
   }
-  if (dt > 0) stepSkyfins(game, now, dt)
+  if (dt > 0 && !coop?.isClient) stepSkyfins(game, now, dt)
   s.fx.update({ x: p.x, z: p.z, y: w.groundY }, now, s.launch.charging ? { towerId: s.launch.charging, fraction: chargeFraction(s.launch, now) } : null)
+}
+
+// Co-op guest: when the host drops into the Depths, comes back up, or goes up into (or down from) the sky, we are taken
+// along, to where the host stands. (Only the host falls into chasms and rides the towers.)
+let lastFollowAt = -Infinity
+function followHost(layer) {
+  const w = game.world
+  if (layer === w.hostLayer) return
+  const now = timer.getElapsed()
+  const spot = coop.hostSpot()
+  if (!spot || now - lastFollowAt < 1.5) return
+  lastFollowAt = now
+  w.hostLayer = layer
+  const depths = (layer & 1) === 1
+  if (depths !== w.depths.on) switchWorldLayer(game, depths)
+  jumpToHost(spot)
+  questUi.showToast(depths ? 'FOLLOWING YOUR FRIEND DOWN INTO THE DEPTHS' : (layer & 2) ? 'FOLLOWING YOUR FRIEND UP INTO THE SKY' : 'FOLLOWING YOUR FRIEND')
+}
+
+// Puts the guest where the host stands (and at the host's height).
+function jumpToHost(spot) {
+  const w = game.world
+  const player = game.player
+  const at = arrivalSpot(spot.x, spot.z)
+  const alt = Math.max(heightAt(at.x, at.z), spot.y)
+  player.position.x = at.x
+  player.position.z = at.z
+  player.mesh.position.set(at.x, alt, at.z)
+  player.vel = { x: 0, z: 0 }
+  w.jump = { alt, vy: 0, air: true, gliding: false }
+  w.groundY = w.camGround = alt
+  w.sky.launch = createLaunchState()
+  burst(particleSystem, { x: at.x, y: 1, z: at.z }, 0xcfe8ff, 30, 5, 0.7)
+}
+// A guest left far behind (the host respawned at a save point, a stale position at the moment of a level change...)
+// is brought back to the host.
+function regroupGuest(now) {
+  if (!coop?.isClient || now - lastFollowAt < 2) return
+  const spot = coop.hostSpot()
+  const p = game.player.position
+  if (!spot || Math.hypot(spot.x - p.x, spot.z - p.z) < COOP_MAX_DISTANCE * 1.6) return
+  lastFollowAt = now
+  jumpToHost(spot)
+  questUi.showToast('BACK WITH YOUR FRIEND')
 }
 
 // In the Wilds the fight music kicks in when a boss is close (and stays until you are well clear, so it never flaps).
@@ -4642,6 +4688,7 @@ function switchWorldLayer(game, toDepths) {
   const w = game.world
   for (const key of [...w.chunks.keys()]) unloadWorldChunk(game, key)
   for (const arch of skyArchipelagos()) if (w.sky.active.has(arch.id)) deactivateArchipelago(game, arch)
+  if (coop?.isClient) coop.clearPuppets() // (a guest's monsters are the host's puppets; the next snapshot brings this level's)
   for (const mesh of [...game.monsters]) dropWorldMonster(game, mesh)
   w.live.clear()
   // The Skylift towers' pillars are solid on the surface only.
@@ -4757,7 +4804,7 @@ function stepDepths(game, now, dt) {
   biomeBanner?.classList.toggle('show', now < w.bannerUntil)
   let charging = null
   if (dt > 0) {
-    const ok = !player.hidden && !player.falling && player.hp > 0 && !w.jump.air && !blockingPanelOpen() && !game.cutscene
+    const ok = !coop?.isClient && !player.hidden && !player.falling && player.hp > 0 && !w.jump.air && !blockingPanelOpen() && !game.cutscene
     const out = stepAscend(d.ascend, { x: p.x, z: p.z, now, ok })
     d.ascend = out.state
     for (const ev of out.events) {
@@ -4777,7 +4824,8 @@ function stepDepths(game, now, dt) {
       const r = lair.relic
       if (w.journal.depthRelics.includes(r.id)) continue
       if (Math.hypot(r.x - p.x, r.z - p.z) > RELIC_CLAIM_RADIUS || Math.abs(w.groundY - heightAt(r.x, r.z)) > 4.5) continue
-      if (!w.killed.has(`${lair.id}:boss`)) {
+      const bossDown = coop?.isClient ? !game.monsters.some((m) => m.userData.isBoss && Math.hypot(m.position.x - r.x, m.position.z - r.z) < 30) : w.killed.has(`${lair.id}:boss`) // (a guest sees the host's boss as a puppet)
+      if (!bossDown) {
         if (now > d.hintAt) {
           d.hintAt = now + 5
           questUi.showToast('THE GUARDIAN STILL STANDS  ·  DEFEAT IT TO TAKE THE HEART')
@@ -5524,7 +5572,7 @@ function stepActivities(game, now) {
   stepShrines(game, now)
   const treasure = stepTreasure(game, now)
   stepRaces(game, now)
-  stepWildEvents(game, now)
+  if (!coop?.isClient) stepWildEvents(game, now)
   w.fx.update(now, game.player.position)
   updateWildsStatus(game, now, treasure)
   flushJournal(game, false, now)
@@ -5639,7 +5687,7 @@ function stepWorld(game, now, dt = 0) {
 
   // Anything left far behind is let go, so a long trek never piles up monsters.
   for (const mesh of [...game.monsters]) {
-    if (mesh.userData.dying || mesh.userData.falling || mesh.userData.spawning || mesh.userData.isBoss) continue
+    if (mesh.userData.dying || mesh.userData.falling || mesh.userData.spawning || mesh.userData.isBoss || mesh.userData.netPuppet) continue
     if (Math.hypot(mesh.position.x - p.x, mesh.position.z - p.z) > UNLOAD_RADIUS + 30) dropWorldMonster(game, mesh)
   }
 
@@ -5651,7 +5699,8 @@ function stepWorld(game, now, dt = 0) {
   w.aloft = isAloft(p.x, p.z, w.groundY)
   game.arena.shadowY = w.camGround // the sun's shadow box follows you up to the isles
   game.arena.world.setAltitude?.(w.camGround - heightAt(p.x, p.z), w.camGround)
-  if (!w.depths.on && dt > 0) stepChasms(game, now)
+  if (dt > 0) regroupGuest(now)
+  if (!w.depths.on && dt > 0 && !coop?.isClient) stepChasms(game, now) // (in co-op only the host falls: a guest follows the host's level, see followHost)
   if (w.depths.on) {
     stepDepths(game, now, dt)
     return
@@ -6618,9 +6667,19 @@ function updateLabyrinth(game, now, realDt) {
   }
   const exit = lab.floor.exit
   if (lab.gateOpen && !lab.won && !player.hidden && Math.hypot(player.position.x - exit.x, player.position.z - exit.z) < 2.3) {
-    advanceFloor(game)
+    if (coop?.isClient) {
+      // The host decides when the party goes down (it runs the waves); ask, once in a while.
+      if (now - lastFloorRequest > 1.5) {
+        lastFloorRequest = now
+        coop.requestFloor()
+      }
+    } else {
+      advanceFloor(game)
+      coop?.sendFloor()
+    }
   }
 }
+let lastFloorRequest = -Infinity
 
 // Opens the gate: the bars rise and the doorway stops blocking.
 function openLabyrinthGate(game) {
@@ -7142,7 +7201,7 @@ function dismissStartCard(event) {
     }
   }
   guard('mode', () => {
-    if (coop?.active || coop?.connecting) return // co-op always plays the Orbital Sundeck
+    if (coop?.isClient || coop?.connecting) return // a joiner plays the host's mode (joinMode)
     if (event?.code === 'KeyB' || event?.target?.closest?.('#sandbox-btn')) startSandbox()
     else if (event?.code === 'KeyG' || event?.target?.closest?.('#tutorial-btn')) startTutorial()
     else if (event?.code === 'KeyO' || event?.target?.closest?.('#world-btn')) {
@@ -7226,13 +7285,18 @@ function stepCoopDown(game, now) {
     shardBurst(particleSystem, { x: player.position.x, y: 0.8, z: player.position.z }, 0xff6a4d, 24, 4)
     if (coop.remoteCount() > 0) questUi.showToast(`YOU'RE DOWN! BACK UP IN ${coop.respawnSeconds}s`)
   }
-  if (coop.everyoneDown(true)) {
+  if (coop.everyoneDown(true) && !game.world) { // (the Wilds never end your run: everyone gets back up at a save point)
     game.coopOver = true
     coop.sendGameOver()
     return
   }
-  if (now - game.coopDownAt >= coop.respawnSeconds && !coop.everyoneDown(true)) {
+  if (now - game.coopDownAt >= coop.respawnSeconds && (game.world || !coop.everyoneDown(true))) {
     player.hp = Math.max(1, Math.round(player.maxHp * COOP_RESPAWN_HP))
+    if (game.world) {
+      respawnAtCheckpoint(game, now, { toast: false, heal: false, near: true })
+      standUp()
+      return
+    }
     player.position.x = 0
     player.position.z = 0
     player.mesh.position.x = 0
@@ -7242,11 +7306,28 @@ function stepCoopDown(game, now) {
   }
 }
 
+// Co-op plays every mode: the host's mode is everyone's (the welcome carries it, see joinMode).
+let lastLeashToast = -Infinity
 function canCoop() {
-  if (sandbox) return 'Co-op plays the Orbital Sundeck waves. Leave the sandbox first (pause menu > Main menu).'
-  if (tutorial) return 'Co-op plays the Orbital Sundeck waves. Leave the tutorial first (pause menu > Main menu).'
-  if (gameMode !== 'resort') return 'Co-op plays the Orbital Sundeck waves. Go back to the main menu and pick it.'
   return null
+}
+const coopMode = () => (sandbox ? 'sandbox' : tutorial ? 'tutorial' : gameMode)
+
+// A joiner switches to the host's mode before the run restarts in the host's place.
+function joinMode(mode) {
+  mode = cleanMode(mode)
+  if (mode === coopMode()) return
+  if (sandbox || tutorial) {
+    window.location.reload() // (rare: they were in the sandbox / tutorial themselves; start over from the card)
+    return
+  }
+  if (mode === 'sandbox') startSandbox()
+  else if (mode === 'tutorial') startTutorial()
+  else {
+    gameMode = mode
+    disposeGame(game)
+    game = createGame()
+  }
 }
 
 coop = createCoop({
@@ -7256,11 +7337,14 @@ coop = createCoop({
   now: () => timer.getElapsed(),
   disposeObject3D,
   canCoop,
+  mode: coopMode,
+  layer: () => (game.world ? (game.world.depths.on ? 1 : 0) | (game.world.aloft ? 2 : 0) : 0),
   difficultyId: () => getDifficulty(),
   toast: (text) => questUi.showToast(text),
   // Joined a host: a fresh run in their place, at their difficulty, mirroring their waves.
   onJoined(welcome) {
     if (!started) dismissStartCard()
+    joinMode(welcome.mode)
     restartGame()
     applyDifficulty()
     if (welcome.level) changeLevel(game, welcome.level)
@@ -7324,6 +7408,17 @@ coop = createCoop({
     game.waveState = { ...game.waveState, waveNumber: Number(w.waveNumber) || 1, phase: w.phase, phaseElapsed: Number(w.phaseElapsed) || 0, spawnedCount: Number(w.spawnedCount) || 0 }
     const level = Number(w.levelIndex) || 0
     if (level !== (game.levelIndex ?? 0) && !game.levelTransition && !w.transitioning) changeLevel(game, level)
+    if (game.world && coop?.isClient) followHost(Number(w.layer) || 0)
+  },
+  // The party goes down a floor (the host stepped on the exit, or asked for it).
+  onFloor() {
+    if (game.labyrinth && !game.labyrinth.won) advanceFloor(game)
+  },
+  onFloorRequest() {
+    const lab = game.labyrinth
+    if (!lab || !lab.gateOpen || lab.won) return
+    advanceFloor(game)
+    coop.sendFloor()
   },
   onRestart() {
     restartGame()
@@ -7690,7 +7785,7 @@ function gameFrame(timestamp) {
     showLootToast(hud, { title: 'SKILL', name: 'Downed But Determined', blurb: 'You got back up!' })
   }
   // The Wilds never end your run: at zero HP you get back up at the last save point.
-  if (started && game.world && game.player.hp <= 0) respawnAtCheckpoint(game, elapsedSeconds)
+  if (started && game.world && game.player.hp <= 0 && !coop?.active) respawnAtCheckpoint(game, elapsedSeconds)
   // Co-op: going down isn't the end while a friend is still standing (stepCoopDown gets you back up).
   if (started && coop?.active && !game.coopOver) stepCoopDown(game, elapsedSeconds)
   const gameState = game.coopOver
@@ -7914,8 +8009,25 @@ function gameFrame(timestamp) {
       const air = game.world.jump.air
       player.obstacles = allObstacles.filter((o) => !(air && clearsObstacle(o, game.world.jump.alt)) && Math.hypot(o.x - x, o.z - z) > o.radius + PLAYER_RADIUS * 0.5)
     }
+    const leashFrom = { x: player.position.x, z: player.position.z }
     player.update(input, cameraYaw, deltaSeconds, room ? true : null)
     player.obstacles = allObstacles
+    // Co-op in the Wilds: the host only runs the land around the host, so nobody strays far from a friend.
+    if (game.world && coop?.active && !player.falling) {
+      // Only a step AWAY from a friend is stopped, so a friend who teleports (a respawn) never drags you along.
+      const away = coop.peers().filter((f) => Math.hypot(player.position.x - f.x, player.position.z - f.z) > Math.hypot(leashFrom.x - f.x, leashFrom.z - f.z))
+      const leash = leashPosition(player.position, away)
+      if (leash.held) {
+        player.position.x = leash.x
+        player.position.z = leash.z
+        player.mesh.position.x = leash.x
+        player.mesh.position.z = leash.z
+        if (elapsedSeconds - lastLeashToast > 4) {
+          lastLeashToast = elapsedSeconds
+          questUi.showToast(`STAY WITHIN ${COOP_MAX_DISTANCE} M OF YOUR FRIENDS`)
+        }
+      }
+    }
   }
   if (game.world) {
     // Space: a plain hop; Space again in the air opens the paraglider (no cooldown, no ability slot). Not while hiding,
@@ -7966,7 +8078,7 @@ function gameFrame(timestamp) {
     } else player.startFalling()
   }
   if (player.falling && player.updateFalling(gameplayDelta, elapsedSeconds)) {
-    if (game.world && player.hp > 0) respawnAtCheckpoint(game, elapsedSeconds, { toast: false, heal: false }) // hurt, but back at the save point rather than the middle of the world
+    if (game.world && player.hp > 0) respawnAtCheckpoint(game, elapsedSeconds, { toast: false, heal: false, near: coop?.active }) // hurt, but back at the save point rather than the middle of the world
     triggerShake(shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
     triggerDamageFlash(hud)
     sfx.play('playerHurt', { x: player.position.x, z: player.position.z })

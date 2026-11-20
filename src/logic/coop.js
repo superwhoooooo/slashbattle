@@ -2,8 +2,41 @@
 // host streams, who a monster goes after, smoothing remote movement, and which monster events travel
 // to whom. src/net/link.js moves the messages; src/coop.js applies them to the game.
 
-export const PROTOCOL = 3 // bump when the message format changes; a mismatched joiner is told to refresh
+export const PROTOCOL = 4 // bump when the message format changes; a mismatched joiner is told to refresh
 export const MAX_PLAYERS = 4
+// Co-op plays every mode. The host's game is the real one, and in the Wilds it only loads (and runs) the land around the
+// host, so the players have to stay together: nobody may wander farther than this from a friend (the host's monsters
+// reach LOAD_RADIUS 125 around the host, so a friend this close always has all of theirs around them).
+export const COOP_MAX_DISTANCE = 60
+export const COOP_MODES = ['resort', 'labyrinth', 'world', 'sandbox', 'tutorial']
+export const cleanMode = (mode) => (COOP_MODES.includes(mode) ? mode : 'resort')
+
+// Holds a player (at `pos`) within `max` of every friend in `others` ({ x, z }): the position they may stand at, and whether
+// it had to be pulled in. A few friends can pull in different directions, so it settles over a couple of passes.
+export function leashPosition(pos, others, max = COOP_MAX_DISTANCE) {
+  let x = pos.x
+  let z = pos.z
+  let held = false
+  for (let pass = 0; pass < 3; pass++) {
+    let moved = false
+    for (const o of others) {
+      const d = Math.hypot(x - o.x, z - o.z)
+      if (d > max) {
+        x = o.x + ((x - o.x) * max) / d
+        z = o.z + ((z - o.z) * max) / d
+        moved = held = true
+      }
+    }
+    if (!moved) break
+  }
+  return { x, z, held }
+}
+
+// Where a downed player gets back up in the Wilds: beside the friend who is up, else null (the save point).
+export function standUpBeside(friends) {
+  const up = friends.find((f) => !f.down)
+  return up ? { x: up.x + 2, z: up.z + 2 } : null
+}
 export const CODE_LENGTH = 4
 const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789' // no 0/O, 1/I/L
 
@@ -48,6 +81,7 @@ export const FLAG = {
   reflect: 256, // its mirror shield is up
   frozen: 512,
   submerged: 1024, // an amphibious boss under the water
+  skyIsle: 2048, // a monster of the sky isles (it only meets a player who is up there too)
 }
 
 const round2 = (v) => Math.round(v * 100) / 100
@@ -66,6 +100,7 @@ export function packMonster(ud, pos, rotY, now = 0) {
   if (ud.reflect) flags |= FLAG.reflect
   if (now < (ud.frozenUntil ?? -Infinity)) flags |= FLAG.frozen
   if (ud.submerged) flags |= FLAG.submerged
+  if (ud.skyIsle) flags |= FLAG.skyIsle
   return [ud.netId, ud.type, round2(pos.x), round2(pos.z), round2(pos.y), round2(rotY), Math.max(0, Math.round(ud.hp)), Math.round(ud.maxHp), flags]
 }
 
@@ -78,7 +113,7 @@ export function unpackMonster(row) {
     id, type, x, z, y, rotY, hp, maxHp,
     spawning: has(FLAG.spawning), dying: has(FLAG.dying), falling: has(FLAG.falling), boss: has(FLAG.boss),
     immune: has(FLAG.immune), phase2: has(FLAG.phase2), dazed: has(FLAG.dazed), burrowed: has(FLAG.burrowed),
-    reflect: has(FLAG.reflect), frozen: has(FLAG.frozen), submerged: has(FLAG.submerged),
+    reflect: has(FLAG.reflect), frozen: has(FLAG.frozen), submerged: has(FLAG.submerged), skyIsle: has(FLAG.skyIsle),
   }
 }
 

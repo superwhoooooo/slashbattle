@@ -1092,8 +1092,16 @@ Not counted in the sandbox, the tutorial (`freePlay`); the Wilds feed contracts 
 
 ## Online co-op
 P (or the start card's "Play with friends") opens `src/coop.js`'s panel: one player hosts and gets a 4-letter room code,
-up to three friends join with it. It plays the Orbital Sundeck waves only (`canCoop` refuses the sandbox, the tutorial,
-the labyrinth and the Wilds). Modeled on flopsim's multiplayer: `src/net/link.js` is peer to peer over WebRTC (PeerJS; the
+up to three friends join with it. It plays EVERY mode: the host's mode is everyone's (the welcome carries `mode`, `coopMode` / `joinMode` in
+`main.js`; `PROTOCOL` 4): the Orbital Sundeck waves, the Labyrinth (the host decides when the party goes down a floor:
+a joiner on the exit pad sends `floorReq`, the host advances and broadcasts `floor`), the Wilds, the sandbox and the tutorial.
+**In the Wilds players must stay within `COOP_MAX_DISTANCE` (60) of each other**: the host only loads the land around itself
+(`LOAD_RADIUS` 125), so a friend this close always has the host's monsters around them (`leashPosition`: only a step AWAY from a
+friend is stopped, with a toast). A joiner's Wilds monsters are all puppets (no camp spawns, no roaming events), chasms and
+Skylift towers stay open but only the HOST falls / launches: the host's level (bit 1 Depths, bit 2 sky) rides in the `mon`
+message and a guest follows it (`followHost` / `jumpToHost`: switches to the Depths or surface and lands where the host stands;
+`regroupGuest` also brings back a guest left far behind; sky monsters carry `FLAG.skyIsle` so an aloft guest can fight them), and a downed player gets back up beside a friend who is up
+(`standUpBeside`; if everyone is down, at their save points: the Wilds never end the run). Modeled on flopsim's multiplayer: `src/net/link.js` is peer to peer over WebRTC (PeerJS; the
 free public PeerJS server only matches codes), the host relays everyone's messages (a star), and when a network blocks the
 direct route a joiner falls back by itself to free public MQTT brokers (`RELAY_BROKERS`, slower update rates). A
 connection silent for `SILENCE_TIMEOUT` (25 s) is dropped; a timer keepalive (`ka`, every `KEEPALIVE_SECONDS`) keeps a
