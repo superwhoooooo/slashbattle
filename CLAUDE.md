@@ -1182,6 +1182,13 @@ or long invulnerability. Shiro the Limitless was nerfed hard at the same time: n
 (`on` / `off` in `TUNING.limitless`) and bosses ignore it, a smaller Blue, Hollow Violet 3x over 20 m on a 45 s cooldown, and a
 smaller Domain Expansion. Tests: `test/secretHero.test.js`.
 
+## The third secret hero: Nyxara, the Twilight Regent
+`twilight` in `HEROES` (`secret: true`, `heroForSecrets`, `TWILIGHT_HERO`; `main.js`'s `grantTwilightHero`, run after either other
+secret grant and at startup) is granted to whoever owns BOTH the Nimbus Sovereign and Veyra. Trait `twilight` (Twilight Regency): she
+FLIES like the Sovereign (`isFlyer`), and `twilightDawn` swaps dawn / dusk every `phase` s. Dawn (`stepTwilight`): seraph lances
+(`stepHeavenly`) and regen. Dusk: +damage and every `tendrilEvery`-th hit `shadowTendrils`. B: Syzygy (Eclipse + 6 lances). K: Grand
+Syzygy. Gear: `eclipseHalo`, `duskWings` (plus `voidMask`, `umbralCloak`, `seraphs`). Tests: `test/secretHero.test.js`.
+
 ## Hero ultimates and the mastery-8 pick
 `src/logic/heroUltimates.js` (pure, `test/heroUltimates.test.js`). With a hero at mastery `ULTIMATE_LEVEL` (8), every normal run
 (not the sandbox or tutorial) starts paused on `src/masteryPick.js`'s panel (`main.js`'s `offerMasteryPick`, from

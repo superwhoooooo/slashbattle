@@ -649,6 +649,21 @@ export const HEROES = [
     ],
     secretHint: 'Claim every Umbral Heart in the Depths',
   },
+  // --- The third secret hero: it comes to whoever owns BOTH other secret heroes (the Sovereign and the Hollow Queen).
+  {
+    id: 'twilight', name: 'Nyxara, the Twilight Regent', cost: 0, secret: true,
+    blurb: 'Born the moment the Sovereign and the Hollow Queen finally stopped arguing. Half dawn, half dusk, and entirely unbothered.',
+    stats: { damage: 1.15, speed: 1.05, crit: 0.05, maxHp: 15 }, mask: true,
+    trait: { id: 'twilight', name: 'Twilight Regency', desc: 'You FLY, and the sky cycles between DAWN and DUSK every 8 s. Dawn: two seraphs lance monsters within 10 m for 0.5x and you regenerate 1% health a second. Dusk: +40% damage, and every 3rd hit shadow tendrils erupt under up to 3 monsters near the target for 0.9x, feeding you 1% health each.' },
+    gear: ['voidMask', 'eclipseHalo', 'umbralCloak', 'duskWings', 'seraphs'],
+    skins: [
+      skin('twilight', 'Twilight Regent', 0x3a2a5c, 0x1a1030, 0xffc86a, 0xff8ad8),
+      skin('solstice', 'Solstice', 0xfff0d0, 0x2a1a44, 0xffd15c, 0xffb86a, 800),
+      skin('equinox', 'Equinox', 0x1a2a4a, 0x0a1428, 0x9ae8ff, 0x6a8aff, 1200),
+      skin('totality', 'Totality', 0x0a0a14, 0x000000, 0xfff2c0, 0xfff2c0, 1800),
+    ],
+    secretHint: 'Own both other secret heroes',
+  },
 ]
 
 export const HERO_IDS = HEROES.map((h) => h.id)
@@ -680,6 +695,9 @@ export const heroForCrowns = (claimed, total) => (total > 0 && claimed >= total 
 // The Hollow Queen comes to whoever has claimed every Umbral Heart in the Depths.
 export const DEPTHS_HERO = 'umbral'
 export const heroForHearts = (claimed, total) => (total > 0 && claimed >= total ? DEPTHS_HERO : null)
+// The Twilight Regent comes to whoever owns BOTH other secret heroes.
+export const TWILIGHT_HERO = 'twilight'
+export const heroForSecrets = (profile) => (ownsHero(profile, CROWN_HERO) && ownsHero(profile, DEPTHS_HERO) ? TWILIGHT_HERO : null)
 // Gives a hero for free (no crystals); unchanged if already owned.
 export function grantHero(profile, id) {
   if (!BY_ID[id] || ownsHero(profile, id)) return profile

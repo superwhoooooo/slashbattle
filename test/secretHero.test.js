@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CROWN_HERO, HEROES, SECRET_HEROES, buyHero, grantHero, heroById, heroForCrowns, heroForHearts, isSecretHero, normalizeHeroFields, ownsHero, visibleHeroes } from '../src/logic/heroes.js'
+import { CROWN_HERO, HEROES, SECRET_HEROES, buyHero, grantHero, heroById, heroForCrowns, heroForHearts, heroForSecrets, isSecretHero, normalizeHeroFields, ownsHero, visibleHeroes } from '../src/logic/heroes.js'
 import { AWAKENED, HERO_ABILITIES, traitTune } from '../src/logic/heroPowers.js'
 import { HERO_ULTIMATES } from '../src/logic/heroUltimates.js'
 import { GEAR_PARTS } from '../src/heroGear.js'
@@ -8,7 +8,7 @@ const fresh = { bank: 999999, heroesOwned: [], skinsOwned: [], heroSkins: {}, he
 
 describe('the secret hero (Nimbus Sovereign)', () => {
   it('is the one secret hero, with its trait, awakening, ability, ultimate and gear', () => {
-    expect(SECRET_HEROES).toEqual([CROWN_HERO, 'umbral'])
+    expect(SECRET_HEROES).toEqual([CROWN_HERO, 'umbral', 'twilight'])
     const hero = heroById(CROWN_HERO)
     expect(hero.id).toBe('sovereign')
     expect(isSecretHero('sovereign')).toBe(true)
@@ -87,5 +87,30 @@ describe('the second secret hero (Veyra, the Hollow Queen)', () => {
     const owned = grantHero(fresh, 'umbral')
     expect(ownsHero(owned, 'umbral')).toBe(true)
     expect(visibleHeroes(owned).some((h) => h.id === 'umbral')).toBe(true)
+  })
+})
+
+describe('the third secret hero (Nyxara, the Twilight Regent)', () => {
+  it('has its trait, awakening, ability, ultimate and gear', () => {
+    const hero = heroById('twilight')
+    expect(isSecretHero('twilight')).toBe(true)
+    expect(AWAKENED.twilight.desc).toBeTruthy()
+    expect(HERO_ABILITIES.twilight.name).toBe('Syzygy')
+    expect(HERO_ULTIMATES.twilight.steps.length).toBeGreaterThan(0)
+    for (const g of hero.gear) expect(GEAR_PARTS, g).toContain(g)
+    expect(traitTune('twilight', true).tendrils).toBeGreaterThan(traitTune('twilight', false).tendrils)
+    expect(hero.stats.damageTaken ?? 1).toBe(1)
+  })
+
+  it('comes only to a player who owns both other secret heroes, and cannot be bought', () => {
+    expect(heroForSecrets(fresh)).toBe(null)
+    expect(heroForSecrets(grantHero(fresh, 'sovereign'))).toBe(null)
+    expect(heroForSecrets(grantHero(fresh, 'umbral'))).toBe(null)
+    const both = grantHero(grantHero(fresh, 'sovereign'), 'umbral')
+    expect(heroForSecrets(both)).toBe('twilight')
+    expect(visibleHeroes(both).some((h) => h.id === 'twilight')).toBe(false)
+    expect(buyHero(both, 'twilight').ok).toBe(false)
+    const owned = grantHero(both, 'twilight')
+    expect(visibleHeroes(owned).some((h) => h.id === 'twilight')).toBe(true)
   })
 })

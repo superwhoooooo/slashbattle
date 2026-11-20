@@ -253,6 +253,13 @@ export const HERO_ULTIMATES = {
     { k: 'heal', frac: 0.35, at: 1.4 },
     { k: 'buff', secs: 8, damage: 1.4, at: 1.4 },
   ]),
+  twilight: U('Grand Syzygy', 60, 'Time crawls for 4 s as 12 pillars of light fall on monsters within 20 m for 3x each, then a dusk wave slows everything within 16 m for 4x, you heal 30%, and 8 s of +40% damage.', [
+    { k: 'timewarp', secs: 4, factor: 0.3 },
+    { k: 'strikes', n: 12, range: 20, r: 3, dmg: 3, pick: 'random', gap: 0.15 },
+    { k: 'waves', n: 2, gap: 0.55, r: 16, dmg: 4, kb: 3, status: 'slow', at: 2 },
+    { k: 'heal', frac: 0.3, at: 2.4 },
+    { k: 'buff', secs: 8, damage: 1.4, at: 2.4 },
+  ]),
 }
 
 // The +10% stat choices, in activeFx's effect shape (maxHp is a share of base HP; main.js turns it into points).

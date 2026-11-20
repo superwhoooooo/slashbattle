@@ -820,6 +820,42 @@ const GEAR = {
     }
     g.add(ring)
   },
+  // --- The third secret hero: Nyxara, the Twilight Regent ---
+  // An eclipse behind the head: a black disc ringed in gold fire, with a pale sun-spark on one side.
+  eclipseHalo(g, look) {
+    const halo = new THREE.Group()
+    halo.position.set(0, R * 1.62, -R - 0.3)
+    halo.userData.spin = true
+    part(halo, new THREE.CircleGeometry(0.46, 36), solid(0x05030a, 0.3, 0.2))
+    part(halo, new THREE.TorusGeometry(0.5, 0.05, 8, 48), glowMat(look.trim))
+    part(halo, new THREE.TorusGeometry(0.62, 0.02, 6, 48), glowMat(look.glow))
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2
+      const ray = part(halo, new THREE.ConeGeometry(0.03, i % 2 ? 0.2 : 0.36, 4), new THREE.MeshBasicMaterial({ color: i % 2 ? look.glow : look.trim, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false }), [Math.cos(a) * (0.7 + (i % 2 ? 0.1 : 0.18)), Math.sin(a) * (0.7 + (i % 2 ? 0.1 : 0.18)), 0], [0, 0, a - Math.PI / 2])
+      ray.castShadow = false
+    }
+    halo.traverse((o) => { o.castShadow = false })
+    g.add(halo)
+  },
+  // Mismatched wings: one of light (left), one of shadow (right), both beating.
+  duskWings(g, look) {
+    for (const side of [-1, 1]) {
+      const wing = new THREE.Group()
+      wing.position.set(side * R * 0.45, R * 1.3, -R * 0.85)
+      wing.userData.wing = side
+      for (let i = 0; i < 5; i++) {
+        const len = 1.2 - i * 0.14
+        const light = side < 0
+        const mat = light
+          ? new THREE.MeshBasicMaterial({ color: i % 2 ? look.trim : 0xffffff, transparent: true, opacity: 0.85 - i * 0.07, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide })
+          : new THREE.MeshStandardMaterial({ color: i % 2 ? look.cloak : 0x0a0614, roughness: 0.5, emissive: look.glow, emissiveIntensity: 0.12 + i * 0.03, side: THREE.DoubleSide })
+        const f = part(wing, new THREE.ConeGeometry(0.11, len, 4), mat, [side * (0.35 + i * 0.17 + len * 0.3), 0.3 - i * 0.12, 0], [0, 0, side * (-0.6 - i * 0.2)], [1, 1, 0.25])
+        f.castShadow = false
+      }
+      part(wing, new THREE.SphereGeometry(0.09, 10, 8), glowMat(side < 0 ? look.trim : look.glow), [side * 0.15, 0.25, 0])
+      g.add(wing)
+    }
+  },
   // --- Legendary heroes ---
   // Shiro the Limitless: spiky white hair swept up, a dark blindfold, a tall coat collar.
   whiteHair(g, look) {

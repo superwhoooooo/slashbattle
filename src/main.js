@@ -29,7 +29,7 @@ import { PICKUP_RADIUS, createPerkPickup, updatePerkPickup } from './pickups.js'
 import { createLoadoutPanel } from './loadout.js'
 import { createHub } from './hub.js'
 import { createHeroBeam, createHeroProjectile, disposeHeroProjectile, dressPlayer } from './heroGear.js'
-import { ATOMIC_REACH, HAMMER_REACH, HOOK_RANGE, HOTFOOT_MAX, HOTFOOT_STEP, HEROES, RAM_REHIT, boomerangPoint, broadsideSpots, chainPath, densestSpot, grantSkin, heroById, heroEffects, heroLook as lookForProfile, inBeam, isBehind, pickMarks, returningPoint, rewindTarget, rootsTriggered, spinReels, tipJarCrystals, linePoint, fanAngles, infinityPush, addRage, RAGE_PER_HIT, RAGE_PER_HURT, gloryKillReady, chargeLevel, grantHero, heroForCrowns, heroForHearts, ownsHero } from './logic/heroes.js'
+import { ATOMIC_REACH, HAMMER_REACH, HOOK_RANGE, HOTFOOT_MAX, HOTFOOT_STEP, HEROES, RAM_REHIT, boomerangPoint, broadsideSpots, chainPath, densestSpot, grantSkin, heroById, heroEffects, heroLook as lookForProfile, inBeam, isBehind, pickMarks, returningPoint, rewindTarget, rootsTriggered, spinReels, tipJarCrystals, linePoint, fanAngles, infinityPush, addRage, RAGE_PER_HIT, RAGE_PER_HURT, gloryKillReady, chargeLevel, grantHero, heroForCrowns, heroForHearts, heroForSecrets, ownsHero } from './logic/heroes.js'
 import { AWAKEN_LEVEL, HERO_ABILITIES, HERO_ABILITY_KEY, awakenedStats, heroAbilityFraction, isAwakened, pointsAlong, ringPoints, steerToward, traitTune, turnToward, useHeroAbility } from './logic/heroPowers.js'
 import { loadProfile, saveProfile } from './profile.js'
 import { DIFFICULTIES, DIFFICULTY_IDS, difficultyById, runPayout } from './logic/difficulty.js'
@@ -937,9 +937,10 @@ let profile = loadProfile()
 // startup, so a save that already has them all gets it too). Written to the real profile, never the sandbox view.
 function grantCrownHero(claimed, announce = false) {
   const id = heroForCrowns(claimed, skyArchipelagos().length)
-  if (!id || ownsHero(profile, id)) return
+  if (!id || ownsHero(profile, id)) return grantTwilightHero(announce)
   profile = grantHero(profile, id)
   saveProfile(profile)
+  grantTwilightHero(announce)
   if (!announce || !hud) return
   const hero = heroById(id)
   showLootToast(hud, { title: 'SECRET HERO UNLOCKED', name: hero.name, blurb: 'Every crown of the sky is yours, and so is its Sovereign. Pick them on the Heroes page (Y).' })
@@ -949,12 +950,27 @@ function grantCrownHero(claimed, announce = false) {
     spawnShockwave(shockwavePool, p.x, p.z, 12, 0xffd15c)
   }
 }
-// The Hollow Queen: claim every Umbral Heart in the Depths (checked on each claim and at startup, like the crowns).
-function grantDepthsHero(claimed, announce = false) {
-  const id = heroForHearts(claimed, depthsLairs().length)
+// The Twilight Regent: yours once you own BOTH the Nimbus Sovereign and the Hollow Queen (checked after either grant and at startup).
+function grantTwilightHero(announce = false) {
+  const id = heroForSecrets(profile)
   if (!id || ownsHero(profile, id)) return
   profile = grantHero(profile, id)
   saveProfile(profile)
+  if (!announce || !hud) return
+  showLootToast(hud, { title: 'SECRET HERO UNLOCKED', name: heroById(id).name, blurb: 'The Sovereign and the Hollow Queen, together at last. Pick Nyxara on the Heroes page (Y).' })
+  const p = game?.player?.position
+  if (p) {
+    burst(particleSystem, { x: p.x, y: 2, z: p.z }, 0xff8ad8, 80, 8)
+    spawnShockwave(shockwavePool, p.x, p.z, 14, 0xffc86a)
+  }
+}
+// The Hollow Queen: claim every Umbral Heart in the Depths (checked on each claim and at startup, like the crowns).
+function grantDepthsHero(claimed, announce = false) {
+  const id = heroForHearts(claimed, depthsLairs().length)
+  if (!id || ownsHero(profile, id)) return grantTwilightHero(announce)
+  profile = grantHero(profile, id)
+  saveProfile(profile)
+  grantTwilightHero(announce)
   if (!announce || !hud) return
   const hero = heroById(id)
   showLootToast(hud, { title: 'SECRET HERO UNLOCKED', name: hero.name, blurb: 'Every heart of the dark is yours, and so is its Queen. Pick her on the Heroes page (Y).' })
@@ -1113,6 +1129,7 @@ setDamageHooks({
     if (trait === 'highnoon' && heroNow < heroState.noonUntil) scale *= t.boost
     if (trait === 'spartan' && heroNow < heroState.rageUntil) scale *= t.bonus
     if (trait === 'abyss') scale *= 1 + t.hunger * (1 - Math.max(0, game.player.hp) / Math.max(1, game.player.maxHp)) // the emptier she is, the harder she bites
+    if (trait === 'twilight' && !twilightDawn(t)) scale *= 1 + t.dusk // dusk: the dark hits harder
     if (hexed) scale *= t.bonus
     return scale === 1 ? damage : Math.round(damage * scale)
   },
@@ -1194,6 +1211,9 @@ setDamageHooks({
       heroState.pending.push({ at: heroNow + 0.05, run: () => groundPound(monster, t) })
     }
     if (trait === 'abyss' && heroState.hits % t.every === 0) heroState.pending.push({ at: heroNow, run: () => shadowTendrils(at, t) })
+    if (trait === 'twilight' && !twilightDawn(t) && heroState.hits % t.tendrilEvery === 0) {
+      heroState.pending.push({ at: heroNow, run: () => shadowTendrils(at, { reach: t.reach, tendrils: t.tendrils, damage: t.tendrilDamage, heal: t.heal }) })
+    }
     if (trait === 'tnt' && heroState.hits % t.every === 0) heroState.pending.push({ at: heroNow, run: () => dropTnt(at, t) })
     if (trait === 'hadoken' && heroState.hits % t.every === 0) heroState.pending.push({ at: heroNow + 0.05, run: () => waveFist(heroAimAngle(), t) })
     if (trait === 'inhale' && heroNow >= heroState.inhaleReady) {
@@ -2329,7 +2349,8 @@ function fireChargeShot(aim, t = tn()) {
 function stepLegendaryHeroes(player, now, dt, trait, t) {
   if (trait === 'limitless') stepInfinity(player, now, t)
   if (trait === 'heavenly') stepHeavenly(player, now, t)
-  applyFlight(player, now, trait === 'heavenly')
+  if (trait === 'twilight') stepTwilight(player, now, dt, t)
+  applyFlight(player, now, trait === 'heavenly' || trait === 'twilight')
   if (trait === 'spartan' && now < heroState.rageUntil && Math.random() < 0.5) {
     burst(particleSystem, { x: player.position.x, y: 1.2, z: player.position.z }, 0xff3a1a, 2, 1, 0.4)
   }
@@ -2340,7 +2361,15 @@ function stepLegendaryHeroes(player, now, dt, trait, t) {
 const SOVEREIGN_HOVER = 0.55 // how high the Sovereign floats over the ground
 const SOVEREIGN_CLIMB = 10 // Wilds: holding Space with the wings open climbs this fast (m/s)
 const ASCEND = { rise: 0.5, hang: 0.3, dive: 0.25, height: 8, radius: 6, damage: 3, lances: 6, lanceDamage: 1.2 }
-const isFlyer = () => heroTrait() === 'heavenly'
+const isFlyer = () => heroTrait() === 'heavenly' || heroTrait() === 'twilight'
+// Twilight Regency: the sky swaps between dawn (even phases) and dusk every `phase` s.
+const twilightDawn = (t) => Math.floor(heroNow / t.phase) % 2 === 0
+// Dawn: seraphs lance nearby monsters and you regenerate; dusk's power lives in the damage / on-hit hooks.
+function stepTwilight(player, now, dt, t) {
+  if (!twilightDawn(t) || player.hp <= 0 || player.falling || player.hidden) return
+  player.hp = Math.min(player.maxHp, player.hp + player.maxHp * t.regen * dt)
+  stepHeavenly(player, now, t)
+}
 // Heavenly Host: on each tick every seraph lances a monster in range (the nearest first, spread over them).
 function stepHeavenly(player, now, t) {
   if (player.hp <= 0 || player.falling || player.hidden || now < heroState.seraphReady) return
@@ -2736,6 +2765,13 @@ function triggerHeroAbility(now, free = false) {
     case 'shiro': hollowViolet(aim); break
     case 'sovereign': ascension(now); break
     case 'umbral': eclipse(p, 10, 4, 0.12); break
+    case 'twilight': {
+      eclipse(p, 10, 4, 0.1)
+      const tt = awake('twilight')
+      heroTargets(p.x, p.z, 14).sort((m1, m2) => distTo(m1, p) - distTo(m2, p)).slice(0, 6)
+        .forEach((m, i) => heroState.pending.push({ at: now + 0.15 + i * 0.07, run: () => seraphLance(i, 6, m, 1.2, tt) }))
+      break
+    }
     case 'ranger':
       setTimeWarp(Math.max(timeWarp.until, now + 3), 0.25)
       warp.add('swirl', p.x, p.z, 6, 1)
@@ -7234,6 +7270,7 @@ window.addEventListener('touchend', () => {
 
 let game = createGame()
 grantDepthsHero(loadJournal().depthRelics.length)
+grantTwilightHero()
 grantCrownHero(loadJournal().relics.length) // a save that already holds every Nimbus Crown gets the secret hero
 
 // Dev-server only: lets browser tests (and you, in the console) peek at the state.
