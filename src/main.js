@@ -76,6 +76,9 @@ import { acceptQuest, claimQuest, createQuestLog, npcDialog, npcMarker, questEve
 import { BIOMES, BOSS_RESPAWN_SECONDS, SANCTUM_RADIUS, SKYSTAR_CATCH_RADIUS, SKYSTAR_REWARD, UNLOAD_RADIUS, VILLAGE_SAFE_RADIUS, WATER_LEVEL, WORLD_RADIUS, biomeAt, canRespawn, chunkContent, chunkKey, propHeight, dangerAt, dayName, diffChunks, groundColorAt, heightAt, inDepths, lakeAt, landmarkById, landmarks, nearestLandmark, nearestVillage, ruins, setDepthsMode, skystars, villageById, villages } from './logic/world.js'
 import { createWildsActivities } from './wildsActivities.js'
 import { createDepthsFx } from './depthsFx.js'
+import { CAVE_FIRST_REWARD, caveArrival, caveAt, caveById, caveExit, caveObstacles, caves } from './logic/caves.js'
+import { CAMP_SIZE, CELL_PICKUP_RADIUS, FIX_REWARD, PARTS_COST, acceptFix, campKill, collectCell, finishFix, fixOf, fixProgressText, issueCamp, issueCells, jammedTowers, keeperDialog, keeperSpot, towerIssue } from './logic/towerQuests.js'
+import { createCavesFx } from './cavesFx.js'
 import { ASCEND_RADIUS, DEPTH_FIRST_REWARD, DEPTH_RELIC_REWARD, RELIC_CLAIM_RADIUS, arrivalSpot, ascendFraction, beacons, chasmById, chasmFalls, chasmRim, chasms, createAscendState, depthsChunk, depthsLairs, stepAscend } from './logic/depths.js'
 import { createJournalUi } from './journalUi.js'
 import { LANTERN_CATCH_RADIUS, LANTERN_COUNT, lanternReward, lanternsNear } from './logic/lanterns.js'
@@ -83,7 +86,7 @@ import { BOONS, SHRINE_RADIUS, activeBoons, boonEffects, createShrineState, fold
 import { HEAT_TEXT, MAX_MAPS, addMap, digAt, makeTreasureMap, nearestMap } from './logic/treasure.js'
 import { createRaceState, raceCourses, raceReward, stepRace } from './logic/races.js'
 import { EVENTS, STAR_SHARD_VALUE, createEventDirector, endEvent, hordePlan, merchantName, merchantStock, meteorPlan, stepEventDirector, wandererPlan } from './logic/wildEvents.js'
-import { BESTIARY_FIRST_REWARD, JOURNAL_KEY, claimMilestone, creatureName, noteBiome, noteChasm, noteDepthRelic, noteEvent, noteIsle, noteKill, noteLandmark, noteLantern, noteRace, noteRelic, noteShrine, noteTower, noteTreasure, parseJournal, pickUnowned, readyMilestones, serializeJournal } from './logic/wildsJournal.js'
+import { BESTIARY_FIRST_REWARD, JOURNAL_KEY, claimMilestone, creatureName, noteBiome, noteCave, noteChasm, noteDepthRelic, noteEvent, noteIsle, noteKill, noteLandmark, noteLantern, noteRace, noteRelic, noteShrine, noteTower, noteTreasure, parseJournal, pickUnowned, readyMilestones, serializeJournal } from './logic/wildsJournal.js'
 import { formatTime } from './logic/wildsSpots.js'
 import { createMusic } from './music.js'
 import { MUSIC_STYLE_LABELS, nextMusicStyle, pickTrack } from './logic/wildsMusic.js'
@@ -3014,13 +3017,25 @@ function createGame() {
     game.world.sky.fx = createSkyWorld()
     game.arena.group.add(game.world.sky.fx.group)
     game.world.sky.fx.setRidden(new Set(game.world.journal.towers))
+    game.world.sky.fx.setRepaired(new Set(Object.keys(game.world.journal.fixes).filter((id) => game.world.journal.fixes[id].stage === 'done')))
+    game.world.caveFx = createCavesFx()
+    game.arena.group.add(game.world.caveFx.group)
+    game.world.towerQuest = { keepers: new Map(), cells: new Map(), group: new THREE.Group(), spawnAt: new Map(), lastStage: new Map() }
+    game.arena.group.add(game.world.towerQuest.group)
     game.world.sky.fx.setRelicsTaken(new Set(game.world.journal.relics))
     game.world.sky.pillars = []
     for (const tower of skyTowers()) {
-      const pillars = towerObstacles(tower).map((o) => ({ ...o, top: tower.y + TOWER_HEIGHT }))
+      const pillars = towerObstacles(tower).map((o) => ({ top: tower.y + TOWER_HEIGHT, ...o }))
       game.world.sky.pillars.push(...pillars)
       game.obstacles.push(...pillars)
       game.props.push(...pillars)
+    }
+    // The caves' rock outcrops are solid too (kept with the towers' pillars: both are surface-only).
+    for (const cave of caves()) {
+      const rocks = caveObstacles(cave)
+      game.world.sky.pillars.push(...rocks)
+      game.obstacles.push(...rocks)
+      game.props.push(...rocks)
     }
     // The chasms (and, below them, the Depths' Lightroots and Umbral Hearts).
     game.world.depths.fx = createDepthsFx()
@@ -4094,6 +4109,11 @@ const dialogInfo = (game, npc) => ({ npc: npc.def, village: villageById(npc.def.
 
 function openTalk(game, npc) {
   game.world.talkingTo = npc.def.id
+  if (npc.def.keeper) {
+    questUi.show(keeperDialogInfo(game, npc))
+    sfx.play('podIn', { x: npc.mesh.position.x, z: npc.mesh.position.z })
+    return
+  }
   if (npc.def.merchant) {
     questUi.show(merchantDialog(game))
     sfx.play('podIn', { x: npc.mesh.position.x, z: npc.mesh.position.z })
@@ -4110,6 +4130,7 @@ function handleDialogButton(game, id) {
   const npc = w?.npcs.get(w.talkingTo)
   if (!npc) return questUi.close()
   if (npc.def.merchant) return handleMerchantButton(game, id)
+  if (npc.def.keeper) return handleKeeperButton(game, id, npc)
   const dialog = npcDialog(w.quests, npc.def)
   if (id === 'accept' && dialog.mode === 'offer') {
     w.quests = acceptQuest(w.quests, dialog.quest)
@@ -4565,6 +4586,176 @@ function deactivateArchipelago(game, arch) {
   w.sky.active.delete(arch.id)
 }
 
+// ---- broken Skylift towers: the keepers' repair jobs (rules in logic/towerQuests.js) ----
+const KEEPER_SEE = 150 // a tower's keeper appears this close
+const towerFixDone = (journal) => new Set(Object.keys(journal.fixes).filter((id) => journal.fixes[id].stage === 'done'))
+const setFixes = (game, fixes) => setJournal(game, { ...game.world.journal, fixes })
+const towerOf = (id) => skyTowers().find((t) => t.id === id) ?? null
+
+function keeperMarker(game, towerId) {
+  const tower = towerOf(towerId)
+  const stage = fixOf(game.world.journal.fixes, towerId).stage
+  if (stage === 'open') return 'offer'
+  if (stage === 'done') return null
+  return towerIssue(tower)?.kind === 'parts' && game.inventory.crystals >= PARTS_COST ? 'ready' : 'progress'
+}
+
+function keeperDialogInfo(game, npc) {
+  const tower = towerOf(npc.def.keeper)
+  return { npc: npc.def, village: { name: tower.name }, mode: 'keeper', ...keeperDialog(game.world.journal.fixes, tower, game.inventory.crystals) }
+}
+
+function handleKeeperButton(game, id, npc) {
+  const w = game.world
+  const tower = towerOf(npc.def.keeper)
+  const issue = towerIssue(tower)
+  if (id === 'accept' && fixOf(w.journal.fixes, tower.id).stage === 'open') {
+    setFixes(game, acceptFix(w.journal.fixes, tower.id))
+    const goal = { camp: 'CLEAR THE CAMP AROUND THE TOWER', cells: 'FIND THE GLOWING POWER CELLS NEAR THE TOWER', parts: `BRING ${PARTS_COST} CRYSTALS: TALK TO THE WARDEN AGAIN` }[issue.kind]
+    questUi.showToast(`JOB TAKEN: ${issue.title.toUpperCase()}  ·  ${goal}`)
+    sfx.play('chestOpen', { x: npc.mesh.position.x, z: npc.mesh.position.z })
+    questUi.close()
+  } else if (id === 'pay' && fixOf(w.journal.fixes, tower.id).stage === 'accepted' && issue.kind === 'parts') {
+    if (game.inventory.crystals < PARTS_COST) {
+      questUi.showToast(`NOT ENOUGH CRYSTALS (${PARTS_COST} NEEDED)`)
+      return
+    }
+    game.inventory = spendCrystals(game.inventory, PARTS_COST).inventory
+    completeTowerFix(game, tower)
+    questUi.update(keeperDialogInfo(game, npc))
+  } else questUi.close()
+}
+
+// The fix is done: the pad lights up, and the keeper's thanks (crystals, a heal and a treasure map).
+function completeTowerFix(game, tower) {
+  const w = game.world
+  setFixes(game, finishFix(w.journal.fixes, tower.id))
+  w.sky.fx.setRepaired(towerFixDone(w.journal))
+  game.inventory = addCrystals(game.inventory, FIX_REWARD)
+  game.player.hp = Math.min(game.player.maxHp, game.player.hp + game.player.maxHp * 0.3)
+  spawnShockwave(shockwavePool, tower.x, tower.z, 14, 0x5ef2d6)
+  burst(particleSystem, { x: tower.x, y: fxY(game, tower.y + 3), z: tower.z }, 0x5ef2d6, 70, 8, 1)
+  sfx.play('waveCleared', { x: tower.x, z: tower.z })
+  questUi.showToast(`SKYLIFT RESTORED: ${tower.name.toUpperCase()}  +${FIX_REWARD} CRYSTALS  ·  STEP ONTO THE PAD`)
+  grantTreasureMap(game, `tower:${tower.id}`, { x: tower.x, z: tower.z }, tower.name)
+}
+
+// A camp monster fell (scoreKill): it counts toward its tower's job.
+function towerCampKill(game, towerId) {
+  const w = game.world
+  const tower = towerOf(towerId)
+  if (!tower) return
+  const out = campKill(w.journal.fixes, tower)
+  if (out.fixes === w.journal.fixes) return
+  setFixes(game, out.fixes)
+  if (out.done) completeTowerFix(game, tower)
+  else questUi.showToast(`CAMP: ${fixOf(out.fixes, tower.id).n} / ${CAMP_SIZE} CLEARED`)
+}
+
+function makeCellMesh() {
+  const g = new THREE.Group()
+  const core = new THREE.Mesh(new THREE.OctahedronGeometry(0.5), new THREE.MeshBasicMaterial({ color: 0xffd37a, fog: false }))
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.85, 0.05, 6, 24), new THREE.MeshBasicMaterial({ color: 0x5ef2d6, transparent: true, opacity: 0.85, fog: false }))
+  ring.rotation.x = Math.PI / 2
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 16, 6, 1, true), new THREE.MeshBasicMaterial({ color: 0xffd37a, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, side: THREE.DoubleSide }))
+  beam.position.y = 8
+  g.add(core, ring, beam)
+  g.userData = { core, ring }
+  return g
+}
+
+function animateTowerCells(game, now) {
+  for (const cell of game.world.towerQuest.cells.values()) {
+    cell.mesh.userData.core.rotation.y = now * 1.8
+    cell.mesh.userData.ring.rotation.z = now * 1.2
+    cell.mesh.position.y = cell.y + 1.3 + Math.sin(now * 2 + cell.y) * 0.18
+  }
+}
+
+function clearTowerQuest(game) {
+  const tq = game.world?.towerQuest
+  if (!tq) return
+  for (const [id, npc] of tq.keepers) {
+    disposeObject3D(npc.mesh)
+    game.world.npcs.delete(npc.def.id)
+    tq.keepers.delete(id)
+  }
+  for (const cell of tq.cells.values()) {
+    tq.group.remove(cell.mesh)
+    disposeObject3D(cell.mesh)
+  }
+  tq.cells.clear()
+}
+
+// Each frame on the surface: keepers appear beside their towers, accepted jobs run (cells to collect, camps to clear).
+function stepTowerQuests(game, now) {
+  const w = game.world
+  const tq = w.towerQuest
+  const p = game.player.position
+  for (const tower of skyTowers()) {
+    const issue = towerIssue(tower)
+    if (!issue) continue
+    const d = Math.hypot(tower.x - p.x, tower.z - p.z)
+    let npc = tq.keepers.get(tower.id)
+    if (d < KEEPER_SEE && !npc) {
+      const at = keeperSpot(tower)
+      npc = createNpc({ id: `keeper:${tower.id}`, keeper: tower.id, name: issue.keeper, role: 'Tower Warden', color: issue.color, x: at.x, z: at.z, villageId: null })
+      scene.add(npc.mesh)
+      tq.keepers.set(tower.id, npc)
+      w.npcs.set(npc.def.id, npc)
+    } else if (d > KEEPER_SEE + 40 && npc && w.talkingTo !== npc.def.id) {
+      disposeObject3D(npc.mesh)
+      tq.keepers.delete(tower.id)
+      w.npcs.delete(npc.def.id)
+    }
+    const fix = fixOf(w.journal.fixes, tower.id)
+    if (fix.stage !== 'accepted') continue
+    if (issue.kind === 'cells') {
+      for (const spot of issueCells(tower)) {
+        if (fix.cells.includes(spot.id)) continue
+        const near = Math.hypot(spot.x - p.x, spot.z - p.z)
+        let cell = tq.cells.get(spot.id)
+        if (near < 140 && !cell) {
+          cell = { ...spot, mesh: makeCellMesh() }
+          cell.mesh.position.set(spot.x, spot.y + 1.3, spot.z)
+          tq.group.add(cell.mesh)
+          tq.cells.set(spot.id, cell)
+        } else if (near > 190 && cell) {
+          tq.group.remove(cell.mesh)
+          disposeObject3D(cell.mesh)
+          tq.cells.delete(spot.id)
+        }
+        if (cell && near < CELL_PICKUP_RADIUS && Math.abs(w.groundY - spot.y) < 4 && !game.player.hidden && game.player.hp > 0) {
+          const out = collectCell(w.journal.fixes, tower, spot.id)
+          setFixes(game, out.fixes)
+          tq.group.remove(cell.mesh)
+          disposeObject3D(cell.mesh)
+          tq.cells.delete(spot.id)
+          burst(particleSystem, { x: spot.x, y: fxY(game, spot.y + 1.2), z: spot.z }, 0xffd37a, 30, 5)
+          sfx.play('crystal', { x: spot.x, z: spot.z })
+          if (out.done) completeTowerFix(game, tower)
+          else questUi.showToast(`POWER CELL ${fixOf(out.fixes, tower.id).n} / 3`)
+        }
+      }
+    } else if (issue.kind === 'camp' && d < 55) {
+      // The camp: whoever is missing (killed ones count in the journal; ones dropped behind you come back) stands round the tower.
+      const need = CAMP_SIZE - fix.n
+      const alive = game.monsters.filter((m) => m.userData.towerCamp === tower.id && !m.userData.dying).length
+      if (need > alive && now > (tq.spawnAt.get(tower.id) ?? 0)) {
+        tq.spawnAt.set(tower.id, now + 4)
+        const camp = issueCamp(tower)
+        const danger = Math.min(1, dangerAt(tower.x, tower.z) + 0.1)
+        for (let i = alive; i < need; i++) {
+          const c = camp[i % camp.length]
+          const mesh = spawnWildMonster(game, c.type, { x: c.x, z: c.z }, { danger, elite: c.elite, hpScale: (1 + danger) * (c.elite ? 2.4 : 1) })
+          mesh.userData.towerCamp = tower.id
+        }
+      }
+    }
+  }
+  animateTowerCells(game, now)
+}
+
 function stepSky(game, now, dt) {
   const w = game.world
   const s = w.sky
@@ -4574,7 +4765,7 @@ function stepSky(game, now, dt) {
   if (dt > 0) {
     // The towers: stand on the pad, hold still while it charges, and up you go.
     const ok = !coop?.isClient && !player.hidden && !player.falling && player.hp > 0 && !w.jump.air && !blockingPanelOpen() && !game.cutscene
-    const out = stepLaunch(s.launch, { x: p.x, z: p.z, alt: w.groundY, now, ok })
+    const out = stepLaunch(s.launch, { x: p.x, z: p.z, alt: w.groundY, now, ok, jammed: jammedTowers(w.journal.fixes) })
     s.launch = out.state
     for (const ev of out.events) {
       if (ev.type === 'charge') {
@@ -4644,6 +4835,9 @@ function stepSky(game, now, dt) {
     }
   }
   if (dt > 0 && !coop?.isClient) stepSkyfins(game, now, dt)
+  if (dt > 0 && !game.cutscene && !coop?.isClient) stepTowerQuests(game, now)
+  else if (dt > 0) animateTowerCells(game, now)
+  w.caveFx?.update({ x: p.x, z: p.z }, now)
   s.fx.update({ x: p.x, z: p.z, y: w.groundY }, now, s.launch.charging ? { towerId: s.launch.charging, fraction: chargeFraction(s.launch, now) } : null)
 }
 
@@ -4741,8 +4935,11 @@ function switchWorldLayer(game, toDepths) {
   w.depths.fx.setDepths(toDepths)
   if (w.fx) w.fx.group.visible = !toDepths
   if (w.sky.fx) w.sky.fx.group.visible = !toDepths
+  if (w.caveFx) w.caveFx.group.visible = !toDepths
+  clearTowerQuest(game)
   w.depths.on = toDepths
   w.depths.descent = null
+  w.depths.caveDescent = null
   w.depths.ascend = createAscendState()
   w.sky.launch = createLaunchState()
   w.sky.isleId = null
@@ -4785,10 +4982,81 @@ function enterDepths(game, chasm, now) {
   setTimeout(() => depthsFade.to(0, 1100), 80)
 }
 
-// A Lightroot lifts you home, to the rim of the chasm it belongs to.
+// Walking through a cave's doorway (logic/caves.js): a short fade, then the cave's chamber, a pocket of the Depths.
+function enterCave(game, cave, now) {
+  const w = game.world
+  const player = game.player
+  switchWorldLayer(game, true)
+  const at = caveArrival(cave)
+  player.position.x = at.x
+  player.position.z = at.z
+  player.mesh.position.x = at.x
+  player.mesh.position.z = at.z
+  player.vel = { x: 0, z: 0 }
+  const ground = heightAt(at.x, at.z)
+  w.jump = { alt: ground, vy: 0, air: false, gliding: false }
+  w.groundY = w.camGround = ground
+  player.mesh.position.y = ground
+  w.depths.cave = cave.id
+  w.bannerUntil = now + 3.6
+  if (biomeBanner) {
+    biomeBanner.textContent = cave.name
+    biomeBanner.style.setProperty('--biome-glow', `#${BIOMES.depths.glow.toString(16).padStart(6, '0')}`)
+  }
+  const note = noteCave(w.journal, cave.id)
+  setJournal(game, note.journal)
+  if (note.first) {
+    game.inventory = addCrystals(game.inventory, CAVE_FIRST_REWARD)
+    questUi.showToast(`${cave.name.toUpperCase()}  +${CAVE_FIRST_REWARD} CRYSTALS  ·  A CHEST AND GUARDS WAIT INSIDE  ·  THE LIGHTROOT TAKES YOU OUT`)
+  } else questUi.showToast(`${cave.name.toUpperCase()}  ·  THE LIGHTROOT TAKES YOU OUT`)
+  setTimeout(() => depthsFade.to(0, 900), 80)
+}
+
+// On the surface (or an isle): walk into a cave's doorway and you go in.
+function stepCaves(game, now) {
+  const w = game.world
+  const player = game.player
+  const d = w.depths
+  if (d.caveDescent) {
+    if (!d.caveDescent.faded && now - d.caveDescent.start > 0.25) {
+      d.caveDescent.faded = true
+      depthsFade.to(1, 450)
+    }
+    if (now - d.caveDescent.start >= 0.8) enterCave(game, d.caveDescent.cave, now)
+    return
+  }
+  if (player.hidden || player.falling || player.hp <= 0 || game.cutscene || blockingPanelOpen() || w.jump.air) return
+  const p = player.position
+  const cave = caveAt(p.x, p.z, w.groundY)
+  if (!cave) return
+  d.caveDescent = { start: now, cave, faded: false }
+  sfx.play('podIn', { x: cave.x, z: cave.z })
+  questUi.showToast(`INTO ${cave.name.toUpperCase()}`)
+}
+
+// A Lightroot lifts you home, to the rim of the chasm it belongs to (or out of the cave it stands in).
 function leaveDepths(game, beacon, now) {
   const w = game.world
   const player = game.player
+  if (beacon.caveId) {
+    const cave = caveById(beacon.caveId)
+    switchWorldLayer(game, false)
+    const out = caveExit(cave)
+    const ground = surfaceAt(out.x, out.z, cave.y + 1)
+    player.position.x = out.x
+    player.position.z = out.z
+    player.mesh.position.set(out.x, ground, out.z)
+    player.vel = { x: 0, z: 0 }
+    w.jump = launchJump({ alt: ground, vy: 0, air: false, gliding: false }, 8)
+    w.groundY = w.camGround = ground
+    w.depths.cave = null
+    burst(particleSystem, { x: out.x, y: 1, z: out.z }, 0xffd9a8, 40, 5, 0.8)
+    spawnShockwave(shockwavePool, out.x, out.z, 5, 0xffd9a8)
+    sfx.play('arrive', { x: out.x, z: out.z })
+    questUi.showToast(`BACK OUTSIDE  ·  ${cave.name.toUpperCase()}`)
+    setTimeout(() => depthsFade.to(0, 800), 60)
+    return
+  }
   const chasm = chasmById(beacon.chasmId)
   switchWorldLayer(game, false)
   const rim = chasmRim(chasm)
@@ -5099,10 +5367,20 @@ function skyChips(game, now) {
   const chips = []
   if (s.launch.charging) chips.push(['#5ef2d6', `<b>SKYLIFT</b> charging ${Math.round(chargeFraction(s.launch, now) * 100)}% · hold still`])
   else if (!w.jump.air) {
+    const jammed = jammedTowers(w.journal.fixes)
     for (const t of skyTowers()) {
-      if (Math.hypot(t.x - p.x, t.z - p.z) < 14 && Math.abs(w.groundY - t.y) < 6) chips.push(['#5ef2d6', `<b>${t.name.toUpperCase()}</b> step onto the glowing pad to launch`])
+      if (Math.hypot(t.x - p.x, t.z - p.z) < 14 && Math.abs(w.groundY - t.y) < 6) {
+        if (jammed.has(t.id)) chips.push(['#ff8aa8', `<b>${t.name.toUpperCase()}</b> is jammed: talk to ${towerIssue(t).keeper} (E)`])
+        else chips.push(['#5ef2d6', `<b>${t.name.toUpperCase()}</b> step onto the glowing pad to launch`])
+      }
     }
   }
+  for (const t of skyTowers()) {
+    const f = fixOf(w.journal.fixes, t.id)
+    if (towerIssue(t) && f.stage === 'accepted') chips.push(['#ffd37a', `<b>FIX ${t.name.toUpperCase()}</b> ${fixProgressText(w.journal.fixes, t)}`])
+  }
+  const cave = !w.jump.air ? caves().find((c) => Math.hypot(c.x - p.x, c.z - p.z) < 14 && Math.abs(w.groundY - c.y) < 5) : null
+  if (cave) chips.push(['#ffd9a8', `<b>${cave.name.toUpperCase()}</b> walk into the doorway to go in`])
   if (w.jump.air && !w.jump.gliding) {
     for (const a of skyArchipelagos()) {
       const u = a.updraft
@@ -5131,10 +5409,37 @@ function drawSkyMarks(ctx, game, at, onMap) {
       ctx.setLineDash([])
     }
   }
+  const jammed = jammedTowers(w.journal.fixes)
+  for (const c of caves()) {
+    const [x, y] = at(c.x, c.z)
+    if (!onMap([x, y], 6)) continue
+    ctx.fillStyle = w.journal.caves.includes(c.id) ? '#ffd9a8' : c.kind === 'isle' ? '#7ff0d8' : '#9a7650'
+    ctx.strokeStyle = '#241b3a'
+    ctx.lineWidth = 1.5
+    ctx.beginPath()
+    ctx.arc(x, y + 3, 5, Math.PI, 0)
+    ctx.closePath()
+    ctx.fill()
+    ctx.stroke()
+  }
+  for (const t of skyTowers()) {
+    if (towerIssue(t) && fixOf(w.journal.fixes, t.id).stage === 'accepted') {
+      for (const cell of issueCells(t)) {
+        if (fixOf(w.journal.fixes, t.id).cells.includes(cell.id) || towerIssue(t).kind !== 'cells') continue
+        const [cx, cy] = at(cell.x, cell.z)
+        if (!onMap([cx, cy], 4)) continue
+        ctx.fillStyle = '#ffd37a'
+        ctx.beginPath()
+        ctx.arc(cx, cy, 3.5, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.stroke()
+      }
+    }
+  }
   for (const t of skyTowers()) {
     const [x, y] = at(t.x, t.z)
     if (!onMap([x, y])) continue
-    ctx.fillStyle = w.journal.towers.includes(t.id) ? '#5ef2d6' : '#2f8a7a'
+    ctx.fillStyle = jammed.has(t.id) ? '#c4506e' : w.journal.towers.includes(t.id) ? '#5ef2d6' : '#2f8a7a'
     ctx.strokeStyle = '#241b3a'
     ctx.lineWidth = 1.5
     ctx.beginPath()
@@ -5736,7 +6041,10 @@ function stepWorld(game, now, dt = 0) {
   game.arena.shadowY = w.camGround // the sun's shadow box follows you up to the isles
   game.arena.world.setAltitude?.(w.camGround - heightAt(p.x, p.z), w.camGround)
   if (dt > 0) regroupGuest(now)
-  if (!w.depths.on && dt > 0 && !coop?.isClient) stepChasms(game, now) // (in co-op only the host falls: a guest follows the host's level, see followHost)
+  if (!w.depths.on && dt > 0 && !coop?.isClient) {
+    stepChasms(game, now)
+    if (!w.depths.descent) stepCaves(game, now)
+  } // (in co-op only the host falls: a guest follows the host's level, see followHost)
   if (w.depths.on) {
     stepDepths(game, now, dt)
     return
@@ -5747,7 +6055,7 @@ function stepWorld(game, now, dt = 0) {
   let nearestDistance = Infinity
   for (const npc of w.npcs.values()) {
     const d = dt > 0 ? updateNpc(npc, dt, now, p) : Math.hypot(npc.mesh.position.x - p.x, npc.mesh.position.z - p.z)
-    setNpcMarker(npc, npc.def.merchant ? 'offer' : npcMarker(w.quests, npc.def))
+    setNpcMarker(npc, npc.def.merchant ? 'offer' : npc.def.keeper ? keeperMarker(game, npc.def.keeper) : npcMarker(w.quests, npc.def))
     if (d < nearestDistance) {
       nearest = npc
       nearestDistance = d
@@ -6445,6 +6753,7 @@ function scoreKill(game, mesh, cause, position, now) {
   if (game.world) {
     worldQuestEvent(game, { type: 'kill', monster: mesh.userData.type, elite: Boolean(mesh.userData.elite), biome: biomeAt(position.x, position.z) })
     noteWildsKill(game, mesh.userData.type)
+    if (mesh.userData.towerCamp) towerCampKill(game, mesh.userData.towerCamp)
   }
   const trick = nameTrick({
     cause,

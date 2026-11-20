@@ -12,7 +12,7 @@ export const JOURNAL_KEY = 'slashbattle:journal'
 export const BESTIARY_FIRST_REWARD = 8 // crystals for the first of a kind you ever fell
 
 export function createJournal() {
-  return { landmarks: [], biomes: [], bestiary: {}, lanterns: [], races: {}, treasures: 0, events: 0, shrines: 0, claimed: [], towers: [], isles: [], relics: [], chasms: [], depthRelics: [] }
+  return { landmarks: [], biomes: [], bestiary: {}, lanterns: [], races: {}, treasures: 0, events: 0, shrines: 0, claimed: [], towers: [], isles: [], relics: [], chasms: [], depthRelics: [], fixes: {}, caves: [] }
 }
 
 const strings = (v) => (Array.isArray(v) ? v.filter((s) => typeof s === 'string') : [])
@@ -20,6 +20,19 @@ const count = (v) => (Number.isFinite(v) && v > 0 ? Math.floor(v) : 0)
 const numberMap = (v, ok) => {
   const out = {}
   if (v && typeof v === 'object' && !Array.isArray(v)) for (const [k, n] of Object.entries(v)) if (ok(n)) out[k] = n
+  return out
+}
+
+// The Skylift towers' repair jobs (logic/towerQuests.js): { [towerId]: { stage, n, cells } }, junk dropped.
+const STAGES = ['open', 'accepted', 'done']
+function fixesOf(v) {
+  const out = {}
+  if (v && typeof v === 'object' && !Array.isArray(v)) {
+    for (const [id, f] of Object.entries(v)) {
+      if (!f || typeof f !== 'object') continue
+      out[id] = { stage: STAGES.includes(f.stage) ? f.stage : 'open', n: count(f.n), cells: strings(f.cells) }
+    }
+  }
   return out
 }
 
@@ -48,6 +61,8 @@ export function parseJournal(text) {
     relics: strings(data.relics),
     chasms: strings(data.chasms),
     depthRelics: strings(data.depthRelics),
+    fixes: fixesOf(data.fixes),
+    caves: strings(data.caves),
   }
 }
 export const serializeJournal = (j) => JSON.stringify(j)
@@ -75,6 +90,10 @@ export function noteRace(j, courseId, time) {
   return { journal: best ? { ...j, races: { ...j.races, [courseId]: Math.round(time * 10) / 10 } } : j, first: !prev, best }
 }
 // Skylift towers ridden, sky isles set foot on, Nimbus Crowns (Sky Relics) taken.
+// A cave entered: { journal, first }.
+export function noteCave(j, id) {
+  return { journal: { ...j, caves: addTo(j.caves, id) }, first: !j.caves.includes(id) }
+}
 export function noteTower(j, id) {
   return { journal: { ...j, towers: addTo(j.towers, id) }, first: !j.towers.includes(id) }
 }

@@ -366,6 +366,27 @@ SWOOPS (a committed dive; `bite` if it reaches you), or BOMBS (flies over you an
 then climbs away (the moment to hit back); back on the land it flees and is gone. A cursor on one aims your shot up at it (while
 aloft shots fly straight from your height), and a melee swing only reaches one within 3 m of your height (`combat.js`).
 
+## Broken Skylift towers and keepers (the Wilds, Tears of the Kingdom-style)
+`src/logic/towerQuests.js` (pure, `test/towerQuests.test.js`): most Skylift towers are out of order (`towerIssue`; indices 0, 4 and 7 work) and
+their pads stay jammed (`stepLaunch`'s `jammed` set from `jammedTowers(journal.fixes)`) until a **Tower Warden** (`createNpc` with
+`keeper`, `keeperSpot`) beside the tower's shelter hands out a repair job: **camp** (a monster camp holds the lift house: `issueCamp`,
+`CAMP_SIZE` monsters spawned round the tower by `main.js`'s `stepTowerQuests` with `userData.towerCamp`, counted in `scoreKill` via
+`towerCampKill`; any dropped behind you come back), **cells** (`CELL_COUNT` glowing power cells lie on dry ground 20-42 out: `issueCells`,
+walk into them, drawn by `makeCellMesh`, shown on the minimap) or **parts** (pay `PARTS_COST` crystals at the keeper). Fixing a tower
+(`completeTowerFix`) pays `FIX_REWARD` crystals, a 30% heal and a treasure map, lights the tower (`createSkyWorld().setRepaired`) and is saved
+in the journal's `fixes` (`{ stage: 'open' | 'accepted' | 'done', n, cells }`). Broken towers look dead (dim pad, no beam, vines and violet
+gloom wisps); every tower now has a roofed timber **shelter** (`towerShelter`, a solid circle in `towerObstacles`) and a domed crown roof.
+Chips show the open job; a jammed pad shows "talk to <keeper>". The minimap draws jammed towers red.
+
+## Caves (the Wilds)
+`src/logic/caves.js` (pure, `test/caves.test.js`): ~8 **land caves** (a rock outcrop with a stone-framed black doorway looking toward the
+middle of the world) and one **isle cave** on the main isle of every other archipelago (`caves()`, `caveObstacles` = the solid outcrop).
+Walk into the doorway (`caveAt`, `main.js`'s `stepCaves`): a short fade, then `enterCave` puts you in the cave's **chamber**, a pocket of the
+Depths at the same coordinates (`caveArrival`; `depthsChunk` streams `caveLayout`: a pillar ring, crystals, a chest (two in an isle cave) and
+elite guards). Its own Lightroot (`caveBeacons`, merged into `beacons()` with `caveId` instead of `chasmId`) lifts you out through the SAME
+doorway (`caveExit`), so an isle cave returns you to its isle. First visit per cave pays `CAVE_FIRST_REWARD` (journal `caves`). Chasms and
+Umbral lairs keep clear of the caves. The look is `src/cavesFx.js`; minimap marks are half-circles (teal on isles, gold once visited).
+
 ## Chasms and the Depths (the Wilds)
 `src/logic/depths.js` (pure, `test/depths.test.js`) seeds ~13 **chasms** (`chasms()`: wide pits on dry, level ground in the
 Heartland and Frontier, clear of villages, sites, roads and towers; the first is close to the Sanctum). Walk into one (`chasmFalls`,

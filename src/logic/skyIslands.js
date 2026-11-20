@@ -102,7 +102,17 @@ export function towerObstacles(tower) {
     const a = (i / TOWER_PILLARS) * Math.PI * 2 + Math.PI / TOWER_PILLARS
     out.push({ x: tower.x + Math.cos(a) * TOWER_RING, z: tower.z + Math.sin(a) * TOWER_RING, radius: PILLAR_RADIUS })
   }
+  // The keeper's shelter beside the tower is solid too.
+  const hut = towerShelter(tower)
+  out.push({ x: hut.x, z: hut.z, radius: SHELTER_RADIUS, top: tower.y + 5.5 })
   return out
+}
+
+// The shelter (a roofed lookout hut) at a tower's foot: opposite the keeper's post, so the keeper stands in its lee.
+export const SHELTER_RADIUS = 3
+export function towerShelter(tower) {
+  const a = tower.dir - Math.PI * 0.5
+  return { x: tower.x + Math.cos(a) * 12.5, z: tower.z + Math.sin(a) * 12.5, rot: a }
 }
 
 // ---- the isles ------------------------------------------------------------------------------------------
@@ -384,7 +394,7 @@ export function createLaunchState() {
 
 // One step of the lift rules. `x, z, alt`: the player's feet; `ok`: free to launch (not hiding, not in a menu...).
 // Returns { state, events } with events { type: 'charge', tower } { type: 'cancel', tower } { type: 'launch', tower, vy }.
-export function stepLaunch(state, { x, z, alt, now, ok = true }) {
+export function stepLaunch(state, { x, z, alt, now, ok = true, jammed = null }) {
   const events = []
   let { charging, since, lockout } = state
   if (lockout) {
@@ -406,7 +416,7 @@ export function stepLaunch(state, { x, z, alt, now, ok = true }) {
   }
   if (!ok) return { state: { charging, since, lockout }, events }
   for (const t of skyTowers()) {
-    if (t.id === lockout) continue
+    if (t.id === lockout || jammed?.has(t.id)) continue
     if (Math.hypot(t.x - x, t.z - z) < PAD_RADIUS && Math.abs(alt - t.y) < 2.2) {
       events.push({ type: 'charge', tower: t })
       return { state: { charging: t.id, since: now, lockout }, events }

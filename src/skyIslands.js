@@ -7,8 +7,9 @@
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { mulberry32 } from './logic/world.js'
-import { PAD_RADIUS, TOWER_HEIGHT, TOWER_PILLARS, TOWER_RING, isleLayout, skyArchipelagos, skyTowers } from './logic/skyIslands.js'
-import { box, cone, cyl, dodeca, ico, limb, oct, part } from './worldModelKit.js'
+import { PAD_RADIUS, TOWER_HEIGHT, TOWER_PILLARS, TOWER_RING, isleLayout, skyArchipelagos, skyTowers, towerShelter } from './logic/skyIslands.js'
+import { towerIssue } from './logic/towerQuests.js'
+import { box, cone, cyl, dodeca, dome, ico, limb, oct, part } from './worldModelKit.js'
 
 const SHOW_TOWER = 900 // towers are visible from this far (they are landmarks)
 const SHOW_ARCH = 650 // archipelagos further than this are hidden
@@ -16,6 +17,10 @@ const GLOW = 1.9 // glow parts are drawn this much brighter than their colour
 const TEAL = 0x5ef2d6
 const STONE = 0x8a8fa8
 const STONE_DARK = 0x5d6178
+const WOOD = 0x9a7a55
+const WOOD_DARK = 0x6a4f38
+const ROOF = 0xb5623f
+const LANTERN = 0xffd58a
 
 // A thinner haze than the land's fog (the isles and towers stay visible from far away), drawn in the fog's colour.
 function haze(material, stretch = 4) {
@@ -282,6 +287,27 @@ function buildTower(tower) {
   }
   lit.push(part(cone(0.7, 7, 6), STONE, { y: H + 4.5 }))
   glow.push(part(cyl(PAD_RADIUS, PAD_RADIUS, 0.12, 6), TEAL, { y: 0.47 }))
+
+  // A domed roof over the crown's lookout deck, so the tower reads as a shelter rather than a bare frame.
+  lit.push(part(dome(5.6), STONE, { y: H - 4.7, sy: 0.62 }), part(cyl(0.5, 0.5, 1.6, 6), STONE_DARK, { y: H - 1.3 }))
+  glow.push(part(new THREE.TorusGeometry(5.5, 0.14, 4, 24).rotateX(Math.PI / 2), LANTERN, { y: H - 4.6 }))
+
+  // The keeper's shelter at the tower's foot: a roofed timber lookout hut with a bench, a glowing window and a lantern.
+  const shelter = towerShelter(tower)
+  const hutLit = []
+  const hutGlow = []
+  hutLit.push(part(cyl(3.5, 3.9, 1.4, 8), STONE_DARK, { y: -0.35 }))
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) hutLit.push(part(box(0.38, 3, 0.38), WOOD_DARK, { x: sx * 2.15, y: 1.8, z: sz * 2.15 }))
+  hutLit.push(part(box(4.6, 2.7, 0.28), WOOD, { y: 1.75, z: -2.15 }), part(box(4.6, 2.7, 0.28), WOOD, { y: 1.75, z: 2.15 }), part(box(0.28, 2.7, 4.6), WOOD, { x: -2.15, y: 1.75 }))
+  hutLit.push(part(box(0.28, 2.7, 1.5), WOOD, { x: 2.15, y: 1.75, z: -1.55 }), part(box(0.28, 2.7, 1.5), WOOD, { x: 2.15, y: 1.75, z: 1.55 }), part(box(0.3, 0.7, 1.7), WOOD_DARK, { x: 2.15, y: 2.85 }))
+  hutLit.push(part(box(0.7, 0.45, 3), WOOD_DARK, { x: -1.3, y: 0.75 })) // a bench along the back wall
+  for (const side of [-1, 1]) hutLit.push(part(box(3.6, 0.28, 5.4), ROOF, { x: side * 1.55, y: 4.1, rz: -side * 0.5, sx: 1.05 }))
+  hutLit.push(part(box(0.34, 0.34, 5.9), WOOD_DARK, { y: 4.95 }), part(cyl(0.12, 0.12, 2.6, 5), WOOD_DARK, { x: 3.1, y: 1.5, z: 2.9 }))
+  hutGlow.push(part(box(0.06, 0.9, 1.0), LANTERN, { x: -0.1, y: 2.0, z: 2.17 }), part(ico(0.28, 1), LANTERN, { x: 3.1, y: 2.95, z: 2.9 }), part(ico(0.2, 1), LANTERN, { x: 2.2, y: 3.35, z: 0 }))
+  moveParts(hutLit, shelter.x - tower.x, 0, shelter.z - tower.z, Math.PI - shelter.rot)
+  moveParts(hutGlow, shelter.x - tower.x, 0, shelter.z - tower.z, Math.PI - shelter.rot)
+  lit.push(...hutLit)
+  glow.push(...hutGlow)
   const litMesh = new THREE.Mesh(mergeGeometries(lit), litMaterial())
   litMesh.castShadow = true
   litMesh.receiveShadow = true
@@ -309,7 +335,32 @@ function buildTower(tower) {
   const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 1.2, 160, 10, 1, true), beamMat)
   beam.position.y = H + 90
   g.add(rune, rune2, column, orb, beam)
-  return { def: tower, group: g, rune, rune2, column, columnMat, orb, orbMat, beam, beamMat, glowMat, litMat: litMesh.material, charge: 0, lit: false }
+
+  // A broken tower (logic/towerQuests.js): vines and moss strangle the pillars and gloom wisps drift over the dead pad.
+  const ruin = new THREE.Group()
+  ruin.visible = false
+  const vine = []
+  for (let i = 0; i < TOWER_PILLARS; i++) {
+    const a = (i / TOWER_PILLARS) * Math.PI * 2 + Math.PI / TOWER_PILLARS
+    const x = Math.cos(a) * TOWER_RING
+    const z = Math.sin(a) * TOWER_RING
+    for (let k = 0; k < 3; k++) {
+      const y0 = 0.4 + k * 7
+      vine.push(limb([x * 1.06 + Math.sin(k * 2 + i) * 0.5, y0, z * 1.06], [x * 1.0, y0 + 8, z * 1.0 + Math.cos(k + i) * 0.5], 0.28, 0.18, k % 2 ? 0x3f7a3f : 0x56913f, 4))
+    }
+    vine.push(part(ico(0.9, 1), 0x4a8a3c, { x: x * 1.12, y: 0.5, z: z * 1.12, sy: 0.6 }))
+  }
+  ruin.add(new THREE.Mesh(mergeGeometries(vine), litMaterial()))
+  const wisps = []
+  const gloomMat = new THREE.MeshBasicMaterial({ color: 0x7a2fd0, transparent: true, opacity: 0.4, blending: THREE.AdditiveBlending, depthWrite: false })
+  for (let i = 0; i < 7; i++) {
+    const w = new THREE.Mesh(new THREE.IcosahedronGeometry(0.7 + (i % 3) * 0.25, 1), gloomMat)
+    w.userData.seed = i * 1.7
+    ruin.add(w)
+    wisps.push(w)
+  }
+  g.add(ruin)
+  return { def: tower, group: g, rune, rune2, column, columnMat, orb, orbMat, beam, beamMat, glowMat, litMat: litMesh.material, charge: 0, lit: false, ruin, wisps, broken: Boolean(towerIssue(tower)) }
 }
 
 // ---- archipelagos ---------------------------------------------------------------------------------
@@ -458,6 +509,14 @@ export function createSkyWorld() {
     setRidden(ids) {
       for (const t of towers) t.lit = ids.has(t.def.id)
     },
+    // Towers whose repair job is done (a Set of tower ids): every other tower with an issue looks broken and dark.
+    setRepaired(ids) {
+      for (const t of towers) {
+        t.broken = Boolean(towerIssue(t.def)) && !ids.has(t.def.id)
+        t.ruin.visible = t.broken
+        t.orb.visible = !t.broken
+      }
+    },
     // Relics already taken are gone from their pedestals (a Set of relic ids).
     setRelicsTaken(ids) {
       for (const a of archs) a.relic.visible = !ids.has(a.def.relic.id)
@@ -477,6 +536,20 @@ export function createSkyWorld() {
           t.litMat.opacity = inside ? 0.3 : 1
           t.litMat.depthWrite = !inside
           t.litMat.needsUpdate = true
+        }
+        if (t.broken) {
+          // Dead: no beam, a dim pad, the gloom drifting.
+          t.beamMat.opacity = 0.015
+          t.glowMat.color.setScalar(GLOW * 0.16)
+          t.columnMat.opacity = 0
+          for (const w of t.wisps) {
+            const k = time * 0.6 + w.userData.seed
+            w.position.set(Math.cos(k) * (2 + (w.userData.seed % 3) * 1.4), 0.9 + Math.sin(k * 1.7) * 0.5 + (w.userData.seed % 2) * 0.8, Math.sin(k) * (2 + (w.userData.seed % 3) * 1.4))
+            w.scale.setScalar(0.8 + 0.25 * Math.sin(k * 2.3))
+          }
+          t.rune.rotation.y += dt * 0.1
+          t.rune2.rotation.y -= dt * 0.1
+          continue
         }
         const target = charging?.towerId === t.def.id ? charging.fraction : 0
         t.charge += (target - t.charge) * Math.min(1, dt * (target > t.charge ? 10 : 3))

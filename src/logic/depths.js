@@ -9,6 +9,7 @@
 import { BIOMES, CHUNK_SIZE, PROP_RADIUS, SANCTUM_RADIUS, WORLD_RADIUS, WORLD_SEED, chunkKey, heightAt, lakeAt, mulberry32, nearestSite, nearestVillage, roadDistance, withSurface, inDepths } from './world.js'
 import { BOSSES } from './bosses.js'
 import { skyTowers } from './skyIslands.js'
+import { CHAMBER_RADIUS, caveBeacons, caveLayout, caveDanger, caves } from './caves.js'
 
 export const CHASM_FALL_FRACTION = 0.8 // inside this fraction of a chasm's radius you fall in
 export const ASCEND_RADIUS = 2.8 // stand this close to a Lightroot's heart
@@ -34,6 +35,7 @@ function chasmSpotOk(x, z, radius, flat) {
   if (nearestSite(x, z, radius + 20)) return false
   if (roadDistance(x, z) < radius + 8) return false
   for (const t of skyTowers()) if (Math.hypot(t.x - x, t.z - z) < 45) return false
+  for (const c of caves()) if (Math.hypot(c.rock.x - x, c.rock.z - z) < radius + 22) return false
   const h = heightAt(x, z)
   for (let i = 0; i < 12; i++) {
     const a = (i / 12) * Math.PI * 2
@@ -98,7 +100,7 @@ let beaconCache = null
 export function beacons() {
   beaconCache ??= (() => {
     const rand = mulberry32(WORLD_SEED + 6200)
-    return chasms().map((c, i) => {
+    const roots = chasms().map((c, i) => {
       const a = rand() * Math.PI * 2
       const d = 38 + rand() * 22
       let x = c.x + Math.cos(a) * d
@@ -110,6 +112,7 @@ export function beacons() {
       }
       return { id: `b${i}`, name: `Lightroot ${i + 1}`, x, z, chasmId: c.id }
     })
+    return [...roots, ...caveBeacons()] // (a cave's Lightroot carries `caveId` instead of `chasmId`)
   })()
   return beaconCache
 }
@@ -167,6 +170,7 @@ export function depthsLairs() {
         const x = Math.cos(a) * r
         const z = Math.sin(a) * r
         if (beacons().some((b) => Math.hypot(b.x - x, b.z - z) < LAIR_RADIUS + 30)) continue
+        if (caves().some((c) => Math.hypot(c.chamber.x - x, c.chamber.z - z) < LAIR_RADIUS + CHAMBER_RADIUS + 8)) continue
         const boss = BOSSES.find((b) => b.id === LAIR_BOSSES[i]) ?? BOSSES[i % BOSSES.length]
         list.push({ id: `d${i}`, index: i, name: LAIR_NAMES[i], x, z, radius: LAIR_RADIUS, boss: boss.id, relic: { id: `dr${i}`, name: 'Umbral Heart', x, z } })
         break
@@ -230,11 +234,13 @@ export function depthsChunk(cx, cz) {
   const lairs = depthsLairs()
   const nearLair = (p, extra) => lairs.some((l) => Math.hypot(l.x - p.x, l.z - p.z) < l.radius + extra)
   const nearBeacon = (p, d) => beacons().some((b) => Math.hypot(b.x - p.x, b.z - p.z) < d)
+  const chambers = caves()
+  const nearChamber = (p, extra) => chambers.some((c) => Math.hypot(c.chamber.x - p.x, c.chamber.z - p.z) < CHAMBER_RADIUS + extra)
 
   const propCount = 7 + Math.floor(rng() * 7)
   for (let i = 0; i < propCount; i++) {
     const p = place()
-    if (!inWorld(p) || nearLair(p, 3) || nearBeacon(p, 4)) continue
+    if (!inWorld(p) || nearLair(p, 3) || nearBeacon(p, 4) || nearChamber(p, 1)) continue
     const kind = pickWeighted(rng, biome.props)[0]
     const scale = 0.8 + rng() * 0.9
     out.props.push({ kind, x: p.x, z: p.z, scale, rot: rng() * Math.PI * 2, radius: PROP_RADIUS[kind] * scale })
@@ -244,14 +250,14 @@ export function depthsChunk(cx, cz) {
   const count = Math.floor(rng() * (1.5 + danger * 2.5)) + (rng() < 0.45 ? 1 : 0)
   for (let i = 0; i < count; i++) {
     const p = place()
-    if (!inWorld(p) || nearLair(p, 6) || nearBeacon(p, 22)) continue // the Lightroots are a refuge
+    if (!inWorld(p) || nearLair(p, 6) || nearBeacon(p, 22) || nearChamber(p, 2)) continue // the Lightroots are a refuge
     const [type] = pickWeighted(rng, biome.monsters)
     const elite = rng() < 0.07 + danger * 0.12
     out.monsters.push({ id: `${out.key}:${i}`, type, x: p.x, z: p.z, elite, danger, hpScale: (1 + danger * 1.3) * (elite ? 2.4 : 1) })
   }
   if (rng() < 0.16) {
     const p = place()
-    if (inWorld(p) && !nearLair(p, 3) && !nearBeacon(p, 6)) out.treasure.push({ id: `${out.key}:chest`, kind: 'chest', x: p.x, z: p.z })
+    if (inWorld(p) && !nearLair(p, 3) && !nearBeacon(p, 6) && !nearChamber(p, 2)) out.treasure.push({ id: `${out.key}:chest`, kind: 'chest', x: p.x, z: p.z })
   }
 
   const inChunk = (p) => p.x >= cx * CHUNK_SIZE && p.x < (cx + 1) * CHUNK_SIZE && p.z >= cz * CHUNK_SIZE && p.z < (cz + 1) * CHUNK_SIZE
@@ -270,6 +276,19 @@ export function depthsChunk(cx, cz) {
       }
       const [type] = pickWeighted(rng, pool)
       out.monsters.push({ id: g.id, type, x: g.x, z: g.z, elite: true, danger: lairDanger, hpScale: (1 + lairDanger * 1.3) * 2.4 })
+    }
+  }
+  // Cave chambers: a pocket with its own chest(s) and guards, entered through a doorway on the surface (logic/caves.js).
+  for (const cave of chambers) {
+    if (Math.hypot(cave.chamber.x - center.x, cave.chamber.z - center.z) > 60) continue
+    const layout = caveLayout(cave)
+    for (const p of layout.props) if (inChunk(p)) out.props.push(p)
+    for (const t of layout.treasure) if (inChunk(t)) out.treasure.push(t)
+    const danger2 = Math.max(0.45, caveDanger(cave))
+    for (const g of layout.guards) {
+      if (!inChunk(g)) continue
+      const [type] = pickWeighted(rng, biome.monsters)
+      out.monsters.push({ id: g.id, type, x: g.x, z: g.z, elite: true, danger: danger2, hpScale: (1 + danger2 * 1.3) * 2.2 })
     }
   }
   return out

@@ -52,8 +52,9 @@ describe('depths mode', () => {
 
 describe('Lightroots', () => {
   it('has one per chasm, each a walk from its drop', () => {
-    expect(beacons().length).toBe(chasms().length)
-    for (const b of beacons()) {
+    const roots = beacons().filter((b) => b.chasmId)
+    expect(roots.length).toBe(chasms().length)
+    for (const b of roots) {
       const c = chasms().find((x) => x.id === b.chasmId)
       expect(Math.hypot(b.x - c.x, b.z - c.z)).toBeLessThan(75)
     }
