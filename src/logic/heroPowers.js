@@ -74,6 +74,11 @@ const TUNING = {
   // `range` for `damage`, and `regen` of max health a second. Dusk: +`dusk` damage, and every `tendrilEvery`-th hit shadow
   // tendrils erupt under up to `tendrils` monsters within `reach` for `tendrilDamage`, each feeding `heal`.
   twilight: [{ phase: 8, seraphs: 2, every: 1.6, range: 10, damage: 0.5, regen: 0.01, dusk: 0.4, tendrilEvery: 3, tendrils: 3, reach: 7, tendrilDamage: 0.9, heal: 0.01 }, { phase: 6, seraphs: 4, every: 1.1, range: 13, damage: 0.8, regen: 0.02, dusk: 0.8, tendrilEvery: 2, tendrils: 5, reach: 9, tendrilDamage: 1.4, heal: 0.02 }],
+  // The fourth secret hero (Kestrel): the wind turns every `phase` s (sand, frost, ember, mire); every `every` s it pulses
+  // `radius` m round her (sand: shove `shove`, frost: slow `slow` s, ember: `damage`x burn, mire: drain `damage`x and heal
+  // `heal`). Ember wind adds `ember` damage, frost wind slows what she hits for `slow` s, mire wind heals `heal` a hit, and
+  // sand wind kicks up a dust devil (`devil` x within 3.5 m) every `devilEvery`-th hit.
+  stormbound: [{ phase: 7, every: 2.2, radius: 5, damage: 0.7, shove: 5, slow: 3, ember: 0.35, heal: 0.01, devilEvery: 3, devil: 0.6 }, { phase: 5, every: 1.4, radius: 7, damage: 1.2, shove: 8, slow: 5, ember: 0.7, heal: 0.02, devilEvery: 2, devil: 1.2 }],
   charge: [{ charge: 3, reach: 18, damage: 3, width: 1.2 }, { charge: 1.5, reach: 22, damage: 5, width: 1.8 }],
 }
 const cache = new Map()
@@ -138,11 +143,21 @@ export const AWAKENED = {
   poppy: { desc: 'Inhale every 4 s across 9 m, then spit three stars for 3.5x each.' },
   umbral: { desc: 'Up to +100% damage as your health runs out. Every 2nd hit five tendrils erupt within 9 m of the target for 1.4x, and each feeds you 2% health.' },
   twilight: { desc: 'Dawn and dusk swap every 6 s. Dawn: four seraphs lance every 1.1 s for 0.8x and you regenerate 2% a second. Dusk: +80% damage, and every 2nd hit five tendrils erupt within 9 m for 1.4x, each feeding you 2%.' },
+  tempest: { desc: 'The wind turns every 5 s and pulses every 1.4 s across 7 m for 1.2x. Ember wind adds +70% damage, frost wind slows for 5 s, mire wind heals 2% a hit, and sand wind kicks up a dust devil every 2nd hit.' },
   buster: { desc: 'The cannon charges in 1.5 s, and the shot is a wide 22 m beam of plasma for 5x.' },
   sovereign: { desc: 'Five seraphs, a lance every second each, 13 m, 0.8x; every 6th lance becomes a Pillar of Judgment, 2x within 3 m.' },
 }
 
 // Each hero's active ability, unlocked at AWAKEN_LEVEL. `range` (if any) is how far from you it can be aimed.
+// The four winds of the Stormbinder, in turn (index = floor(time / phase) mod 4).
+export const WINDS = [
+  { id: 'sand', name: 'SANDWIND', color: 0xe8b86a },
+  { id: 'frost', name: 'FROSTWIND', color: 0xcfeaff },
+  { id: 'ember', name: 'EMBERWIND', color: 0xff7a3a },
+  { id: 'mire', name: 'MIREWIND', color: 0x8ae86a },
+]
+export const windAt = (now, phase) => WINDS[((Math.floor(now / phase) % 4) + 4) % 4]
+
 export const HERO_ABILITIES = {
   guest: { name: 'Early Checkout', cooldown: 18, desc: 'A 6 m shockwave for 2x that shoves everything away.' },
   ember: { name: 'Wildfire', cooldown: 20, desc: 'A 7 m fire nova for 2x that sets everything alight.' },
@@ -194,6 +209,7 @@ export const HERO_ABILITIES = {
   sovereign: { name: 'Ascension', cooldown: 20, range: 14, desc: 'Soar 8 m into the sky (untouchable while you rise), then fall like a star onto where you aim: 3x within 6 m, and your seraphs lance the 6 nearest monsters for 1.2x.' },
   umbral: { name: 'Eclipse', cooldown: 22, desc: 'The light dies: a 10 m wave of shadow for 4x that slows everything it touches for 4 s, and you drink in 12% of your health.' },
   twilight: { name: 'Syzygy', cooldown: 22, desc: 'Sun and shadow align: a 10 m wave of shadow for 4x that slows everything it touches, you drink in 10% of your health, and your seraphs lance the 6 nearest monsters for 1.2x.' },
+  tempest: { name: 'Calamity Call', cooldown: 22, desc: 'Call all four storms at once: four rings roll out in turn, sand (shoves), frost (slows), ember (burns for 3x) and mire (drains for 2x and heals you 10%).' },
   buster: { name: 'Buster Barrage', cooldown: 18, desc: 'Five fully charged shots fan out along your aim, awakened strength.' },
 }
 

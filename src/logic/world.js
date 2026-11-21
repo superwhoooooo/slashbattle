@@ -14,6 +14,7 @@
 // worldArena.js its look (ROCK / GRASS_STYLE / DRIFT fall back to the sanctum's if you forget). Adding a landmark:
 // an entry in LANDMARK_KINDS, a case in landmarkLayout, and models for any new prop kinds.
 
+import { SPECIES } from './species.js'
 import { BOSSES } from './bosses.js'
 
 export const WORLD_RADIUS = 560
@@ -561,6 +562,29 @@ const NPC_ROLES = ['Warden', 'Lantern-keeper', 'Herbalist', 'Stargazer', 'Wayfin
 // Radii to search when a biome still has no village (by ring).
 const VILLAGE_SEARCH_RADII = { heart: [170, 200, 140, 225, 255], far: [400, 440, 360, 470, 340] }
 
+// The four storm cities: one on the rim of the kingdom behind each regional phenomenon (logic/phenomena.js), home of a
+// species of its own and of a Sage who guides the storm's quest. `biome` is the storm's Heartland biome: the city sits on
+// the rim at the same bearing.
+export const CITY_RADIUS = WORLD_RADIUS - 72
+export const CITY_DEFS = [
+  { stormId: 'sandstorm', biome: 'amethyst', name: 'Gildenspire', species: 'dunekin' },
+  { stormId: 'whiteout', biome: 'frostveil', name: 'Rimehold', species: 'frostkin' },
+  { stormId: 'ashstorm', biome: 'emberwaste', name: 'Pyreholm', species: 'embervolk' },
+  { stormId: 'miasma', biome: 'gloomfen', name: 'Lanternmere', species: 'mirefolk' },
+]
+// The rim bearing of a Heartland biome: the circular mean of the bearings (at radius 200) where it lies.
+function biomeBearing(biome, fallback) {
+  let sx = 0
+  let sz = 0
+  for (let a = 0; a < 360; a += 3) {
+    const rad = (a * Math.PI) / 180
+    if (biomeAt(Math.cos(rad) * 200, Math.sin(rad) * 200) !== biome) continue
+    sx += Math.cos(rad)
+    sz += Math.sin(rad)
+  }
+  return sx || sz ? Math.atan2(sz, sx) : fallback
+}
+
 let villageCache = null
 let villageGrid = null
 
@@ -572,6 +596,21 @@ export function villages() {
   const span = Math.ceil(WORLD_RADIUS / VILLAGE_CELL) + 1
   // (Mesas count too: a plaza levelled into a plateau's flank would gouge it.)
   const nearLake = (x, z) => LAKES.some((l) => Math.hypot(l.x - x, l.z - z) < l.radius * 1.25 + 30) || MESAS.some((m) => Math.hypot(m.x - x, m.z - z) < m.radius + MESA_EDGE + VILLAGE_PLAZA_RADIUS + VILLAGE_FLATTEN)
+  // The storm cities' spots are fixed first (they are appended last, so every other village keeps its seed) and everyone
+  // else keeps clear of them.
+  const cityAt = []
+  CITY_DEFS.forEach((def, i) => {
+    const base = biomeBearing(def.biome, (i / CITY_DEFS.length) * Math.PI * 2)
+    for (let k = 0; k < 40; k++) {
+      const a = base + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 0.03
+      const x = Math.cos(a) * CITY_RADIUS
+      const z = Math.sin(a) * CITY_RADIUS
+      if (k < 39 && (lakeAt(x, z, 0.9) || nearLake(x, z) || LAKES.some((l) => Math.hypot(l.x - x, l.z - z) < l.radius * 1.25 + 62))) continue // (a city's whole safe radius stays clear of water monsters)
+      cityAt.push({ x, z, city: def })
+      break
+    }
+  })
+  const nearCity = (x, z) => cityAt.some((c) => Math.hypot(c.x - x, c.z - z) < 125)
   for (let i = -span; i <= span; i++) {
     for (let j = -span; j <= span; j++) {
       const rng = mulberry32(Math.imul(i, 40503) ^ Math.imul(j, 9176) ^ (WORLD_SEED + 91))
@@ -580,7 +619,7 @@ export function villages() {
       const z = (j + 0.5) * VILLAGE_CELL + (rng() - 0.5) * 110
       const r = Math.hypot(x, z)
       if (r < SANCTUM_RADIUS + 50 || r > WORLD_RADIUS - 55) continue
-      if (lakeAt(x, z, 0.9) || nearLake(x, z)) continue
+      if (lakeAt(x, z, 0.9) || nearLake(x, z) || nearCity(x, z)) continue
       if (sites.some((s) => Math.hypot(s.x - x, s.z - z) < VILLAGE_MIN_SEPARATION)) continue
       sites.push({ x, z })
     }
@@ -594,18 +633,19 @@ export function villages() {
           const x = Math.cos((a * Math.PI) / 180) * r
           const z = Math.sin((a * Math.PI) / 180) * r
           if (biomeAt(x, z) !== biome || sites.some((s) => Math.hypot(s.x - x, s.z - z) < separation)) continue
-          if (nearLake(x, z)) continue
+          if (nearLake(x, z) || nearCity(x, z)) continue
           sites.push({ x, z })
           break search
         }
       }
     }
   }
+  sites.push(...cityAt)
   const usedNames = new Set()
   villageCache = sites.map((site, index) => {
     const rng = mulberry32(index * 7919 + WORLD_SEED + 3)
-    let name
-    for (let k = 0; k < 40; k++) {
+    let name = site.city?.name
+    for (let k = 0; k < 40 && !site.city; k++) {
       name = VILLAGE_PREFIX[Math.floor(rng() * VILLAGE_PREFIX.length)] + VILLAGE_SUFFIX[Math.floor(rng() * VILLAGE_SUFFIX.length)]
       if (!usedNames.has(name)) break
     }
@@ -616,6 +656,9 @@ export function villages() {
       x: site.x,
       z: site.z,
       starter: Boolean(site.starter),
+      city: Boolean(site.city),
+      stormId: site.city?.stormId ?? null,
+      species: site.city?.species ?? null,
       name,
       baseHeight: terrainHeight(site.x, site.z),
       biome: biomeAt(site.x, site.z),
@@ -950,6 +993,7 @@ export function landmarkLayout(lm) {
 // A village's buildings, lamps, well and notice board, and the people who live there (all seeded).
 //   props - [{ kind, x, z, scale, rot, radius }]   npcs - [{ id, name, role, color, x, z, villageId }]
 export function villageLayout(village) {
+  if (village.city) return cityLayout(village)
   const rng = mulberry32(village.index * 104729 + WORLD_SEED)
   const props = [{ kind: 'well', x: village.x, z: village.z, scale: 1, rot: 0, radius: PROP_RADIUS.well }]
   const houseKinds = ['cottage', 'cottageTeal', 'cottageAmber']
@@ -998,6 +1042,72 @@ export function villageLayout(village) {
   const ca = offset + 1.9
   const treasure = [{ id: `${village.id}:chest`, kind: 'chest', x: village.x + Math.cos(ca) * 12.5, z: village.z + Math.sin(ca) * 12.5 }]
   return { props, npcs, treasure }
+}
+
+
+// A storm city: a bigger, grander village on the rim -- two halls, a ring of homes, a plaza well and a TEMPLE (a ring of
+// columns round a shrine) where the Sage lives. Its people are all one species (logic/species.js).
+//   props / treasure as in villageLayout; npcs also carry `species`; the Sage has `guide` (the storm's id).
+export const CITY_PEOPLE = 8
+function cityLayout(city) {
+  const rng = mulberry32(city.index * 104729 + WORLD_SEED + 1)
+  const species = SPECIES[city.species]
+  const out = Math.atan2(city.z, city.x) // toward the rim: the temple stands on the inland side, facing the storm
+  const inland = out + Math.PI
+  const props = [{ kind: 'well', x: city.x, z: city.z, scale: 1.2, rot: 0, radius: PROP_RADIUS.well * 1.2 }]
+  const add = (kind, x, z, scale = 1, rot = 0) => props.push({ kind, x, z, scale, rot, radius: PROP_RADIUS[kind] * scale })
+  // The temple, 22 inland of the plaza: floor, a ring of columns, a shrine and the rune altar.
+  const tx = city.x + Math.cos(inland) * 22
+  const tz = city.z + Math.sin(inland) * 22
+  add('temple', tx, tz, 1, 0)
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2
+    add(i % 5 === 3 ? 'columnBroken' : 'column', tx + Math.cos(a) * 8.5, tz + Math.sin(a) * 8.5, 1.05, rng() * 6.28)
+  }
+  add('shrine', tx, tz, 1.15, 0)
+  add('runeAltar', tx + Math.cos(inland) * 4.2, tz + Math.sin(inland) * 4.2, 1, inland + Math.PI / 2)
+  // Two halls beside the plaza and a ring of homes round it (clear of the temple).
+  const homes = 10
+  const offset = rng() * Math.PI * 2
+  const kinds = ['cottage', 'cottageTeal', 'cottageAmber']
+  for (let i = 0; i < homes; i++) {
+    const a = offset + (i / homes) * Math.PI * 2
+    if (Math.abs(((a - inland + Math.PI * 3) % (Math.PI * 2)) - Math.PI) < 0.75) continue // the temple's side stays open
+    const r = 17 + (i % 2) * 4.5 + rng() * 1.5
+    const x = city.x + Math.cos(a) * r
+    const z = city.z + Math.sin(a) * r
+    const hall = i === 1 || i === 6
+    add(hall ? 'hall' : kinds[i % kinds.length], x, z, hall ? 1.1 : 0.95 + rng() * 0.25, Math.atan2(city.x - x, city.z - z))
+  }
+  for (let i = 0; i < 6; i++) {
+    const a = offset + Math.PI / 6 + (i / 6) * Math.PI * 2
+    add('lampPost', city.x + Math.cos(a) * 8, city.z + Math.sin(a) * 8)
+  }
+  add('noticeBoard', city.x + Math.cos(out + 0.5) * 10.5, city.z + Math.sin(out + 0.5) * 10.5, 1, out + 0.5 + Math.PI / 2)
+  // The storm's own warning at the rim side: a bonfire the people keep lit.
+  add('bonfire', city.x + Math.cos(out) * 11, city.z + Math.sin(out) * 11)
+  // People: the Sage in the temple, then neighbours out and about.
+  const npcs = [{
+    id: `${city.id}:sage`, villageId: city.id, species: city.species, guide: city.stormId,
+    name: species.names[0], role: `${species.name} Storm Sage`, color: species.colors[0],
+    x: tx + Math.cos(inland + Math.PI) * 3, z: tz + Math.sin(inland + Math.PI) * 3,
+  }]
+  for (let i = 0; i < CITY_PEOPLE - 1; i++) {
+    const a = offset + 0.3 + (i / (CITY_PEOPLE - 1)) * Math.PI * 2
+    npcs.push({
+      id: `${city.id}:${i}`, villageId: city.id, species: city.species,
+      name: species.names[(i + 1) % species.names.length],
+      role: `${species.name} ${species.roles[i % species.roles.length]}`,
+      color: species.colors[i % species.colors.length],
+      x: city.x + Math.cos(a) * 9.5, z: city.z + Math.sin(a) * 9.5,
+    })
+  }
+  const ca = offset + 1.9
+  const treasure = [
+    { id: `${city.id}:chest`, kind: 'chest', x: city.x + Math.cos(ca) * 12.5, z: city.z + Math.sin(ca) * 12.5 },
+    { id: `${city.id}:temple-chest`, kind: 'chest', x: tx + Math.cos(inland) * 6.5, z: tz + Math.sin(inland) * 6.5 },
+  ]
+  return { props, npcs, treasure, temple: { x: tx, z: tz } }
 }
 
 // ---- roads ------------------------------------------------------------------------------------

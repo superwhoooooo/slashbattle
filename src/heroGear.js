@@ -820,6 +820,52 @@ const GEAR = {
     }
     g.add(ring)
   },
+  // --- The fourth secret hero: Kestrel, the Stormbinder ---
+  // A wide, wind-bent storm hat: a brim, a tall crooked crown, a glowing band and a streaming feather.
+  stormHat(g, look) {
+    const hat = new THREE.Group()
+    hat.position.y = R * 1.42
+    part(hat, new THREE.CylinderGeometry(0.62, 0.68, 0.06, 20), clothMat(look.cloak), [0, 0, 0], [0.08, 0, 0.05])
+    part(hat, new THREE.ConeGeometry(0.34, 0.78, 8), clothMat(look.cloak), [0.04, 0.4, 0], [0, 0, -0.18])
+    part(hat, new THREE.TorusGeometry(0.34, 0.035, 6, 24), glowMat(look.glow), [0, 0.06, 0], [Math.PI / 2, 0, 0])
+    const feather = part(hat, new THREE.ConeGeometry(0.06, 0.62, 5), glowMat(look.trim), [-0.36, 0.2, -0.1], [0.3, 0, 0.9])
+    feather.userData.flicker = true
+    g.add(hat)
+  },
+  // A ragged gale cloak: a long open cylinder with torn streamers and four coloured clasps (sand, frost, ember, mire).
+  galeCloak(g, look) {
+    const cloak = part(g, new THREE.CylinderGeometry(R * 1.0, R * 1.35, R * 1.7, 14, 2, true), clothMat(look.cloak), [0, R * 0.45, 0])
+    cloak.userData.sway = true
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2
+      const rag = part(g, new THREE.ConeGeometry(0.09, 0.42 + (i % 3) * 0.1, 3), clothMat(look.cloak), [Math.sin(a) * R * 1.32, R * 0.45 - R * 0.85 - 0.2, Math.cos(a) * R * 1.32], [Math.PI, a, 0])
+      rag.userData.swing = true
+    }
+    const clasp = [0xe8b86a, 0xcfeaff, 0xff7a3a, 0x8ae86a]
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2 + Math.PI / 4
+      part(g, new THREE.OctahedronGeometry(0.07), glowMat(clasp[i]), [Math.sin(a) * R * 1.02, R * 1.2, Math.cos(a) * R * 1.02])
+    }
+    part(g, new THREE.TorusGeometry(R * 1.35, 0.03, 6, 32), glowMat(look.glow), [0, R * 0.45 - R * 0.85, 0], [Math.PI / 2, 0, 0])
+  },
+  // Four orbs circling the Stormbinder, one for each wind: sand, frost, ember and mire.
+  windOrbs(g, look) {
+    const ring = new THREE.Group()
+    ring.position.y = R * 1.05
+    ring.userData.orbit = true
+    const colors = [0xe8b86a, 0xcfeaff, 0xff7a3a, 0x8ae86a]
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2
+      const orb = new THREE.Group()
+      orb.position.set(Math.cos(a) * 1.4, Math.sin(i * 1.6) * 0.2, Math.sin(a) * 1.4)
+      part(orb, new THREE.IcosahedronGeometry(0.1, 1), glowMat(0xffffff))
+      const shell = part(orb, new THREE.IcosahedronGeometry(0.19, 1), new THREE.MeshBasicMaterial({ color: colors[i], transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false }))
+      shell.userData.flicker = true
+      orb.traverse((o) => { o.castShadow = false })
+      ring.add(orb)
+    }
+    g.add(ring)
+  },
   // --- The third secret hero: Nyxara, the Twilight Regent ---
   // An eclipse behind the head: a black disc ringed in gold fire, with a pale sun-spark on one side.
   eclipseHalo(g, look) {

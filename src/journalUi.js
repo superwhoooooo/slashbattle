@@ -7,6 +7,7 @@ import { LANTERN_COUNT } from './logic/lanterns.js'
 import { raceCourses } from './logic/races.js'
 import { formatTime } from './logic/wildsSpots.js'
 import { skyArchipelagos, skyIsles, skyTowers } from './logic/skyIslands.js'
+import { PHENOMENON_LIST, clearedCount, isCleared, progressOf, stageCount } from './logic/phenomena.js'
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
 
@@ -72,6 +73,13 @@ export function createJournalUi({ onClose } = {}) {
         return `<li class="${relics.has(a.relic.id) ? 'gold' : ridden ? 'silver' : ''}">${ridden ? esc(a.name) : '???'}<small>${ridden ? `${esc(tower.name)} · ${seen}/${a.isles.length} isles${relics.has(a.relic.id) ? ' · CROWN' : ''}` : 'ride its tower to find it'}</small></li>`
       })
       .join('')
+    const storms = PHENOMENON_LIST.map((d) => {
+      const prog = progressOf(journal.phenomena, d.id)
+      const done = isCleared(journal.phenomena, d.id)
+      const stage = d.stages[prog.stage]
+      const note = done ? `${d.reward} claimed` : prog.started ? `stage ${prog.stage + 1}/${stageCount(d.id)}: ${stage.title}` : `rages over ${BIOMES[d.biome].name}`
+      return `<li class="${done ? 'gold' : prog.started ? 'silver' : ''}">${esc(d.name)}<small>${esc(note)}</small></li>`
+    }).join('')
     body.innerHTML = `
       <div class="j-stats">
         <div><b>${journal.landmarks.length}/${landmarks().length}</b><span>Landmarks</span></div>
@@ -87,6 +95,7 @@ export function createJournalUi({ onClose } = {}) {
       <h3>Goals</h3><div class="j-goals">${goals}</div>
       <h3>Biomes</h3><div class="j-chips">${biomes}</div>
       <h3>Landmarks</h3><ul class="j-list">${sights}</ul>
+      <h3>Regional phenomena (${clearedCount(journal.phenomena)}/${PHENOMENON_LIST.length})</h3><ul class="j-list">${storms}</ul>
       <h3>Sky isles</h3><ul class="j-list">${sky}</ul>
       <h3>Sky-ring races</h3><ul class="j-list">${races || '<li>No courses</li>'}</ul>
       <h3>Bestiary</h3><ul class="j-list">${beasts || '<li>Nothing felled yet</li>'}</ul>`

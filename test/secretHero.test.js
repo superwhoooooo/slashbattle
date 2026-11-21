@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { CROWN_HERO, HEROES, SECRET_HEROES, buyHero, grantHero, heroById, heroForCrowns, heroForHearts, heroForSecrets, isSecretHero, normalizeHeroFields, ownsHero, visibleHeroes } from '../src/logic/heroes.js'
-import { AWAKENED, HERO_ABILITIES, traitTune } from '../src/logic/heroPowers.js'
+import { AWAKENED, HERO_ABILITIES, WINDS, traitTune, windAt } from '../src/logic/heroPowers.js'
 import { HERO_ULTIMATES } from '../src/logic/heroUltimates.js'
 import { GEAR_PARTS } from '../src/heroGear.js'
 
@@ -8,7 +8,7 @@ const fresh = { bank: 999999, heroesOwned: [], skinsOwned: [], heroSkins: {}, he
 
 describe('the secret hero (Nimbus Sovereign)', () => {
   it('is the one secret hero, with its trait, awakening, ability, ultimate and gear', () => {
-    expect(SECRET_HEROES).toEqual([CROWN_HERO, 'umbral', 'twilight'])
+    expect(SECRET_HEROES).toEqual([CROWN_HERO, 'umbral', 'twilight', 'tempest'])
     const hero = heroById(CROWN_HERO)
     expect(hero.id).toBe('sovereign')
     expect(isSecretHero('sovereign')).toBe(true)
@@ -112,5 +112,33 @@ describe('the third secret hero (Nyxara, the Twilight Regent)', () => {
     expect(buyHero(both, 'twilight').ok).toBe(false)
     const owned = grantHero(both, 'twilight')
     expect(visibleHeroes(owned).some((h) => h.id === 'twilight')).toBe(true)
+  })
+})
+
+describe('the fourth secret hero (Kestrel, the Stormbinder)', () => {
+  it('has its trait, awakening, ability, ultimate and gear', () => {
+    const hero = heroById('tempest')
+    expect(hero.secret).toBe(true)
+    expect(hero.skins.length).toBe(4)
+    expect(AWAKENED.tempest.desc).toBeTruthy()
+    expect(HERO_ABILITIES.tempest.name).toBe('Calamity Call')
+    expect(HERO_ULTIMATES.tempest.steps.length).toBeGreaterThan(0)
+    for (const g of hero.gear) expect(GEAR_PARTS, g).toContain(g)
+    const base = traitTune('stormbound', false)
+    const awake = traitTune('stormbound', true)
+    expect(awake.every).toBeLessThan(base.every)
+    expect(awake.radius).toBeGreaterThan(base.radius)
+    expect(awake.ember).toBeGreaterThan(base.ember)
+    expect(hero.stats.damageTaken ?? 1).toBe(1)
+    expect(HERO_ULTIMATES.tempest.steps.some((s) => s.k === 'invuln')).toBe(false)
+  })
+  it('the four winds turn in order', () => {
+    expect(WINDS.map((w) => w.id)).toEqual(['sand', 'frost', 'ember', 'mire'])
+    expect([0, 7, 14, 21, 28].map((t) => windAt(t, 7).id)).toEqual(['sand', 'frost', 'ember', 'mire', 'sand'])
+  })
+  it('stays hidden and cannot be bought', () => {
+    expect(visibleHeroes(fresh).some((h) => h.id === 'tempest')).toBe(false)
+    expect(buyHero(fresh, 'tempest').ok).toBe(false)
+    expect(visibleHeroes(grantHero(fresh, 'tempest')).some((h) => h.id === 'tempest')).toBe(true)
   })
 })

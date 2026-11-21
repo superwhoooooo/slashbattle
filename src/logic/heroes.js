@@ -664,6 +664,21 @@ export const HEROES = [
     ],
     secretHint: 'Own both other secret heroes',
   },
+  // --- The fourth secret hero: calm all four regional phenomena in the Wilds (logic/phenomena.js).
+  {
+    id: 'tempest', name: 'Kestrel, the Stormbinder', cost: 0, secret: true,
+    blurb: 'Walked into the worst weather the Wilds had and talked it down, one storm at a time. Now it follows them around like a very loud dog.',
+    stats: { damage: 1.1, speed: 1.08, cooldown: 0.95, maxHp: 10 },
+    trait: { id: 'stormbound', name: 'Four Winds', desc: 'The weather turns through four winds every 7 s: SAND, FROST, EMBER, MIRE. Every 2.2 s the wind pulses around you within 5 m: sand shoves monsters away, frost slows them, ember burns for 0.7x, mire drains them and feeds you 1% health. Ember wind adds +35% damage, frost wind slows what you hit, mire wind heals 1% per hit, and sand wind kicks up a dust devil every 3rd hit.' },
+    gear: ['stormHat', 'galeCloak', 'windOrbs'],
+    skins: [
+      skin('stormbinder', 'Stormbinder', 0x6fa8d8, 0x2a3a5c, 0xffd98a, 0x9fe8ff),
+      skin('dune', 'Dune Caller', 0xe8b86a, 0x7a4a2a, 0xfff0c0, 0xffd98a, 600),
+      skin('rime', 'Rimeborn', 0xe8f6ff, 0x5a8ab8, 0xffffff, 0xcfeaff, 900),
+      skin('cinder', 'Cinderwind', 0xff7a3a, 0x3a1410, 0xffd15c, 0xff6a2a, 1200),
+    ],
+    secretHint: 'Calm all four regional phenomena in the Wilds',
+  },
 ]
 
 export const HERO_IDS = HEROES.map((h) => h.id)

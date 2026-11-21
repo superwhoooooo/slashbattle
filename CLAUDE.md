@@ -125,6 +125,10 @@ slashbattle/
     logic/wildsJournal.js # journal + milestones + bestiary (saved); logic/lanterns.js, wayshrines.js, treasure.js, races.js, wildEvents.js, wildsSpots.js: the activities' rules
     logic/depths.js    # chasms, the Depths' Lightroots / Umbral lairs / chunks (pure); depthsFx.js is their look
     logic/wildsMusic.js # the Wilds' generated music tracks + pickTrack / the music style (pure)
+    logic/phenomena.js # the four regional storms: stages, holds, gate runs, hazards, the Stormbinder grant (pure)
+    logic/species.js   # the storm cities' four peoples (names, colours, roles)
+    logic/stormGuide.js # guidance: next objective, compass words, the Sage's dialogue (pure)
+    phenomenaFx.js     # the storms' walls, stage markers and hazard zones
     logic/skyIslands.js # Skylift towers + sky isles: placement, isle layouts, surfaceAt / updraftLift, the launch rules (pure)
     skyIslands.js      # the towers' and isles' look: merged rock + props per archipelago, waterfalls, updrafts, relics, clouds
     logic/quests.js    # villager quests: generation, the quest log, dialogue (pure)
@@ -1202,6 +1206,41 @@ brief i-frames, then dive onto the aim point for a 6 m nova plus 6 lances). K: F
 or long invulnerability. Shiro the Limitless was nerfed hard at the same time: no damage reduction, Infinity only flickers on
 (`on` / `off` in `TUNING.limitless`) and bosses ignore it, a smaller Blue, Hollow Violet 3x over 20 m on a 45 s cooldown, and a
 smaller Domain Expansion. Tests: `test/secretHero.test.js`.
+
+## Regional phenomena and the fourth secret hero: Kestrel, the Stormbinder (the Wilds)
+`src/logic/phenomena.js` (pure, `test/phenomena.test.js`) seeds four huge storms, each squatting on a Heartland biome (`phenomenonEye`,
+`PHENOMENON_RADIUS` 78 wall, fading over `STORM_FADE`): the **Howling Sandstorm** (Amethyst Dunes; `gust`: the wind shoves you round,
+`gustPush`, and the fog closes in), the **Great Whiteout** (Frostveil; `cold`: a meter that climbs over ~26 s, `coldStep`; fires / the stage's
+spots warm you, kills knock it back, at 1 it slows and hurts you), the **Burning Ashstorm** (Emberwaste; `embers`: red warning rings, then a
+blast, `emberSpot`) and the **Weeping Miasma** (Gloomfen; `spores`: poison clouds that linger and slow, `sporeSpot`). Walking into the wall
+starts it (`startPhenomenon`, a story card) and it can only end by finishing its SIX stages (`PHENOMENA[id].stages`): **seek** (reach a
+beacon), **collect** (n stones / cores / lights, each guarded: the pickup is locked until its guards are dead), **purge** (fell n storm-spawn,
+`purgeKill`), **hold** (stand in the ritual ring `secs` s while waves arrive; drains at half speed when you step out, `stepHold`), **trial** (a
+timed run through gates in order, the clock starts at gate 1, `stepTrial`; too slow resets it) and the **boss** (Zipzilla, the Cone Father,
+Omega Jello, King Gloop forms at the eye with minions). Each stage pays `stageReward` crystals and shows the next stage's card; calming a storm
+pays `CLEAR_REWARD`, a full heal and a treasure map. Progress is in the journal's `phenomena` (`{ started, stage, n, got }`, a save key) with
+milestones (`storms1/2/4`) and a "Regional phenomena" section in the U journal. `main.js`'s `stepPhenomena` (from `stepWorld`, surface only,
+never for a co-op joiner) runs the hazard (`stepStormHazard`), the fog (`worldArena.js`'s `setStorm`), and the stage runner
+(`stepPhenomenonStage`, monsters tagged `userData.phenom` / `phenomRole`, counted in `scoreKill` via `phenomenonKill`); chips (`phenomenaChips`)
+and the minimap (`drawPhenomenaMarks`: storm discs, stage spots, a rim arrow to the nearest) show where to go. The look is
+`src/phenomenaFx.js` (streaked storm walls and an eye beam, stone / seek / ritual / gate markers, hazard zones).
+Calming ALL four (`heroForStorms`, `main.js`'s `grantStormHero`, also at startup) grants `tempest` (`secret: true`, can't be bought). Trait
+`stormbound` (Four Winds): `WINDS` (sand, frost, ember, mire) turn every `phase` s (`windAt`); every `every` s the current wind pulses round
+you (sand shoves, frost slows, ember burns, mire drains and feeds you), ember wind adds damage, frost wind slows what you hit, mire wind heals per hit,
+sand wind kicks up a dust devil every Nth hit. B: Calamity Call (all four winds in turn). K: Storm of Storms. Gear: `stormHat`, `galeCloak`,
+`windOrbs`. Not immortal. Tests: `test/secretHero.test.js`.
+
+**Storm cities, peoples, temples and guidance.** Each storm has a **city on the kingdom's rim** (`world.js`'s `CITY_DEFS`, `CITY_RADIUS`
+= `WORLD_RADIUS` - 72, at the bearing of the storm's biome; real villages with `city` / `stormId` / `species`, so they are save points, have roads and show
+on the minimap): Gildenspire (Dunekin), Rimehold (Frostkin), Pyreholm (Embervolk), Lanternmere (Mirefolk). `villageLayout` hands a city to
+`cityLayout`: a TEMPLE (floor, ring of columns, shrine, rune altar, a chest), two halls, a ring of homes, a plaza well, a lit bonfire and
+`CITY_PEOPLE` (8) residents of one **species** (`logic/species.js`: names, roles, colours, talk; `npcs.js`'s `dressSpecies` gives each its ears /
+horns / tails / bulging eyes and body shape). One resident is the **Storm Sage** (`guide: stormId`). Each storm's eye holds a ruined **storm temple**
+(`phenomenaFx.js`'s `makeTemple`: columns, altar, four braziers that light when the storm is calmed). **Guidance** (`logic/stormGuide.js`, pure,
+`test/stormGuide.test.js`): `guideTarget` picks what to follow (the Sage of the nearest unfinished storm before you start, then the tracked / nearest started
+storm's current objective via `objectiveFor`), shown as a GUIDE chip ("Fetch a Wind Stone, 140 m north-east": `compassWord`, `distanceText`), a pulsing diamond (or rim
+arrow) on the minimap and a tall beam over the target (`fx.setGuide`). The Sage (`sageDialog`, `main.js`'s `handleSageButton`) offers the storm, then briefs the
+current trial with a direction, marks it on your map (`ph.tracked`) and lets you rest (full heal, cold cleared). Sages wear a `!` / `...` marker.
 
 ## The third secret hero: Nyxara, the Twilight Regent
 `twilight` in `HEROES` (`secret: true`, `heroForSecrets`, `TWILIGHT_HERO`; `main.js`'s `grantTwilightHero`, run after either other

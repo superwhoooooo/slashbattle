@@ -30,7 +30,7 @@ import { createLoadoutPanel } from './loadout.js'
 import { createHub } from './hub.js'
 import { createHeroBeam, createHeroProjectile, disposeHeroProjectile, dressPlayer } from './heroGear.js'
 import { ATOMIC_REACH, HAMMER_REACH, HOOK_RANGE, HOTFOOT_MAX, HOTFOOT_STEP, HEROES, RAM_REHIT, boomerangPoint, broadsideSpots, chainPath, densestSpot, grantSkin, heroById, heroEffects, heroLook as lookForProfile, inBeam, isBehind, pickMarks, returningPoint, rewindTarget, rootsTriggered, spinReels, tipJarCrystals, linePoint, fanAngles, infinityPush, addRage, RAGE_PER_HIT, RAGE_PER_HURT, gloryKillReady, chargeLevel, grantHero, heroForCrowns, heroForHearts, heroForSecrets, ownsHero } from './logic/heroes.js'
-import { AWAKEN_LEVEL, HERO_ABILITIES, HERO_ABILITY_KEY, awakenedStats, heroAbilityFraction, isAwakened, pointsAlong, ringPoints, steerToward, traitTune, turnToward, useHeroAbility } from './logic/heroPowers.js'
+import { AWAKEN_LEVEL, HERO_ABILITIES, HERO_ABILITY_KEY, awakenedStats, heroAbilityFraction, isAwakened, pointsAlong, ringPoints, steerToward, traitTune, turnToward, useHeroAbility, windAt } from './logic/heroPowers.js'
 import { loadProfile, saveProfile } from './profile.js'
 import { DIFFICULTIES, DIFFICULTY_IDS, difficultyById, runPayout } from './logic/difficulty.js'
 import { getDifficulty, setDifficulty } from './difficulty.js'
@@ -77,6 +77,9 @@ import { BIOMES, BOSS_RESPAWN_SECONDS, SANCTUM_RADIUS, SKYSTAR_CATCH_RADIUS, SKY
 import { createWildsActivities } from './wildsActivities.js'
 import { createDepthsFx } from './depthsFx.js'
 import { CAVE_FIRST_REWARD, caveArrival, caveAt, caveById, caveExit, caveObstacles, caves } from './logic/caves.js'
+import { CLEAR_REWARD, COLD, EMBER, PHENOMENA, PHENOMENON_LIST, PHENOMENON_ORDER, PHENOMENON_RADIUS, SPORES, advanceStage, clearedCount, coldDamagePerSecond, coldSlow, coldStep, collectItem, createHold, createTrial, currentStage, emberSpot, gustPush, heroForStorms, isCleared, phenomenonEye, progressOf, progressText, purgeKill, sporeSpot, stageCount, stagePoints, stageReward, startPhenomenon, stepHold, stepTrial, stormIntensity, stormMonsters } from './logic/phenomena.js'
+import { createPhenomenaFx } from './phenomenaFx.js'
+import { guideTarget, guideText, sageDialog } from './logic/stormGuide.js'
 import { CAMP_SIZE, CELL_PICKUP_RADIUS, FIX_REWARD, PARTS_COST, acceptFix, campKill, collectCell, finishFix, fixOf, fixProgressText, issueCamp, issueCells, jammedTowers, keeperDialog, keeperSpot, towerIssue } from './logic/towerQuests.js'
 import { createCavesFx } from './cavesFx.js'
 import { ASCEND_RADIUS, DEPTH_FIRST_REWARD, DEPTH_RELIC_REWARD, RELIC_CLAIM_RADIUS, arrivalSpot, ascendFraction, beacons, chasmById, chasmFalls, chasmRim, chasms, createAscendState, depthsChunk, depthsLairs, stepAscend } from './logic/depths.js'
@@ -967,6 +970,20 @@ function grantTwilightHero(announce = false) {
     spawnShockwave(shockwavePool, p.x, p.z, 14, 0xffc86a)
   }
 }
+// The Stormbinder: calm all four regional phenomena (checked on each calm and at startup, like the crowns and hearts).
+function grantStormHero(cleared, announce = false) {
+  const id = heroForStorms(cleared)
+  if (!id || ownsHero(profile, id)) return
+  profile = grantHero(profile, id)
+  saveProfile(profile)
+  if (!announce || !hud) return
+  showLootToast(hud, { title: 'SECRET HERO UNLOCKED', name: heroById(id).name, blurb: 'All four storms are calm, and the weather has decided to follow you. Pick Kestrel on the Heroes page (Y).' })
+  const p = game?.player?.position
+  if (p) {
+    burst(particleSystem, { x: p.x, y: 2, z: p.z }, 0x9fe8ff, 90, 9)
+    for (const [i, c] of [0xe8b86a, 0xcfeaff, 0xff7a3a, 0x8ae86a].entries()) spawnShockwave(shockwavePool, p.x, p.z, 8 + i * 4, c)
+  }
+}
 // The Hollow Queen: claim every Umbral Heart in the Depths (checked on each claim and at startup, like the crowns).
 function grantDepthsHero(claimed, announce = false) {
   const id = heroForHearts(claimed, depthsLairs().length)
@@ -1080,7 +1097,7 @@ const heroState = {
   breath: null, // Kaiju Kiddo's held Atomic Breath
   // Legendary heroes:
   blueReady: 0, infinityFxAt: 0, infinityUp: false, // Shiro the Limitless
-  seraphReady: 0, lances: 0, ascend: null, flyLift: 0, // the Nimbus Sovereign (secret hero)
+  seraphReady: 0, windReady: 0, lances: 0, ascend: null, flyLift: 0, // the Nimbus Sovereign (secret hero)
   rage: 0, rageUntil: -Infinity, rageShockAt: -Infinity, // Ragnar Ashfather
   stompReady: 0, // Pipeworks Paolo
   pelletUntil: -Infinity, pellet: null, panicNext: 0, // Chompy Champ's power pellet
@@ -1096,7 +1113,7 @@ function resetHeroState() {
     holeReady: 0, rebirthReady: 0, cutsReady: 0, holes: [], slipUntil: -Infinity,
     abilityReady: 0, focusUntil: -Infinity, noonUntil: -Infinity, echoUntil: -Infinity, vanishUntil: -Infinity, speedUntil: -Infinity,
     blueReady: 0, rage: 0, rageUntil: -Infinity, rageShockAt: -Infinity, stompReady: 0, pelletUntil: -Infinity, pellet: null,
-    starUntil: -Infinity, inhaleReady: 0, chargeAt: 0, infinityUp: false, seraphReady: 0, lances: 0, ascend: null,
+    starUntil: -Infinity, inhaleReady: 0, chargeAt: 0, infinityUp: false, seraphReady: 0, windReady: 0, lances: 0, ascend: null,
   })
   clearFlyers()
   clearHeroFx()
@@ -1133,6 +1150,7 @@ setDamageHooks({
     if (trait === 'spartan' && heroNow < heroState.rageUntil) scale *= t.bonus
     if (trait === 'abyss') scale *= 1 + t.hunger * (1 - Math.max(0, game.player.hp) / Math.max(1, game.player.maxHp)) // the emptier she is, the harder she bites
     if (trait === 'twilight' && !twilightDawn(t)) scale *= 1 + t.dusk // dusk: the dark hits harder
+    if (trait === 'stormbound' && windAt(heroNow, t.phase).id === 'ember') scale *= 1 + t.ember // ember wind: everything burns hotter
     if (hexed) scale *= t.bonus
     return scale === 1 ? damage : Math.round(damage * scale)
   },
@@ -1217,6 +1235,14 @@ setDamageHooks({
     if (trait === 'twilight' && !twilightDawn(t) && heroState.hits % t.tendrilEvery === 0) {
       heroState.pending.push({ at: heroNow, run: () => shadowTendrils(at, { reach: t.reach, tendrils: t.tendrils, damage: t.tendrilDamage, heal: t.heal }) })
     }
+    if (trait === 'stormbound') {
+      const wind = windAt(heroNow, t.phase).id
+      if (wind === 'frost') applySlow(monster.userData, heroNow, t.slow, 0.45)
+      else if (wind === 'mire') {
+        const pl = game.player
+        if (pl.hp > 0) pl.hp = Math.min(pl.maxHp, pl.hp + pl.maxHp * t.heal)
+      } else if (wind === 'sand' && heroState.hits % t.devilEvery === 0) heroState.pending.push({ at: heroNow, run: () => dustDevil(at, t) })
+    }
     if (trait === 'tnt' && heroState.hits % t.every === 0) heroState.pending.push({ at: heroNow, run: () => dropTnt(at, t) })
     if (trait === 'hadoken' && heroState.hits % t.every === 0) heroState.pending.push({ at: heroNow + 0.05, run: () => waveFist(heroAimAngle(), t) })
     if (trait === 'inhale' && heroNow >= heroState.inhaleReady) {
@@ -1288,6 +1314,61 @@ function shadowTendrils(at, t = tn()) {
     if (pl.hp > 0) pl.hp = Math.min(pl.maxHp, pl.hp + pl.maxHp * t.heal)
   }
   if (victims.length) sfx.play('hit', at)
+}
+// Four Winds (Kestrel): a small whirl of sand that shoves and nicks whatever it catches.
+function dustDevil(at, t = tn()) {
+  const color = WINDS_COLORS.sand
+  burst(particleSystem, { x: at.x, y: 0.6, z: at.z }, color, 18, 2.4, 0.5)
+  spawnShockwave(shockwavePool, at.x, at.z, 3.5, color)
+  for (const mesh of heroTargets(at.x, at.z, 3.5)) heroHurt(mesh, t.devil * heroBaseDamage(), 4, at)
+}
+const WINDS_COLORS = { sand: 0xe8b86a, frost: 0xcfeaff, ember: 0xff7a3a, mire: 0x8ae86a }
+// One ring of a wind round the player: sand shoves, frost slows, ember burns, mire drains and heals.
+function windRing(kind, at, radius, damage, t) {
+  const color = WINDS_COLORS[kind]
+  burst(particleSystem, { x: at.x, y: 0.8, z: at.z }, color, 22, radius * 0.9, 0.45)
+  spawnShockwave(shockwavePool, at.x, at.z, radius, color)
+  let drained = 0
+  for (const mesh of heroTargets(at.x, at.z, radius)) {
+    if (kind === 'sand') heroHurt(mesh, Math.max(0.2, damage * 0.3) * heroBaseDamage(), t.shove, at)
+    else if (kind === 'frost') {
+      applySlow(mesh.userData, heroNow, t.slow, 0.4)
+      heroHurt(mesh, Math.max(0.2, damage * 0.4) * heroBaseDamage(), 1, at)
+    } else {
+      heroHurt(mesh, damage * heroBaseDamage(), 1.5, at)
+      if (kind === 'ember') setBurn(mesh, 0.5, 3)
+      else drained++
+    }
+  }
+  return drained
+}
+// The wind pulses round her on a beat (only while something is near, so the quiet stays quiet).
+function stepStormbound(player, now, t) {
+  if (player.hp <= 0 || player.falling || player.hidden || now < heroState.windReady) return
+  const at = { x: player.position.x, z: player.position.z }
+  if (!heroTargets(at.x, at.z, t.radius).length) return
+  heroState.windReady = now + t.every
+  const kind = windAt(now, t.phase).id
+  const drained = windRing(kind, at, t.radius, t.damage, t)
+  if (kind === 'mire' && drained && player.hp > 0) player.hp = Math.min(player.maxHp, player.hp + player.maxHp * t.heal)
+}
+// Calamity Call (Kestrel's B): all four winds roll out one after another.
+function calamityCall(p) {
+  const t = traitTune('stormbound', true)
+  const rings = [['sand', 6, 2], ['frost', 8, 2], ['ember', 10, 3], ['mire', 12, 2]]
+  rings.forEach(([kind, radius, damage], i) => {
+    heroState.pending.push({
+      at: heroNow + i * 0.35,
+      run: () => {
+        const drained = windRing(kind, p, radius, damage, t)
+        if (kind === 'mire') {
+          const pl = game.player
+          pl.hp = Math.min(pl.maxHp, pl.hp + pl.maxHp * (drained ? 0.1 : 0.04))
+        }
+      },
+    })
+  })
+  showPopup(popupPool, game.player.position, 'CALAMITY CALL', '', '#9fe8ff')
 }
 // Eclipse (Veyra's B): a wave of shadow that slows everything it touches, and she drinks in some health.
 function eclipse(p, r, dmg, heal) {
@@ -2353,6 +2434,7 @@ function stepLegendaryHeroes(player, now, dt, trait, t) {
   if (trait === 'limitless') stepInfinity(player, now, t)
   if (trait === 'heavenly') stepHeavenly(player, now, t)
   if (trait === 'twilight') stepTwilight(player, now, dt, t)
+  if (trait === 'stormbound') stepStormbound(player, now, t)
   applyFlight(player, now, trait === 'heavenly' || trait === 'twilight')
   if (trait === 'spartan' && now < heroState.rageUntil && Math.random() < 0.5) {
     burst(particleSystem, { x: player.position.x, y: 1.2, z: player.position.z }, 0xff3a1a, 2, 1, 0.4)
@@ -2768,6 +2850,7 @@ function triggerHeroAbility(now, free = false) {
     case 'shiro': hollowViolet(aim); break
     case 'sovereign': ascension(now); break
     case 'umbral': eclipse(p, 10, 4, 0.12); break
+    case 'tempest': calamityCall(p); break
     case 'twilight': {
       eclipse(p, 10, 4, 0.1)
       const tt = awake('twilight')
@@ -3020,6 +3103,8 @@ function createGame() {
     game.world.sky.fx.setRepaired(new Set(Object.keys(game.world.journal.fixes).filter((id) => game.world.journal.fixes[id].stage === 'done')))
     game.world.caveFx = createCavesFx()
     game.arena.group.add(game.world.caveFx.group)
+    game.world.phen = { fx: createPhenomenaFx(), rt: {}, zones: [], cold: 0, speedFactor: 1, nextEmber: 0, nextSpore: 0, nextColdHurt: 0, spawnAt: 0, lastStage: {}, stormKey: '', tracked: null, guide: null }
+    game.arena.group.add(game.world.phen.fx.group)
     game.world.towerQuest = { keepers: new Map(), cells: new Map(), group: new THREE.Group(), spawnAt: new Map(), lastStage: new Map() }
     game.arena.group.add(game.world.towerQuest.group)
     game.world.sky.fx.setRelicsTaken(new Set(game.world.journal.relics))
@@ -4109,6 +4194,11 @@ const dialogInfo = (game, npc) => ({ npc: npc.def, village: villageById(npc.def.
 
 function openTalk(game, npc) {
   game.world.talkingTo = npc.def.id
+  if (npc.def.guide) {
+    questUi.show(sageDialogInfo(game, npc))
+    sfx.play('podIn', { x: npc.mesh.position.x, z: npc.mesh.position.z })
+    return
+  }
   if (npc.def.keeper) {
     questUi.show(keeperDialogInfo(game, npc))
     sfx.play('podIn', { x: npc.mesh.position.x, z: npc.mesh.position.z })
@@ -4130,6 +4220,7 @@ function handleDialogButton(game, id) {
   const npc = w?.npcs.get(w.talkingTo)
   if (!npc) return questUi.close()
   if (npc.def.merchant) return handleMerchantButton(game, id)
+  if (npc.def.guide) return handleSageButton(game, id, npc)
   if (npc.def.keeper) return handleKeeperButton(game, id, npc)
   const dialog = npcDialog(w.quests, npc.def)
   if (id === 'accept' && dialog.mode === 'offer') {
@@ -4756,6 +4847,492 @@ function stepTowerQuests(game, now) {
   animateTowerCells(game, now)
 }
 
+// ---- the storm cities' Sages: they offer each storm's chain, brief the current stage and point the way ----
+const phenRtView = (game) => Object.fromEntries(Object.entries(game.world.phen?.rt ?? {}).filter(([, v]) => v).map(([k, v]) => [k, { trial: v.trial }]))
+const sageMarker = (game, stormId) => {
+  if (isCleared(game.world.journal.phenomena, stormId)) return null
+  return progressOf(game.world.journal.phenomena, stormId).started ? 'progress' : 'offer'
+}
+function sageDialogInfo(game, npc) {
+  const id = npc.def.guide
+  const p = game.player.position
+  return { npc: npc.def, village: villageById(npc.def.villageId), mode: 'sage', quest: null, ...sageDialog(game.world.journal.phenomena, id, { x: p.x, z: p.z }, phenRtView(game)) }
+}
+function handleSageButton(game, id, npc) {
+  const w = game.world
+  const storm = npc.def.guide
+  const def = PHENOMENA[storm]
+  const at = { x: npc.mesh.position.x, z: npc.mesh.position.z }
+  if (id === 'accept' && !progressOf(w.journal.phenomena, storm).started) {
+    setPhenomena(game, startPhenomenon(w.journal.phenomena, storm))
+    w.phen.tracked = storm
+    questUi.showToast(`${def.name.toUpperCase()}: THE SAGE MARKS THE WAY ON YOUR MAP · FOLLOW THE BEAM`)
+    sfx.play('chestOpen', at)
+    questUi.update(sageDialogInfo(game, npc))
+  } else if (id === 'mark') {
+    w.phen.tracked = storm
+    questUi.showToast(`TRACKING: ${def.short.toUpperCase()}`)
+    questUi.close()
+  } else if (id === 'rest') {
+    game.player.hp = game.player.maxHp
+    w.phen.cold = 0
+    burst(particleSystem, { x: game.player.position.x, y: 1.2, z: game.player.position.z }, def.glow, 36, 4, 0.6)
+    sfx.play('waveCleared', at)
+    questUi.showToast('YOU FEEL RESTED · FULL HEALTH')
+    questUi.close()
+  } else questUi.close()
+}
+
+// ---- regional phenomena: four storms, each a six-stage chain (rules in logic/phenomena.js, look in phenomenaFx.js) ----
+const PHEN_NEAR = 70 // beyond the wall: stages stay live this far out
+const STORM_FOG = { gust: [4, 38], cold: [6, 46], embers: [10, 76], spores: [5, 44] }
+const setPhenomena = (game, phenomena) => setJournal(game, { ...game.world.journal, phenomena })
+const phenRt = (ph, id) => (ph.rt[id] ??= { hold: createHold(), trial: createTrial(), guardKills: {}, lastGate: -1 })
+const hexOf = (c) => `#${c.toString(16).padStart(6, '0')}`
+
+// Finishes the storm's current stage: pays out, introduces the next, or calms the whole storm.
+function completePhenomenonStage(game, id) {
+  const w = game.world
+  const def = PHENOMENA[id]
+  const before = progressOf(w.journal.phenomena, id)
+  const done = def.stages[before.stage]
+  if (!done) return
+  const out = advanceStage(w.journal.phenomena, id)
+  setPhenomena(game, out.phenomena)
+  w.phen.rt[id] = null
+  w.phen.zones = []
+  const reward = stageReward(before.stage)
+  game.inventory = addCrystals(game.inventory, reward)
+  const p = game.player.position
+  burst(particleSystem, { x: p.x, y: 2, z: p.z }, def.glow, 60, 7, 1)
+  spawnShockwave(shockwavePool, p.x, p.z, 10, def.color)
+  sfx.play('waveCleared', { x: p.x, z: p.z })
+  if (out.cleared) return calmPhenomenon(game, id)
+  game.player.hp = Math.min(game.player.maxHp, game.player.hp + game.player.maxHp * 0.15)
+  questUi.showToast(`${def.short.toUpperCase()}  ${before.stage + 1}/${stageCount(id)} DONE: ${done.title.toUpperCase()}  +${reward} CRYSTALS`)
+  announcePhenomenonStage(game, id)
+}
+
+// The big card for the stage you are now on.
+function announcePhenomenonStage(game, id) {
+  const stage = currentStage(game.world.journal.phenomena, id)
+  if (!stage || !hud) return
+  const n = progressOf(game.world.journal.phenomena, id).stage + 1
+  showLootToast(hud, { title: `${PHENOMENA[id].short.toUpperCase()} · STAGE ${n} OF ${stageCount(id)}`, name: stage.title, blurb: stage.text })
+}
+
+// The whole storm is done: the sky clears, the Seal is yours, and the fourth secret hero may come.
+function calmPhenomenon(game, id) {
+  const w = game.world
+  const def = PHENOMENA[id]
+  const eye = phenomenonEye(id)
+  game.inventory = addCrystals(game.inventory, CLEAR_REWARD)
+  game.player.hp = game.player.maxHp
+  spawnShockwave(shockwavePool, eye.x, eye.z, 40, def.glow)
+  spawnShockwave(shockwavePool, eye.x, eye.z, 22, 0xffffff)
+  burst(particleSystem, { x: eye.x, y: fxY(game, eye.y + 3), z: eye.z }, def.glow, 120, 12, 1)
+  sfx.play('waveCleared', { x: eye.x, z: eye.z })
+  grantTreasureMap(game, `storm:${id}`, { x: eye.x, z: eye.z }, def.name)
+  questUi.showToast(`${def.name.toUpperCase()} IS CALMED  ·  ${def.reward.toUpperCase()}  +${CLEAR_REWARD} CRYSTALS, FULLY HEALED  ·  ${clearedCount(w.journal.phenomena)}/${PHENOMENON_ORDER.length}`)
+  if (hud) showLootToast(hud, { title: 'THE SKY CLEARS', name: def.reward, blurb: `${def.name} is over. ${clearedCount(w.journal.phenomena) < PHENOMENON_ORDER.length ? `${PHENOMENON_ORDER.length - clearedCount(w.journal.phenomena)} more regional phenomena rage across the Wilds.` : 'The weather itself has noticed you.'}` })
+  grantStormHero(clearedCount(w.journal.phenomena), true)
+}
+
+// A storm-spawn fell (scoreKill): count it toward the stage it belongs to.
+function phenomenonKill(game, mesh) {
+  const w = game.world
+  const u = mesh.userData
+  const id = u.phenom
+  if (!w.phen || !PHENOMENA[id]) return
+  w.phen.cold = Math.max(0, w.phen.cold - COLD.killWarm)
+  const stage = currentStage(w.journal.phenomena, id)
+  if (!stage) return
+  if (u.phenomRole === 'guard') {
+    const rt = phenRt(w.phen, id)
+    rt.guardKills[u.phenomPoint] = (rt.guardKills[u.phenomPoint] ?? 0) + 1
+  } else if (u.phenomRole === 'purge' && stage.kind === 'purge') {
+    const out = purgeKill(w.journal.phenomena, id)
+    setPhenomena(game, out.phenomena)
+    if (out.done) completePhenomenonStage(game, id)
+    else if (progressOf(out.phenomena, id).n % 4 === 0) questUi.showToast(`${stage.title.toUpperCase()}: ${progressOf(out.phenomena, id).n} / ${stage.n}`)
+  } else if (u.phenomRole === 'boss' && stage.kind === 'boss') completePhenomenonStage(game, id)
+}
+
+// A spot on dry ground in the storm for a monster: a ring round the player, kept inside the wall.
+function stormSpawnSpot(id, p, min = 12, max = 20) {
+  const eye = phenomenonEye(id)
+  for (let i = 0; i < 12; i++) {
+    const a = Math.random() * Math.PI * 2
+    const d = min + Math.random() * (max - min)
+    let x = p.x + Math.cos(a) * d
+    let z = p.z + Math.sin(a) * d
+    const away = Math.hypot(x - eye.x, z - eye.z)
+    if (away > PHENOMENON_RADIUS * 0.95) {
+      x = eye.x + ((x - eye.x) / away) * PHENOMENON_RADIUS * 0.9
+      z = eye.z + ((z - eye.z) / away) * PHENOMENON_RADIUS * 0.9
+    }
+    if (!lakeAt(x, z, 2)) return { x, z }
+  }
+  return { x: p.x + 12, z: p.z }
+}
+function spawnStormMonster(game, id, at, role, extra = {}) {
+  const types = stormMonsters(id)
+  const type = types[Math.floor(Math.random() * types.length)]
+  const danger = Math.min(1, dangerAt(at.x, at.z) + 0.15 + progressOf(game.world.journal.phenomena, id).stage * 0.04)
+  const elite = extra.elite ?? (role === 'purge' && Math.random() < 0.12)
+  const mesh = spawnWildMonster(game, type, at, { danger, elite, hpScale: (1 + danger) * (elite ? 2.4 : 1) })
+  mesh.userData.phenom = id
+  mesh.userData.phenomRole = role
+  if (extra.point) mesh.userData.phenomPoint = extra.point
+  return mesh
+}
+const stormAlive = (game, id, role, point = null) => game.monsters.filter((m) => m.userData.phenom === id && m.userData.phenomRole === role && (point === null || m.userData.phenomPoint === point) && !m.userData.dying).length
+
+// The storm's own hazard, every frame while you are in it.
+function stepStormHazard(game, id, k, now, dt, alive) {
+  const w = game.world
+  const ph = w.phen
+  const def = PHENOMENA[id]
+  const player = game.player
+  const p = player.position
+  const sparkle = (n, spread, speed, up = 0) => {
+    for (let i = 0; i < n; i++) burst(particleSystem, { x: p.x + (Math.random() - 0.5) * spread, y: fxY(game, w.groundY) + 0.5 + Math.random() * 5, z: p.z + (Math.random() - 0.5) * spread }, def.color, 1, speed, up)
+  }
+  if (def.hazard === 'gust') {
+    if (Math.random() < dt * 14 * k) sparkle(1, 26, 6, 0)
+    if (!alive || player.hidden) return
+    const push = gustPush(now, k)
+    const air = w.jump.air ? 0.5 : 1
+    const nx = p.x + push.x * dt * air
+    const nz = p.z + push.z * dt * air
+    if (!game.obstacles.some((o) => Math.hypot(o.x - nx, o.z - nz) < (o.radius ?? 0) + 0.7 && !(w.jump.air && clearsObstacle(o, w.groundY)))) {
+      p.x = nx
+      p.z = nz
+    }
+  } else if (def.hazard === 'cold') {
+    if (Math.random() < dt * 16 * k) sparkle(1, 28, 5, -0.2)
+    // Warmth: the stage's fires, the bonfire ring and the beacon all keep you warm.
+    const stage = currentStage(w.journal.phenomena, id)
+    const warmAt = stage ? stagePoints(id, progressOf(w.journal.phenomena, id).stage).filter((pt) => stage.kind !== 'collect' || !progressOf(w.journal.phenomena, id).got.includes(pt.id)) : []
+    const warm = warmAt.some((pt) => Math.hypot(pt.x - p.x, pt.z - p.z) < (stage?.kind === 'hold' ? stage.radius + 2 : COLD.warmRadius)) || Math.hypot(p.x, p.z) < SANCTUM_RADIUS
+    ph.cold = coldStep(ph.cold, dt, { warm, intensity: k })
+    ph.speedFactor = coldSlow(ph.cold)
+    const dps = coldDamagePerSecond(ph.cold, player.maxHp)
+    if (dps > 0 && alive && now >= ph.nextColdHurt) {
+      ph.nextColdHurt = now + 1.2
+      if (player.damagePlayer(Math.max(1, Math.round(dps * 1.2)), now, 1)) playerHurtFx(game)
+    }
+  } else if (def.hazard === 'embers') {
+    if (Math.random() < dt * 14 * k) sparkle(1, 24, 3, 1.2)
+    if (alive && !player.hidden && now >= ph.nextEmber && ph.zones.length < 8) {
+      ph.nextEmber = now + EMBER.every * (1.2 - 0.3 * k)
+      const at = emberSpot(Math.random, { x: p.x, z: p.z })
+      ph.zones.push({ id: `ember${now.toFixed(2)}${Math.random()}`, kind: 'ember', x: at.x, z: at.z, y: heightAt(at.x, at.z), r: EMBER.radius, born: now, warn: EMBER.warn, color: def.glow, live: false, t: 0 })
+    }
+    for (const z of ph.zones) {
+      if (z.kind !== 'ember') continue
+      z.t = Math.min(1, (now - z.born) / z.warn)
+      if (!z.struck && now - z.born >= z.warn) {
+        z.struck = true
+        z.dead = now + 0.25
+        burst(particleSystem, { x: z.x, y: fxY(game, z.y) + 1, z: z.z }, 0xff8a3a, 36, 5, 0.9)
+        spawnShockwave(shockwavePool, z.x, z.z, z.r + 1, 0xff6a2a)
+        sfx.play('bossSlam', { x: z.x, z: z.z })
+        if (alive && !player.hidden && Math.hypot(z.x - p.x, z.z - p.z) <= z.r && !(w.jump.air && w.groundY - z.y > 3)) {
+          if (player.damagePlayer(Math.round(EMBER.damage * (1 + progressOf(w.journal.phenomena, id).stage * 0.12)), now)) playerHurtFx(game)
+        }
+      }
+    }
+    ph.zones = ph.zones.filter((z) => !z.dead || now < z.dead)
+  } else if (def.hazard === 'spores') {
+    if (Math.random() < dt * 10 * k) sparkle(1, 26, 2, 0.6)
+    if (alive && !player.hidden && now >= ph.nextSpore && ph.zones.length < 12) {
+      ph.nextSpore = now + SPORES.every * (1.25 - 0.3 * k)
+      const at = sporeSpot(Math.random, { x: p.x, z: p.z })
+      ph.zones.push({ id: `spore${now.toFixed(2)}${Math.random()}`, kind: 'spore', x: at.x, z: at.z, y: heightAt(at.x, at.z), r: SPORES.radius, born: now, warn: 1.1, until: now + SPORES.life, color: def.color, live: false, t: 0, tickAt: 0 })
+    }
+    for (const z of ph.zones) {
+      if (z.kind !== 'spore') continue
+      z.t = Math.min(1, (now - z.born) / z.warn)
+      z.live = now - z.born >= z.warn
+      if (z.live && alive && !player.hidden && now >= z.tickAt && Math.hypot(z.x - p.x, z.z - p.z) <= z.r && !w.jump.air) {
+        z.tickAt = now + SPORES.tick
+        applyPlayerSlow?.(0.35)
+        if (player.damagePlayer(Math.round(SPORES.damage * (1 + progressOf(w.journal.phenomena, id).stage * 0.1)), now, 1)) playerHurtFx(game)
+      }
+    }
+    ph.zones = ph.zones.filter((z) => now < z.until)
+  }
+}
+// (The miasma's slow is a gentle drag on speed for a moment.)
+let phenSlowUntil = -Infinity
+function applyPlayerSlow(seconds) {
+  phenSlowUntil = timer.getElapsed() + seconds
+}
+
+// The stage runner for one storm you are in or beside.
+function stepPhenomenonStage(game, id, now, dt, alive, markers) {
+  const w = game.world
+  const ph = w.phen
+  const def = PHENOMENA[id]
+  const prog = progressOf(w.journal.phenomena, id)
+  const stage = def.stages[prog.stage]
+  if (!stage) return
+  const p = game.player.position
+  const rt = phenRt(ph, id)
+  const pts = stagePoints(id, prog.stage)
+  const key = `${id}:${prog.stage}`
+  if (ph.lastStage[id] !== key) { // a new stage: fresh runtime state
+    ph.lastStage[id] = key
+    w.phen.rt[id] = null
+    return
+  }
+  const near = (pt, r) => Math.hypot(pt.x - p.x, pt.z - p.z) < r
+  const color = def.glow
+  if (stage.kind === 'seek') {
+    for (const pt of pts) markers.push({ id: pt.id, kind: 'seek', x: pt.x, y: pt.y, z: pt.z, color, radius: stage.radius })
+    if (alive && !game.player.hidden && near(pts[0], stage.radius) && Math.abs(w.groundY - pts[0].y) < 5) completePhenomenonStage(game, id)
+  } else if (stage.kind === 'collect') {
+    for (const pt of pts) {
+      if (prog.got.includes(pt.id)) continue
+      const remaining = stage.guards - (rt.guardKills[pt.id] ?? 0)
+      const guarded = remaining > 0
+      markers.push({ id: pt.id, kind: 'stone', x: pt.x, y: pt.y, z: pt.z, color: guarded ? 0x888899 : color })
+      if (!coop?.isClient && near(pt, 48)) {
+        const have = stormAlive(game, id, 'guard', pt.id)
+        if (remaining > have && now > ph.spawnAt) {
+          ph.spawnAt = now + 0.8
+          const a = Math.random() * Math.PI * 2
+          spawnStormMonster(game, id, { x: pt.x + Math.cos(a) * (5 + Math.random() * 4), z: pt.z + Math.sin(a) * (5 + Math.random() * 4) }, 'guard', { point: pt.id, elite: have === 0 && stage.guards >= 3 })
+        }
+      }
+      if (alive && !game.player.hidden && near(pt, 2.6) && Math.abs(w.groundY - pt.y) < 4) {
+        if (guarded) {
+          if (now - (rt.warnedAt ?? -9) > 3) {
+            rt.warnedAt = now
+            questUi.showToast(`${stage.item.toUpperCase()} IS GUARDED: DEFEAT ${remaining} FIRST`)
+          }
+          continue
+        }
+        const out = collectItem(w.journal.phenomena, id, pt.id)
+        setPhenomena(game, out.phenomena)
+        burst(particleSystem, { x: pt.x, y: fxY(game, pt.y + 1.2), z: pt.z }, color, 36, 5)
+        sfx.play('crystal', { x: pt.x, z: pt.z })
+        if (out.done) completePhenomenonStage(game, id)
+        else questUi.showToast(`${stage.item.toUpperCase()} ${progressOf(out.phenomena, id).n} / ${stage.n}`)
+      }
+    }
+  } else if (stage.kind === 'purge') {
+    if (!coop?.isClient && alive) {
+      const need = stage.n - prog.n
+      const have = stormAlive(game, id, 'purge')
+      if (have < Math.min(stage.wave, need) && now > ph.spawnAt) {
+        ph.spawnAt = now + 1.1
+        spawnStormMonster(game, id, stormSpawnSpot(id, p), 'purge')
+      }
+    }
+  } else if (stage.kind === 'hold') {
+    const pt = pts[0]
+    const inside = near(pt, stage.radius) && Math.abs(w.groundY - pt.y) < 5
+    const out = stepHold(rt.hold, stage, { inside, dt, alive: alive && !game.player.hidden })
+    rt.hold = out.state
+    markers.push({ id: pt.id, kind: 'hold', x: pt.x, y: pt.y, z: pt.z, color, radius: stage.radius, progress: out.state.progress / stage.secs, active: inside })
+    if (out.waves && !coop?.isClient) {
+      for (let i = 0; i < stage.wave; i++) {
+        const a = (i / stage.wave) * Math.PI * 2 + Math.random()
+        spawnStormMonster(game, id, { x: pt.x + Math.cos(a) * (stage.radius + 6), z: pt.z + Math.sin(a) * (stage.radius + 6) }, 'add')
+      }
+      questUi.showToast(`THE STORM SENDS MORE · ${Math.max(0, Math.ceil(stage.secs - out.state.progress))}s TO GO`)
+    }
+    if (out.done) completePhenomenonStage(game, id)
+  } else if (stage.kind === 'trial') {
+    const out = stepTrial(rt.trial, stage, pts, { x: p.x, z: p.z, dt: alive ? dt : 0 })
+    rt.trial = out.state
+    if (out.passed !== null && out.passed !== undefined) {
+      sfx.play('crystal', { x: pts[out.passed].x, z: pts[out.passed].z })
+      burst(particleSystem, { x: pts[out.passed].x, y: fxY(game, pts[out.passed].y + 2), z: pts[out.passed].z }, color, 24, 5)
+      if (!out.done) questUi.showToast(out.passed === 0 ? `GO! ${stage.secs}s ON THE CLOCK` : `GATE ${out.passed + 1} / ${stage.gates}`)
+    }
+    if (out.failed) {
+      questUi.showToast('TOO SLOW: THE GATES RESET. REACH THE FIRST ONE TO TRY AGAIN')
+      sfx.play('playerHurt')
+    }
+    pts.forEach((pt, i) => {
+      if (out.state.running && i < out.state.next) return // gates already taken disappear
+      const nextPt = pts[Math.min(pts.length - 1, i + 1)]
+      markers.push({ id: pt.id, kind: 'gate', x: pt.x, y: pt.y, z: pt.z, color, radius: stage.radius, active: i === out.state.next, yaw: Math.atan2(nextPt.x - pt.x, nextPt.z - pt.z) + Math.PI / 2 })
+    })
+    if (out.done) completePhenomenonStage(game, id)
+  } else if (stage.kind === 'boss') {
+    const eye = pts[0]
+    const boss = game.monsters.find((m) => m.userData.phenomBoss === id && m.userData.phenomRole === 'boss' && !m.userData.dying)
+    if (!coop?.isClient && !boss && near(eye, 80) && alive) {
+      const danger = Math.min(1, dangerAt(eye.x, eye.z) + 0.25)
+      const mesh = spawnWildMonster(game, stage.boss, { x: eye.x, z: eye.z }, { boss: true, fights: BOSS_HEAD_START + 2 + PHENOMENON_ORDER.indexOf(id), danger, hpScale: 1 + danger * 1.2 })
+      mesh.userData.phenom = id
+      mesh.userData.phenomRole = 'boss'
+      mesh.userData.phenomBoss = id
+      for (let i = 0; i < stage.minions; i++) {
+        const a = (i / stage.minions) * Math.PI * 2
+        spawnStormMonster(game, id, { x: eye.x + Math.cos(a) * 9, z: eye.z + Math.sin(a) * 9 }, 'add', { elite: i === 0 })
+      }
+      questUi.showToast(`${stage.title.toUpperCase()} RISES`)
+    }
+  }
+}
+
+// Every live frame on the surface: the storm you stand in (fog, hazard), the first-entry hook and the stage runners.
+function stepPhenomena(game, now, dt) {
+  const w = game.world
+  const ph = w.phen
+  if (!ph) return
+  const p = game.player.position
+  const cleared = new Set(PHENOMENON_ORDER.filter((id) => isCleared(w.journal.phenomena, id)))
+  ph.fx.update(now, p, cleared)
+  if (coop?.isClient) return
+  const alive = game.player.hp > 0 && !game.player.falling && !game.cutscene
+  // The storm you are in (or at its edge): the strongest one.
+  let here = null
+  let hereK = 0
+  for (const def of PHENOMENON_LIST) {
+    const k = w.aloft ? 0 : stormIntensity(def.id, p.x, p.z, cleared.has(def.id))
+    if (k > hereK) {
+      here = def.id
+      hereK = k
+    }
+  }
+  const stormKey = here ? `${here}:${hereK.toFixed(2)}` : ''
+  if (stormKey !== ph.stormKey) {
+    ph.stormKey = stormKey
+    if (here) {
+      const [near, far] = STORM_FOG[PHENOMENA[here].hazard]
+      game.arena.world.setStorm?.(PHENOMENA[here].color, hereK * 0.9, near, far)
+    } else game.arena.world.setStorm?.(0, 0)
+  }
+  if (!here || PHENOMENA[here].hazard !== 'cold') {
+    ph.cold = Math.max(0, ph.cold - dt * 0.2)
+    ph.speedFactor = ph.cold > 0 ? coldSlow(ph.cold) : 1
+  }
+  if (here && hereK >= 1 && !progressOf(w.journal.phenomena, here).started) {
+    setPhenomena(game, startPhenomenon(w.journal.phenomena, here))
+    const def = PHENOMENA[here]
+    questUi.showToast(`${def.name.toUpperCase()}  ·  ${def.hazardText}`)
+    showLootToast(hud, { title: 'A REGIONAL PHENOMENON', name: def.name, blurb: `${def.blurb} Calm it, and the weather will remember you.` })
+    sfx.play('bossSlam', { x: p.x, z: p.z })
+    announcePhenomenonStage(game, here)
+  }
+  if (dt <= 0) return
+  if (here && hereK > 0.3) stepStormHazard(game, here, hereK, now, dt, alive)
+  if (phenSlowUntil > now) ph.speedFactor = Math.min(ph.speedFactor, 0.7)
+  else if (here && PHENOMENA[here].hazard === 'spores') ph.speedFactor = 1
+  // The stages: every started storm that is not calmed and that you are in or beside.
+  const markers = []
+  if (!w.aloft) {
+    for (const def of PHENOMENON_LIST) {
+      if (cleared.has(def.id) || !progressOf(w.journal.phenomena, def.id).started) continue
+      const eye = phenomenonEye(def.id)
+      if (Math.hypot(eye.x - p.x, eye.z - p.z) < PHENOMENON_RADIUS + PHEN_NEAR) stepPhenomenonStage(game, def.id, now, dt, alive, markers)
+    }
+  }
+  ph.guide = guideTarget(w.journal.phenomena, { x: p.x, z: p.z }, ph.tracked, phenRtView(game))
+  ph.fx.setGuide(ph.guide && !w.aloft ? { x: ph.guide.x, z: ph.guide.z, y: heightAt(ph.guide.x, ph.guide.z), color: PHENOMENA[ph.guide.stormId].glow } : null)
+  ph.fx.setMarkers(markers)
+  ph.fx.setZones(ph.zones.filter((z) => !z.struck || now < (z.dead ?? 0)))
+}
+
+// The chips: the storm you are in (stage and progress) plus its hazard (the cold meter).
+function phenomenaChips(game) {
+  const w = game.world
+  const ph = w.phen
+  if (!ph) return []
+  const p = game.player.position
+  const chips = []
+  if (ph.guide) chips.push([hexOf(PHENOMENA[ph.guide.stormId].glow), `<b>GUIDE</b> ${guideText(ph.guide)}`])
+  for (const def of PHENOMENON_LIST) {
+    const prog = progressOf(w.journal.phenomena, def.id)
+    if (!prog.started || prog.stage >= stageCount(def.id)) continue
+    const eye = phenomenonEye(def.id)
+    if (Math.hypot(eye.x - p.x, eye.z - p.z) > PHENOMENON_RADIUS + 140) continue
+    const stage = def.stages[prog.stage]
+    chips.push([hexOf(def.glow), `<b>${def.short.toUpperCase()} ${prog.stage + 1}/${stageCount(def.id)}</b> ${stage.title} · ${progressText(w.journal.phenomena, def.id, ph.rt[def.id] ? { hold: ph.rt[def.id].hold.progress, trial: ph.rt[def.id].trial } : {})}`])
+    if (def.hazard === 'cold' && ph.cold > 0.05) chips.push(['#9fd8ff', `<b>COLD</b> ${Math.round(ph.cold * 100)}%${ph.cold >= 1 ? ' · FREEZING' : ' · stand by a fire'}`])
+  }
+  return chips
+}
+
+// The minimap: each uncalmed storm's wall (a pointer on the rim for the nearest one) and the current stage's spots.
+function drawPhenomenaMarks(ctx, game, at, onMap, size) {
+  const w = game.world
+  if (!w.phen) return
+  const p0 = game.player.position
+  const scale = size / (MINIMAP_VIEW * 2)
+  let nearest = null
+  for (const def of PHENOMENON_LIST) {
+    const prog = progressOf(w.journal.phenomena, def.id)
+    const done = prog.stage >= stageCount(def.id)
+    const eye = phenomenonEye(def.id)
+    const [x, y] = at(eye.x, eye.z)
+    const r = PHENOMENON_RADIUS * scale
+    ctx.strokeStyle = hexOf(def.color)
+    ctx.fillStyle = hexOf(def.color)
+    if (done) {
+      ctx.globalAlpha = 0.5
+      ctx.beginPath()
+      ctx.arc(x, y, 3, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.globalAlpha = 1
+      continue
+    }
+    const d = Math.hypot(eye.x - p0.x, eye.z - p0.z)
+    if (!nearest || d < nearest.d) nearest = { d, eye, def }
+    if (onMap([x, y], r)) {
+      ctx.globalAlpha = 0.18
+      ctx.beginPath()
+      ctx.arc(x, y, r, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.globalAlpha = 0.9
+      ctx.lineWidth = 2
+      ctx.stroke()
+      ctx.globalAlpha = 1
+    }
+    if (prog.started && prog.stage < stageCount(def.id)) {
+      ctx.fillStyle = hexOf(def.glow)
+      for (const pt of stagePoints(def.id, prog.stage)) {
+        if (prog.got.includes(pt.id)) continue
+        const [sx, sy] = at(pt.x, pt.z)
+        if (!onMap([sx, sy])) continue
+        ctx.beginPath()
+        ctx.arc(sx, sy, 2.6, 0, Math.PI * 2)
+        ctx.fill()
+      }
+    }
+  }
+  if (nearest && !w.phen.guide && !onMap(at(nearest.eye.x, nearest.eye.z), PHENOMENON_RADIUS * scale) && nearest.d < 520) {
+    drawMinimapPointer(ctx, size, Math.atan2(nearest.eye.z - p0.z, nearest.eye.x - p0.x), hexOf(nearest.def.color))
+  }
+  // The guide: a pulsing diamond on the objective (or an arrow on the rim) in the storm's colour.
+  const g = w.phen.guide
+  if (g) {
+    const [gx, gy] = at(g.x, g.z)
+    const color = hexOf(PHENOMENA[g.stormId].glow)
+    if (!onMap([gx, gy], 6)) drawMinimapPointer(ctx, size, Math.atan2(g.z - p0.z, g.x - p0.x), color)
+    else {
+      const pulse = 5.5 + Math.sin(performance.now() / 220) * 1.5
+      ctx.fillStyle = color
+      ctx.strokeStyle = '#241b3a'
+      ctx.lineWidth = 1.6
+      ctx.beginPath()
+      ctx.moveTo(gx, gy - pulse)
+      ctx.lineTo(gx + pulse, gy)
+      ctx.lineTo(gx, gy + pulse)
+      ctx.lineTo(gx - pulse, gy)
+      ctx.closePath()
+      ctx.fill()
+      ctx.stroke()
+    }
+  }
+}
+
 function stepSky(game, now, dt) {
   const w = game.world
   const s = w.sky
@@ -4936,6 +5513,12 @@ function switchWorldLayer(game, toDepths) {
   if (w.fx) w.fx.group.visible = !toDepths
   if (w.sky.fx) w.sky.fx.group.visible = !toDepths
   if (w.caveFx) w.caveFx.group.visible = !toDepths
+  if (w.phen) {
+    w.phen.fx.group.visible = !toDepths
+    w.phen.speedFactor = 1
+    w.phen.stormKey = ''
+    game.arena.world.setStorm?.(0, 0)
+  }
   clearTowerQuest(game)
   w.depths.on = toDepths
   w.depths.descent = null
@@ -5899,6 +6482,7 @@ function updateWildsStatus(game, now, treasure) {
   }
   for (const b of activeBoons(w.shrines, now)) chips.push([hexColor(BOONS[b.id].color), `<b>${BOONS[b.id].name}</b> ${Math.ceil(b.left)}s`])
   chips.push(...skyChips(game, now))
+  chips.push(...phenomenaChips(game))
   const html = chips.map(([c, text]) => `<div class="ws-chip" style="--c:${c}">${text}</div>`).join('')
   if (html === wildsStatusKey) return
   wildsStatusKey = html
@@ -5963,6 +6547,7 @@ function drawActivityMarks(ctx, game, at, onMap, size, now) {
     const [x, y] = at(l.x, l.z)
     ctx.fillRect(x - 1.5, y - 1.5, 3, 3)
   }
+  drawPhenomenaMarks(ctx, game, at, onMap, size)
   ctx.setLineDash([4, 3])
   for (const m of w.maps) {
     const [x, y] = at(m.hintX, m.hintZ)
@@ -6055,7 +6640,7 @@ function stepWorld(game, now, dt = 0) {
   let nearestDistance = Infinity
   for (const npc of w.npcs.values()) {
     const d = dt > 0 ? updateNpc(npc, dt, now, p) : Math.hypot(npc.mesh.position.x - p.x, npc.mesh.position.z - p.z)
-    setNpcMarker(npc, npc.def.merchant ? 'offer' : npc.def.keeper ? keeperMarker(game, npc.def.keeper) : npcMarker(w.quests, npc.def))
+    setNpcMarker(npc, npc.def.guide ? sageMarker(game, npc.def.guide) : npc.def.merchant ? 'offer' : npc.def.keeper ? keeperMarker(game, npc.def.keeper) : npcMarker(w.quests, npc.def))
     if (d < nearestDistance) {
       nearest = npc
       nearestDistance = d
@@ -6124,6 +6709,7 @@ function stepWorld(game, now, dt = 0) {
   biomeBanner?.classList.toggle('show', now < w.bannerUntil)
   if (dt > 0) stepSkystars(game, now)
   if (dt > 0) stepActivities(game, now)
+  stepPhenomena(game, now, dt)
   stepSky(game, now, dt)
   if (dt > 0) drawMinimap(game, now)
 }
@@ -6754,6 +7340,8 @@ function scoreKill(game, mesh, cause, position, now) {
     worldQuestEvent(game, { type: 'kill', monster: mesh.userData.type, elite: Boolean(mesh.userData.elite), biome: biomeAt(position.x, position.z) })
     noteWildsKill(game, mesh.userData.type)
     if (mesh.userData.towerCamp) towerCampKill(game, mesh.userData.towerCamp)
+    if (mesh.userData.phenom) phenomenonKill(game, mesh)
+    else if (game.world.phen) game.world.phen.cold = Math.max(0, game.world.phen.cold - COLD.killWarm * 0.5)
   }
   const trick = nameTrick({
     cause,
@@ -7580,6 +8168,7 @@ window.addEventListener('touchend', () => {
 let game = createGame()
 grantDepthsHero(loadJournal().depthRelics.length)
 grantTwilightHero()
+grantStormHero(clearedCount(loadJournal().phenomena))
 grantCrownHero(loadJournal().relics.length) // a save that already holds every Nimbus Crown gets the secret hero
 
 // Dev-server only: lets browser tests (and you, in the console) peek at the state.
@@ -8314,7 +8903,7 @@ function gameFrame(timestamp) {
   if (!sandbox && game.inventory.pets.some((id) => !profile.collection.includes(id))) {
     setProfile(addToCollection(profile, game.inventory.pets))
   }
-  player.speedMultiplier = petFx.speedMultiplier * perk.speed * (holdSprinting() ? SHIFT_SPRINT_MULTIPLIER : 1) * (elapsedSeconds < player.sprintUntil ? SPRINT_SPEED_MULTIPLIER : 1) * (elapsedSeconds < (player.whirlUntil ?? -Infinity) ? 1.3 : 1) * (elapsedSeconds < heroState.speedUntil ? 1.5 : 1) * (heroRaging(elapsedSeconds) ? tn().speed : 1) * player.speedFactor(elapsedSeconds)
+  player.speedMultiplier = petFx.speedMultiplier * perk.speed * (holdSprinting() ? SHIFT_SPRINT_MULTIPLIER : 1) * (elapsedSeconds < player.sprintUntil ? SPRINT_SPEED_MULTIPLIER : 1) * (elapsedSeconds < (player.whirlUntil ?? -Infinity) ? 1.3 : 1) * (elapsedSeconds < heroState.speedUntil ? 1.5 : 1) * (heroRaging(elapsedSeconds) ? tn().speed : 1) * player.speedFactor(elapsedSeconds) * (game.world?.phen?.speedFactor ?? 1)
   if (player.stepStatus(elapsedSeconds)) burst(particleSystem, { x: player.position.x, y: 1.1, z: player.position.z }, STATUS_COLORS.poison, 3, 1.5)
   if (game.world) {
     const jump = game.world.jump

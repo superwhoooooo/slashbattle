@@ -930,6 +930,7 @@ export function createWorldArena() {
 
   const fog = new THREE.Fog(FOG_COLOR, FOG_RANGE[0], FOG_RANGE[1])
   const targetFog = new THREE.Color(FOG_COLOR)
+  const storm = { color: new THREE.Color(FOG_COLOR), mix: 0, targetMix: 0, near: 20, far: 80 } // a regional phenomenon's fog
   const flyColor = new THREE.Color(0xffffff)
   const matrix = new THREE.Matrix4()
   const quaternion = new THREE.Quaternion()
@@ -994,6 +995,15 @@ export function createWorldArena() {
     daylight: () => light,
     // How far above the land you are (and your height): up in the sky the haze thins so the land spreads out
     // below you, and the sky dome rises with you.
+    // A storm's fog: its colour, how much of the view it takes (0..1) and the near / far distances it closes to.
+    setStorm(color, amount, near = 8, far = 60) {
+      storm.targetMix = Math.max(0, Math.min(1, amount))
+      if (amount > 0) {
+        storm.color.set(color)
+        storm.near = near
+        storm.far = far
+      }
+    },
     setAltitude(above, y) {
       altitude = Math.max(0, above)
       altitudeY = y
@@ -1058,8 +1068,13 @@ export function createWorldArena() {
       drift.mesh.instanceMatrix.needsUpdate = true
       const biome = BIOMES[biomeAt(pos.x, pos.z)]
       targetFog.set(biome.fog).multiplyScalar(0.55 + 0.6 * light)
-      fog.color.lerp(targetFog, 0.03)
-      const [fogNear, fogFar] = biome.fogRange ?? FOG_RANGE
+      // A regional phenomenon (logic/phenomena.js) drowns the view in its own colour and closes the fog in.
+      storm.mix += (storm.targetMix - storm.mix) * 0.04
+      if (storm.mix > 0.002) targetFog.lerp(storm.color, storm.mix * 0.85)
+      fog.color.lerp(targetFog, storm.mix > 0.002 ? 0.08 : 0.03)
+      const [baseNear, baseFar] = biome.fogRange ?? FOG_RANGE
+      const fogNear = baseNear + (storm.near - baseNear) * storm.mix
+      const fogFar = baseFar + (storm.far - baseFar) * storm.mix
       const thin = 1 + Math.min(1, altitude / 160) * 2.2 // up in the sky the haze thins, so the land is spread out below
       const ease = altitude > 20 ? 0.06 : 0.02
       fog.near += (fogNear * thin - fog.near) * ease

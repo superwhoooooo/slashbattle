@@ -7,12 +7,13 @@ import { isDragon } from './dragons.js'
 import { bossById } from './bosses.js'
 import { CRAZY_ENEMIES } from './crazyEnemies.js'
 import { hashString } from './wildsSpots.js'
+import { PHENOMENA, clearedCount } from './phenomena.js'
 
 export const JOURNAL_KEY = 'slashbattle:journal'
 export const BESTIARY_FIRST_REWARD = 8 // crystals for the first of a kind you ever fell
 
 export function createJournal() {
-  return { landmarks: [], biomes: [], bestiary: {}, lanterns: [], races: {}, treasures: 0, events: 0, shrines: 0, claimed: [], towers: [], isles: [], relics: [], chasms: [], depthRelics: [], fixes: {}, caves: [] }
+  return { landmarks: [], biomes: [], bestiary: {}, lanterns: [], races: {}, treasures: 0, events: 0, shrines: 0, claimed: [], towers: [], isles: [], relics: [], chasms: [], depthRelics: [], fixes: {}, caves: [], phenomena: {} }
 }
 
 const strings = (v) => (Array.isArray(v) ? v.filter((s) => typeof s === 'string') : [])
@@ -31,6 +32,19 @@ function fixesOf(v) {
     for (const [id, f] of Object.entries(v)) {
       if (!f || typeof f !== 'object') continue
       out[id] = { stage: STAGES.includes(f.stage) ? f.stage : 'open', n: count(f.n), cells: strings(f.cells) }
+    }
+  }
+  return out
+}
+
+// The regional phenomena (logic/phenomena.js): { [id]: { started, stage, n, got } }, junk dropped, stage clamped.
+function phenomenaOf(v) {
+  const out = {}
+  if (v && typeof v === 'object' && !Array.isArray(v)) {
+    for (const [id, f] of Object.entries(v)) {
+      const ph = PHENOMENA[id]
+      if (!ph || !f || typeof f !== 'object') continue
+      out[id] = { started: f.started === true, stage: Math.min(ph.stages.length, count(f.stage)), n: count(f.n), got: strings(f.got) }
     }
   }
   return out
@@ -63,6 +77,7 @@ export function parseJournal(text) {
     depthRelics: strings(data.depthRelics),
     fixes: fixesOf(data.fixes),
     caves: strings(data.caves),
+    phenomena: phenomenaOf(data.phenomena),
   }
 }
 export const serializeJournal = (j) => JSON.stringify(j)
@@ -144,11 +159,15 @@ export const MILESTONES = [
   { id: 'chasms6', title: 'Spelunker', desc: 'Drop into 6 different chasms', stat: 'chasms', need: 6, crystals: 220, loot: 'ability' },
   { id: 'hearts3', title: 'Heart Hunter', desc: 'Claim 3 Umbral Hearts in the Depths', stat: 'depthRelics', need: 3, crystals: 200 },
   { id: 'hearts5', title: 'Lord of the Depths', desc: 'Claim every Umbral Heart (and something below will answer)', stat: 'depthRelics', need: 5, crystals: 500, loot: 'weapon' },
+  { id: 'storms1', title: 'Eye of the Storm', desc: 'Calm one regional phenomenon', stat: 'storms', need: 1, crystals: 200, loot: 'ability' },
+  { id: 'storms2', title: 'Weather Watcher', desc: 'Calm two regional phenomena', stat: 'storms', need: 2, crystals: 300, loot: 'weapon' },
+  { id: 'storms4', title: 'Stormbinder', desc: 'Calm all four regional phenomena (and the weather itself will take notice)', stat: 'storms', need: 4, crystals: 700, loot: 'pet' },
   { id: 'relics9', title: 'Keeper of the Sky', desc: 'Claim every Nimbus Crown (and something in the sky will notice)', stat: 'relics', need: 9, crystals: 500, loot: 'pet' },
 ]
 
 // The number a milestone counts, from the journal.
 export function journalStat(j, stat) {
+  if (stat === 'storms') return clearedCount(j.phenomena)
   if (stat === 'landmarks' || stat === 'biomes' || stat === 'lanterns' || stat === 'towers' || stat === 'isles' || stat === 'relics' || stat === 'chasms' || stat === 'depthRelics') return (j[stat] ?? []).length
   if (stat === 'bestiary' || stat === 'races') return Object.keys(j[stat]).length
   return j[stat] ?? 0

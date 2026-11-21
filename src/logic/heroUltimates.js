@@ -237,6 +237,13 @@ export const HERO_ULTIMATES = {
     { k: 'cast', times: 2, gap: 1.4 },
     { k: 'fan', n: 12, spread: Math.PI * 2, reach: 16, dmg: 4 },
   ]),
+  tempest: U('Storm of Storms', 60, 'The four storms break over everything within 18 m: a sand wave that shoves, a frost wave that slows, an ember wave for 4x and a mire wave for 3x that heals you 25%, with 3 s of slow time and 8 s of +40% damage.', [
+    { k: 'timewarp', secs: 3, factor: 0.4 },
+    { k: 'waves', n: 4, gap: 0.5, r: 18, dmg: 3, kb: 4, status: 'slow', at: 0.1 },
+    { k: 'strikes', n: 10, range: 18, r: 3, dmg: 2.5, pick: 'random', gap: 0.15, at: 1.2 },
+    { k: 'heal', frac: 0.25, at: 2.2 },
+    { k: 'buff', secs: 8, damage: 1.4, at: 2.2 },
+  ]),
   buster: U('Hyper Buster', 45, 'Buster Barrage three times over, and 10 s of +40% attack speed.', [
     { k: 'cast', times: 3, gap: 0.4 },
     { k: 'buff', secs: 10, attack: 0.6 },

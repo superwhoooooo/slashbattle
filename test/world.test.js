@@ -117,7 +117,7 @@ describe('world grass', () => {
   })
 })
 
-import { VILLAGE_PLAZA_RADIUS, VILLAGE_SAFE_RADIUS, heightAt, villageLayout, villages, nearestVillage } from '../src/logic/world.js'
+import { CITY_PEOPLE, VILLAGE_PLAZA_RADIUS, VILLAGE_SAFE_RADIUS, heightAt, villageLayout, villages, nearestVillage } from '../src/logic/world.js'
 
 describe('world hills', () => {
   it('is level in the sanctum and at the rim, deterministic, and rolls in between', () => {
@@ -172,7 +172,7 @@ describe('villages', () => {
   it('shows up in chunks, keeps wild monsters out, and keeps its folk inside the chunk that holds them', () => {
     const v = villages().find((x) => x.starter)
     let npcs = 0
-    for (let cx = -12; cx < 12; cx++) for (let cz = -12; cz < 12; cz++) {
+    for (let cx = -16; cx < 16; cx++) for (let cz = -16; cz < 16; cz++) {
       const c = chunkContent(cx, cz)
       npcs += c.npcs.length
       for (const m of c.monsters) expect(nearestVillage(m.x, m.z, VILLAGE_SAFE_RADIUS)).toBeNull()
@@ -181,7 +181,7 @@ describe('villages', () => {
         expect(n.x).toBeLessThan((cx + 1) * CHUNK_SIZE)
       }
     }
-    expect(npcs).toBe(villages().length * 3)
+    expect(npcs).toBe(villages().reduce((n, v) => n + (v.city ? CITY_PEOPLE : 3), 0))
     expect(nearestVillage(v.x + 3, v.z, VILLAGE_PLAZA_RADIUS).village.id).toBe(v.id)
   })
 })
