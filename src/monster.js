@@ -728,7 +728,8 @@ export function updateMonster(monster, player, obstacles, dt, now) {
     playerPos: player.position,
     // Hiding in a pod and Ghost Form both make you unseen.
     // Diving hides you from the surface monsters; being up top hides you from the deep ones.
-    playerHidden: player.hidden === true || now < (player.ghostUntil ?? -Infinity) || shieldedFrom(ai),
+    // ...and so does being in a village (the Wilds: main.js sets `inVillage`; monsters can't come in, and lose interest).
+    playerHidden: player.hidden === true || player.inVillage === true || now < (player.ghostUntil ?? -Infinity) || shieldedFrom(ai),
   }
 
   const next = nextMonsterState(

@@ -126,7 +126,10 @@ slashbattle/
     logic/depths.js    # chasms, the Depths' Lightroots / Umbral lairs / chunks (pure); depthsFx.js is their look
     logic/wildsMusic.js # the Wilds' generated music tracks + pickTrack / the music style (pure)
     logic/phenomena.js # the four regional storms: stages, holds, gate runs, hazards, the Stormbinder grant (pure)
-    logic/species.js   # the storm cities' four peoples (names, colours, roles)
+    logic/species.js   # the storm cities' four peoples (names, colours, roles, champions + gifts)
+    logic/stormTemples.js # the storms' temples: two sky isles (+ storm pads), two in the Depths (+ pits)
+    speciesModels.js   # the four peoples' own bodies (desert fox-folk, bird-folk, rock-folk, fish-folk) + champions
+    cityModels.js      # each people's own buildings (oasis walls, eyrie perches, boulder burrows, stilt huts)
     logic/stormGuide.js # guidance: next objective, compass words, the Sage's dialogue (pure)
     phenomenaFx.js     # the storms' walls, stage markers and hazard zones
     logic/skyIslands.js # Skylift towers + sky isles: placement, isle layouts, surfaceAt / updraftLift, the launch rules (pure)
@@ -298,6 +301,11 @@ columns, broken walls, a central shrine, a chest, and a guardian **boss** from `
 after `BOSS_RESPAWN_SECONDS`), **watchtowers** (a chest, an elite and guards) and lone **shrines** (a power-up and a suitcase).
 `ruinLayout(ruin)` returns props / treasure / guards; ruins show as triangles on the minimap (gold = boss temple). Villages
 are at least `VILLAGE_MIN_SEPARATION` (135) apart.
+
+**Villages are safe ground.** No monster spawns in a village or walks into one: `world.js`'s `villageKeepOut(x, z, r)` pushes anything inside a
+village's barrier (`villageBarrier`: `VILLAGE_BARRIER` 32, a storm city's whole town) to just outside it; `spawnWildMonster` applies it to every
+Wilds spawn (not lake or sky ones, `m.skyIsle`), and the monster loop holds walkers at the edge. While you are inside one,
+`player.inVillage` makes monsters lose you (`monster.js`'s perception treats it as hidden). Storm stage points keep out of towns too.
 
 **Villages and quests.** `villages()` seeds ~20 villages (a guaranteed starter just outside the Sanctum, at least one in every
 biome of both rings, unique names); `villageLayout(v)` places a hall, cottages, a well, lamp posts, a notice board and three villagers. Villages are safe
@@ -1230,17 +1238,50 @@ you (sand shoves, frost slows, ember burns, mire drains and feeds you), ember wi
 sand wind kicks up a dust devil every Nth hit. B: Calamity Call (all four winds in turn). K: Storm of Storms. Gear: `stormHat`, `galeCloak`,
 `windOrbs`. Not immortal. Tests: `test/secretHero.test.js`.
 
-**Storm cities, peoples, temples and guidance.** Each storm has a **city on the kingdom's rim** (`world.js`'s `CITY_DEFS`, `CITY_RADIUS`
-= `WORLD_RADIUS` - 72, at the bearing of the storm's biome; real villages with `city` / `stormId` / `species`, so they are save points, have roads and show
-on the minimap): Gildenspire (Dunekin), Rimehold (Frostkin), Pyreholm (Embervolk), Lanternmere (Mirefolk). `villageLayout` hands a city to
-`cityLayout`: a TEMPLE (floor, ring of columns, shrine, rune altar, a chest), two halls, a ring of homes, a plaza well, a lit bonfire and
-`CITY_PEOPLE` (8) residents of one **species** (`logic/species.js`: names, roles, colours, talk; `npcs.js`'s `dressSpecies` gives each its ears /
-horns / tails / bulging eyes and body shape). One resident is the **Storm Sage** (`guide: stormId`). Each storm's eye holds a ruined **storm temple**
-(`phenomenaFx.js`'s `makeTemple`: columns, altar, four braziers that light when the storm is calmed). **Guidance** (`logic/stormGuide.js`, pure,
-`test/stormGuide.test.js`): `guideTarget` picks what to follow (the Sage of the nearest unfinished storm before you start, then the tracked / nearest started
-storm's current objective via `objectiveFor`), shown as a GUIDE chip ("Fetch a Wind Stone, 140 m north-east": `compassWord`, `distanceText`), a pulsing diamond (or rim
-arrow) on the minimap and a tall beam over the target (`fx.setGuide`). The Sage (`sageDialog`, `main.js`'s `handleSageButton`) offers the storm, then briefs the
-current trial with a direction, marks it on your map (`ph.tracked`) and lets you rest (full heal, cold cleared). Sages wear a `!` / `...` marker.
+**Storm regions at the map's edge (TotK-style).** The four storms sit on the RIM of the world, not in the middle of the land
+(`world.js`'s `stormRegions()`: one per `CITY_DEFS` entry at the bearing of its Heartland biome; the eye `STORM_EYE_RADIUS` = `WORLD_RADIUS` - 175
+out, the city at `CITY_RADIUS` = `WORLD_RADIUS` - 72, ~110 m apart, so the **city is inside its storm** and the temple is a trek further on).
+A region paints its own biome over the land within `STORM_REGION_RADIUS` of the eye (`stormRegionAt`, checked first in `biomeAt`; the ground colour
+blends across its wobbly edge), so the desert / snow / ash / fen and their monsters reach the rim. `phenomenonEye` just reads the region. Each storm
+temple is a site (`stormTempleSites` in `sites()`, `kind: 'stormTemple'`, `STORM_TEMPLE_RADIUS`; levelled, skipped by `chunkContent`), and ruins,
+landmarks, lakes and other villages keep clear of the cities and temples (`nearStormTemple` / `nearStormCore`). A city's whole town stands on level
+ground (`CITY_FLAT_RADIUS`) and is a **refuge**: no storm hazard within `VILLAGE_SAFE_RADIUS` of it.
+
+**Peoples, champions and their towns.** Gildenspire (Dunekin), Rimehold (Frostkin), Pyreholm (Embervolk), Lanternmere (Mirefolk) are real villages
+(save points, roads, minimap). Each people has its own body (`src/speciesModels.js`'s `buildSpecies` / `animateSpecies`, not the player jelly):
+Dunekin are tall robed fennec-eared desert folk with staffs, Frostkin plump bird-folk with beaks, crests and flapping wings, Embervolk huge
+boulder-bodied rock-folk with glowing cracks, Mirefolk sleek fish-folk with a long head-fin and a lantern. `npcs.js`'s `createNpc` uses it for any
+def with `species`. Each town is built its people's way (`world.js`'s `cityLayout`, `CITY_STYLE`; models in `src/cityModels.js`), with no paved
+square or lamp posts: a walled oasis of domes, tents and market stalls (wall = `duneWall` visuals + `blocker` circles, `duneGate`); an eyrie of
+perch-huts on stilts round a great ice spire (`frostSpire`, `frostPerch`, igloos, racks, totems); boulder-burrows under a crag with lava channels,
+a great forge and mine carts; stilt huts round a glowing lantern pond with lily pads and boardwalks. Each people has a **champion**
+(`SPECIES[id].champion`: Sahra, Talwyn, Brannoch, Lilt -- name, title, power, gift, join line) standing on a dais at the back of town
+(`${style}Dais`; npc `guide: stormId`, `champion: true`, the old Sage's id `${city}:sage`). Talking to them (`sageDialog`, `handleSageButton`)
+offers the storm; accepting (`joinChampion`) starts it and gives the people's **gift** (`progress.gift`): without it the hazard is brutal
+(`hazardScale`: `HAZARD_SCALE.bare` 1.3; that is what makes reaching the city hard), with it gentle (0.4) and the fog thins. The champion then
+**walks with you** like a TotK sage (`stormGuide.js`'s `companionStorm`: the tracked raging storm's, else any raging one's, else the last one
+calmed): `main.js`'s `stepChampion` adds a `follow: true` npc to `w.npcs` (hidden in the Depths and aloft; their home copy hides meanwhile), which
+keeps beside you (`npcs.js`'s `followPlayer`) and fights (`championPower` every `CHAMPION_POWER` s, a jab between, cause 'pet'): Sirocco (a
+whirlwind drags monsters together), Gale Volley (wind arrows at three), Boulder Roll (`stepChampionRoll`, rolls through them), Lantern Tide (a nova
+that heals you and burns off poison clouds). The storm temple's altar carries the storm's **heart** (`phenomenaFx.js`: a dark spinning crystal in
+rings; a pillar of clear light once calm); reaching it early, your champion says it's sealed until the trials are done (`stepTempleHeart`).
+**Storm temples in the sky and the Depths** (`logic/stormTemples.js`, pure, `test/stormTemples.test.js`; TotK-style). Each storm's final boss
+fights in its temple (`TEMPLE_PLACE`): the Whiteout's Wind Temple and the Miasma's Floating Lantern Temple hang in the SKY (`skyTemples`: isles
+`SKY_TEMPLE_HEIGHT` over the eye, `SKY_TEMPLE_OFFSET` toward the middle, appended to `skyIsles()` so `surfaceAt` / `isleUnder` let you stand on
+them); the **storm pad** at the eye (`stormPads` / `padAt`, `main.js`'s `stepStormPads`, `STORM_PAD_CHARGE` s) throws you up like a Skylift and you
+glide across. The Sandstorm's Sunken Sun Temple and the Ashstorm's Buried Forge Temple are in the DEPTHS: a pit at the eye (`templeChasms`, appended
+to `depths.js`'s `chasms()`, so it has a Lightroot home) drops you into the temple (`deepTemples`: the `deepTemple` prop, a ring of shard pillars,
+two chests; lairs, props and dwellers keep off it via `nearDeepTemple`). `templeArena` says where the fight is: `stepPhenomenonStage`'s boss branch
+spawns it on the sky isle (`spawnTempleBoss`: `skyIsle` / `skyHome`), `stepDeepTemples` (from `stepDepths`) in the Depths. The surface eye keeps a
+ruined ring (with the glowing pad, or open over the pit); the storm's heart (`phenomenaFx.js`'s `makeHeart`) floats in the real temple
+(`makeSkyTemple`, `makeDeepTemple` in `fx.deep`, shown only in the Depths). Your champion comes along into the Depths and onto the sky temple
+(`npc.yOverride`, `npc.isle`). Before the boss stage the temple is sealed (a toast says so); `stepTempleHeart` tells you the way at the eye.
+Cities are big now (`CITY_FLAT_RADIUS` 58 levelled, `CITY_PEOPLE` 16, the oasis wall `DUNE_WALL_RADIUS` 52, layouts cached per city). The storm
+peoples look **worried** until their storm is calmed (`speciesModels.js`'s `setMood`: brows up in the middle, a frown, a bead of sweat, wringing
+hands, nervous glances; calm = a smile; champions look grim instead), set by `main.js`'s villager loop.
+**Guidance** (`logic/stormGuide.js`, pure, `test/stormGuide.test.js`): `guideTarget` picks what to follow (the champion of the nearest unfinished
+storm before you start, then the tracked / nearest started storm's current objective via `objectiveFor`), shown as a GUIDE chip, a minimap diamond
+and a tall beam (`fx.setGuide`). Tests: `test/stormGuide.test.js`, `test/speciesModels.test.js`.
 
 ## The third secret hero: Nyxara, the Twilight Regent
 `twilight` in `HEROES` (`secret: true`, `heroForSecrets`, `TWILIGHT_HERO`; `main.js`'s `grantTwilightHero`, run after either other

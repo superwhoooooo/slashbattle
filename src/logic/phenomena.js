@@ -5,11 +5,11 @@
 // timed gate run and finally the storm's boss). Calm all four and the Stormbinder (the secret hero) answers.
 // Pure, seeded, no Three; the look is src/phenomenaFx.js and the wiring is main.js's stepPhenomena. Tests:
 // test/phenomena.test.js. Progress lives in the journal's `phenomena`: { [id]: { started, stage, n, got } }.
-import { BIOMES, WORLD_SEED, biomeAt, heightAt, lakeAt, mulberry32 } from './world.js'
+import { BIOMES, STORM_EYE_RADIUS, WORLD_SEED, heightAt, lakeAt, mulberry32, stormRegions, villageKeepOut, withSurface } from './world.js'
 import { openGround } from './wildsSpots.js'
 
-export const PHENOMENON_RADIUS = 78 // the storm wall
-export const STORM_FADE = 24 // the storm thins out over this much beyond the wall
+export const PHENOMENON_RADIUS = 160 // the storm wall
+export const STORM_FADE = 40 // the storm thins out over this much beyond the wall
 export const PHENOMENON_ORDER = ['sandstorm', 'whiteout', 'ashstorm', 'miasma']
 
 // Stage kinds: seek (walk to a spot), collect (n pickups, each with guards), purge (fell n storm-spawn), hold (stand in the
@@ -77,44 +77,13 @@ export const phenomenonById = (id) => PHENOMENA[id] ?? null
 
 // ---- where each storm sits --------------------------------------------------------------------------------------
 
-const RING_SAMPLES = 16
-// How much of the storm's wall lies inside its own biome (0..1) when it is centred at (x, z).
-function biomeFill(biome, x, z) {
-  let n = 0
-  for (let i = 0; i < RING_SAMPLES; i++) {
-    const a = (i / RING_SAMPLES) * Math.PI * 2
-    if (biomeAt(x + Math.cos(a) * PHENOMENON_RADIUS * 0.8, z + Math.sin(a) * PHENOMENON_RADIUS * 0.8) === biome) n++
-  }
-  return n / RING_SAMPLES
-}
 const cache = new Map()
-// The storm's eye: { x, z, y } -- a dry, open spot with the storm's biome all round it, chosen once (seeded).
+// The storm's eye: { x, z, y } -- out on the rim of the world (logic/world.js's stormRegions), where its temple stands.
 export function phenomenonEye(id) {
   if (cache.has(id)) return cache.get(id)
-  const ph = PHENOMENA[id]
-  const rand = mulberry32(WORLD_SEED + 15100 + PHENOMENON_ORDER.indexOf(id) * 97)
-  let best = null
-  for (let i = 0; i < 700; i++) {
-    const a = rand() * Math.PI * 2
-    const r = 90 + rand() * 230
-    const x = Math.cos(a) * r
-    const z = Math.sin(a) * r
-    if (biomeAt(x, z) !== ph.biome) continue
-    if (lakeAt(x, z, 0.5) || !openGround(x, z, { edge: 70, villageClear: 55, siteMargin: 22 })) continue
-    const score = biomeFill(ph.biome, x, z) + rand() * 0.04
-    if (!best || score > best.score) best = { x, z, score }
-  }
-  if (!best) { // no clean spot: settle for the middle of the biome's ring
-    for (let i = 0; i < 400 && !best; i++) {
-      const a = rand() * Math.PI * 2
-      const r = 80 + rand() * 230
-      const x = Math.cos(a) * r
-      const z = Math.sin(a) * r
-      if (biomeAt(x, z) === ph.biome) best = { x, z, score: 0 }
-    }
-  }
-  const eye = best ?? { x: 150, z: 0 }
-  const out = { x: eye.x, z: eye.z, y: heightAt(eye.x, eye.z) }
+  const reg = stormRegions().find((r) => r.stormId === id)
+  const eye = reg ? reg.eye : { x: STORM_EYE_RADIUS, z: 0 }
+  const out = { x: eye.x, z: eye.z, y: withSurface(() => heightAt(eye.x, eye.z)) } // (the surface's, even if first asked in the Depths)
   cache.set(id, out)
   return out
 }
@@ -138,7 +107,7 @@ export function stormAt(x, z) {
 // ---- stage points -------------------------------------------------------------------------------------------------
 
 function dry(x, z) {
-  return !lakeAt(x, z, 0.4) && openGround(x, z, { edge: 30, villageClear: 14, siteMargin: 4, road: false })
+  return !lakeAt(x, z, 0.4) && openGround(x, z, { edge: 30, villageClear: 14, siteMargin: 4, road: false }) && !villageKeepOut(x, z, 12) // (never in a town: its guards could not reach it)
 }
 // A seeded point inside the storm at `rad` (fraction of the wall radius) and `ang`, nudged to dry open ground.
 function pointAt(id, key, rad, ang) {
@@ -182,7 +151,7 @@ export function stagePoints(id, index) {
 // ---- progress (the journal's `phenomena`) ----------------------------------------------------------------------------
 
 export const stageCount = (id) => PHENOMENA[id]?.stages.length ?? 0
-export const emptyProgress = () => ({ started: false, stage: 0, n: 0, got: [] })
+export const emptyProgress = () => ({ started: false, stage: 0, n: 0, got: [], gift: false })
 export const progressOf = (phenomena, id) => ({ ...emptyProgress(), ...(phenomena?.[id] ?? {}) })
 export const isCleared = (phenomena, id) => progressOf(phenomena, id).stage >= stageCount(id)
 export const clearedCount = (phenomena) => PHENOMENON_ORDER.filter((id) => isCleared(phenomena, id)).length
@@ -198,6 +167,13 @@ export function advanceStage(phenomena, id) {
   const stage = cur.stage + 1
   return { phenomena: put(phenomena, id, { stage, n: 0, got: [] }), cleared: stage >= stageCount(id) }
 }
+// The people's champion joins you and hands over their gift (the storm starts too, if it had not).
+export const joinChampion = (phenomena, id) => put(phenomena, id, { started: true, gift: true })
+export const hasGift = (phenomena, id) => Boolean(progressOf(phenomena, id).gift)
+// How hard a storm's hazard hits you: brutal without its people's gift (that is what makes the trek to their city so
+// hard), gentle with it.
+export const HAZARD_SCALE = { bare: 1.3, gifted: 0.4 }
+export const hazardScale = (phenomena, id) => (hasGift(phenomena, id) ? HAZARD_SCALE.gifted : HAZARD_SCALE.bare)
 // A pickup taken: { phenomena, done }.
 export function collectItem(phenomena, id, pointId) {
   const cur = progressOf(phenomena, id)

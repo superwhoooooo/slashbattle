@@ -172,7 +172,7 @@ describe('villages', () => {
   it('shows up in chunks, keeps wild monsters out, and keeps its folk inside the chunk that holds them', () => {
     const v = villages().find((x) => x.starter)
     let npcs = 0
-    for (let cx = -16; cx < 16; cx++) for (let cz = -16; cz < 16; cz++) {
+    for (let cx = -24; cx < 24; cx++) for (let cz = -24; cz < 24; cz++) {
       const c = chunkContent(cx, cz)
       npcs += c.npcs.length
       for (const m of c.monsters) expect(nearestVillage(m.x, m.z, VILLAGE_SAFE_RADIUS)).toBeNull()
@@ -265,7 +265,7 @@ describe('Wilds chests', () => {
 
 describe('the Frontier (outer ring) and landmarks', () => {
   it('rings the Heartland with six stranger biomes, each with its own monsters, props and landmarks', async () => {
-    const { FAR_BIOMES, WILD_BIOMES, HEARTLAND_RADIUS, ringAt } = await import('../src/logic/world.js')
+    const { FAR_BIOMES, WILD_BIOMES, HEARTLAND_RADIUS, ringAt, stormRegionAt } = await import('../src/logic/world.js')
     expect(WORLD_RADIUS).toBeGreaterThan(500)
     expect(WILD_BIOMES.length).toBe(OUTER_BIOMES.length + FAR_BIOMES.length)
     const seen = new Set()
@@ -273,6 +273,7 @@ describe('the Frontier (outer ring) and landmarks', () => {
       const r = HEARTLAND_RADIUS + 130
       const x = Math.cos((a * Math.PI) / 180) * r
       const z = Math.sin((a * Math.PI) / 180) * r
+      if (stormRegionAt(x, z)) continue // (a storm region on the rim paints its own Heartland biome)
       seen.add(biomeAt(x, z))
       expect(ringAt(x, z)).toBe('far')
     }
@@ -331,6 +332,21 @@ describe('the Frontier (outer ring) and landmarks', () => {
     for (const m of mesas) {
       expect(biomeAt(m.x, m.z)).toBe('stormcrown')
       expect(heightAt(m.x, m.z)).toBeGreaterThan(6)
+    }
+  })
+})
+
+describe('villages are safe ground', () => {
+  it('keeps monsters out of every village and the whole of every storm city', async () => {
+    const { villages, villageKeepOut, villageBarrier, villageLayout } = await import('../src/logic/world.js')
+    for (const v of villages()) {
+      const out = villageKeepOut(v.x + 3, v.z + 1, 1)
+      expect(out, v.name).toBeTruthy()
+      expect(Math.hypot(out.x - v.x, out.z - v.z)).toBeGreaterThanOrEqual(villageBarrier(v) + 1)
+      expect(villageKeepOut(out.x, out.z, 1)).toBe(null) // pushed clear
+      // The barrier wraps the whole town: every house and resident is inside it.
+      const layout = villageLayout(v)
+      for (const n of layout.npcs) expect(Math.hypot(n.x - v.x, n.z - v.z), `${v.name} ${n.name}`).toBeLessThan(villageBarrier(v))
     }
   })
 })

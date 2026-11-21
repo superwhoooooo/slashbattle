@@ -3,9 +3,10 @@
 // hazard zones (ember warning rings, poison clouds). Everything is world-space, added to the arena group.
 import * as THREE from 'three'
 import { PHENOMENON_LIST, PHENOMENON_RADIUS, phenomenonEye } from './logic/phenomena.js'
-import { heightAt } from './logic/world.js'
+import { heightAt, withSurface } from './logic/world.js'
+import { STORM_PAD_RADIUS, deepTemples, skyTemples, templePlace } from './logic/stormTemples.js'
 
-const WALL_HEIGHT = 110
+const WALL_HEIGHT = 220
 
 // Soft vertical streaks (alpha only) that make an open cylinder read as a wall of blown dust, snow, ash or spores.
 function streakTexture(seed) {
@@ -69,28 +70,61 @@ function makeStorm(ph, index) {
 }
 
 
-// The storm's temple, at the eye: a ruined ring of columns round an altar and four braziers that stay cold until the storm
-// is calmed. (Visual only: the boss fight happens in its shade.)
-function makeTemple(ph) {
-  const eye = phenomenonEye(ph.id)
-  const g = new THREE.Group()
-  g.position.set(eye.x, eye.y, eye.z)
-  const stone = new THREE.MeshStandardMaterial({ color: 0x8a8498, roughness: 0.85, flatShading: true })
-  const dark = new THREE.MeshStandardMaterial({ color: 0x4a4658, roughness: 0.9, flatShading: true })
-  const lift = (x, z) => heightAt(eye.x + x, eye.z + z) - eye.y
-  const floor = new THREE.Mesh(new THREE.CylinderGeometry(15, 16, 0.7, 28), dark)
-  floor.position.y = 0.1
-  g.add(floor)
-  const rune = new THREE.Mesh(new THREE.RingGeometry(9, 9.6, 48), new THREE.MeshBasicMaterial({ color: ph.glow, transparent: true, opacity: 0.55, side: THREE.DoubleSide, fog: false }))
-  rune.rotation.x = -Math.PI / 2
-  rune.position.y = 0.5
-  g.add(rune)
-  for (let i = 0; i < 10; i++) {
-    const a = (i / 10) * Math.PI * 2
-    const x = Math.cos(a) * 14
-    const z = Math.sin(a) * 14
+// The heart of a storm: a dark, cracked crystal wrapped in the storm's light, spinning in rings. It is what the storm turns
+// round; calm the storm and it is gone, leaving a soft pillar of clear light.
+function makeHeart(ph, scale = 1) {
+  const heart = new THREE.Group()
+  heart.scale.setScalar(scale)
+  const core = new THREE.Mesh(new THREE.OctahedronGeometry(1.3), new THREE.MeshStandardMaterial({ color: 0x1a1424, emissive: ph.glow, emissiveIntensity: 0.35, roughness: 0.3, metalness: 0.4, flatShading: true }))
+  core.scale.set(1, 1.6, 1)
+  const aura = new THREE.Mesh(new THREE.OctahedronGeometry(1.7), additive(ph.glow, 0.35))
+  aura.scale.set(1, 1.6, 1)
+  const rings = [0, 1, 2].map((i) => {
+    const r = new THREE.Mesh(new THREE.TorusGeometry(2.4 + i * 0.7, 0.07, 6, 40), additive(ph.color, 0.8))
+    r.rotation.set(Math.PI / 2 + i * 0.6, i * 0.9, 0)
+    heart.add(r)
+    return r
+  })
+  heart.add(core, aura)
+  const calm = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 1.6, 60, 12, 1, true), additive(0xffffff, 0.25))
+  calm.position.y = 26
+  calm.visible = false
+  heart.userData = { core, aura, rings, calm, baseY: 0 }
+  return { heart, calm }
+}
+function animateHeart(h, now, calmed) {
+  const u = h.heart.userData
+  h.heart.visible = !calmed
+  h.calm.visible = calmed
+  if (calmed) {
+    h.calm.material.opacity = 0.18 + Math.sin(now * 2) * 0.06
+    return
+  }
+  h.heart.position.y = u.baseY + Math.sin(now * 1.3) * 0.4
+  u.core.rotation.y = now * 0.6
+  u.aura.rotation.y = -now * 0.9
+  u.aura.material.opacity = 0.25 + Math.sin(now * 4) * 0.12
+  u.rings.forEach((r, i) => (r.rotation.z = now * (0.8 + i * 0.4) * (i % 2 ? -1 : 1)))
+}
+
+// A temple: a floor, a ring of columns (some broken), braziers that light once the storm is calm, maybe an altar + heart.
+// `lift(x, z)` gives the ground under a point (relative to the group). Returns the parts to animate.
+function templeRing(g, ph, { stone, dark, floor = true, radius = 14, cols = 10, tall = 8.5, altar = true, lift = () => 0 }) {
+  if (floor) {
+    const f = new THREE.Mesh(new THREE.CylinderGeometry(radius + 1, radius + 2, 0.7, 28), dark)
+    f.position.y = 0.1
+    g.add(f)
+    const rune = new THREE.Mesh(new THREE.RingGeometry(radius * 0.64, radius * 0.69, 48), new THREE.MeshBasicMaterial({ color: ph.glow, transparent: true, opacity: 0.55, side: THREE.DoubleSide, fog: false }))
+    rune.rotation.x = -Math.PI / 2
+    rune.position.y = 0.5
+    g.add(rune)
+  }
+  for (let i = 0; i < cols; i++) {
+    const a = (i / cols) * Math.PI * 2
+    const x = Math.cos(a) * radius
+    const z = Math.sin(a) * radius
     const broken = i % 3 === 1
-    const h = broken ? 3.2 + (i % 4) : 8.5
+    const h = broken ? tall * 0.4 + (i % 4) : tall
     const col = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.9, h, 8), stone)
     col.position.set(x, lift(x, z) + h / 2, z)
     col.rotation.z = broken ? ((i % 2) - 0.5) * 0.12 : 0
@@ -101,25 +135,121 @@ function makeTemple(ph) {
       g.add(cap)
     }
   }
-  const altar = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 2.1, 1.6, 8), stone)
-  altar.position.y = 1.1
-  g.add(altar)
+  if (altar) {
+    const a = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 2.1, 1.6, 8), stone)
+    a.position.y = 1.1
+    g.add(a)
+  }
   const flames = []
   for (let i = 0; i < 4; i++) {
     const a = (i / 4) * Math.PI * 2 + Math.PI / 4
-    const x = Math.cos(a) * 7.5
-    const z = Math.sin(a) * 7.5
+    const x = Math.cos(a) * radius * 0.54
+    const z = Math.sin(a) * radius * 0.54
     const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.45, 0.8, 8), dark)
-    bowl.position.set(x, 1.2, z)
+    bowl.position.set(x, lift(x, z) + 1.2, z)
     const post = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.3, 1.2, 6), stone)
-    post.position.set(x, 0.6, z)
+    post.position.set(x, lift(x, z) + 0.6, z)
     const flame = new THREE.Mesh(new THREE.ConeGeometry(0.6, 2.2, 8, 1, true), additive(ph.glow, 0.85))
-    flame.position.set(x, 2.5, z)
+    flame.position.set(x, lift(x, z) + 2.5, z)
     flame.visible = false
     g.add(bowl, post, flame)
     flames.push(flame)
   }
-  g.userData = { flames }
+  return flames
+}
+
+// At the storm's eye on the surface: a great ruined ring. For a sky temple, a storm pad glows in its middle (it throws you
+// up); for a Depths temple, the floor is gone and a pit drops away (the chasm is drawn by depthsFx.js).
+function makeTemple(ph) {
+  const eye = phenomenonEye(ph.id)
+  const place = templePlace(ph.id)
+  const g = new THREE.Group()
+  g.position.set(eye.x, eye.y, eye.z)
+  g.scale.setScalar(2.4) // a massive ruin, visible from afar
+  const stone = new THREE.MeshStandardMaterial({ color: 0x8a8498, roughness: 0.85, flatShading: true })
+  const dark = new THREE.MeshStandardMaterial({ color: 0x4a4658, roughness: 0.9, flatShading: true })
+  const lift = (x, z) => (heightAt(eye.x + x * 2.4, eye.z + z * 2.4) - eye.y) / 2.4
+  const flames = templeRing(g, ph, { stone, dark, floor: place === 'sky', altar: false, lift })
+  const parts = { flames }
+  if (place === 'sky') { // the storm pad: a glowing disc and a column of rising light
+    const pad = new THREE.Mesh(new THREE.CylinderGeometry(STORM_PAD_RADIUS / 2.4, STORM_PAD_RADIUS / 2.4 + 0.2, 0.3, 24), new THREE.MeshBasicMaterial({ color: ph.glow, fog: false }))
+    pad.position.y = 0.55
+    const lift2 = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.1, 40, 16, 1, true), additive(ph.glow, 0.22))
+    lift2.position.y = 20
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(1.6, 0.08, 6, 32), additive(ph.glow, 0.9))
+    ring.rotation.x = Math.PI / 2
+    ring.position.y = 0.8
+    g.add(pad, lift2, ring)
+    Object.assign(parts, { pad, lift: lift2, padRing: ring })
+  }
+  g.userData = parts
+  return g
+}
+
+// A sky temple: a floating rock with a temple on top -- columns, arches of light, the altar and the storm's heart.
+function makeSkyTemple(t, ph) {
+  const g = new THREE.Group()
+  g.position.set(t.x, t.y, t.z)
+  const rock = new THREE.MeshStandardMaterial({ color: 0x6a6478, roughness: 0.95, flatShading: true })
+  const stone = new THREE.MeshStandardMaterial({ color: 0xe8e4f0, roughness: 0.75, flatShading: true })
+  const dark = new THREE.MeshStandardMaterial({ color: 0x8a8498, roughness: 0.85, flatShading: true })
+  const under = new THREE.Mesh(new THREE.ConeGeometry(t.radius, t.depth, 12), rock)
+  under.rotation.x = Math.PI
+  under.position.y = -t.depth / 2 - 0.4
+  g.add(under)
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2
+    const lump = new THREE.Mesh(new THREE.DodecahedronGeometry(5 + (i % 3) * 2), rock)
+    lump.position.set(Math.cos(a) * t.radius * 0.6, -6 - (i % 2) * 5, Math.sin(a) * t.radius * 0.6)
+    g.add(lump)
+  }
+  const top = new THREE.Mesh(new THREE.CylinderGeometry(t.radius, t.radius * 0.96, 0.8, 24), new THREE.MeshStandardMaterial({ color: ph.id === 'whiteout' ? 0xeef6ff : 0x5a8a5a, roughness: 0.9, flatShading: true }))
+  top.position.y = -0.4
+  g.add(top)
+  const flames = templeRing(g, ph, { stone, dark, radius: 15, cols: 12, tall: 10 })
+  // Arches of light over the four ways in.
+  for (let i = 0; i < 4; i++) {
+    const arch = new THREE.Mesh(new THREE.TorusGeometry(4, 0.25, 6, 24, Math.PI), additive(ph.glow, 0.7))
+    const a = (i / 4) * Math.PI * 2
+    arch.position.set(Math.cos(a) * 19, 0, Math.sin(a) * 19)
+    arch.rotation.y = -a + Math.PI / 2
+    g.add(arch)
+  }
+  // Banners on tall poles round the edge.
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2 + 0.2
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.15, 7, 5), dark)
+    pole.position.set(Math.cos(a) * 21.5, 3.5, Math.sin(a) * 21.5)
+    const flag = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 3), new THREE.MeshStandardMaterial({ color: ph.color, side: THREE.DoubleSide, roughness: 0.8 }))
+    flag.position.set(Math.cos(a) * 21.5 + 0.75, 5.2, Math.sin(a) * 21.5)
+    g.add(pole, flag)
+  }
+  const h = makeHeart(ph, 1.2)
+  h.heart.userData.baseY = 5
+  g.add(h.heart, h.calm)
+  g.userData = { flames, heart: h }
+  return g
+}
+
+// A sunken temple in the Depths: a deep stepped floor, tall dark pillars with glowing seams, and the storm's heart.
+// (The hall's walls are a world prop, `deepTemple`; this is what glows and moves.)
+function makeDeepTemple(t, ph) {
+  const g = new THREE.Group()
+  g.position.set(t.x, 0, t.z)
+  const lit = additive(ph.glow, 0.6)
+  for (let i = 0; i < 3; i++) {
+    const ring = new THREE.Mesh(new THREE.RingGeometry(6 + i * 7, 6.4 + i * 7, 56), lit)
+    ring.rotation.x = -Math.PI / 2
+    ring.position.y = 0.4
+    g.add(ring)
+  }
+  const h = makeHeart(ph, 1.4)
+  h.heart.userData.baseY = 6
+  g.add(h.heart, h.calm)
+  const glowBeam = new THREE.Mesh(new THREE.CylinderGeometry(2, 3.5, 70, 14, 1, true), additive(ph.glow, 0.14))
+  glowBeam.position.y = 35
+  g.add(glowBeam)
+  g.userData = { heart: h, t, beam: glowBeam }
   return g
 }
 
@@ -201,9 +331,24 @@ export function createPhenomenaFx() {
   })
   const temples = new Map()
   for (const ph of PHENOMENON_LIST) {
-    const t = makeTemple(ph)
+    const t = withSurface(() => makeTemple(ph))
     temples.set(ph.id, t)
     group.add(t)
+  }
+  const skyTempleMeshes = new Map()
+  for (const t of skyTemples()) {
+    const m = makeSkyTemple(t, PHENOMENON_LIST.find((p) => p.id === t.stormId))
+    skyTempleMeshes.set(t.stormId, m)
+    group.add(m)
+  }
+  // The Depths' side (shown only down there): the sunken temples' hearts and glows.
+  const deep = new THREE.Group()
+  deep.visible = false
+  const deepMeshes = new Map()
+  for (const t of deepTemples()) {
+    const m = makeDeepTemple(t, PHENOMENON_LIST.find((p) => p.id === t.stormId))
+    deepMeshes.set(t.stormId, m)
+    deep.add(m)
   }
   // The guide beam: a tall, thin pillar of light over whatever you are being sent to, visible across the land.
   const guide = new THREE.Group()
@@ -243,6 +388,7 @@ export function createPhenomenaFx() {
 
   return {
     group,
+    deep,
     // [{ id, kind, x, y, z, color, radius, progress, active, yaw }]
     setMarkers(list) {
       sync(markers, list, (it) => markerMesh(it.kind, it.color, it.radius ?? 5))
@@ -266,9 +412,34 @@ export function createPhenomenaFx() {
         guideRing.scale.setScalar(1 + (now % 1.4) * 0.9)
         guideRing.material.opacity = 0.8 * (1 - (now % 1.4) / 1.4)
       }
+      const flicker = (flames, on) => {
+        for (const f of flames) {
+          f.visible = on
+          if (on) f.scale.set(1 + Math.sin(now * 9 + f.position.x) * 0.12, 1 + Math.sin(now * 7 + f.position.z) * 0.25, 1)
+        }
+      }
+      for (const [id, m] of skyTempleMeshes) {
+        m.visible = Math.hypot(m.position.x - player.x, m.position.z - player.z) < 800
+        if (!m.visible) continue
+        animateHeart(m.userData.heart, now, cleared.has(id))
+        flicker(m.userData.flames, cleared.has(id))
+      }
+      for (const [id, m] of deepMeshes) {
+        m.visible = Math.hypot(m.position.x - player.x, m.position.z - player.z) < 260
+        if (!m.visible) continue
+        m.position.y = heightAt(m.position.x, m.position.z) // (in the Depths, the cavern floor)
+        animateHeart(m.userData.heart, now, cleared.has(id))
+        m.userData.beam.material.opacity = cleared.has(id) ? 0.05 : 0.12 + Math.sin(now * 2) * 0.04
+      }
       for (const [id, t] of temples) {
         const eye = phenomenonEye(id)
-        t.visible = Math.hypot(eye.x - player.x, eye.z - player.z) < 560
+        t.visible = Math.hypot(eye.x - player.x, eye.z - player.z) < 700
+        const u = t.userData
+        if (u.pad && t.visible) {
+          u.padRing.scale.setScalar(1 + (now % 1.2) * 1.4)
+          u.padRing.material.opacity = 0.9 * (1 - (now % 1.2) / 1.2)
+          u.lift.material.opacity = 0.16 + Math.sin(now * 3) * 0.06
+        }
         for (const f of t.userData.flames) {
           f.visible = cleared.has(id)
           if (f.visible) f.scale.set(1 + Math.sin(now * 9 + f.position.x) * 0.12, 1 + Math.sin(now * 7 + f.position.z) * 0.25, 1)

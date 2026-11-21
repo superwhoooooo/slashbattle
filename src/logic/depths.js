@@ -6,6 +6,7 @@
 //     to the rim of that chasm.
 //   - Umbral lairs: five sunken lairs, each guarded by a boss and holding an Umbral Heart. Claim all five and the
 //     secret hero of the Depths is yours.
+import { DEEP_TEMPLE_RADIUS, deepTemples, nearDeepTemple, templeChasms } from './stormTemples.js'
 import { BIOMES, CHUNK_SIZE, PROP_RADIUS, SANCTUM_RADIUS, WORLD_RADIUS, WORLD_SEED, chunkKey, heightAt, lakeAt, mulberry32, nearestSite, nearestVillage, roadDistance, withSurface, inDepths } from './world.js'
 import { BOSSES } from './bosses.js'
 import { skyTowers } from './skyIslands.js'
@@ -64,7 +65,7 @@ export function chasms() {
       if (!spot) continue
       list.push({ id: `c${i}`, index: i, name: CHASM_NAMES[i], x: spot.x, z: spot.z, radius, y: heightAt(spot.x, spot.z) })
     }
-    return list
+    return [...list, ...templeChasms()] // (the pits over the storms' sunken temples: logic/stormTemples.js)
   })
   return chasmCache
 }
@@ -101,10 +102,15 @@ export function beacons() {
   beaconCache ??= (() => {
     const rand = mulberry32(WORLD_SEED + 6200)
     const roots = chasms().map((c, i) => {
-      const a = rand() * Math.PI * 2
-      const d = 38 + rand() * 22
-      let x = c.x + Math.cos(a) * d
-      let z = c.z + Math.sin(a) * d
+      let x = 0
+      let z = 0
+      for (let k = 0; k < 16; k++) { // (a Lightroot keeps clear of every cave chamber, whose guards would crowd the refuge)
+        const a = rand() * Math.PI * 2
+        const d = 38 + rand() * 22
+        x = c.x + Math.cos(a) * d
+        z = c.z + Math.sin(a) * d
+        if (!caves().some((cv) => Math.hypot(cv.chamber.x - x, cv.chamber.z - z) < CHAMBER_RADIUS + 30)) break
+      }
       const r = Math.hypot(x, z)
       if (r > WORLD_RADIUS - 25) {
         x *= (WORLD_RADIUS - 25) / r
@@ -169,7 +175,7 @@ export function depthsLairs() {
         const r = 190 + rand() * (WORLD_RADIUS - 290)
         const x = Math.cos(a) * r
         const z = Math.sin(a) * r
-        if (beacons().some((b) => Math.hypot(b.x - x, b.z - z) < LAIR_RADIUS + 30)) continue
+        if (beacons().some((b) => Math.hypot(b.x - x, b.z - z) < LAIR_RADIUS + 30) || nearDeepTemple(x, z, LAIR_RADIUS + 30)) continue
         if (caves().some((c) => Math.hypot(c.chamber.x - x, c.chamber.z - z) < LAIR_RADIUS + CHAMBER_RADIUS + 8)) continue
         const boss = BOSSES.find((b) => b.id === LAIR_BOSSES[i]) ?? BOSSES[i % BOSSES.length]
         list.push({ id: `d${i}`, index: i, name: LAIR_NAMES[i], x, z, radius: LAIR_RADIUS, boss: boss.id, relic: { id: `dr${i}`, name: 'Umbral Heart', x, z } })
@@ -240,7 +246,7 @@ export function depthsChunk(cx, cz) {
   const propCount = 7 + Math.floor(rng() * 7)
   for (let i = 0; i < propCount; i++) {
     const p = place()
-    if (!inWorld(p) || nearLair(p, 3) || nearBeacon(p, 4) || nearChamber(p, 1)) continue
+    if (!inWorld(p) || nearLair(p, 3) || nearBeacon(p, 4) || nearChamber(p, 1) || nearDeepTemple(p.x, p.z, 2)) continue
     const kind = pickWeighted(rng, biome.props)[0]
     const scale = 0.8 + rng() * 0.9
     out.props.push({ kind, x: p.x, z: p.z, scale, rot: rng() * Math.PI * 2, radius: PROP_RADIUS[kind] * scale })
@@ -250,14 +256,14 @@ export function depthsChunk(cx, cz) {
   const count = Math.floor(rng() * (1.5 + danger * 2.5)) + (rng() < 0.45 ? 1 : 0)
   for (let i = 0; i < count; i++) {
     const p = place()
-    if (!inWorld(p) || nearLair(p, 6) || nearBeacon(p, 22) || nearChamber(p, 2)) continue // the Lightroots are a refuge
+    if (!inWorld(p) || nearLair(p, 6) || nearBeacon(p, 22) || nearChamber(p, 2) || nearDeepTemple(p.x, p.z, 10)) continue // the Lightroots are a refuge (the temples have their own guardian)
     const [type] = pickWeighted(rng, biome.monsters)
     const elite = rng() < 0.07 + danger * 0.12
     out.monsters.push({ id: `${out.key}:${i}`, type, x: p.x, z: p.z, elite, danger, hpScale: (1 + danger * 1.3) * (elite ? 2.4 : 1) })
   }
   if (rng() < 0.16) {
     const p = place()
-    if (inWorld(p) && !nearLair(p, 3) && !nearBeacon(p, 6) && !nearChamber(p, 2)) out.treasure.push({ id: `${out.key}:chest`, kind: 'chest', x: p.x, z: p.z })
+    if (inWorld(p) && !nearLair(p, 3) && !nearBeacon(p, 6) && !nearChamber(p, 2) && !nearDeepTemple(p.x, p.z, 2)) out.treasure.push({ id: `${out.key}:chest`, kind: 'chest', x: p.x, z: p.z })
   }
 
   const inChunk = (p) => p.x >= cx * CHUNK_SIZE && p.x < (cx + 1) * CHUNK_SIZE && p.z >= cz * CHUNK_SIZE && p.z < (cz + 1) * CHUNK_SIZE
@@ -276,6 +282,20 @@ export function depthsChunk(cx, cz) {
       }
       const [type] = pickWeighted(rng, pool)
       out.monsters.push({ id: g.id, type, x: g.x, z: g.z, elite: true, danger: lairDanger, hpScale: (1 + lairDanger * 1.3) * 2.4 })
+    }
+  }
+  // The storms' sunken temples: the great hall itself (one model), a ring of shard pillars and two chests.
+  for (const t of deepTemples()) {
+    if (Math.hypot(t.x - center.x, t.z - center.z) > 60) continue
+    const pieces = [{ kind: 'deepTemple', x: t.x, z: t.z, scale: 1, rot: Math.atan2(-t.x, -t.z), radius: 0 }]
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2
+      pieces.push({ kind: 'shardPillar', x: t.x + Math.cos(a) * (DEEP_TEMPLE_RADIUS - 3), z: t.z + Math.sin(a) * (DEEP_TEMPLE_RADIUS - 3), scale: 1.6, rot: a, radius: PROP_RADIUS.shardPillar * 1.6 })
+    }
+    for (const p of pieces) if (inChunk(p)) out.props.push(p)
+    for (const [k, a] of [[0, 0.8], [1, 3.9]]) {
+      const c = { id: `deeptemple-${t.stormId}:chest${k}`, kind: 'chest', x: t.x + Math.cos(a) * 15, z: t.z + Math.sin(a) * 15 }
+      if (inChunk(c)) out.treasure.push(c)
     }
   }
   // Cave chambers: a pocket with its own chest(s) and guards, entered through a doorway on the surface (logic/caves.js).

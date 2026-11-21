@@ -1,5 +1,5 @@
-// The villagers of the Wilds: little jellies built from the player's own model (the same body and face),
-// each in a pastel of their own, with a name above their head and a marker that shows whether they have a
+// The villagers of the Wilds: little jellies built from the player's own model (the same body and face), each in a
+// pastel of their own -- except the storm cities' peoples, who have bodies of their own (speciesModels.js) -- with a name above their head and a marker that shows whether they have a
 // quest for you ('!'), are waiting on you ('...'), or have something to collect ('?').
 import * as THREE from 'three'
 import { createPlayerMesh } from './characters.js'
@@ -7,7 +7,7 @@ import { updateJelly } from './jelly.js'
 import { updateFace3D } from './face3d.js'
 import { dampAngle } from './logic/smoothing.js'
 import { heightAt } from './logic/world.js'
-import { speciesById } from './logic/species.js'
+import { animateSpecies, buildSpecies, speciesHeight } from './speciesModels.js'
 
 export const TALK_RANGE = 4.6
 const NOTICE_RANGE = 8 // they turn to face you inside this
@@ -70,90 +70,28 @@ function markerTexture(kind) {
 }
 
 
-// ---- species: each storm city's people are a kind of their own (logic/species.js) -------------------------------
-const mat = (color, emissive = 0) => new THREE.MeshStandardMaterial({ color, roughness: 0.55, flatShading: true, emissive: emissive ? color : 0x000000, emissiveIntensity: emissive })
-const glow = (color, opacity = 0.9) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false })
-function bit(parent, geometry, material, pos = [0, 0, 0], rot = [0, 0, 0], scale = null) {
-  const m = new THREE.Mesh(geometry, material)
-  m.position.set(...pos)
-  m.rotation.set(...rot)
-  if (scale) m.scale.set(...scale)
-  m.castShadow = false
-  parent.add(m)
-  return m
-}
-// Adds a species' ears, horns, tails and the like to a villager, and reshapes the body a little.
-export function dressSpecies(mesh, speciesId, color) {
-  const sp = speciesById(speciesId)
-  if (!sp) return
-  const accent = new THREE.Color(color).multiplyScalar(0.7).getHex()
-  const parts = new THREE.Group()
-  mesh.add(parts)
-  mesh.userData.speciesParts = parts
-  if (speciesId === 'dunekin') { // tall fennec ears, a curled tail and a sun-gold scarf
-    mesh.scale.set(0.95, 1.14, 0.95)
-    for (const side of [-1, 1]) {
-      bit(parts, new THREE.ConeGeometry(0.17, 0.72, 5), mat(color), [side * 0.32, 1.52, -0.02], [0, 0, -side * 0.28])
-      bit(parts, new THREE.ConeGeometry(0.09, 0.5, 5), mat(0xffd6c0), [side * 0.33, 1.5, 0.05], [0, 0, -side * 0.28])
-    }
-    bit(parts, new THREE.TorusGeometry(0.58, 0.07, 6, 18, Math.PI * 1.7), mat(accent), [0, 0.5, -0.62], [0.4, 0.3, 0], [1, 1.5, 1])
-    bit(parts, new THREE.TorusGeometry(0.5, 0.08, 6, 20), mat(0xffe08a, 0.25), [0, 0.95, 0], [Math.PI / 2, 0, 0])
-  } else if (speciesId === 'frostkin') { // round and fluffy, ice-crystal horns, a snowy collar
-    mesh.scale.set(1.12, 0.96, 1.12)
-    for (const side of [-1, 1]) {
-      bit(parts, new THREE.OctahedronGeometry(0.17), glow(0xaee4ff, 0.85), [side * 0.28, 1.4, 0], [0, 0, -side * 0.3], [0.7, 1.9, 0.7])
-      bit(parts, new THREE.SphereGeometry(0.16, 8, 6), mat(0xffffff), [side * 0.56, 0.72, 0.12])
-    }
-    for (let i = 0; i < 8; i++) {
-      const a = (i / 8) * Math.PI * 2
-      bit(parts, new THREE.SphereGeometry(0.15, 8, 6), mat(0xffffff), [Math.cos(a) * 0.55, 0.95, Math.sin(a) * 0.55])
-    }
-    bit(parts, new THREE.SphereGeometry(0.2, 8, 6), mat(0xffffff), [0, 0.45, -0.66])
-  } else if (speciesId === 'embervolk') { // swept-back horns, glowing cheeks, a flame-tipped tail
-    mesh.scale.set(1.0, 1.06, 1.0)
-    for (const side of [-1, 1]) {
-      bit(parts, new THREE.ConeGeometry(0.12, 0.62, 6), mat(0x2a1a18), [side * 0.34, 1.3, -0.08], [-0.35, 0, -side * 0.65])
-      bit(parts, new THREE.CircleGeometry(0.1, 10), glow(0xff5a1a, 0.9), [side * 0.36, 0.78, 0.5], [0, side * 0.5, 0])
-    }
-    bit(parts, new THREE.CylinderGeometry(0.05, 0.1, 0.7, 6), mat(accent), [0, 0.45, -0.75], [0.9, 0, 0])
-    const flame = bit(parts, new THREE.ConeGeometry(0.17, 0.5, 7), glow(0xffa83a, 0.85), [0, 0.85, -1.05], [0.5, 0, 0])
-    mesh.userData.flame = flame
-  } else if (speciesId === 'mirefolk') { // wide and froggy: bulging eyes, a lily-pad hat, a reed
-    mesh.scale.set(1.16, 0.92, 1.1)
-    for (const side of [-1, 1]) {
-      bit(parts, new THREE.SphereGeometry(0.2, 10, 8), mat(color), [side * 0.28, 1.28, 0.2])
-      bit(parts, new THREE.SphereGeometry(0.1, 8, 6), mat(0xffffff), [side * 0.29, 1.32, 0.34])
-      bit(parts, new THREE.SphereGeometry(0.05, 6, 6), mat(0x102010), [side * 0.29, 1.32, 0.42])
-    }
-    bit(parts, new THREE.CylinderGeometry(0.42, 0.42, 0.04, 14), mat(0x3a9a4a), [0.08, 1.5, -0.1], [0.1, 0, 0.12])
-    bit(parts, new THREE.CylinderGeometry(0.02, 0.02, 0.6, 5), mat(0x7a6a3a), [-0.25, 1.65, -0.1], [0, 0, 0.25])
-    bit(parts, new THREE.SphereGeometry(0.07, 6, 6), glow(0xb8ff8a, 0.9), [-0.35, 1.95, -0.1])
-  }
-}
-// Per-frame life for a species' parts (the Embervolk tail-flame flickers).
-export function animateSpecies(npc, time) {
-  const flame = npc.mesh.userData.flame
-  if (flame) {
-    flame.scale.set(1 + Math.sin(time * 11 + npc.home.x) * 0.15, 1 + Math.sin(time * 9) * 0.25, 1)
-  }
-}
-
 // Builds a villager from a world.js npc def: { id, name, role, color, x, z, villageId }.
+// A storm city's people are their own species (speciesModels.js); everyone else is a pastel jelly like the player.
 export function createNpc(def) {
-  const mesh = createPlayerMesh()
-  const body = mesh.userData.jelly.body
-  body.material.color.set(def.color)
-  body.material.emissive?.set(def.color)
+  let mesh
+  if (def.species) mesh = buildSpecies(def.species, def.color, { champion: Boolean(def.champion) })
+  else {
+    mesh = createPlayerMesh()
+    const body = mesh.userData.jelly.body
+    body.material.color.set(def.color)
+    body.material.emissive?.set(def.color)
+  }
   mesh.position.set(def.x, heightAt(def.x, def.z), def.z)
   mesh.rotation.y = Math.random() * Math.PI * 2
-  if (def.species) dressSpecies(mesh, def.species, def.color)
 
   const label = createLabel(def.name, def.role)
-  label.position.set(0, def.species ? 3.1 : 3.35, 0)
-  if (def.species) label.scale.set(3.2 / mesh.scale.x, 0.88 / mesh.scale.y, 1)
+  const top = def.species ? speciesHeight(mesh) + 0.5 : 3.35
+  const s = mesh.scale.x
+  label.position.set(0, top / s, 0)
+  label.scale.set(3.2 / s, 0.88 / s, 1)
   mesh.add(label)
   const marker = new THREE.Sprite(new THREE.SpriteMaterial({ map: markerTexture('offer'), transparent: true, depthTest: false }))
-  marker.scale.set(1, 1, 1)
+  marker.scale.setScalar(1 / s)
   marker.renderOrder = 11
   marker.visible = false
   mesh.add(marker)
@@ -168,6 +106,7 @@ export function createNpc(def) {
     wait: 1 + Math.random() * 3,
     speed: 0,
     moveDir: { x: 0, z: 1 },
+    markerY: (top + 0.8) / s,
   }
 }
 
@@ -182,10 +121,11 @@ export function setNpcMarker(npc, kind) {
 // One frame: they idle, amble about their home, and turn to look at you when you come near.
 export function updateNpc(npc, dt, time, playerPos) {
   const { mesh } = npc
-  if (npc.def.species) animateSpecies(npc, time)
   const toPlayer = Math.hypot(playerPos.x - mesh.position.x, playerPos.z - mesh.position.z)
   npc.speed = 0
-  if (toPlayer < NOTICE_RANGE) {
+  if (npc.def.follow) { // a champion at your side: keeps up, a step behind and to one side
+    followPlayer(npc, dt, playerPos, toPlayer)
+  } else if (toPlayer < NOTICE_RANGE) {
     const face = Math.atan2(playerPos.x - mesh.position.x, playerPos.z - mesh.position.z)
     mesh.rotation.y = dampAngle(mesh.rotation.y, face, 6, dt)
     npc.target = null
@@ -212,10 +152,55 @@ export function updateNpc(npc, dt, time, playerPos) {
       npc.target = { x: npc.home.x + Math.cos(a) * r, z: npc.home.z + Math.sin(a) * r }
     }
   }
-  mesh.position.y = heightAt(mesh.position.x, mesh.position.z)
+  if (npc.isle) { // on a sky temple: never step off its edge
+    const dx = mesh.position.x - npc.isle.x
+    const dz = mesh.position.z - npc.isle.z
+    const d = Math.hypot(dx, dz)
+    if (d > npc.isle.r) {
+      mesh.position.x = npc.isle.x + (dx / d) * npc.isle.r
+      mesh.position.z = npc.isle.z + (dz / d) * npc.isle.r
+    }
+  }
+  mesh.position.y = npc.yOverride ?? heightAt(mesh.position.x, mesh.position.z)
   npc.moveDir = { x: Math.sin(mesh.rotation.y), z: Math.cos(mesh.rotation.y) }
-  updateJelly(mesh, dt, time, { speed: npc.speed, moveDir: npc.moveDir })
-  updateFace3D(mesh, dt, time)
-  if (npc.marker.visible) npc.marker.position.set(0, 4.15 + Math.sin(time * 3 + npc.home.x) * 0.15, 0)
+  if (mesh.userData.rig) animateSpecies(mesh, time, npc.speed, dt)
+  else {
+    updateJelly(mesh, dt, time, { speed: npc.speed, moveDir: npc.moveDir })
+    updateFace3D(mesh, dt, time)
+  }
+  if (npc.marker.visible) npc.marker.position.set(0, npc.markerY + Math.sin(time * 3 + npc.home.x) * 0.15, 0)
   return toPlayer
+}
+
+export const FOLLOW_GAP = 3.2 // a following champion keeps about this far from you
+const FOLLOW_SPEED = 8.5
+const FOLLOW_SNAP = 34 // left this far behind (a glide, a fall), they catch up at once
+function followPlayer(npc, dt, playerPos, toPlayer) {
+  const { mesh } = npc
+  if (npc.busyUntil && npc.busyUntil > npc.clock) return // mid-move (their power): main.js drives them
+  if (toPlayer > FOLLOW_SNAP) {
+    const a = Math.random() * Math.PI * 2
+    mesh.position.x = playerPos.x + Math.cos(a) * FOLLOW_GAP
+    mesh.position.z = playerPos.z + Math.sin(a) * FOLLOW_GAP
+    return
+  }
+  // Aim for a spot beside and behind you.
+  const side = npc.def.side ?? 1
+  const fx = npc.dir?.x ?? 0 // the way you face (main.js's stepChampion sets it)
+  const fz = npc.dir?.z ?? 1
+  const tx = playerPos.x - fx * FOLLOW_GAP * 0.6 + fz * side * FOLLOW_GAP * 0.8
+  const tz = playerPos.z - fz * FOLLOW_GAP * 0.6 - fx * side * FOLLOW_GAP * 0.8
+  const dx = tx - mesh.position.x
+  const dz = tz - mesh.position.z
+  const d = Math.hypot(dx, dz)
+  if (d > 0.6) {
+    const speed = Math.min(FOLLOW_SPEED, 2 + d * 1.6)
+    const step = Math.min(speed * dt, d)
+    mesh.position.x += (dx / d) * step
+    mesh.position.z += (dz / d) * step
+    mesh.rotation.y = dampAngle(mesh.rotation.y, Math.atan2(dx, dz), 10, dt)
+    npc.speed = speed
+  } else {
+    mesh.rotation.y = dampAngle(mesh.rotation.y, Math.atan2(playerPos.x - mesh.position.x, playerPos.z - mesh.position.z), 5, dt)
+  }
 }

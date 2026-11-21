@@ -101,7 +101,7 @@ describe('lairs and chunks', () => {
     expect(a.monsters.some((m) => m.boss && m.lairId === l.id)).toBe(true)
   })
   it('keeps monsters off the Lightroots', () => {
-    const b = beacons()[0]
+    const b = beacons().find((x) => x.chasmId) // (a cave's own guards stand in its chamber)
     const cx = Math.floor(b.x / 40)
     const cz = Math.floor(b.z / 40)
     for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) {

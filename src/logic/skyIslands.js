@@ -5,6 +5,7 @@
 // it, and, high above the main isle, a small crown isle reached by riding an updraft with the glider open. The
 // crown holds a Sky Relic. Walk off any edge and you fall back to the land (open the glider!).
 // Pure and seeded: the main game (main.js) and the look (src/skyIslands.js) both read this.
+import { skyTemples } from './stormTemples.js'
 import { WORLD_RADIUS, SANCTUM_RADIUS, heightAt, lakeAt, mulberry32, nearestSite, nearestVillage, roadDistance, dangerAt } from './world.js'
 import { GLIDE_SINK, GLIDE_SPEED_MULTIPLIER, JUMP_GRAVITY } from './jump.js'
 import { PLAYER_SPEED } from '../config.js'
@@ -129,7 +130,7 @@ export function skyArchipelagos() {
     placed.push(...arch.isles)
     return arch
   })
-  isleCache = archCache.flatMap((a) => a.isles)
+  isleCache = [...archCache.flatMap((a) => a.isles), ...skyTemples()] // (the storms' sky temples are isles too: logic/stormTemples.js)
   return archCache
 }
 export function skyIsles() {

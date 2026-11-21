@@ -24,6 +24,7 @@ const MAX_PER_KIND = 500
 
 import { box, cone, cyl, dodeca, dome, ico, leafFringe, limb, oct, part } from './worldModelKit.js'
 import { FRONTIER_MODELS } from './frontierModels.js'
+import { CITY_MODELS } from './cityModels.js'
 
 // kind -> { lit: [parts], glow: [parts] }. Lit parts are shaded stone / wood / ice; glow parts are bright
 // bulbs, crystals and caps that shine on their own (and bloom).
@@ -291,6 +292,7 @@ const MODELS = {
   }),
 }
 
+Object.assign(MODELS, CITY_MODELS) // the four storm cities' own architecture (cityModels.js)
 Object.assign(MODELS, FRONTIER_MODELS) // the Frontier's scenery and the landmarks (frontierModels.js)
 
 // ---- village buildings ---------------------------------------------------------------------------------
@@ -427,7 +429,7 @@ const smoothstep = (a, b, v) => {
 let groundDetail = null
 function createGround() {
   const size = WORLD_RADIUS * 2
-  const segments = Math.round(WORLD_RADIUS / 1.4) // ~2.8 units between vertices, however big the world grows
+  const segments = Math.round(WORLD_RADIUS / 2.0) // ~4 units between vertices, however big the world grows
   const geometry = new THREE.PlaneGeometry(size, size, segments, segments)
   geometry.rotateX(-Math.PI / 2)
   const pos = geometry.attributes.position

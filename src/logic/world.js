@@ -17,8 +17,8 @@
 import { SPECIES } from './species.js'
 import { BOSSES } from './bosses.js'
 
-export const WORLD_RADIUS = 560
-export const HEARTLAND_RADIUS = 300 // roughly where the Heartland ring gives way to the Frontier (the border meanders)
+export const WORLD_RADIUS = 900
+export const HEARTLAND_RADIUS = 480 // roughly where the Heartland ring gives way to the Frontier (the border meanders)
 export const WORLD_SEED = 7219
 export const CHUNK_SIZE = 40
 export const LOAD_RADIUS = 125 // chunks whose centre is this close to the player are alive
@@ -274,6 +274,73 @@ const innerCoordinate = (x, z) => sectorCoordinate(x, z, OUTER_BIOMES.length, WO
 const farCoordinate = (x, z) => sectorCoordinate(x, z, FAR_BIOMES.length, WORLD_SEED + 50, 0.37)
 const slotOf = (coordinate, n) => ((Math.floor(coordinate) % n) + n) % n
 
+// ---- the storm regions (Tears of the Kingdom-style regional phenomena, out at the edge of the map) ----------------
+// Each of the four regional phenomena (logic/phenomena.js) sits on the RIM of the world, at the bearing of the Heartland
+// biome it belongs to, and paints that biome over the land it covers (a desert, a snowfield, a waste of ash, a fen). Its
+// people's city stands inside the storm, near the edge; the storm's temple (its eye) lies a long, hard walk further on.
+export const CITY_RADIUS = WORLD_RADIUS - 100
+export const STORM_EYE_RADIUS = WORLD_RADIUS - 175 // how far out each storm's eye (its temple) lies
+export const STORM_REGION_RADIUS = 205 // the storm's own biome reaches this far from its eye (it wobbles a little)
+export const STORM_TEMPLE_RADIUS = 38 // the levelled floor under the storm's temple
+export const CITY_DEFS = [
+  { stormId: 'sandstorm', biome: 'amethyst', name: 'Gildenspire', species: 'dunekin' },
+  { stormId: 'whiteout', biome: 'frostveil', name: 'Rimehold', species: 'frostkin' },
+  { stormId: 'ashstorm', biome: 'emberwaste', name: 'Pyreholm', species: 'embervolk' },
+  { stormId: 'miasma', biome: 'gloomfen', name: 'Lanternmere', species: 'mirefolk' },
+]
+// The land's own biome, before any storm region paints over it.
+function baseBiomeAt(x, z) {
+  const r = Math.hypot(x, z)
+  if (r < SANCTUM_RADIUS) return 'sanctum'
+  if (r < ringBorder(x, z)) return OUTER_BIOMES[slotOf(innerCoordinate(x, z), OUTER_BIOMES.length)]
+  return FAR_BIOMES[slotOf(farCoordinate(x, z), FAR_BIOMES.length)]
+}
+// The bearing of a Heartland biome: the circular mean of the bearings (at radius 200) where it lies.
+function biomeBearing(biome, fallback) {
+  let sx = 0
+  let sz = 0
+  for (let a = 0; a < 360; a += 3) {
+    const rad = (a * Math.PI) / 180
+    if (baseBiomeAt(Math.cos(rad) * 200, Math.sin(rad) * 200) !== biome) continue
+    sx += Math.cos(rad)
+    sz += Math.sin(rad)
+  }
+  return sx || sz ? Math.atan2(sz, sx) : fallback
+}
+let regionCache = null
+// The four storm regions: { stormId, biome, name, species, bearing, eye: { x, z }, city: { x, z } }.
+export function stormRegions() {
+  regionCache ??= CITY_DEFS.map((def, i) => {
+    const bearing = biomeBearing(def.biome, (i / CITY_DEFS.length) * Math.PI * 2)
+    const side = i % 2 ? -0.12 : 0.12 // the temple stands off to one side of the city, a trek away along the rim
+    return {
+      ...def,
+      bearing,
+      eye: { x: Math.cos(bearing + side) * STORM_EYE_RADIUS, z: Math.sin(bearing + side) * STORM_EYE_RADIUS },
+      city: { x: Math.cos(bearing) * CITY_RADIUS, z: Math.sin(bearing) * CITY_RADIUS },
+    }
+  })
+  return regionCache
+}
+const regionEdge = (x, z) => STORM_REGION_RADIUS + (valueNoise(x * 0.02, z * 0.02, WORLD_SEED + 77) - 0.5) * 40
+// The storm region (if any) a point lies in, and how far inside its edge it is.
+export function stormRegionAt(x, z) {
+  const inner = STORM_EYE_RADIUS - STORM_REGION_RADIUS - 25
+  if (x * x + z * z < inner * inner) return null
+  let edge = -1
+  for (const reg of stormRegions()) {
+    const d = Math.hypot(x - reg.eye.x, z - reg.eye.z)
+    if (d > STORM_REGION_RADIUS + 20) continue
+    if (edge < 0) edge = regionEdge(x, z)
+    if (d < edge) return reg
+  }
+  return null
+}
+// True near a storm's temple (its floor plus `margin`): other sites, lakes and villages keep clear of it.
+export const nearStormTemple = (x, z, margin = 0) => stormRegions().some((reg) => Math.hypot(x - reg.eye.x, z - reg.eye.z) < STORM_TEMPLE_RADIUS + margin)
+// True near a storm city or its temple: the two places the region keeps clear for itself.
+export const nearStormCore = (x, z, margin = 0) => nearStormTemple(x, z, margin) || stormRegions().some((reg) => Math.hypot(x - reg.city.x, z - reg.city.z) < 88 + margin)
+
 // ---- the Depths ------------------------------------------------------------------------------------
 // Under the chasms lies a second, dark world on the same coordinates. Rather than thread a "where am I" flag through
 // every system, the Depths is a MODE of this module: while it is on, the ground height, biome, ground colour and the
@@ -311,10 +378,9 @@ export function depthsGround(x, z) {
 
 export function biomeAt(x, z) {
   if (depthsOn) return 'depths'
-  const r = Math.hypot(x, z)
-  if (r < SANCTUM_RADIUS) return 'sanctum'
-  if (r < ringBorder(x, z)) return OUTER_BIOMES[slotOf(innerCoordinate(x, z), OUTER_BIOMES.length)]
-  return FAR_BIOMES[slotOf(farCoordinate(x, z), FAR_BIOMES.length)]
+  const region = stormRegionAt(x, z)
+  if (region) return region.biome
+  return baseBiomeAt(x, z)
 }
 
 // 'center' | 'heart' | 'far': which ring a point lies in.
@@ -358,6 +424,18 @@ export function groundColorAt(x, z) {
     const b = sectorColor(FAR_BIOMES, farCoordinate(x, z))
     color = a.map((c, i) => mix(c, b[i], toFar))
   }
+  // A storm region paints its own biome's ground over the land, fading in across its edge.
+  if (x * x + z * z > (STORM_EYE_RADIUS - STORM_REGION_RADIUS - 70) ** 2) {
+    for (const reg of stormRegions()) {
+      const raw = Math.hypot(x - reg.eye.x, z - reg.eye.z)
+      if (raw > STORM_REGION_RADIUS + 50) continue
+      const d = raw - regionEdge(x, z)
+      if (d > 30) continue
+      const t = 1 - smooth(clamp01((d + 30) / 60))
+      const own = BIOMES[reg.biome].ground
+      color = color.map((c, i) => mix(c, own[i], t))
+    }
+  }
   const sanctum = BIOMES.sanctum.ground
   const toSanctum = 1 - smooth(clamp01((r - (SANCTUM_RADIUS - 10)) / 26))
   const dapple = 0.82 + valueNoise(x * 0.09, z * 0.09, WORLD_SEED + 3) * 0.36 + (valueNoise(x * 0.4, z * 0.4, WORLD_SEED + 4) - 0.5) * 0.08
@@ -400,7 +478,7 @@ export function groundColorAt(x, z) {
 // ---- hills and mesas ------------------------------------------------------------------------------------
 
 // Big seeded mounds all over the land, to give it landmarks to climb and steer by.
-const MOUND_COUNT = 84
+const MOUND_COUNT = 200
 const MOUNDS = (() => {
   const rng = mulberry32(WORLD_SEED + 500)
   const list = []
@@ -488,6 +566,7 @@ export const LAKES = (() => {
   const tryLake = (x, z, radius, lowest) => {
     if (Math.hypot(x, z) > WORLD_RADIUS - 70 || Math.hypot(x, z) < SANCTUM_RADIUS + 62) return false
     if (Math.hypot(x - STARTER_SITE.x, z - STARTER_SITE.z) < radius + 80) return false
+    if (nearStormCore(x, z, radius * 1.3 + 30)) return false // the storm cities and temples stay dry
     if (list.some((l) => Math.hypot(l.x - x, l.z - z) < l.radius + radius + 55)) return false
     if (MESAS.some((m) => Math.hypot(m.x - x, m.z - z) < m.radius + MESA_EDGE + radius * 1.4 + 10)) return false
     // Only on low ground: a lake dug into a hillside would leave a cliff.
@@ -551,6 +630,7 @@ function lakeHeight(x, z, h) {
 
 export const VILLAGE_PLAZA_RADIUS = 13 // the paved, level square at a village's heart
 export const VILLAGE_SAFE_RADIUS = 46 // no wild monsters inside this
+export const CITY_FLAT_RADIUS = 58 // a storm city is a whole town, far bigger than a village's plaza
 const VILLAGE_CELL = 150
 export const VILLAGE_MIN_SEPARATION = 135 // villages are a real trek apart
 const VILLAGE_FLATTEN = 26 // the plaza's level ground eases back into the hills over this far
@@ -561,29 +641,6 @@ const NPC_COLORS = [0x7fe0b8, 0xb9a6ff, 0xffd98a, 0x8fd0ff, 0xff9ab8, 0xa6f0a0, 
 const NPC_ROLES = ['Warden', 'Lantern-keeper', 'Herbalist', 'Stargazer', 'Wayfinder', 'Elder', 'Tinker', 'Ranger']
 // Radii to search when a biome still has no village (by ring).
 const VILLAGE_SEARCH_RADII = { heart: [170, 200, 140, 225, 255], far: [400, 440, 360, 470, 340] }
-
-// The four storm cities: one on the rim of the kingdom behind each regional phenomenon (logic/phenomena.js), home of a
-// species of its own and of a Sage who guides the storm's quest. `biome` is the storm's Heartland biome: the city sits on
-// the rim at the same bearing.
-export const CITY_RADIUS = WORLD_RADIUS - 72
-export const CITY_DEFS = [
-  { stormId: 'sandstorm', biome: 'amethyst', name: 'Gildenspire', species: 'dunekin' },
-  { stormId: 'whiteout', biome: 'frostveil', name: 'Rimehold', species: 'frostkin' },
-  { stormId: 'ashstorm', biome: 'emberwaste', name: 'Pyreholm', species: 'embervolk' },
-  { stormId: 'miasma', biome: 'gloomfen', name: 'Lanternmere', species: 'mirefolk' },
-]
-// The rim bearing of a Heartland biome: the circular mean of the bearings (at radius 200) where it lies.
-function biomeBearing(biome, fallback) {
-  let sx = 0
-  let sz = 0
-  for (let a = 0; a < 360; a += 3) {
-    const rad = (a * Math.PI) / 180
-    if (biomeAt(Math.cos(rad) * 200, Math.sin(rad) * 200) !== biome) continue
-    sx += Math.cos(rad)
-    sz += Math.sin(rad)
-  }
-  return sx || sz ? Math.atan2(sz, sx) : fallback
-}
 
 let villageCache = null
 let villageGrid = null
@@ -598,19 +655,8 @@ export function villages() {
   const nearLake = (x, z) => LAKES.some((l) => Math.hypot(l.x - x, l.z - z) < l.radius * 1.25 + 30) || MESAS.some((m) => Math.hypot(m.x - x, m.z - z) < m.radius + MESA_EDGE + VILLAGE_PLAZA_RADIUS + VILLAGE_FLATTEN)
   // The storm cities' spots are fixed first (they are appended last, so every other village keeps its seed) and everyone
   // else keeps clear of them.
-  const cityAt = []
-  CITY_DEFS.forEach((def, i) => {
-    const base = biomeBearing(def.biome, (i / CITY_DEFS.length) * Math.PI * 2)
-    for (let k = 0; k < 40; k++) {
-      const a = base + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 0.03
-      const x = Math.cos(a) * CITY_RADIUS
-      const z = Math.sin(a) * CITY_RADIUS
-      if (k < 39 && (lakeAt(x, z, 0.9) || nearLake(x, z) || LAKES.some((l) => Math.hypot(l.x - x, l.z - z) < l.radius * 1.25 + 62))) continue // (a city's whole safe radius stays clear of water monsters)
-      cityAt.push({ x, z, city: def })
-      break
-    }
-  })
-  const nearCity = (x, z) => cityAt.some((c) => Math.hypot(c.x - x, c.z - z) < 125)
+  const cityAt = stormRegions().map((reg) => ({ x: reg.city.x, z: reg.city.z, city: reg }))
+  const nearCity = (x, z) => cityAt.some((c) => Math.hypot(c.x - x, c.z - z) < 150) || nearStormTemple(x, z, 80)
   for (let i = -span; i <= span; i++) {
     for (let j = -span; j <= span; j++) {
       const rng = mulberry32(Math.imul(i, 40503) ^ Math.imul(j, 9176) ^ (WORLD_SEED + 91))
@@ -664,17 +710,50 @@ export function villages() {
       biome: biomeAt(site.x, site.z),
     }
   })
-  villageGrid = makeGrid(villageCache, () => Math.max(VILLAGE_SAFE_RADIUS, VILLAGE_PLAZA_RADIUS + VILLAGE_FLATTEN, 60))
+  villageGrid = makeGrid(villageCache, (v) => (v.city ? CITY_FLAT_RADIUS + 34 : Math.max(VILLAGE_SAFE_RADIUS, VILLAGE_PLAZA_RADIUS + VILLAGE_FLATTEN, 60)))
   return villageCache
 }
 
 export const villageById = (id) => villages().find((v) => v.id === id) ?? null
 
 // The village (if any) whose centre is within `radius` of a point, with the distance.
+// True inside a village's built-up area plus `margin` (a storm city's whole town, which is far bigger than a plaza).
+export function inVillageGrounds(x, z, margin = 0) {
+  if (depthsOn) return false
+  villages()
+  for (const v of gridAt(villageGrid, x, z)) { // (the grid reaches CITY_FLAT_RADIUS + 34 round a city, 60 round a village)
+    const r = (v.city ? CITY_FLAT_RADIUS + 8 : VILLAGE_PLAZA_RADIUS) + margin
+    const dx = v.x - x
+    const dz = v.z - z
+    if (dx * dx + dz * dz < r * r) return true
+  }
+  return false
+}
+// Villages are safe ground: no monster spawns in one or walks into one. A village's barrier is a circle round its
+// houses; a storm city's round its whole town.
+export const VILLAGE_BARRIER = 32
+export const villageBarrier = (v) => (v.city ? CITY_FLAT_RADIUS + 6 : VILLAGE_BARRIER)
+// If (x, z) -- a body of radius `r` -- is inside a village's barrier, the nearest spot just outside it; else null.
+export function villageKeepOut(x, z, r = 0) {
+  if (depthsOn) return null
+  villages()
+  for (const v of gridAt(villageGrid, x, z)) {
+    const limit = villageBarrier(v) + r
+    const dx = x - v.x
+    const dz = z - v.z
+    const d2 = dx * dx + dz * dz
+    if (d2 >= limit * limit) continue
+    const d = Math.sqrt(d2) || 1
+    const ux = d2 ? dx / d : 1
+    const uz = d2 ? dz / d : 0
+    return { x: v.x + ux * (limit + 0.01), z: v.z + uz * (limit + 0.01), village: v }
+  }
+  return null
+}
 export function nearestVillage(x, z, radius = Infinity) {
   if (depthsOn) return null
   villages()
-  const pool = radius <= 60 ? gridAt(villageGrid, x, z) : villageCache
+  const pool = radius <= 60 ? gridAt(villageGrid, x, z) : villageCache // (the grid covers 60 round a village, a city's whole town)
   let best = null
   for (const v of pool) {
     const d = Math.hypot(v.x - x, v.z - z)
@@ -691,8 +770,9 @@ export function heightAt(x, z) {
   villages()
   for (const v of gridAt(villageGrid, x, z)) {
     const d = Math.hypot(v.x - x, v.z - z)
-    if (d > VILLAGE_PLAZA_RADIUS + VILLAGE_FLATTEN) continue
-    const w = 1 - smooth(clamp01((d - VILLAGE_PLAZA_RADIUS) / VILLAGE_FLATTEN))
+    const plaza = v.city ? CITY_FLAT_RADIUS : VILLAGE_PLAZA_RADIUS // a storm city's whole town stands on level ground
+    if (d > plaza + VILLAGE_FLATTEN) continue
+    const w = 1 - smooth(clamp01((d - plaza) / VILLAGE_FLATTEN))
     h = h + (v.baseHeight - h) * w
   }
   for (const site of gridAt(siteIndex(), x, z)) {
@@ -711,8 +791,15 @@ let siteGrid = null
 let siteList = null
 // Every ruin and landmark (each has x, z, radius, baseHeight and maybe a `floor` colour).
 export function sites() {
-  siteList ??= [...ruins(), ...landmarks()]
+  siteList ??= [...ruins(), ...landmarks(), ...stormTempleSites()]
   return siteList
+}
+// Each storm's temple, at its eye: a levelled floor that everything else keeps off (the look is phenomenaFx.js).
+function stormTempleSites() {
+  return stormRegions().map((reg, index) => ({
+    id: `st${index}`, index, kind: 'stormTemple', site: 'stormTemple', stormId: reg.stormId, x: reg.eye.x, z: reg.eye.z,
+    radius: STORM_TEMPLE_RADIUS, floor: null, name: `${reg.name}'s storm temple`, baseHeight: terrainHeight(reg.eye.x, reg.eye.z), biome: reg.biome,
+  }))
 }
 function siteIndex() {
   siteGrid ??= makeGrid(sites(), (s) => s.radius + SITE_FLATTEN)
@@ -752,7 +839,7 @@ export function ruins() {
     const r = Math.sqrt(inner * inner + rng() * (outer * outer - inner * inner))
     const x = Math.cos(angle) * r
     const z = Math.sin(angle) * r
-    if (villages().some((v) => Math.hypot(v.x - x, v.z - z) < 75)) continue
+    if (villages().some((v) => Math.hypot(v.x - x, v.z - z) < 75) || nearStormTemple(x, z, 50)) continue
     if (LAKES.some((l) => Math.hypot(l.x - x, l.z - z) < l.radius * 1.5 + 30)) continue
     if (MESAS.some((m) => Math.hypot(m.x - x, m.z - z) < m.radius + MESA_EDGE + 20)) continue
     if (placed.some((q) => Math.hypot(q.x - x, q.z - z) < 85)) continue
@@ -865,7 +952,7 @@ export function landmarks() {
     if (!options?.length) continue
     const kind = pickWeighted(rng, options)[0]
     const radius = LANDMARK_KINDS[kind].radius
-    if (villages().some((v) => Math.hypot(v.x - x, v.z - z) < 58 + radius)) continue
+    if (villages().some((v) => Math.hypot(v.x - x, v.z - z) < 58 + radius) || nearStormTemple(x, z, 45 + radius)) continue
     if (ruins().some((q) => Math.hypot(q.x - x, q.z - z) < 45 + radius)) continue
     if (LAKES.some((l) => Math.hypot(l.x - x, l.z - z) < l.radius * 1.5 + 22 + radius)) continue
     if (MESAS.some((m) => Math.hypot(m.x - x, m.z - z) < m.radius + MESA_EDGE + 16 + radius)) continue
@@ -992,8 +1079,12 @@ export function landmarkLayout(lm) {
 
 // A village's buildings, lamps, well and notice board, and the people who live there (all seeded).
 //   props - [{ kind, x, z, scale, rot, radius }]   npcs - [{ id, name, role, color, x, z, villageId }]
+const cityLayoutCache = new Map()
 export function villageLayout(village) {
-  if (village.city) return cityLayout(village)
+  if (village.city) { // (a big town: worked out once, then shared -- every chunk near it asks)
+    if (!cityLayoutCache.has(village.id)) cityLayoutCache.set(village.id, cityLayout(village))
+    return cityLayoutCache.get(village.id)
+  }
   const rng = mulberry32(village.index * 104729 + WORLD_SEED)
   const props = [{ kind: 'well', x: village.x, z: village.z, scale: 1, rot: 0, radius: PROP_RADIUS.well }]
   const houseKinds = ['cottage', 'cottageTeal', 'cottageAmber']
@@ -1045,69 +1136,137 @@ export function villageLayout(village) {
 }
 
 
-// A storm city: a bigger, grander village on the rim -- two halls, a ring of homes, a plaza well and a TEMPLE (a ring of
-// columns round a shrine) where the Sage lives. Its people are all one species (logic/species.js).
-//   props / treasure as in villageLayout; npcs also carry `species`; the Sage has `guide` (the storm's id).
-export const CITY_PEOPLE = 8
+// A storm city: the home of one people (logic/species.js), out on the rim inside its storm, built THEIR way (no paved
+// town square and lamp posts): the Dunekin's walled oasis of domes, tents and market stalls; the Frostkin's eyrie of
+// perch-huts on stilts round a great ice spire; the Embervolk's boulder-burrows under a crag, with lava channels and
+// forges; the Mirefolk's stilt huts round a glowing lantern pond. The people's CHAMPION stands on a dais at the back
+// of town (the storm's guide, `guide` = the storm's id, `champion: true`).
+//   props / treasure as in villageLayout; npcs also carry `species`; the champion has `guide` and `champion`.
+export const CITY_PEOPLE = 16
+export const DUNE_WALL_RADIUS = 52
+export const DUNE_WALL_SEGMENTS = 36
+export const CITY_STYLE = { dunekin: 'dune', frostkin: 'frost', embervolk: 'ember', mirefolk: 'mire' }
 function cityLayout(city) {
   const rng = mulberry32(city.index * 104729 + WORLD_SEED + 1)
   const species = SPECIES[city.species]
-  const out = Math.atan2(city.z, city.x) // toward the rim: the temple stands on the inland side, facing the storm
+  const champ = species.champion
+  const pre = CITY_STYLE[city.species] ?? 'dune'
+  const out = Math.atan2(city.z, city.x) // toward the rim: the champion's dais is at the back of town, facing in
   const inland = out + Math.PI
-  const props = [{ kind: 'well', x: city.x, z: city.z, scale: 1.2, rot: 0, radius: PROP_RADIUS.well * 1.2 }]
-  const add = (kind, x, z, scale = 1, rot = 0) => props.push({ kind, x, z, scale, rot, radius: PROP_RADIUS[kind] * scale })
-  // The temple, 22 inland of the plaza: floor, a ring of columns, a shrine and the rune altar.
-  const tx = city.x + Math.cos(inland) * 22
-  const tz = city.z + Math.sin(inland) * 22
-  add('temple', tx, tz, 1, 0)
-  for (let i = 0; i < 8; i++) {
-    const a = (i / 8) * Math.PI * 2
-    add(i % 5 === 3 ? 'columnBroken' : 'column', tx + Math.cos(a) * 8.5, tz + Math.sin(a) * 8.5, 1.05, rng() * 6.28)
+  const props = []
+  const polar = (a, r) => ({ x: city.x + Math.cos(a) * r, z: city.z + Math.sin(a) * r })
+  const faceIn = (p) => Math.atan2(city.x - p.x, city.z - p.z)
+  const add = (kind, p, scale = 1, rot = 0, radius = (PROP_RADIUS[kind] ?? 0) * scale) => {
+    props.push({ kind, x: p.x, z: p.z, scale, rot, radius })
+    return p
   }
-  add('shrine', tx, tz, 1.15, 0)
-  add('runeAltar', tx + Math.cos(inland) * 4.2, tz + Math.sin(inland) * 4.2, 1, inland + Math.PI / 2)
-  // Two halls beside the plaza and a ring of homes round it (clear of the temple).
-  const homes = 10
-  const offset = rng() * Math.PI * 2
-  const kinds = ['cottage', 'cottageTeal', 'cottageAmber']
-  for (let i = 0; i < homes; i++) {
-    const a = offset + (i / homes) * Math.PI * 2
-    if (Math.abs(((a - inland + Math.PI * 3) % (Math.PI * 2)) - Math.PI) < 0.75) continue // the temple's side stays open
-    const r = 17 + (i % 2) * 4.5 + rng() * 1.5
-    const x = city.x + Math.cos(a) * r
-    const z = city.z + Math.sin(a) * r
-    const hall = i === 1 || i === 6
-    add(hall ? 'hall' : kinds[i % kinds.length], x, z, hall ? 1.1 : 0.95 + rng() * 0.25, Math.atan2(city.x - x, city.z - z))
+  const free = (p, r) => props.every((q) => Math.hypot(q.x - p.x, q.z - p.z) > (q.radius || 1) + r + 1.2)
+  // Scatters `n` of `kinds` between radii r0..r1 (organic, not a ring), clear of everything placed so far.
+  const scatter = (kinds, n, r0, r1, { avoid = null, face = true, scale = [0.9, 1.2] } = {}) => {
+    let placed = 0
+    for (let tries = 0; tries < n * 30 && placed < n; tries++) {
+      const a = rng() * Math.PI * 2
+      if (avoid !== null && Math.abs(((a - avoid + Math.PI * 3) % (Math.PI * 2)) - Math.PI) < 0.55) continue
+      const p = polar(a, r0 + rng() * (r1 - r0))
+      const kind = kinds[placed % kinds.length]
+      const sc = scale[0] + rng() * (scale[1] - scale[0])
+      if (!free(p, (PROP_RADIUS[kind] ?? 0.5) * sc)) continue
+      add(kind, p, sc, face ? faceIn(p) + (rng() - 0.5) * 0.5 : rng() * Math.PI * 2)
+      placed++
+    }
   }
-  for (let i = 0; i < 6; i++) {
-    const a = offset + Math.PI / 6 + (i / 6) * Math.PI * 2
-    add('lampPost', city.x + Math.cos(a) * 8, city.z + Math.sin(a) * 8)
+  const block = (p, radius) => props.push({ kind: 'blocker', x: p.x, z: p.z, scale: 1, rot: 0, radius })
+  // The champion's dais at the back of town (facing the way you came in).
+  const dais = polar(out, pre === 'frost' ? 22 : 26)
+  add(`${pre}Dais`, dais, 1.3, faceIn(dais))
+  if (pre === 'dune') {
+    // A walled oasis: the pool and palms at the heart, a ring wall with a gate on the inland side.
+    add('duneOasis', { x: city.x, z: city.z }, 1.5, 0, 0)
+    for (let i = 0; i < 9; i++) add('palm', polar((i / 9) * Math.PI * 2 + 0.4, 10 + rng() * 1.5), 0.9 + rng() * 0.5, rng() * 6.28)
+    // (A model's long side is its local x; turning it by -a - PI/2 lays it along the ring at bearing a.)
+    const segs = DUNE_WALL_SEGMENTS
+    const step = (Math.PI * 2) / segs
+    for (let i = 0; i < segs; i++) {
+      const a = inland + i * step
+      const along = -a - Math.PI / 2
+      if (i === 0) {
+        add('duneGate', polar(a, DUNE_WALL_RADIUS), 1, along, 0)
+        for (const k of [-1, 1]) block(polar(a + k * (3.4 / DUNE_WALL_RADIUS), DUNE_WALL_RADIUS), 1.9) // the gate towers (the arch between is open)
+        continue
+      }
+      add('duneWall', polar(a, DUNE_WALL_RADIUS), 1, along, 0)
+      for (let k = 0; k < 5; k++) block(polar(a - step / 2 + (k / 5) * step, DUNE_WALL_RADIUS), 1.4) // a solid chain, no gaps
+    }
+    add('duneHall', polar(out + 0.5, 40), 1.25, faceIn(polar(out + 0.5, 40)))
+    add('duneHall', polar(out - 0.9, 38), 1.1, faceIn(polar(out - 0.9, 38)))
+    scatter(['duneStall'], 8, 14, 19)
+    scatter(['duneHome', 'duneHomeB', 'duneTent', 'duneHome'], 24, 21, 47, { avoid: inland })
+  } else if (pre === 'frost') {
+    // An eyrie: a great ice spire at the heart with perch-huts on tall stilts round it, igloos and racks below.
+    add('frostSpire', { x: city.x, z: city.z }, 1.25, rng() * 6.28)
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2 + 0.3
+      if (Math.abs(((a - out + Math.PI * 3) % (Math.PI * 2)) - Math.PI) < 0.35) continue // the dais side stays open
+      const p = polar(a, 10.5 + (i % 2) * 5)
+      add('frostPerch', p, 0.85 + (i % 3) * 0.2, faceIn(p) + Math.PI)
+    }
+    add('frostHall', polar(out + 0.9, 38), 1.2, faceIn(polar(out + 0.9, 38)))
+    add('frostHall', polar(out - 1.2, 40), 1.05, faceIn(polar(out - 1.2, 40)))
+    scatter(['frostIgloo', 'frostLonghouse', 'frostIgloo'], 20, 23, 48, { avoid: inland })
+    scatter(['frostRack', 'frostTotem'], 12, 19, 46)
+    for (const [a, r] of [[0.5, 20], [-0.7, 26], [2.2, 32], [-2.4, 30]]) add('bonfire', polar(inland + a, r))
+  } else if (pre === 'ember') {
+    // Boulder-burrows dug in under a crag at the back of town, lava channels, a great forge and mine carts.
+    for (let i = 0; i < 17; i++) {
+      const a = out + (i - 8) * 0.13
+      const p = polar(a, 52 + (i % 2) * 4)
+      add('emberCrag', p, 1.1 + (i % 3) * 0.25, a + Math.PI + (rng() - 0.5) * 0.4)
+    }
+    add('emberForge', { x: city.x, z: city.z }, 1.3, inland)
+    for (let i = 0; i < 5; i++) {
+      const a = out + 1.2 + i * 0.95
+      add('emberLava', polar(a, 21), 1.6, -a, 0) // (its long side is local z: it runs out from the forge)
+    }
+    add('emberHall', polar(out - 0.7, 38), 1.2, faceIn(polar(out - 0.7, 38)))
+    add('emberHall', polar(out + 0.9, 40), 1.05, faceIn(polar(out + 0.9, 40)))
+    scatter(['emberBurrow', 'emberBurrow', 'emberHome'], 22, 16, 47, { avoid: inland })
+    scatter(['emberCart', 'emberAnvil'], 8, 10, 22)
+  } else {
+    // A lantern pond with lily pads and boardwalks, stilt huts round its shore, lantern poles everywhere.
+    add('mirePond', { x: city.x, z: city.z }, 1.5, 0, 0)
+    for (let i = 0; i < 4; i++) add('mireWalk', polar(inland + 0.4 + i * 1.6, 11), 1.5, -(inland + 0.4 + i * 1.6), 0) // (long side x: runs out across the pond)
+    for (let i = 0; i < 10; i++) add('mireLily', polar(rng() * 6.28, 2 + rng() * 10), 0.7 + rng() * 0.8, rng() * 6.28, 0)
+    add('mireHall', polar(out + 0.8, 38), 1.2, faceIn(polar(out + 0.8, 38)))
+    add('mireHall', polar(out - 1.0, 40), 1.05, faceIn(polar(out - 1.0, 40)))
+    scatter(['mireHome', 'mireHomeB'], 22, 20, 47, { avoid: inland })
+    scatter(['mireLamp'], 20, 16, 48, { face: false, scale: [0.9, 1.4] })
   }
-  add('noticeBoard', city.x + Math.cos(out + 0.5) * 10.5, city.z + Math.sin(out + 0.5) * 10.5, 1, out + 0.5 + Math.PI / 2)
-  // The storm's own warning at the rim side: a bonfire the people keep lit.
-  add('bonfire', city.x + Math.cos(out) * 11, city.z + Math.sin(out) * 11)
-  // People: the Sage in the temple, then neighbours out and about.
+  // People: the champion on the dais, neighbours all about the town.
   const npcs = [{
-    id: `${city.id}:sage`, villageId: city.id, species: city.species, guide: city.stormId,
-    name: species.names[0], role: `${species.name} Storm Sage`, color: species.colors[0],
-    x: tx + Math.cos(inland + Math.PI) * 3, z: tz + Math.sin(inland + Math.PI) * 3,
+    id: `${city.id}:sage`, villageId: city.id, species: city.species, guide: city.stormId, champion: true,
+    name: champ.name, role: champ.title, color: champ.color,
+    x: dais.x, z: dais.z,
   }]
+  const offset = rng() * Math.PI * 2
   for (let i = 0; i < CITY_PEOPLE - 1; i++) {
-    const a = offset + 0.3 + (i / (CITY_PEOPLE - 1)) * Math.PI * 2
+    const a = offset + (i / (CITY_PEOPLE - 1)) * Math.PI * 2
+    let p = polar(a, 11 + (i % 4) * 7)
+    for (let k = 0; k < 12 && !free(p, 0.6); k++) p = polar(a + k * 0.17, 10 + rng() * 32)
     npcs.push({
       id: `${city.id}:${i}`, villageId: city.id, species: city.species,
-      name: species.names[(i + 1) % species.names.length],
+      name: species.names[(i + 1) % species.names.length] + (i + 1 >= species.names.length ? ` ${['the Younger', 'the Elder', 'Two-Paws', 'of the Gate', 'Quickstep', 'the Quiet'][Math.floor((i + 1) / species.names.length - 1) % 6]}` : ''),
       role: `${species.name} ${species.roles[i % species.roles.length]}`,
       color: species.colors[i % species.colors.length],
-      x: city.x + Math.cos(a) * 9.5, z: city.z + Math.sin(a) * 9.5,
+      x: p.x, z: p.z,
     })
   }
-  const ca = offset + 1.9
+  let chestAt = polar(inland + 1.3, 11)
+  for (let k = 0; k < 10 && !free(chestAt, 1); k++) chestAt = polar(inland + 1.3 + k * 0.3, 10 + k)
   const treasure = [
-    { id: `${city.id}:chest`, kind: 'chest', x: city.x + Math.cos(ca) * 12.5, z: city.z + Math.sin(ca) * 12.5 },
-    { id: `${city.id}:temple-chest`, kind: 'chest', x: tx + Math.cos(inland) * 6.5, z: tz + Math.sin(inland) * 6.5 },
+    { id: `${city.id}:chest`, kind: 'chest', ...chestAt },
+    { id: `${city.id}:temple-chest`, kind: 'chest', ...polar(out + 0.32, 15) },
   ]
-  return { props, npcs, treasure, temple: { x: tx, z: tz } }
+  return { props, npcs, treasure, temple: dais }
 }
 
 // ---- roads ------------------------------------------------------------------------------------
@@ -1294,6 +1453,11 @@ export const PROP_HEIGHT_DEFAULT = 4
 export const PROP_HEIGHT = {
   blocker: 8, obelisk: 6, standingStone: 3.5, mooncap: 4, gloomTree: 6, crystal: 3, dunerock: 2.2, iceSpire: 5, frostPine: 6,
   obsidian: 3, emberRock: 2, deadTree: 5, ruinArch: 6, roadLantern: 2.4, signpost: 2.2, windmill: 10, column: 5, columnBroken: 2.5,
+  duneHome: 6, duneHomeB: 6, duneHall: 9, duneLamp: 3.2, duneWell: 3, duneFloor: 0.2, frostIgloo: 3.6, frostLonghouse: 7, frostHall: 9, frostLamp: 3.5, frostWell: 2, frostFloor: 0.2,
+  duneDais: 1.2, frostDais: 1.2, emberDais: 1.2, mireDais: 1.2, duneOasis: 0.2, palm: 7, duneWall: 4.2, duneGate: 7, duneStall: 3.4, duneTent: 3.6,
+  frostSpire: 30, frostPerch: 12, frostRack: 2.6, frostTotem: 4.5, emberCrag: 13, emberForge: 5, emberLava: 0.2, emberBurrow: 5.5, emberCart: 1.8, emberAnvil: 1.2,
+  mirePond: 0.2, mireWalk: 0.4, mireLily: 0.3, deepTemple: 16,
+  emberHome: 6, emberHomeB: 6, emberHall: 10, emberLamp: 3.4, emberWell: 2.6, emberFloor: 0.2, mireHome: 8, mireHomeB: 8, mireHall: 9, mireLamp: 3.2, mireWell: 2, mireFloor: 0.2,
   ruinWall: 3, shrine: 3, tower: 14, cottage: 6, cottageTeal: 6, cottageAmber: 6, hall: 9, well: 2, lampPost: 3.2, noticeBoard: 2.4,
   giantShroom: 8, shroomCluster: 2.5, saltPillar: 5, saltCrystal: 2.5, mangrove: 6, sunkenColumn: 4, stormRod: 7, slateStack: 2.5,
   chargedRock: 2.2, boneSpike: 3, skull: 2.5, shardPillar: 5, colossusHead: 9, colossusHand: 5, runeAltar: 2, bonfire: 1.5,
@@ -1312,6 +1476,11 @@ export const PROP_RADIUS = {
   ruinArch: 2.4,
   roadLantern: 0.3, signpost: 0.3, windmill: 1.9,
   column: 0.8, columnBroken: 0.8, ruinWall: 2.0, shrine: 1.2, tower: 2.8, temple: 0,
+  duneHome: 2.9, duneHomeB: 2.9, duneHall: 4.2, duneLamp: 0.35, duneWell: 1.3, duneFloor: 0, frostIgloo: 3.0, frostLonghouse: 2.9, frostHall: 4.2, frostLamp: 0.35, frostWell: 1.4, frostFloor: 0,
+  duneDais: 0, frostDais: 0, emberDais: 0, mireDais: 0, duneOasis: 0, palm: 0.5, duneWall: 0, duneGate: 0, duneStall: 1.6, duneTent: 2.3,
+  frostSpire: 4.6, frostPerch: 0.7, frostRack: 0.8, frostTotem: 0.5, emberCrag: 4.8, emberForge: 2.6, emberLava: 0, emberBurrow: 3.2, emberCart: 1.0, emberAnvil: 0.7,
+  mirePond: 0, mireWalk: 0, mireLily: 0, deepTemple: 0,
+  emberHome: 2.9, emberHomeB: 2.9, emberHall: 4.2, emberLamp: 0.35, emberWell: 1.45, emberFloor: 0, mireHome: 2.9, mireHomeB: 2.9, mireHall: 4.2, mireLamp: 0.35, mireWell: 1.6, mireFloor: 0,
   cottage: 2.9, cottageTeal: 2.9, cottageAmber: 2.9, hall: 4.2, well: 1.3, lampPost: 0.35, noticeBoard: 0.9,
   // the Frontier's scenery
   giantShroom: 1.1, shroomCluster: 0.9,
@@ -1357,7 +1526,7 @@ export function chunkContent(cx, cz) {
     if (!inWorld(p)) continue
     // The very centre stays clear for the spawn point, and villages keep their own streets clear.
     if (Math.hypot(p.x, p.z) < 9) continue
-    if (nearestVillage(p.x, p.z, VILLAGE_PLAZA_RADIUS + 22)) continue
+    if (inVillageGrounds(p.x, p.z, 22)) continue
     if (lakeAt(p.x, p.z, 0.35) || nearestSite(p.x, p.z, 2)) continue // no trees in the water, the ruins or the landmarks
     if (onRoad(p.x, p.z, 1.5)) continue // nor on the roads
     const kind = pickWeighted(rng, biome.props)[0]
@@ -1367,7 +1536,7 @@ export function chunkContent(cx, cz) {
   // A ruined arch now and then, anywhere out of the sanctum: a landmark to steer by.
   if (out.biome !== 'sanctum' && rng() < 0.12) {
     const p = place()
-    if (inWorld(p) && !lakeAt(p.x, p.z, 0.5) && !nearestSite(p.x, p.z, 4) && !nearestVillage(p.x, p.z, VILLAGE_PLAZA_RADIUS + 22)) out.props.push({ kind: 'ruinArch', x: p.x, z: p.z, scale: 1.2 + rng() * 0.6, rot: rng() * Math.PI * 2, radius: PROP_RADIUS.ruinArch })
+    if (inWorld(p) && !lakeAt(p.x, p.z, 0.5) && !nearestSite(p.x, p.z, 4) && !inVillageGrounds(p.x, p.z, 22)) out.props.push({ kind: 'ruinArch', x: p.x, z: p.z, scale: 1.2 + rng() * 0.6, rot: rng() * Math.PI * 2, radius: PROP_RADIUS.ruinArch })
   }
 
   // Along the roads: wayside lanterns, the odd fingerpost, and now and then a windmill on the verge
@@ -1377,7 +1546,7 @@ export function chunkContent(cx, cz) {
     const p = place()
     const roll = roadRng()
     const side = roadRng()
-    if (!inWorld(p) || nearestVillage(p.x, p.z, VILLAGE_PLAZA_RADIUS + 18) || lakeAt(p.x, p.z, 0.4) || nearestSite(p.x, p.z, 3)) continue
+    if (!inWorld(p) || inVillageGrounds(p.x, p.z, 18) || lakeAt(p.x, p.z, 0.4) || nearestSite(p.x, p.z, 3)) continue
     const d = roadDistance(p.x, p.z)
     if (d > ROAD_WIDTH + 1 && d < ROAD_WIDTH + 3.5) {
       const kind = roll < 0.75 ? 'roadLantern' : 'signpost'
@@ -1394,7 +1563,7 @@ export function chunkContent(cx, cz) {
     for (let i = 0; i < count; i++) {
       const p = place()
       if (!inWorld(p) || Math.hypot(p.x, p.z) < SANCTUM_RADIUS + 6) continue
-      if (nearestVillage(p.x, p.z, VILLAGE_SAFE_RADIUS)) continue // villages are safe
+      if (nearestVillage(p.x, p.z, VILLAGE_SAFE_RADIUS) || inVillageGrounds(p.x, p.z, 12)) continue // villages (and whole storm cities) are safe
       if (lakeAt(p.x, p.z, 0.3) || nearestSite(p.x, p.z, 3)) continue // land monsters keep out of the water; ruins and landmarks have their own guards
       const options = biome.monsters.filter((m) => danger >= m[2])
       const [type] = pickWeighted(rng, options)
@@ -1449,7 +1618,7 @@ export function chunkContent(cx, cz) {
   // Ruins and landmarks: stones, loot and guards. A temple's guardian is a boss (hpScale / danger follow the land
   // around it); everyone else is drawn from the biome the site stands in.
   for (const site of sites()) {
-    if (Math.hypot(site.x - center.x, site.z - center.z) > 60) continue
+    if (site.site === 'stormTemple' || Math.hypot(site.x - center.x, site.z - center.z) > 60) continue
     const layout = site.site === 'ruin' ? ruinLayout(site) : landmarkLayout(site)
     for (const prop of layout.props) if (inChunk(prop)) out.props.push(prop)
     for (const t of layout.treasure) if (inChunk(t)) out.treasure.push(t)
@@ -1494,7 +1663,7 @@ export function chunkContent(cx, cz) {
   if (far && rng() < WILD_CHEST_CHANCE) wild.push({ id: `${out.key}:chest`, kind: 'chest', ...place() })
   if (far && rng() < 0.16) wild.push({ id: `${out.key}:pod`, kind: 'pod', ...place() })
   if (far && rng() < 0.04) wild.push({ id: `${out.key}:perk`, kind: 'perk', ...place() })
-  out.treasure.push(...wild.filter((t) => inWorld(t) && !nearestVillage(t.x, t.z, VILLAGE_PLAZA_RADIUS + 24) && !lakeAt(t.x, t.z, 0.2) && !onRoad(t.x, t.z, 0) && !nearestSite(t.x, t.z, 2) && !out.props.some((p) => p.radius > 0 && Math.hypot(p.x - t.x, p.z - t.z) < p.radius + 1.6)))
+  out.treasure.push(...wild.filter((t) => inWorld(t) && !inVillageGrounds(t.x, t.z, 24) && !lakeAt(t.x, t.z, 0.2) && !onRoad(t.x, t.z, 0) && !nearestSite(t.x, t.z, 2) && !out.props.some((p) => p.radius > 0 && Math.hypot(p.x - t.x, p.z - t.z) < p.radius + 1.6)))
   return out
 }
 

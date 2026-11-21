@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  CLEAR_REWARD, COLD, PHENOMENA, PHENOMENON_LIST, PHENOMENON_ORDER, PHENOMENON_RADIUS, advanceStage, clearedCount, coldDamagePerSecond, coldSlow, coldStep,
+  CLEAR_REWARD, COLD, PHENOMENA, PHENOMENON_LIST, PHENOMENON_ORDER, PHENOMENON_RADIUS, STORM_FADE, advanceStage, clearedCount, coldDamagePerSecond, coldSlow, coldStep,
   collectItem, createHold, createTrial, emberSpot, gustPush, heroForStorms, isCleared, phenomenonEye, progressOf, progressText, purgeKill, sporeSpot,
   stageCount, stagePoints, stageReward, startPhenomenon, stepHold, stepTrial, stormAt, stormIntensity, stormMonsters,
 } from '../src/logic/phenomena.js'
@@ -32,7 +32,7 @@ describe('the four regional phenomena', () => {
   it('the storm blows at full strength inside the wall and fades beyond it', () => {
     const eye = phenomenonEye('sandstorm')
     expect(stormIntensity('sandstorm', eye.x, eye.z)).toBe(1)
-    expect(stormIntensity('sandstorm', eye.x + PHENOMENON_RADIUS + 12, eye.z)).toBeCloseTo(0.5, 1)
+    expect(stormIntensity('sandstorm', eye.x + PHENOMENON_RADIUS + STORM_FADE / 2, eye.z)).toBeCloseTo(0.5, 1)
     expect(stormIntensity('sandstorm', eye.x + PHENOMENON_RADIUS + 200, eye.z)).toBe(0)
     expect(stormIntensity('sandstorm', eye.x, eye.z, true)).toBe(0)
     expect(stormAt(eye.x, eye.z)).toBe('sandstorm')
