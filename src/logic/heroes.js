@@ -99,7 +99,7 @@ export const HEROES = [
     ],
   },
   {
-    id: 'plague', name: 'Plague Doctor', cost: 600,
+    id: 'plague', name: 'Plague Doctor', cost: 3000,
     blurb: 'The cure is worse. That is the idea.',
     stats: { damageTaken: 0.95, regen: 0.4 }, trait: { id: 'contagion', name: 'Contagion', desc: 'Monsters you kill leave a pool of plague ooze for 3 s that hits every monster in it for 0.5x damage every 0.5 s. Monsters the poison kills leave puddles too.' },
     gear: ['plagueHat', 'beak', 'longCape', 'lantern'],
@@ -317,7 +317,7 @@ export const HEROES = [
     ],
   },
   {
-    id: 'dread', name: 'Dread Lord Vexar', cost: 900,
+    id: 'dread', name: 'Dread Lord Vexar', cost: 3000,
     blurb: 'Black armour, heavy breathing, a plasma blade that never stays sheathed.',
     stats: { damage: 1.15, damageTaken: 0.9, speed: 0.97, maxHp: 25 }, mask: true,
     trait: { id: 'saber', name: 'Plasma Wake', desc: '3 in 4 attacks hurl a spinning plasma blade 12 m along your aim and back again, slicing everything both ways for 1.2x. Every 3rd throw splits into twin blades.' },

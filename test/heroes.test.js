@@ -27,10 +27,10 @@ describe('heroes', () => {
   it('buying a hero spends the bank, owns it and plays it; too poor fails', () => {
     const poor = { ...createProfile(), bank: 10 }
     expect(buyHero(poor, 'plague').ok).toBe(false)
-    const rich = { ...createProfile(), bank: 1000 }
+    const rich = { ...createProfile(), bank: 5000 }
     const { profile, ok } = buyHero(rich, 'plague')
     expect(ok).toBe(true)
-    expect(profile.bank).toBe(1000 - HEROES.find((h) => h.id === 'plague').cost)
+    expect(profile.bank).toBe(5000 - HEROES.find((h) => h.id === 'plague').cost)
     expect(profile.hero).toBe('plague')
     expect(heroLook(profile).mask).toBe(true)
     expect(selectHero(profile, 'guest').profile.hero).toBe('guest')
@@ -38,7 +38,7 @@ describe('heroes', () => {
   })
 
   it('skins need the hero, cost crystals once, and are worn', () => {
-    const start = { ...createProfile(), bank: 2000 }
+    const start = { ...createProfile(), bank: 5000 }
     expect(buySkin(start, 'plague', 'toxic').ok).toBe(false) // hero first
     const withHero = buyHero(start, 'plague').profile
     const bought = buySkin(withHero, 'plague', 'toxic')
@@ -183,6 +183,7 @@ describe('premium heroes', () => {
   it('cost 2200 and Vexar got buffed', async () => {
     const { SABER_CHANCE, SABER_REACH } = await import('../src/logic/heroes.js')
     for (const id of ['thundra', 'singularity', 'phoebe', 'kenji']) expect(HEROES.find((h) => h.id === id).cost).toBe(2200)
+    for (const id of ['plague', 'dread']) expect(HEROES.find((h) => h.id === id).cost).toBe(3000)
     expect(SABER_CHANCE).toBeGreaterThan(0.5)
     expect(SABER_REACH).toBeGreaterThan(9)
   })
