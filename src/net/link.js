@@ -391,7 +391,15 @@ export class Link {
     this.lastHeard.set(from, performance.now())
     if (m.t === 'welcome') this.welcomed = true
     if (m.t === 'full') { this.h.onStatus?.(`That room is full (${MAX_PLAYERS} players).`); this._teardown('full'); return }
-    if (m.t === 'version') { this.h.onStatus?.('The host has a different version of the game. Both refresh the page and try again.'); this._teardown('version'); return }
+    if (m.t === 'version') {
+      const theirs = Number(m.v) || 0
+      this.h.onStatus?.(theirs > PROTOCOL
+        ? `The host has a NEWER version of the game (v${theirs}, you have v${PROTOCOL}). Update yours: hard-refresh the page (Ctrl+Shift+R / Cmd+Shift+R), or get the latest SlashBattle.html / git pull.`
+        : `The host has an OLDER version of the game (v${theirs}, you have v${PROTOCOL}). The host needs to update: hard-refresh (Ctrl+Shift+R / Cmd+Shift+R), or get the latest SlashBattle.html / git pull.`)
+      if (theirs > PROTOCOL) this.h.onNewerHost?.()
+      this._teardown('version')
+      return
+    }
     if (this.isHost) {
       // Pass on whatever isn't just for the host, stamped with who sent it.
       if (m.to && m.to !== 'host') { this.sendTo(m.to, { ...m, from }); return }

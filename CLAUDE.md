@@ -1178,6 +1178,10 @@ the live connection for a player can drop them).
   rule). While any player watches an intro they count as hidden, so the boss can't hit them.
 - **Boss loot**: `dropBossLoot` drops TWO free chests (plus a power-up) in co-op, one for each of you, in every player's
   game (a joiner's when the puppet boss dies, `onPuppetBossDeath`); solo it's one.
+- **Staying up to date** (`src/updateCheck.js`): a phone's home-screen (full-screen) copy just resumes its old page, so in a real build
+  the game fetches the live page past every cache on start / on coming back to the front / every 5 min and compares the hashed
+  script name; a new one shows an "update" banner (`reloadFresh` loads the page under a fresh `?v=`). A joiner turned away by a
+  NEWER host (`link.js`'s `version` message, `onNewerHost`) gets an "Update the game now" button in the co-op panel.
 - **1v1 duel** (the panel's "Host a 1v1 duel", co-op mode `'duel'`, `PROTOCOL` 5; rules in `src/logic/duel.js`, `test/duel.test.js`):
   two players on the Orbital Sundeck, no waves or monsters, no progress (`freePlay()` includes `duelMode`), Normal difficulty. The other
   player is a **rival**: `coop.js`'s `stepRival` keeps a hittable stand-in (`userData.netRival`, untouchable while they hide, are down or

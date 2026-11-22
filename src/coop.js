@@ -25,6 +25,7 @@
 // pure rules (snapshot format, targeting, event routing).
 import * as THREE from 'three'
 import { Link } from './net/link.js'
+import { reloadFresh } from './updateCheck.js'
 import {
   COOP_RESPAWN_SECONDS, INTERP_DELAY, KEEPALIVE_SECONDS, MAX_PLAYERS, PROTOCOL, RELAY_INTERP_DELAY, cleanName, clampDamage, everyoneDown,
   lerp, lerpAngle, normalizeCode, packMonster, packPets, packShots, pickTarget, plainCopy, pushSnapshot, routeEvents, sampleSnapshots,
@@ -120,6 +121,7 @@ export function createCoop(ctx) {
 
   const link = new Link({
     onStatus: (text) => setStatus(text),
+    onNewerHost: () => { ui.update.style.display = '' }, // our copy is out of date: offer to load the new one
     onConnected: () => refresh(),
     onPeerJoin: (id, peerName) => hostAcceptPeer(id, peerName),
     onPeerLeave: (id) => removeRemote(id, true),
@@ -873,12 +875,13 @@ export function createCoop(ctx) {
       <div class="coop-row"><input id="coop-code" type="text" maxlength="4" placeholder="CODE" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="go"><button id="coop-join" type="button">Join</button></div>
       <div id="coop-code-big"></div>
       <div id="coop-status">Not connected.</div>
+      <div class="coop-row"><button id="coop-update" type="button" style="display:none">Update the game now</button></div>
       <div id="coop-players"></div>
       <div class="coop-row"><button id="coop-leave" type="button">Leave</button><button id="coop-close" type="button">Close <kbd>P</kbd></button></div>
     </div>`
   document.body.appendChild(panel)
   const $ = (id) => panel.querySelector(`#${id}`)
-  const ui = { name: $('coop-name'), code: $('coop-code'), host: $('coop-host'), duel: $('coop-duel'), join: $('coop-join'), leave: $('coop-leave'), status: $('coop-status'), players: $('coop-players'), big: $('coop-code-big') }
+  const ui = { update: $('coop-update'), name: $('coop-name'), code: $('coop-code'), host: $('coop-host'), duel: $('coop-duel'), join: $('coop-join'), leave: $('coop-leave'), status: $('coop-status'), players: $('coop-players'), big: $('coop-code-big') }
   ui.name.value = name
   const saveName = () => {
     name = cleanName(ui.name.value, '')
@@ -887,6 +890,7 @@ export function createCoop(ctx) {
   ui.name.addEventListener('change', saveName)
   ui.code.addEventListener('input', () => { ui.code.value = normalizeCode(ui.code.value) })
   ui.code.addEventListener('keydown', (e) => { if (e.key === 'Enter') doJoin() })
+  ui.update.addEventListener('click', () => reloadFresh())
   ui.host.addEventListener('click', () => doHost(false))
   ui.duel.addEventListener('click', () => doHost(true))
   ui.join.addEventListener('click', () => doJoin())

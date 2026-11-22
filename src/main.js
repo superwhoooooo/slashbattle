@@ -1,4 +1,5 @@
 import { noteSaved } from './saveSync.js' // first: loads the device save file into localStorage before anything reads it
+import { startUpdateCheck } from './updateCheck.js'
 import '@fontsource/sora/400.css'
 import '@fontsource/sora/600.css'
 import '@fontsource/sora/800.css'
@@ -10063,3 +10064,5 @@ function gameFrame(timestamp) {
 // setAnimationLoop (rather than a manual requestAnimationFrame chain)
 // is the steadier, recommended driver for a render loop.
 renderer.setAnimationLoop(animate)
+
+startUpdateCheck() // a home-screen copy of the game hears about a new version (src/updateCheck.js)
