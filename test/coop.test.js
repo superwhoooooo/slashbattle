@@ -140,7 +140,7 @@ describe('chest rows', () => {
 describe('co-op in every mode', () => {
   it('knows the modes and cleans up junk', async () => {
     const { COOP_MODES, cleanMode } = await import('../src/logic/coop.js')
-    expect(COOP_MODES).toEqual(['resort', 'labyrinth', 'world', 'sandbox', 'tutorial'])
+    expect(COOP_MODES).toEqual(['resort', 'labyrinth', 'world', 'sandbox', 'tutorial', 'duel'])
     expect(cleanMode('world')).toBe('world')
     expect(cleanMode('???')).toBe('resort')
     expect(cleanMode(undefined)).toBe('resort')

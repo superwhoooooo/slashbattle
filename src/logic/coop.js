@@ -2,13 +2,13 @@
 // host streams, who a monster goes after, smoothing remote movement, and which monster events travel
 // to whom. src/net/link.js moves the messages; src/coop.js applies them to the game.
 
-export const PROTOCOL = 4 // bump when the message format changes; a mismatched joiner is told to refresh
+export const PROTOCOL = 5 // bump when the message format changes; a mismatched joiner is told to refresh
 export const MAX_PLAYERS = 4
 // Co-op plays every mode. The host's game is the real one, and in the Wilds it only loads (and runs) the land around the
 // host, so the players have to stay together: nobody may wander farther than this from a friend (the host's monsters
 // reach LOAD_RADIUS 125 around the host, so a friend this close always has all of theirs around them).
 export const COOP_MAX_DISTANCE = 60
-export const COOP_MODES = ['resort', 'labyrinth', 'world', 'sandbox', 'tutorial']
+export const COOP_MODES = ['resort', 'labyrinth', 'world', 'sandbox', 'tutorial', 'duel']
 export const cleanMode = (mode) => (COOP_MODES.includes(mode) ? mode : 'resort')
 
 // Holds a player (at `pos`) within `max` of every friend in `others` ({ x, z }): the position they may stand at, and whether

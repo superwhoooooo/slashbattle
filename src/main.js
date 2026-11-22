@@ -283,6 +283,8 @@ import { createMonsterAIState, isUntouchable, separateMonsters, setDeepShield, s
 import { applyFreeze, applySlow, isFrozen, statusTimeScale } from './logic/status.js'
 import { createCoop } from './coop.js'
 import { COOP_MAX_DISTANCE, COOP_RESPAWN_HP, COOP_RESPAWN_IFRAMES, cleanMode, leashPosition, standUpBeside } from './logic/coop.js'
+import { knockbackVector } from './logic/combat.js'
+import { DUEL_START_IFRAMES, canHit as duelCanHit, createDuel, duelDamage, duelScoreText, duelSpawn, scoreKo, stepDuel } from './logic/duel.js'
 import { burst, createParticleSystem, resetParticles, setParticleViewScale, shardBurst, updateParticles } from './particles.js'
 import { createPet, disposePets, updatePets } from './pets.js'
 import { Player } from './player.js'
@@ -8019,6 +8021,9 @@ let coopSwingStarted = false // a swing started this frame (sent with our next s
 // menu (Tab) to spawn anything / equip anything / hop levels, free
 // crystals, no cooldowns and (by default) god mode. See src/sandbox.js.
 let sandbox = false
+let duelMode = false // a 1v1 duel (co-op's PvP mode, see stepDuelRound)
+let duel = createDuel()
+let duelRivals = 0 // how many rivals we had last frame (a new one starts a fresh match)
 let godMode = true
 let sandboxPanel = null
 
@@ -8029,7 +8034,7 @@ let tutorialState = createTutorial()
 let tutorialPanel = null
 let tutorialLastPos = null
 let tutorialSetupStep = -1
-const freePlay = () => sandbox || tutorial
+const freePlay = () => sandbox || tutorial || duelMode // (a duel: no waves, no progress, Normal difficulty)
 // No waves at all: the sandbox, the tutorial and the free roam world.
 const noWaves = () => freePlay() || Boolean(game?.world) || Boolean(coop?.isClient) // a co-op joiner mirrors the host's waves
 
@@ -8546,17 +8551,118 @@ function stepCoopDown(game, now) {
   }
 }
 
+// ---------- 1v1 duel (co-op's PvP mode; rules in logic/duel.js, the rival stand-in in coop.js) ----------
+const duelChip = document.createElement('div')
+duelChip.id = 'duel-chip'
+duelChip.style.cssText = 'position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:40;display:none;padding:8px 18px;border-radius:999px;background:rgba(26,36,51,0.82);color:#fff;font:700 15px Sora,system-ui,sans-serif;letter-spacing:0.04em;pointer-events:none;white-space:nowrap;max-width:calc(100vw - 32px);overflow:hidden;text-overflow:ellipsis'
+document.body.appendChild(duelChip)
+
+// The host picked "Host a 1v1 duel" (or a plain game after one): switch our own game over first.
+function setDuel(on) {
+  if (on === duelMode) return
+  if (!started) dismissStartCard()
+  joinMode(on ? 'duel' : 'resort')
+  restartGame()
+  applyDifficulty()
+}
+
+// Both stand up at their corners, full health, with a moment of invulnerability.
+function resetDuelRound(game, now) {
+  const player = game.player
+  const spot = duelSpawn(!coop?.isClient)
+  player.hp = player.maxHp
+  player.falling = false
+  player.position.x = spot.x
+  player.position.z = spot.z
+  player.mesh.position.set(spot.x, 0, spot.z)
+  player.mesh.rotation.set(0, 0, 0)
+  player.vel = { x: 0, z: 0 }
+  player.facing = spot.facing
+  player.mesh.visible = !firstPerson
+  player.invulnerableUntil = Math.max(player.invulnerableUntil, now + DUEL_START_IFRAMES)
+  game.coopDownAt = null
+  game.duelDown = false
+  spawnShockwave(shockwavePool, spot.x, spot.z, 4, 0x7dffc4)
+}
+
+function stepDuelRound(game, now) {
+  const player = game.player
+  const rivals = coop?.remoteCount() ?? 0
+  if (rivals > 0 && duelRivals === 0) { // a rival arrived: a fresh match
+    duel = createDuel()
+    resetDuelRound(game, now)
+    questUi.showToast(`DUEL! ${String(coop.rivalName() ?? 'YOUR RIVAL').toUpperCase()} STEPS ONTO THE DECK`)
+  }
+  duelRivals = rivals
+  if (!rivals) {
+    if (player.hp <= 0) resetDuelRound(game, now)
+    duelChip.textContent = 'DUEL · WAITING FOR A RIVAL TO JOIN'
+    duelChip.style.display = ''
+    return
+  }
+  // We went down (knocked out or rung out): the rival takes the round.
+  if (duel.phase === 'fight' && !game.duelDown && (player.hp <= 0 || player.falling)) {
+    game.duelDown = true
+    if (player.hp <= 0) {
+      game.coopDownAt = now // (no moving or swinging while down)
+      player.mesh.visible = false
+      game.attackState.swingElapsed = null
+      shardBurst(particleSystem, { x: player.position.x, y: 0.8, z: player.position.z }, 0xff6a4d, 24, 4)
+    }
+    coop.sendKo()
+    duel = scoreKo(duel, false, now)
+    questUi.showToast(duel.phase === 'over' ? `${String(coop.rivalName()).toUpperCase()} WINS THE DUEL` : player.falling ? 'RUNG OUT! THE ROUND GOES TO YOUR RIVAL' : 'KNOCKED OUT! THE ROUND GOES TO YOUR RIVAL')
+    sfx.play('playerHurt', { x: player.position.x, z: player.position.z })
+  }
+  if (player.hp <= 0 && game.coopDownAt == null) game.coopDownAt = now // (fell to 0 between rounds)
+  const out = stepDuel(duel, now)
+  duel = out.duel
+  if (out.reset) {
+    resetDuelRound(game, now)
+    questUi.showToast(duel.round === 1 && duel.me === 0 && duel.them === 0 ? 'A NEW MATCH! FIGHT!' : `ROUND ${duel.round}: FIGHT!`)
+  }
+  duelChip.textContent = duelScoreText(duel, String(coop.rivalName() ?? 'RIVAL').toUpperCase())
+  duelChip.style.display = ''
+}
+
+// The rival's attack landed on us (their game decided it hit).
+function takeDuelHit({ damage, knockback, fromPos }) {
+  const player = game.player
+  if (!started || !duelCanHit(duel) || game.duelDown || player.falling) return
+  const now = timer.getElapsed()
+  if (!player.damagePlayer(duelDamage(damage), now)) return
+  playerHurtFx(game)
+  if (knockback > 0) {
+    const push = knockbackVector(fromPos, player.position, knockback)
+    player.position.x += push.x
+    player.position.z += push.z
+    player.mesh.position.x = player.position.x
+    player.mesh.position.z = player.position.z
+  }
+}
+
 // Co-op plays every mode: the host's mode is everyone's (the welcome carries it, see joinMode).
 let lastLeashToast = -Infinity
 function canCoop() {
   return null
 }
-const coopMode = () => (sandbox ? 'sandbox' : tutorial ? 'tutorial' : gameMode)
+const coopMode = () => (duelMode ? 'duel' : sandbox ? 'sandbox' : tutorial ? 'tutorial' : gameMode)
 
 // A joiner switches to the host's mode before the run restarts in the host's place.
 function joinMode(mode) {
   mode = cleanMode(mode)
   if (mode === coopMode()) return
+  if (mode === 'duel' || duelMode) {
+    duelMode = mode === 'duel'
+    duel = createDuel()
+    duelRivals = 0
+    if (duelMode) {
+      gameMode = 'resort' // (the duel is fought on the Orbital Sundeck)
+      disposeGame(game)
+      game = createGame()
+      return
+    }
+  }
   if (sandbox || tutorial) {
     window.location.reload() // (rare: they were in the sandbox / tutorial themselves; start over from the card)
     return
@@ -8578,6 +8684,16 @@ coop = createCoop({
   disposeObject3D,
   canCoop,
   mode: coopMode,
+  duel: () => duelMode,
+  duelCanHit: () => duelCanHit(duel),
+  setDuel,
+  onPvpHit: (hit) => takeDuelHit(hit),
+  onDuelKo(name) {
+    if (!started || !duelMode) return
+    duel = scoreKo(duel, true, timer.getElapsed())
+    questUi.showToast(duel.phase === 'over' ? 'YOU WIN THE DUEL!' : `${String(name).toUpperCase()} IS DOWN! THE ROUND IS YOURS`)
+    sfx.play('waveCleared', { x: game.player.position.x, z: game.player.position.z })
+  },
   layer: () => (game.world ? (game.world.depths.on ? 1 : 0) | (game.world.aloft ? 2 : 0) : 0),
   difficultyId: () => getDifficulty(),
   toast: (text) => questUi.showToast(text),
@@ -8592,6 +8708,14 @@ coop = createCoop({
   // The session ended. A joiner carries on solo from the same wave (their own waves start up again).
   onEnded(reason, wasClient) {
     if (!started) return
+    duelChip.style.display = 'none'
+    if (duelMode) { // the duel is over: back to a normal game on the sundeck
+      joinMode('resort')
+      restartGame()
+      applyDifficulty()
+      if (reason !== 'left') questUi.showToast('YOUR RIVAL LEFT. THE DUEL IS OVER')
+      return
+    }
     applyDifficulty()
     if (wasClient) {
       const fresh = createWaveState()
@@ -9016,7 +9140,7 @@ function gameFrame(timestamp) {
 
   if (started && game.player.hp < game.player.maxHp * 0.3) heroRescue(elapsedSeconds)
   // Downed But Determined: back up at half HP, once per revive the skill tree grants.
-  if (started && !sandbox && game.player.hp <= 0 && (game.revivesUsed ?? 0) < activeFx(game.inventory.equipped).revive) {
+  if (started && !sandbox && !duelMode && game.player.hp <= 0 && (game.revivesUsed ?? 0) < activeFx(game.inventory.equipped).revive) {
     game.revivesUsed = (game.revivesUsed ?? 0) + 1
     game.player.hp = Math.round(game.player.maxHp * 0.5)
     game.player.invulnerableUntil = Math.max(game.player.invulnerableUntil, elapsedSeconds + 3)
@@ -9027,7 +9151,8 @@ function gameFrame(timestamp) {
   // The Wilds never end your run: at zero HP you get back up at the last save point.
   if (started && game.world && game.player.hp <= 0 && !coop?.active) respawnAtCheckpoint(game, elapsedSeconds)
   // Co-op: going down isn't the end while a friend is still standing (stepCoopDown gets you back up).
-  if (started && coop?.active && !game.coopOver) stepCoopDown(game, elapsedSeconds)
+  if (started && coop?.active && duelMode) stepDuelRound(game, elapsedSeconds)
+  else if (started && coop?.active && !game.coopOver) stepCoopDown(game, elapsedSeconds)
   const gameState = game.coopOver
     ? 'lost'
     : game.labyrinth?.won

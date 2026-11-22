@@ -13,6 +13,11 @@
 // it (their armour, i-frames, shake). A monster's area attacks and shots are sent to everyone as events and
 // each game checks them against its own player.
 //
+// 1v1 DUEL (the panel's "Host a 1v1 duel", mode 'duel'; rules in src/logic/duel.js): no monsters, and the other player
+// is a RIVAL: a hittable stand-in (userData.netRival) sits in game.monsters where they stand, so every weapon, bullet, pet,
+// ability and hero trait hits them; combat.js hands such a hit to puppetHit, which sends it ('pvp') to that player, whose
+// game applies it to themselves. A player who goes down says so ('ko'). Only two players fit in a duel.
+//
 // Each player keeps their own hero, gear, crystals, chests, pods, pets and score. A player who goes down
 // gets back up after a few seconds; the run only ends when everyone is down at once.
 //
@@ -203,6 +208,7 @@ export function createCoop(ctx) {
     const remote = remotes.get(id)
     if (!remote) return
     remotes.delete(id)
+    dropRival(remote)
     ctx.disposeObject3D(remote.mesh)
     clearRemotePets(remote)
     clearRemoteChests(remote)
@@ -212,7 +218,7 @@ export function createCoop(ctx) {
 
   function hostAcceptPeer(id, peerName) {
     const game = ctx.getGame()
-    const reason = ctx.canCoop()
+    const reason = ctx.canCoop() ?? (ctx.mode() === 'duel' && remotes.size >= 1 ? 'the duel is full (it is 1v1)' : null)
     if (reason) {
       link.sendTo(id, { t: 'nope', why: reason })
       return
@@ -282,11 +288,49 @@ export function createCoop(ctx) {
       stepRemoteChests(remote, dt, now)
       const shown = !remote.proxy.hidden && !remote.proxy.down
       mesh.visible = shown
+      stepRival(remote, shown)
       if (shown) {
         updateJelly(mesh, dt, now, { speed: 0, moveDir: remote.moveDir, still: Boolean(remote.lookKey) && !remote.lookKey.startsWith('guest:') }) // a hero in gear stays still inside it
         updateFace3D(mesh, dt, now)
       }
     }
+  }
+
+  // ---------- duel: the rival stand-in our attacks hit ----------
+  const RIVAL_TYPE = 'blobbo' // (only for the spark colours and size the hit code reads)
+  function stepRival(remote, shown) {
+    const game = ctx.getGame()
+    if (!game || !(ctx.duel?.() && active())) {
+      dropRival(remote)
+      return
+    }
+    if (!remote.rival) {
+      const rival = new THREE.Group()
+      Object.assign(rival.userData, createMonsterAIState(MONSTER_TYPES[RIVAL_TYPE]))
+      Object.assign(rival.userData, {
+        netPuppet: true, netRival: remote.id, netId: `rival:${remote.id}`, type: RIVAL_TYPE, isBoss: false, radius: 0.9,
+        knockbackScale: 1, falling: false, dying: false, spawning: false, reflect: null, shield: null, snaps: [],
+        fallState: { velocityY: 0, fallenY: 0 }, speed: 0, moveDir: { x: 0, z: 1 },
+      })
+      remote.rival = rival
+    }
+    const rival = remote.rival
+    const ud = rival.userData
+    rival.position.set(remote.mesh.position.x, remote.mesh.position.y, remote.mesh.position.z)
+    rival.rotation.y = remote.mesh.rotation.y
+    ud.hp = Number.isFinite(remote.hp) ? Math.max(1, remote.hp) : 100
+    ud.maxHp = Number.isFinite(remote.maxHp) ? remote.maxHp : 100
+    ud.speed = remote.speed
+    ud.moveDir = remote.moveDir
+    ud.burrowed = !shown || !ctx.duelCanHit?.() // hidden in a pod, down, or between rounds: out of reach
+    if (!game.monsters.includes(rival)) game.monsters.push(rival)
+  }
+  function dropRival(remote) {
+    if (!remote.rival) return
+    const game = ctx.getGame()
+    const i = game?.monsters.indexOf(remote.rival) ?? -1
+    if (i >= 0) game.monsters.splice(i, 1)
+    remote.rival = null
   }
 
   // ---------- a friend's pets (cosmetic: their own game does the fighting) ----------
@@ -434,7 +478,7 @@ export function createCoop(ctx) {
   function sendMonsters(game, now) {
     const rows = []
     for (const mesh of game.monsters) {
-      if (mesh.userData.netId == null) continue
+      if (mesh.userData.netId == null || mesh.userData.netRival) continue
       rows.push(packMonster(mesh.userData, mesh.position, mesh.rotation.y, now))
     }
     const w = game.waveState
@@ -546,6 +590,7 @@ export function createCoop(ctx) {
   // Joiner: one frame of a puppet. Returns false once it should leave game.monsters (it has been disposed).
   function stepPuppet(mesh, dt, now, playerPos) {
     const ud = mesh.userData
+    if (ud.netRival) return remotes.get(ud.netRival)?.rival === mesh // (stepRemotes moves it; gone once they leave)
     const drop = () => {
       puppets.delete(ud.netId)
       ctx.disposeObject3D(mesh)
@@ -633,6 +678,13 @@ export function createCoop(ctx) {
   setNetHooks({
     puppetHit(monster, damage, { fromPos, knockback, cause, ambush }) {
       monster.userData.netLocalHitAt = clock()
+      const rivalId = monster.userData.netRival
+      if (rivalId) { // a duel: the hit is for that player's own game
+        const remote = remotes.get(rivalId)
+        if (remote) jellyHit(remote.mesh, JELLY_HIT_STRENGTH)
+        link.sendTo(rivalId, { t: 'pvp', d: Math.round(damage * 100) / 100, kb: knockback ?? 0, fx: fromPos?.x ?? monster.position.x, fz: fromPos?.z ?? monster.position.z, c: cause })
+        return
+      }
       link.sendTo('host', {
         t: 'hit',
         hostOnly: true,
@@ -713,6 +765,12 @@ export function createCoop(ctx) {
         ctx.onRemoteChestOpened?.(at, { name: remote.name, loot: typeof m.l === 'string' ? m.l.slice(0, 40) : '' })
         break
       }
+      case 'pvp':
+        if (remotes.has(from) && ctx.duel?.()) ctx.onPvpHit?.({ damage: clampDamage(m.d), knockback: Math.max(0, Math.min(40, Number(m.kb) || 0)), fromPos: { x: Number(m.fx) || 0, z: Number(m.fz) || 0 }, cause: typeof m.c === 'string' ? m.c.slice(0, 20) : 'sword' })
+        break
+      case 'ko':
+        if (remotes.has(from) && ctx.duel?.()) ctx.onDuelKo?.(remotes.get(from).name)
+        break
       case 'hurt':
         if (isClient()) ctx.onHurt(clampDamage(m.d), Math.max(0, Math.min(1, Number(m.tf) || 0)))
         break
@@ -809,9 +867,9 @@ export function createCoop(ctx) {
   panel.innerHTML = `
     <div class="coop-card panel">
       <h2>Co-op</h2>
-      <p class="coop-blurb">Fight the waves with up to ${MAX_PLAYERS - 1} friends, anywhere. One hosts, the others join with the room code.</p>
+      <p class="coop-blurb">Fight the waves with up to ${MAX_PLAYERS - 1} friends, anywhere, or host a 1v1 duel and fight each other. One hosts, the others join with the room code.</p>
       <label class="coop-field">Your name <input id="coop-name" type="text" maxlength="16" placeholder="Player" autocomplete="off" enterkeyhint="done"></label>
-      <div class="coop-row"><button id="coop-host" type="button">Host a game</button></div>
+      <div class="coop-row"><button id="coop-host" type="button">Host a game</button><button id="coop-duel" type="button">Host a 1v1 duel</button></div>
       <div class="coop-row"><input id="coop-code" type="text" maxlength="4" placeholder="CODE" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="go"><button id="coop-join" type="button">Join</button></div>
       <div id="coop-code-big"></div>
       <div id="coop-status">Not connected.</div>
@@ -820,7 +878,7 @@ export function createCoop(ctx) {
     </div>`
   document.body.appendChild(panel)
   const $ = (id) => panel.querySelector(`#${id}`)
-  const ui = { name: $('coop-name'), code: $('coop-code'), host: $('coop-host'), join: $('coop-join'), leave: $('coop-leave'), status: $('coop-status'), players: $('coop-players'), big: $('coop-code-big') }
+  const ui = { name: $('coop-name'), code: $('coop-code'), host: $('coop-host'), duel: $('coop-duel'), join: $('coop-join'), leave: $('coop-leave'), status: $('coop-status'), players: $('coop-players'), big: $('coop-code-big') }
   ui.name.value = name
   const saveName = () => {
     name = cleanName(ui.name.value, '')
@@ -829,7 +887,8 @@ export function createCoop(ctx) {
   ui.name.addEventListener('change', saveName)
   ui.code.addEventListener('input', () => { ui.code.value = normalizeCode(ui.code.value) })
   ui.code.addEventListener('keydown', (e) => { if (e.key === 'Enter') doJoin() })
-  ui.host.addEventListener('click', () => doHost())
+  ui.host.addEventListener('click', () => doHost(false))
+  ui.duel.addEventListener('click', () => doHost(true))
   ui.join.addEventListener('click', () => doJoin())
   ui.leave.addEventListener('click', () => link.leave())
   $('coop-close').addEventListener('click', () => toggle(false))
@@ -842,10 +901,11 @@ export function createCoop(ctx) {
     })
   }
 
-  function doHost() {
+  function doHost(duel) {
     saveName()
     const reason = ctx.canCoop()
     if (reason) { setStatus(reason); return }
+    ctx.setDuel?.(duel) // (switches our game to the duel deck, or back)
     link.host(name || 'Host')
     refresh()
   }
@@ -860,6 +920,7 @@ export function createCoop(ctx) {
   function refresh() {
     const on = link.active
     ui.host.disabled = on
+    ui.duel.disabled = on
     ui.join.disabled = on
     ui.code.disabled = on
     ui.leave.style.display = on ? '' : 'none'
@@ -894,6 +955,9 @@ export function createCoop(ctx) {
     creditKill,
     stepPuppet,
     clearPuppets,
+    // Duel: tell the rival we went down (they score the round).
+    sendKo() { if (active()) link.broadcast({ t: 'ko' }) },
+    rivalName: () => [...remotes.values()][0]?.name ?? null,
     remoteCount: () => remotes.size,
     remoteDowns: () => [...remotes.values()].map((r) => r.proxy.down),
     everyoneDown: (localDown) => isHost() && everyoneDown(localDown, [...remotes.values()].map((r) => r.proxy.down)),

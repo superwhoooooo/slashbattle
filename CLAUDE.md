@@ -1178,6 +1178,14 @@ the live connection for a player can drop them).
   rule). While any player watches an intro they count as hidden, so the boss can't hit them.
 - **Boss loot**: `dropBossLoot` drops TWO free chests (plus a power-up) in co-op, one for each of you, in every player's
   game (a joiner's when the puppet boss dies, `onPuppetBossDeath`); solo it's one.
+- **1v1 duel** (the panel's "Host a 1v1 duel", co-op mode `'duel'`, `PROTOCOL` 5; rules in `src/logic/duel.js`, `test/duel.test.js`):
+  two players on the Orbital Sundeck, no waves or monsters, no progress (`freePlay()` includes `duelMode`), Normal difficulty. The other
+  player is a **rival**: `coop.js`'s `stepRival` keeps a hittable stand-in (`userData.netRival`, untouchable while they hide, are down or
+  between rounds) in `game.monsters`, so every weapon, bullet, pet, ability and hero trait hits them; `damageMonster`'s puppet branch
+  hands the hit to `puppetHit`, which sends `pvp` to them and their `takeDuelHit` applies `duelDamage` (scaled, capped) plus knockback.
+  A knockout or a ring-out sends `ko`; both score it (`scoreKo`), pause `DUEL_ROUND_PAUSE`, and stand up at their corners
+  (`resetDuelRound`, `duelSpawn`). First to `DUEL_ROUNDS_TO_WIN` (3) takes the match, then a new one starts. A third player is turned
+  away. `main.js`'s `stepDuelRound` replaces `stepCoopDown`; the score shows in `#duel-chip`. Leaving ends the duel (back to the sundeck).
 - **Water rooms**: a joiner's puppets take their swim height from the joiner's own `monsterSwimY` (`ctx.puppetY`), so deep
   dwellers rise to a diving joiner and their shots and swings connect; `FLAG.submerged` carries an amphibious boss's dive,
   and the host lifts the deep shield for a diving friend's hit on a deep or submerged monster. `window.__debug.coop` (dev only) exposes the co-op state.
