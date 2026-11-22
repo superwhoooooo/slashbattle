@@ -5709,7 +5709,7 @@ function followHost(layer) {
   w.hostLayer = layer
   const depths = (layer & 1) === 1
   const sameLevel = depths === w.depths.on && ((layer & 2) === 2) === !!w.aloft
-  if (sameLevel && Math.hypot(spot.x - game.player.position.x, spot.z - game.player.position.z) < COOP_MAX_DISTANCE * 1.6) return
+  if (sameLevel && (!coopLeash || Math.hypot(spot.x - game.player.position.x, spot.z - game.player.position.z) < COOP_MAX_DISTANCE * 1.6)) return
   if (depths !== w.depths.on) switchWorldLayer(game, depths)
   jumpToHost(spot)
   questUi.showToast(depths ? 'FOLLOWING YOUR FRIEND DOWN INTO THE DEPTHS' : (layer & 2) ? 'FOLLOWING YOUR FRIEND UP INTO THE SKY' : 'FOLLOWING YOUR FRIEND')
@@ -5733,7 +5733,7 @@ function jumpToHost(spot) {
 // A guest left far behind (the host respawned at a save point, a stale position at the moment of a level change...)
 // is brought back to the host.
 function regroupGuest(now) {
-  if (!coop?.isClient || now - lastFollowAt < 2) return
+  if (!coop?.isClient || !coopLeash || now - lastFollowAt < 2) return // (no leash: a guest may roam as far as they like)
   const spot = coop.hostSpot()
   const p = game.player.position
   if (!spot || Math.hypot(spot.x - p.x, spot.z - p.z) < COOP_MAX_DISTANCE * 1.6) return
@@ -8686,6 +8686,16 @@ function takeDuelHit({ damage, knockback, fromPos }) {
 
 // Co-op plays every mode: the host's mode is everyone's (the welcome carries it, see joinMode).
 let lastLeashToast = -Infinity
+// Must co-op players in the Wilds stay within COOP_MAX_DISTANCE of each other? The host decides (the co-op panel's checkbox);
+// a guest hears it in the welcome and whenever it changes. Off: anyone may roam anywhere (monsters only live around the host).
+let coopLeash = true
+function setCoopLeash(on, fromHost = false) {
+  on = on !== false
+  if (on === coopLeash) return
+  coopLeash = on
+  if (!fromHost) coop?.sendLeash(on)
+  if (game?.world || fromHost) questUi.showToast(on ? `CO-OP: STAY WITHIN ${COOP_MAX_DISTANCE} M OF EACH OTHER` : 'CO-OP: ROAM AS FAR AS YOU LIKE (MONSTERS ONLY SHOW UP AROUND THE HOST)')
+}
 function canCoop() {
   return null
 }
@@ -8732,6 +8742,9 @@ coop = createCoop({
   duelCanHit: () => duelCanHit(duel),
   setDuel,
   onPvpHit: (hit) => takeDuelHit(hit),
+  leash: () => coopLeash,
+  setLeash: (on) => setCoopLeash(on),
+  onLeash: (on) => setCoopLeash(on, true),
   onStake: (raw) => hearDuelStake(raw),
   stakeChoices: () => stakeOptions(profile).map((o) => ({ key: stakeKey(o), label: o.kind === 'none' ? 'Nothing' : stakeLabel(o).replace(/^the /, '') })),
   currentStakeKey: () => stakeKey(duelStake),
@@ -9429,7 +9442,7 @@ function gameFrame(timestamp) {
     player.update(input, cameraYaw, deltaSeconds, room ? true : null)
     player.obstacles = allObstacles
     // Co-op in the Wilds: the host only runs the land around the host, so nobody strays far from a friend.
-    if (game.world && coop?.active && !player.falling) {
+    if (game.world && coop?.active && coopLeash && !player.falling) { // (the host can turn this off: coopLeash)
       // Only a step AWAY from a friend is stopped, so a friend who teleports (a respawn) never drags you along.
       const away = coop.peers().filter((f) => Math.hypot(player.position.x - f.x, player.position.z - f.z) > Math.hypot(leashFrom.x - f.x, leashFrom.z - f.z))
       const leash = leashPosition(player.position, away)

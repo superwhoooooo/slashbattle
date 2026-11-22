@@ -1128,7 +1128,7 @@ P (or the start card's "Play with friends") opens `src/coop.js`'s panel: one pla
 up to three friends join with it. It plays EVERY mode: the host's mode is everyone's (the welcome carries `mode`, `coopMode` / `joinMode` in
 `main.js`; `PROTOCOL` 4): the Orbital Sundeck waves, the Labyrinth (the host decides when the party goes down a floor:
 a joiner on the exit pad sends `floorReq`, the host advances and broadcasts `floor`), the Wilds, the sandbox and the tutorial.
-**In the Wilds players must stay within `COOP_MAX_DISTANCE` (60) of each other**: the host only loads the land around itself
+**In the Wilds players must stay within `COOP_MAX_DISTANCE` (60) of each other** (unless the host unticks the co-op panel's leash checkbox: `main.js`'s `coopLeash` / `setCoopLeash`, sent in the welcome and as a `leash` message; off, the leash, `regroupGuest` and the same-level teleport in `followHost` are skipped): the host only loads the land around itself
 (`LOAD_RADIUS` 125), so a friend this close always has the host's monsters around them (`leashPosition`: only a step AWAY from a
 friend is stopped, with a toast). A joiner's Wilds monsters are all puppets (no camp spawns, no roaming events), chasms and
 Skylift towers stay open but only the HOST falls / launches: the host's level (bit 1 Depths, bit 2 sky) rides in the `mon`
@@ -1182,7 +1182,7 @@ the live connection for a player can drop them).
   the game fetches the live page past every cache on start / on coming back to the front / every 5 min and compares the hashed
   script name; a new one shows an "update" banner (`reloadFresh` loads the page under a fresh `?v=`). A joiner turned away by a
   NEWER host (`link.js`'s `version` message, `onNewerHost`) gets an "Update the game now" button in the co-op panel.
-- **1v1 duel** (the panel's "Host a 1v1 duel", co-op mode `'duel'`, `PROTOCOL` 6; rules in `src/logic/duel.js`, `test/duel.test.js`):
+- **1v1 duel** (the panel's "Host a 1v1 duel", co-op mode `'duel'`, `PROTOCOL` 7; rules in `src/logic/duel.js`, `test/duel.test.js`):
   two players on the Orbital Sundeck, no waves or monsters, no progress (`freePlay()` includes `duelMode`), Normal difficulty. The other
   player is a **rival**: `coop.js`'s `stepRival` keeps a hittable stand-in (`userData.netRival`, untouchable while they hide, are down or
   between rounds) in `game.monsters`, so every weapon, bullet, pet, ability and hero trait hits them; `damageMonster`'s puppet branch
