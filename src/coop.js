@@ -770,6 +770,9 @@ export function createCoop(ctx) {
       case 'pvp':
         if (remotes.has(from) && ctx.duel?.()) ctx.onPvpHit?.({ damage: clampDamage(m.d), knockback: Math.max(0, Math.min(40, Number(m.kb) || 0)), fromPos: { x: Number(m.fx) || 0, z: Number(m.fz) || 0 }, cause: typeof m.c === 'string' ? m.c.slice(0, 20) : 'sword' })
         break
+      case 'stake':
+        if (isClient() && ctx.duel?.()) ctx.onStake?.(m.s)
+        break
       case 'ko':
         if (remotes.has(from) && ctx.duel?.()) ctx.onDuelKo?.(remotes.get(from).name)
         break
@@ -874,6 +877,7 @@ export function createCoop(ctx) {
       <div class="coop-row"><button id="coop-host" type="button">Host a game</button><button id="coop-duel" type="button">Host a 1v1 duel</button></div>
       <div class="coop-row"><input id="coop-code" type="text" maxlength="4" placeholder="CODE" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="go"><button id="coop-join" type="button">Join</button></div>
       <div id="coop-code-big"></div>
+      <div class="coop-row" id="coop-stake-row" style="display:none"><label class="coop-field">On the line (the winner gets a copy) <select id="coop-stake"></select></label></div>
       <div id="coop-status">Not connected.</div>
       <div class="coop-row"><button id="coop-update" type="button" style="display:none">Update the game now</button></div>
       <div id="coop-players"></div>
@@ -881,7 +885,7 @@ export function createCoop(ctx) {
     </div>`
   document.body.appendChild(panel)
   const $ = (id) => panel.querySelector(`#${id}`)
-  const ui = { update: $('coop-update'), name: $('coop-name'), code: $('coop-code'), host: $('coop-host'), duel: $('coop-duel'), join: $('coop-join'), leave: $('coop-leave'), status: $('coop-status'), players: $('coop-players'), big: $('coop-code-big') }
+  const ui = { stakeRow: $('coop-stake-row'), stake: $('coop-stake'), update: $('coop-update'), name: $('coop-name'), code: $('coop-code'), host: $('coop-host'), duel: $('coop-duel'), join: $('coop-join'), leave: $('coop-leave'), status: $('coop-status'), players: $('coop-players'), big: $('coop-code-big') }
   ui.name.value = name
   const saveName = () => {
     name = cleanName(ui.name.value, '')
@@ -891,6 +895,11 @@ export function createCoop(ctx) {
   ui.code.addEventListener('input', () => { ui.code.value = normalizeCode(ui.code.value) })
   ui.code.addEventListener('keydown', (e) => { if (e.key === 'Enter') doJoin() })
   ui.update.addEventListener('click', () => reloadFresh())
+  ui.stake.addEventListener('change', () => {
+    const why = ctx.chooseStake?.(ui.stake.value)
+    if (why) setStatus(why)
+    refresh()
+  })
   ui.host.addEventListener('click', () => doHost(false))
   ui.duel.addEventListener('click', () => doHost(true))
   ui.join.addEventListener('click', () => doJoin())
@@ -932,6 +941,22 @@ export function createCoop(ctx) {
     const names = [`${link.name || name || 'You'} (you${link.isHost ? ', host' : ''})`, ...[...remotes.values()].map((r) => r.name)]
     ui.players.textContent = on ? `Players: ${names.join(', ')}` : ''
     document.body.classList.toggle('coop-on', active())
+    // A duel's host picks what's on the line.
+    const staking = isHost() && Boolean(ctx.duel?.())
+    ui.stakeRow.style.display = staking ? '' : 'none'
+    if (staking) {
+      const choices = ctx.stakeChoices?.() ?? []
+      const current = ctx.currentStakeKey?.() ?? 'none'
+      ui.stake.innerHTML = ''
+      for (const c of choices) {
+        const opt = document.createElement('option')
+        opt.value = c.key
+        opt.textContent = c.label
+        ui.stake.appendChild(opt)
+      }
+      ui.stake.value = current
+      ui.stake.disabled = Boolean(ctx.stakeLocked?.())
+    }
   }
   function toggle(show = !panel.classList.contains('open')) {
     panel.classList.toggle('open', show)
@@ -961,6 +986,7 @@ export function createCoop(ctx) {
     clearPuppets,
     // Duel: tell the rival we went down (they score the round).
     sendKo() { if (active()) link.broadcast({ t: 'ko' }) },
+    sendStake(stake) { if (isHost()) link.broadcast({ t: 'stake', s: stake }) },
     rivalName: () => [...remotes.values()][0]?.name ?? null,
     remoteCount: () => remotes.size,
     remoteDowns: () => [...remotes.values()].map((r) => r.proxy.down),

@@ -51,3 +51,55 @@ describe('1v1 duel rules', () => {
     expect(Math.sin(b.facing)).toBeCloseTo(-1)
   })
 })
+
+describe('duel stakes and deck', async () => {
+  const duelMod = await import('../src/logic/duel.js')
+  const { CENTER_CLEARANCE } = await import('../src/logic/resortLayout.js')
+  const { NO_STAKE, awardStake, cleanStake, ownsStake, stakeLabel, stakeLocked, stakeOptions, DUEL_RADIUS, DUEL_SPEED, DUEL_SPAWN_DISTANCE } = duelMod
+  const host = { bank: 600, heroesOwned: ['plague'], collection: ['ember'] }
+
+  it('is a smaller, slower fight, starting clear of the props', () => {
+    expect(DUEL_RADIUS).toBeLessThan(48)
+    expect(DUEL_SPEED).toBeLessThan(1)
+    expect(DUEL_SPAWN_DISTANCE).toBeLessThan(CENTER_CLEARANCE)
+  })
+
+  it('offers only what the host owns', () => {
+    const opts = stakeOptions(host)
+    expect(opts[0]).toEqual(NO_STAKE)
+    expect(opts).toContainEqual({ kind: 'crystals', amount: 500 })
+    expect(opts).not.toContainEqual({ kind: 'crystals', amount: 1000 })
+    expect(opts).toContainEqual({ kind: 'hero', id: 'plague' })
+    expect(opts).toContainEqual({ kind: 'pet', id: 'ember' })
+    expect(ownsStake(host, { kind: 'hero', id: 'plague' })).toBe(true)
+    expect(ownsStake(host, { kind: 'hero', id: 'shiro' })).toBe(false)
+    expect(ownsStake(host, { kind: 'hero', id: 'nope' })).toBe(false)
+    expect(ownsStake(host, NO_STAKE)).toBe(true)
+    expect(stakeLabel({ kind: 'hero', id: 'plague' })).toBe('the hero Plague Doctor')
+  })
+
+  it('cleans stakes from the network', () => {
+    expect(cleanStake({ kind: 'hero', id: 'nope' })).toEqual(NO_STAKE)
+    expect(cleanStake({ kind: 'crystals', amount: 999999 })).toEqual(NO_STAKE)
+    expect(cleanStake({ kind: 'hero', id: 'guest' })).toEqual(NO_STAKE)
+    expect(cleanStake(null)).toEqual(NO_STAKE)
+  })
+
+  it('gives the winner a copy', () => {
+    const guest = { bank: 10, heroesOwned: [], collection: [] }
+    expect(awardStake(guest, { kind: 'hero', id: 'plague' }).profile.heroesOwned).toEqual(['plague'])
+    expect(awardStake(guest, { kind: 'pet', id: 'ember' }).profile.collection).toEqual(['ember'])
+    expect(awardStake(guest, { kind: 'crystals', amount: 250 }).profile.bank).toBe(260)
+    const again = awardStake({ ...guest, heroesOwned: ['plague'] }, { kind: 'hero', id: 'plague' })
+    expect(again.gained).toBe(false)
+  })
+
+  it('locks the stake once a round is scored, until the match ends', () => {
+    let d = duelMod.createDuel()
+    expect(stakeLocked(d)).toBe(false)
+    d = duelMod.scoreKo(d, true, 0)
+    expect(stakeLocked(d)).toBe(true)
+    d = { ...d, phase: 'over' }
+    expect(stakeLocked(d)).toBe(false)
+  })
+})

@@ -285,7 +285,7 @@ import { applyFreeze, applySlow, isFrozen, statusTimeScale } from './logic/statu
 import { createCoop } from './coop.js'
 import { COOP_MAX_DISTANCE, COOP_RESPAWN_HP, COOP_RESPAWN_IFRAMES, cleanMode, leashPosition, standUpBeside } from './logic/coop.js'
 import { knockbackVector } from './logic/combat.js'
-import { DUEL_START_IFRAMES, canHit as duelCanHit, createDuel, duelDamage, duelScoreText, duelSpawn, scoreKo, stepDuel } from './logic/duel.js'
+import { DUEL_RADIUS, DUEL_SPEED, DUEL_START_IFRAMES, NO_STAKE, awardStake, canHit as duelCanHit, cleanStake, createDuel, duelDamage, duelScoreText, duelSpawn, ownsStake, scoreKo, stakeKey, stakeLabel, stakeLocked, stakeOptions, stepDuel } from './logic/duel.js'
 import { burst, createParticleSystem, resetParticles, setParticleViewScale, shardBurst, updateParticles } from './particles.js'
 import { createPet, disposePets, updatePets } from './pets.js'
 import { Player } from './player.js'
@@ -3029,7 +3029,7 @@ const SUNDECK_RADIUS = 48 // ARENA_RADIUS everywhere but the free roam world
 function createGame() {
   const lab = gameMode === 'labyrinth'
   const worldMode = gameMode === 'world'
-  setArenaRadius(worldMode ? WORLD_RADIUS : SUNDECK_RADIUS)
+  setArenaRadius(worldMode ? WORLD_RADIUS : duelMode ? DUEL_RADIUS : SUNDECK_RADIUS) // (a duel is fought on a smaller deck)
   setDepthsMode(false) // a new run always starts on the surface
   setWildsLook(worldMode) // the Wilds' monsters are always Realist creatures
   document.body.classList.toggle('world', worldMode)
@@ -8025,6 +8025,7 @@ let sandbox = false
 let duelMode = false // a 1v1 duel (co-op's PvP mode, see stepDuelRound)
 let duel = createDuel()
 let duelRivals = 0 // how many rivals we had last frame (a new one starts a fresh match)
+let duelStake = NO_STAKE // what the host put on the line (the host's pick; on the guest, what the host told us)
 let godMode = true
 let sandboxPanel = null
 
@@ -8593,6 +8594,7 @@ function stepDuelRound(game, now) {
     duel = createDuel()
     resetDuelRound(game, now)
     questUi.showToast(`DUEL! ${String(coop.rivalName() ?? 'YOUR RIVAL').toUpperCase()} STEPS ONTO THE DECK`)
+    if (coop.isHost) coop.sendStake(duelStake) // (tell the newcomer what's on the line)
   }
   duelRivals = rivals
   if (!rivals) {
@@ -8611,7 +8613,9 @@ function stepDuelRound(game, now) {
       shardBurst(particleSystem, { x: player.position.x, y: 0.8, z: player.position.z }, 0xff6a4d, 24, 4)
     }
     coop.sendKo()
+    const before = duel.phase
     duel = scoreKo(duel, false, now)
+    if (before !== 'over' && duel.phase === 'over') settleDuel()
     questUi.showToast(duel.phase === 'over' ? `${String(coop.rivalName()).toUpperCase()} WINS THE DUEL` : player.falling ? 'RUNG OUT! THE ROUND GOES TO YOUR RIVAL' : 'KNOCKED OUT! THE ROUND GOES TO YOUR RIVAL')
     sfx.play('playerHurt', { x: player.position.x, z: player.position.z })
   }
@@ -8622,8 +8626,46 @@ function stepDuelRound(game, now) {
     resetDuelRound(game, now)
     questUi.showToast(duel.round === 1 && duel.me === 0 && duel.them === 0 ? 'A NEW MATCH! FIGHT!' : `ROUND ${duel.round}: FIGHT!`)
   }
-  duelChip.textContent = duelScoreText(duel, String(coop.rivalName() ?? 'RIVAL').toUpperCase())
+  duelChip.textContent = duelScoreText(duel, String(coop.rivalName() ?? 'RIVAL').toUpperCase()) + (duelStake.kind !== 'none' ? `  ·  ON THE LINE: ${stakeLabel(duelStake).toUpperCase()}` : '')
   duelChip.style.display = ''
+}
+
+// ---- stakes: the host puts something they own on the line; if the guest wins the match they get a copy (the host keeps theirs) ----
+// The host picks it in the co-op panel (returns why not, or null).
+function chooseDuelStake(key) {
+  if (!duelMode || !coop?.isHost) return 'Only the host of a duel can put something on the line.'
+  if (stakeLocked(duel)) return 'The match has started: the stake is locked until it ends.'
+  const stake = stakeOptions(profile).find((o) => stakeKey(o) === key)
+  if (!stake || !ownsStake(profile, stake)) return "You don't own that."
+  duelStake = cleanStake(stake)
+  coop.sendStake(duelStake)
+  questUi.showToast(duelStake.kind === 'none' ? 'NOTHING ON THE LINE' : `ON THE LINE: ${stakeLabel(duelStake).toUpperCase()}`)
+  return null
+}
+// The guest hears what's on the line.
+function hearDuelStake(raw) {
+  if (!duelMode || coop?.isHost) return
+  const next = cleanStake(raw)
+  if (stakeKey(next) === stakeKey(duelStake)) return
+  duelStake = next
+  questUi.showToast(next.kind === 'none' ? 'THE HOST TOOK THE STAKE OFF THE TABLE' : `THE HOST PUTS ${stakeLabel(next).toUpperCase()} ON THE LINE: WIN THE DUEL TO GET IT!`)
+}
+// The match is over: the guest who won gets their copy.
+function settleDuel() {
+  if (duelStake.kind === 'none') return
+  const label = stakeLabel(duelStake).toUpperCase()
+  const rival = String(coop?.rivalName() ?? 'YOUR RIVAL').toUpperCase()
+  if (coop?.isHost) {
+    questUi.showToast(duel.winner === 'me' ? `YOU DEFENDED ${label}!` : `${rival} WON A COPY OF ${label} (YOU KEEP YOURS)`)
+    return
+  }
+  if (duel.winner !== 'me') {
+    questUi.showToast(`YOU LOST: ${label} STAYS WITH ${rival}`)
+    return
+  }
+  const { profile: next, gained } = awardStake(profile, duelStake)
+  if (gained) setProfile(next)
+  showLootToast(hud, { title: 'DUEL PRIZE', name: stakeLabel(duelStake).replace(/^the (hero|pet) /, ''), blurb: gained ? `You beat ${coop?.rivalName() ?? 'the host'} and won ${stakeLabel(duelStake)}! It's yours to keep.` : `You won ${stakeLabel(duelStake)}, but you already had it.` })
 }
 
 // The rival's attack landed on us (their game decided it hit).
@@ -8657,6 +8699,7 @@ function joinMode(mode) {
     duelMode = mode === 'duel'
     duel = createDuel()
     duelRivals = 0
+    duelStake = NO_STAKE
     if (duelMode) {
       gameMode = 'resort' // (the duel is fought on the Orbital Sundeck)
       disposeGame(game)
@@ -8689,9 +8732,16 @@ coop = createCoop({
   duelCanHit: () => duelCanHit(duel),
   setDuel,
   onPvpHit: (hit) => takeDuelHit(hit),
+  onStake: (raw) => hearDuelStake(raw),
+  stakeChoices: () => stakeOptions(profile).map((o) => ({ key: stakeKey(o), label: o.kind === 'none' ? 'Nothing' : stakeLabel(o).replace(/^the /, '') })),
+  currentStakeKey: () => stakeKey(duelStake),
+  stakeLocked: () => stakeLocked(duel),
+  chooseStake: (key) => chooseDuelStake(key),
   onDuelKo(name) {
     if (!started || !duelMode) return
+    const before = duel.phase
     duel = scoreKo(duel, true, timer.getElapsed())
+    if (before !== 'over' && duel.phase === 'over') settleDuel()
     questUi.showToast(duel.phase === 'over' ? 'YOU WIN THE DUEL!' : `${String(name).toUpperCase()} IS DOWN! THE ROUND IS YOURS`)
     sfx.play('waveCleared', { x: game.player.position.x, z: game.player.position.z })
   },
@@ -9334,7 +9384,7 @@ function gameFrame(timestamp) {
   if (!sandbox && game.inventory.pets.some((id) => !profile.collection.includes(id))) {
     setProfile(addToCollection(profile, game.inventory.pets))
   }
-  player.speedMultiplier = petFx.speedMultiplier * perk.speed * (holdSprinting() ? SHIFT_SPRINT_MULTIPLIER : 1) * (elapsedSeconds < player.sprintUntil ? SPRINT_SPEED_MULTIPLIER : 1) * (elapsedSeconds < (player.whirlUntil ?? -Infinity) ? 1.3 : 1) * (elapsedSeconds < heroState.speedUntil ? 1.5 : 1) * (heroRaging(elapsedSeconds) ? tn().speed : 1) * player.speedFactor(elapsedSeconds) * (game.world?.phen?.speedFactor ?? 1)
+  player.speedMultiplier = petFx.speedMultiplier * perk.speed * (holdSprinting() ? SHIFT_SPRINT_MULTIPLIER : 1) * (elapsedSeconds < player.sprintUntil ? SPRINT_SPEED_MULTIPLIER : 1) * (elapsedSeconds < (player.whirlUntil ?? -Infinity) ? 1.3 : 1) * (elapsedSeconds < heroState.speedUntil ? 1.5 : 1) * (heroRaging(elapsedSeconds) ? tn().speed : 1) * player.speedFactor(elapsedSeconds) * (game.world?.phen?.speedFactor ?? 1) * (duelMode ? DUEL_SPEED : 1)
   if (player.stepStatus(elapsedSeconds)) burst(particleSystem, { x: player.position.x, y: 1.1, z: player.position.z }, STATUS_COLORS.poison, 3, 1.5)
   if (game.world) {
     const jump = game.world.jump
