@@ -5033,7 +5033,7 @@ function stepStormPads(game, now) {
   const ph = w.phen
   const player = game.player
   const p = player.position
-  const ok = !coop?.isClient && !player.hidden && !player.falling && player.hp > 0 && !w.jump.air && !blockingPanelOpen() && !game.cutscene
+  const ok = !player.hidden && !player.falling && player.hp > 0 && !w.jump.air && !blockingPanelOpen() && !game.cutscene
   const pad = ok ? padAt(p.x, p.z) : null
   if (!pad || (ph.padLock && ph.padLock === pad.stormId)) {
     if (!pad) ph.padLock = null
@@ -5445,7 +5445,10 @@ function stepPhenomena(game, now, dt) {
   const p = game.player.position
   const cleared = new Set(PHENOMENON_ORDER.filter((id) => isCleared(w.journal.phenomena, id)))
   ph.fx.update(now, p, cleared)
-  if (coop?.isClient) return
+  if (coop?.isClient) { // (a guest's storms are the host's; the storm pads still throw a guest up to the sky temples)
+    if (dt > 0 && !w.aloft) stepStormPads(game, now)
+    return
+  }
   const alive = game.player.hp > 0 && !game.player.falling && !game.cutscene
   // The storm you are in (or at its edge): the strongest one.
   let here = null
@@ -5597,6 +5600,13 @@ function drawPhenomenaMarks(ctx, game, at, onMap, size) {
   }
 }
 
+// The towers whose pads are jammed for us. A co-op guest can't run the Tower Wardens' repair jobs (those are the host's), so
+// every pad works for a guest.
+const NONE_JAMMED = new Set()
+function jammedFor(w) {
+  return coop?.isClient ? NONE_JAMMED : jammedTowers(w.journal.fixes)
+}
+
 function stepSky(game, now, dt) {
   const w = game.world
   const s = w.sky
@@ -5605,8 +5615,8 @@ function stepSky(game, now, dt) {
   const player = game.player
   if (dt > 0) {
     // The towers: stand on the pad, hold still while it charges, and up you go.
-    const ok = !coop?.isClient && !player.hidden && !player.falling && player.hp > 0 && !w.jump.air && !blockingPanelOpen() && !game.cutscene
-    const out = stepLaunch(s.launch, { x: p.x, z: p.z, alt: w.groundY, now, ok, jammed: jammedTowers(w.journal.fixes) })
+    const ok = !player.hidden && !player.falling && player.hp > 0 && !w.jump.air && !blockingPanelOpen() && !game.cutscene
+    const out = stepLaunch(s.launch, { x: p.x, z: p.z, alt: w.groundY, now, ok, jammed: jammedFor(w) })
     s.launch = out.state
     for (const ev of out.events) {
       if (ev.type === 'charge') {
@@ -5683,7 +5693,8 @@ function stepSky(game, now, dt) {
 }
 
 // Co-op guest: when the host drops into the Depths, comes back up, or goes up into (or down from) the sky, we are taken
-// along, to where the host stands. (Only the host falls into chasms and rides the towers.)
+// along, to where the host stands. (Only the host falls into chasms; both ride the towers and storm pads. A guest who is
+// already up in the sky, or already back on the land, when the host gets there is left where they are.)
 let lastFollowAt = -Infinity
 function followHost(layer) {
   const w = game.world
@@ -5694,6 +5705,8 @@ function followHost(layer) {
   lastFollowAt = now
   w.hostLayer = layer
   const depths = (layer & 1) === 1
+  const sameLevel = depths === w.depths.on && ((layer & 2) === 2) === !!w.aloft
+  if (sameLevel && Math.hypot(spot.x - game.player.position.x, spot.z - game.player.position.z) < COOP_MAX_DISTANCE * 1.6) return
   if (depths !== w.depths.on) switchWorldLayer(game, depths)
   jumpToHost(spot)
   questUi.showToast(depths ? 'FOLLOWING YOUR FRIEND DOWN INTO THE DEPTHS' : (layer & 2) ? 'FOLLOWING YOUR FRIEND UP INTO THE SKY' : 'FOLLOWING YOUR FRIEND')
@@ -6216,7 +6229,7 @@ function skyChips(game, now) {
   const chips = []
   if (s.launch.charging) chips.push(['#5ef2d6', `<b>SKYLIFT</b> charging ${Math.round(chargeFraction(s.launch, now) * 100)}% · hold still`])
   else if (!w.jump.air) {
-    const jammed = jammedTowers(w.journal.fixes)
+    const jammed = jammedFor(w)
     for (const t of skyTowers()) {
       if (Math.hypot(t.x - p.x, t.z - p.z) < 14 && Math.abs(w.groundY - t.y) < 6) {
         if (jammed.has(t.id)) chips.push(['#ff8aa8', `<b>${t.name.toUpperCase()}</b> is jammed: talk to ${towerIssue(t).keeper} (E)`])
@@ -6258,7 +6271,7 @@ function drawSkyMarks(ctx, game, at, onMap) {
       ctx.setLineDash([])
     }
   }
-  const jammed = jammedTowers(w.journal.fixes)
+  const jammed = jammedFor(w)
   for (const c of caves()) {
     const [x, y] = at(c.x, c.z)
     if (!onMap([x, y], 6)) continue
