@@ -363,10 +363,24 @@ export function withSurface(fn) {
 }
 // The cavern floor: broad rolling swells with small bumps, never far from y = 0 (so everything that rides the
 // ground still works) but never flat either.
-export function depthsFloor(x, z) {
+export function depthsFloorRaw(x, z) {
   const swell = (valueNoise(x * 0.018, z * 0.018, WORLD_SEED + 900) - 0.5) * 7
   const bump = (valueNoise(x * 0.09, z * 0.09, WORLD_SEED + 901) - 0.5) * 1.8
   return swell + bump
+}
+// Level spots in the Depths ({ x, z, radius, floor }; logic/depths.js registers the colosseums), blended in over DEPTHS_FLAT_BLEND.
+const DEPTHS_FLAT_BLEND = 14
+let depthsFlats = () => []
+export const setDepthsFlats = (fn) => { depthsFlats = fn }
+export function depthsFloor(x, z) {
+  let h = depthsFloorRaw(x, z)
+  for (const f of depthsFlats()) {
+    const d = Math.hypot(f.x - x, f.z - z)
+    if (d >= f.radius + DEPTHS_FLAT_BLEND) continue
+    const t = Math.max(0, (d - f.radius) / DEPTHS_FLAT_BLEND)
+    h = f.floor + (h - f.floor) * t * t * (3 - 2 * t)
+  }
+  return h
 }
 // The cavern floor's colour: near-black violet, with veins of glowing blue-violet.
 export function depthsGround(x, z) {
@@ -1456,7 +1470,7 @@ export const PROP_HEIGHT = {
   duneHome: 6, duneHomeB: 6, duneHall: 9, duneLamp: 3.2, duneWell: 3, duneFloor: 0.2, frostIgloo: 3.6, frostLonghouse: 7, frostHall: 9, frostLamp: 3.5, frostWell: 2, frostFloor: 0.2,
   duneDais: 1.2, frostDais: 1.2, emberDais: 1.2, mireDais: 1.2, duneOasis: 0.2, palm: 7, duneWall: 4.2, duneGate: 7, duneStall: 3.4, duneTent: 3.6,
   frostSpire: 30, frostPerch: 12, frostRack: 2.6, frostTotem: 4.5, emberCrag: 13, emberForge: 5, emberLava: 0.2, emberBurrow: 5.5, emberCart: 1.8, emberAnvil: 1.2,
-  mirePond: 0.2, mireWalk: 0.4, mireLily: 0.3, deepTemple: 16,
+  mirePond: 0.2, mireWalk: 0.4, mireLily: 0.3, deepTemple: 16, colosseum: 14,
   emberHome: 6, emberHomeB: 6, emberHall: 10, emberLamp: 3.4, emberWell: 2.6, emberFloor: 0.2, mireHome: 8, mireHomeB: 8, mireHall: 9, mireLamp: 3.2, mireWell: 2, mireFloor: 0.2,
   ruinWall: 3, shrine: 3, tower: 14, cottage: 6, cottageTeal: 6, cottageAmber: 6, hall: 9, well: 2, lampPost: 3.2, noticeBoard: 2.4,
   giantShroom: 8, shroomCluster: 2.5, saltPillar: 5, saltCrystal: 2.5, mangrove: 6, sunkenColumn: 4, stormRod: 7, slateStack: 2.5,
@@ -1479,7 +1493,7 @@ export const PROP_RADIUS = {
   duneHome: 2.9, duneHomeB: 2.9, duneHall: 4.2, duneLamp: 0.35, duneWell: 1.3, duneFloor: 0, frostIgloo: 3.0, frostLonghouse: 2.9, frostHall: 4.2, frostLamp: 0.35, frostWell: 1.4, frostFloor: 0,
   duneDais: 0, frostDais: 0, emberDais: 0, mireDais: 0, duneOasis: 0, palm: 0.5, duneWall: 0, duneGate: 0, duneStall: 1.6, duneTent: 2.3,
   frostSpire: 4.6, frostPerch: 0.7, frostRack: 0.8, frostTotem: 0.5, emberCrag: 4.8, emberForge: 2.6, emberLava: 0, emberBurrow: 3.2, emberCart: 1.0, emberAnvil: 0.7,
-  mirePond: 0, mireWalk: 0, mireLily: 0, deepTemple: 0,
+  mirePond: 0, mireWalk: 0, mireLily: 0, deepTemple: 0, colosseum: 0,
   emberHome: 2.9, emberHomeB: 2.9, emberHall: 4.2, emberLamp: 0.35, emberWell: 1.45, emberFloor: 0, mireHome: 2.9, mireHomeB: 2.9, mireHall: 4.2, mireLamp: 0.35, mireWell: 1.6, mireFloor: 0,
   cottage: 2.9, cottageTeal: 2.9, cottageAmber: 2.9, hall: 4.2, well: 1.3, lampPost: 0.35, noticeBoard: 0.9,
   // the Frontier's scenery

@@ -431,8 +431,59 @@ const deepTemple = () => {
   return { lit, glow }
 }
 
+// ---- the storm colosseums (the Depths; logic/depths.js's colosseums) -----------------------------------------------
+// A round arena of pale sand ringed by a two-storey arcade of arches, banked seating rising behind it, braziers on the
+// wall and a great gate at the front (+z). The wall itself is solid (blockers in logic/depths.js's colosseumLayout).
+const colosseum = () => {
+  const STONE = 0x5a4e62
+  const STONE2 = 0x6e6276
+  const DARK = 0x2c2634
+  const lit = [
+    part(cyl(30.5, 31, 0.6, 40), DARK, { y: 0.1 }),
+    part(cyl(23.6, 23.6, 0.3, 40), 0xb8a07a, { y: 0.3 }), // the sand
+    part(cyl(5, 5.2, 0.2, 24), 0x9a8460, { y: 0.48 }), // the middle
+  ]
+  const glow = [part(torus(23.4, 0.12, Math.PI * 2, 64), 0xffc06a, { y: 0.5, rx: Math.PI / 2 }), part(torus(5.1, 0.1, Math.PI * 2, 32), 0xffd98a, { y: 0.6, rx: Math.PI / 2 })]
+  const n = 32
+  const gateAt = (a) => Math.abs(Math.atan2(Math.sin(a - Math.PI / 2), Math.cos(a - Math.PI / 2))) < 0.2
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2
+    const mid = a + Math.PI / n
+    const ry = -a + Math.PI / 2
+    if (!gateAt(a)) {
+      // The arcade: a pier at each step, a lintel to the next, and a second storey of smaller piers.
+      lit.push(part(box(1.6, 7, 2.2), STONE2, { x: Math.cos(a) * 24.6, y: 3.5, z: Math.sin(a) * 24.6, ry }))
+      lit.push(part(box(1.2, 4, 1.8), STONE, { x: Math.cos(a) * 24.8, y: 9.6, z: Math.sin(a) * 24.8, ry }))
+    }
+    if (!gateAt(mid)) {
+      const mry = -mid + Math.PI / 2
+      lit.push(part(box(5.2, 1.2, 2.4), STONE, { x: Math.cos(mid) * 24.6, y: 7.4, z: Math.sin(mid) * 24.6, ry: mry }))
+      lit.push(part(box(5.2, 1, 2), STONE2, { x: Math.cos(mid) * 24.8, y: 12, z: Math.sin(mid) * 24.8, ry: mry }))
+      // Banked seating behind the wall: three steps rising outward.
+      for (let k = 0; k < 3; k++) lit.push(part(box(5.6 + k * 0.6, 2 + k * 2.2, 1.8), k % 2 ? STONE : DARK, { x: Math.cos(mid) * (26.6 + k * 1.6), y: 1 + k * 1.1, z: Math.sin(mid) * (26.6 + k * 1.6), ry: mry }))
+    }
+    if (i % 4 === 2 && !gateAt(a)) { // braziers on the wall
+      lit.push(part(cyl(0.5, 0.3, 0.8, 8), DARK, { x: Math.cos(a) * 23.4, y: 7.6, z: Math.sin(a) * 23.4 }))
+      glow.push(part(cone(0.45, 1.1, 6), 0xff8a3a, { x: Math.cos(a) * 23.4, y: 8.5, z: Math.sin(a) * 23.4 }))
+    }
+  }
+  // The great gate: two towers and a lintel with a glowing sigil, facing the middle of the world.
+  for (const x of [-5.2, 5.2]) lit.push(part(box(2.8, 15, 3), STONE2, { x, y: 7.5, z: 24.6 }), part(cone(2.1, 3, 4), DARK, { x, y: 16.5, z: 24.6, ry: Math.PI / 4 }))
+  lit.push(part(box(13, 2.2, 3.2), STONE, { y: 13.6, z: 24.6 }))
+  glow.push(part(oct(1.3), 0xffd98a, { y: 11.2, z: 26.3 }))
+  // Four statues of champions past, kneeling round the sand.
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2 + Math.PI / 4
+    const x = Math.cos(a) * 21
+    const z = Math.sin(a) * 21
+    lit.push(part(box(2.4, 1.2, 2.4), DARK, { x, y: 0.6, z }), part(cone(1.3, 3.6, 7), STONE, { x, y: 3, z }), part(dodeca(0.75), STONE, { x, y: 5.2, z }))
+  }
+  return { lit, glow }
+}
+
 export const CITY_MODELS = {
   deepTemple,
+  colosseum,
   duneOasis, palm, duneWall, duneGate, duneTent, duneStall, duneDais,
   frostSpire, frostPerch, frostRack, frostTotem, frostDais,
   emberCrag, emberBurrow, emberForge, emberLava, emberCart, emberAnvil, emberDais,

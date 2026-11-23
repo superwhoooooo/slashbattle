@@ -275,6 +275,52 @@ const WATER_BOSS_DEFS = [
   },
 ]
 
+// ---- The storm colosseums' champions (the Depths; logic/depths.js's colosseums): one per regional phenomenon, never in a
+// wave's rotation, fought ONCE (beaten, they stay beaten: the journal's `colossi`). Each is far tougher than a wave boss.
+export const COLOSSEUM_BOSS_DEFS = [
+  {
+    id: 'boss_sirocco',
+    name: 'SULTAN SIROCCO',
+    title: 'Heart of the Howling Sands',
+    storm: 'sandstorm',
+    specials: ['spin', 'charge', 'barrage', 'summon'],
+    score: 4000,
+    stats: { shape: 'cylinder', size: 5.2, color: 0xd8a24a, edgeColor: 0xffe2a0, speed: 2.4, hp: 2600, damage: 22, radius: 2.2, accessory: 'rings' },
+    lines: ['Every grain of that storm was MINE.', 'You calmed my winds? Then face the wind that remains.', 'Bow to the sand, little one. Everyone does, eventually.'],
+  },
+  {
+    id: 'boss_rime',
+    name: 'QUEEN RIMEFANG',
+    title: 'The Whiteout Made Flesh',
+    storm: 'whiteout',
+    specials: ['barrage', 'slam', 'blink', 'spin'],
+    score: 4000,
+    stats: { shape: 'tetrahedron', size: 5.0, color: 0x9fdcff, edgeColor: 0xffffff, speed: 2.1, hp: 2500, damage: 22, radius: 2.0, accessory: 'icicles' },
+    lines: ['So cold. So quiet. So perfect. And then YOU came.', 'I will bury you in snow so deep the spring forgets you.', 'Shiver for me.'],
+  },
+  {
+    id: 'boss_cinder',
+    name: 'THE CINDER TYRANT',
+    title: 'Last Ember of the Ashstorm',
+    storm: 'ashstorm',
+    specials: ['leap', 'slam', 'charge', 'barrage'],
+    score: 4000,
+    stats: { shape: 'sphere', size: 5.4, color: 0x3a1a14, edgeColor: 0xff7a3a, speed: 2.2, hp: 2800, damage: 24, radius: 2.3, accessory: 'fuse' },
+    lines: ['The ash fell for a hundred years. I fell with it.', 'Everything burns. You are just next.', 'Feel that? That is the floor getting hotter.'],
+  },
+  {
+    id: 'boss_mire',
+    name: 'MOTHER MIASMA',
+    title: 'She Who Weeps Rot',
+    storm: 'miasma',
+    specials: ['barrage', 'summon', 'leap', 'spin'],
+    score: 4000,
+    stats: { shape: 'cone', size: 5.0, color: 0x4a7a3a, edgeColor: 0xc8ff8a, speed: 2.0, hp: 2500, damage: 20, radius: 2.2, accessory: 'cap', attackRange: 12 },
+    lines: ['Breathe in, darling. Deeper. DEEPER.', 'My children rot so beautifully. Join them.', 'The fen remembers every footstep. Yours will be the last.'],
+  },
+]
+export const COLOSSEUM_BOSS_FOR = Object.fromEntries(COLOSSEUM_BOSS_DEFS.map((d) => [d.storm, d.id]))
+
 // How far past the body's own radius a boss swings (and can be swung at).
 const BOSS_ATTACK_REACH = 1.2
 
@@ -299,7 +345,8 @@ const makeBoss = (def) => ({
 // The dry-land bosses, and the three that only ever appear in water rooms.
 export const BOSSES = BOSS_DEFS.map(makeBoss)
 export const WATER_BOSSES = WATER_BOSS_DEFS.map(makeBoss)
-export const ALL_BOSSES = [...BOSSES, ...WATER_BOSSES]
+export const COLOSSEUM_BOSSES = COLOSSEUM_BOSS_DEFS.map(makeBoss)
+export const ALL_BOSSES = [...BOSSES, ...WATER_BOSSES, ...COLOSSEUM_BOSSES]
 
 export const BOSS_COUNT = BOSSES.length
 

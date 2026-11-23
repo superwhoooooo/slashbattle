@@ -85,14 +85,14 @@ import { setMood } from './speciesModels.js'
 import { championFor, companionStorm, guideTarget, guideText, sageDialog, stormCity } from './logic/stormGuide.js'
 import { CAMP_SIZE, CELL_PICKUP_RADIUS, FIX_REWARD, PARTS_COST, acceptFix, campKill, collectCell, finishFix, fixOf, fixProgressText, issueCamp, issueCells, jammedTowers, keeperDialog, keeperSpot, towerIssue } from './logic/towerQuests.js'
 import { createCavesFx } from './cavesFx.js'
-import { ASCEND_RADIUS, DEPTH_FIRST_REWARD, DEPTH_RELIC_REWARD, RELIC_CLAIM_RADIUS, arrivalSpot, ascendFraction, beacons, chasmById, chasmFalls, chasmRim, chasms, createAscendState, depthsChunk, depthsLairs, stepAscend } from './logic/depths.js'
+import { ASCEND_RADIUS, DEPTH_FIRST_REWARD, DEPTH_RELIC_REWARD, RELIC_CLAIM_RADIUS, arrivalSpot, ascendFraction, beacons, chasmById, chasmFalls, chasmRim, chasms, createAscendState, depthsChunk, depthsLairs, stepAscend, COLOSSEUM_REWARD, colosseumById, colosseumChampion, colosseumForBoss, colosseumGlow, colosseums } from './logic/depths.js'
 import { createJournalUi } from './journalUi.js'
 import { LANTERN_CATCH_RADIUS, LANTERN_COUNT, lanternReward, lanternsNear } from './logic/lanterns.js'
 import { BOONS, SHRINE_RADIUS, activeBoons, boonEffects, createShrineState, foldBoons, grantBoon, shrineCharge, useShrine, wayshrines } from './logic/wayshrines.js'
 import { HEAT_TEXT, MAX_MAPS, addMap, digAt, makeTreasureMap, nearestMap } from './logic/treasure.js'
 import { createRaceState, raceCourses, raceReward, stepRace } from './logic/races.js'
 import { EVENTS, STAR_SHARD_VALUE, createEventDirector, endEvent, hordePlan, merchantName, merchantStock, meteorPlan, stepEventDirector, wandererPlan } from './logic/wildEvents.js'
-import { BESTIARY_FIRST_REWARD, JOURNAL_KEY, claimMilestone, creatureName, noteBiome, noteCave, noteChasm, noteDepthRelic, noteEvent, noteIsle, noteKill, noteLandmark, noteLantern, noteRace, noteRelic, noteShrine, noteTower, noteTreasure, parseJournal, pickUnowned, readyMilestones, serializeJournal } from './logic/wildsJournal.js'
+import { BESTIARY_FIRST_REWARD, JOURNAL_KEY, claimMilestone, creatureName, noteBiome, noteCave, noteChasm, noteColosseum, noteDepthRelic, noteEvent, noteIsle, noteKill, noteLandmark, noteLantern, noteRace, noteRelic, noteShrine, noteTower, noteTreasure, parseJournal, pickUnowned, readyMilestones, serializeJournal } from './logic/wildsJournal.js'
 import { formatTime } from './logic/wildsSpots.js'
 import { createMusic } from './music.js'
 import { MUSIC_STYLE_LABELS, nextMusicStyle, pickTrack } from './logic/wildsMusic.js'
@@ -282,6 +282,7 @@ import {
 import { enemyScale, SPLITS } from './logic/enemies.js'
 import { createMonsterAIState, isUntouchable, separateMonsters, setDeepShield, setMonsterNavigator, setPlayerAloft, setSurfaceShield, setTimeWarp, setWaterRoom, timeWarp, updateMonster, upgradeBossSpecials } from './monster.js'
 import { applyFreeze, applySlow, isFrozen, statusTimeScale } from './logic/status.js'
+import { STAFF_UPGRADES, hasStaffUpgrade, staffUpgrades } from './logic/stormStaff.js'
 import { createCoop } from './coop.js'
 import { COOP_MAX_DISTANCE, COOP_RESPAWN_HP, COOP_RESPAWN_IFRAMES, cleanMode, leashPosition, standUpBeside } from './logic/coop.js'
 import { knockbackVector } from './logic/combat.js'
@@ -1161,6 +1162,7 @@ setDamageHooks({
   },
   hit(monster, damage, cause, lethal) {
     if (!game || TRAIT_EXCLUDED.has(cause)) return
+    if (cause === 'magic' && staffBoons.length) staffStormHit(monster, damage, lethal)
     const trait = heroTrait()
     const t = tn()
     heroState.hits++
@@ -1328,6 +1330,32 @@ function dustDevil(at, t = tn()) {
   for (const mesh of heroTargets(at.x, at.z, 3.5)) heroHurt(mesh, t.devil * heroBaseDamage(), 4, at)
 }
 const WINDS_COLORS = { sand: 0xe8b86a, frost: 0xcfeaff, ember: 0xff7a3a, mire: 0x8ae86a }
+// The storm-touched staff (logic/stormStaff.js): each calmed storm adds its trouble to every staff orb that lands.
+let staffBoons = []
+function refreshStaffBoons() {
+  staffBoons = staffUpgrades(game?.world ? game.world.journal.phenomena : loadJournal().phenomena)
+}
+function staffStormHit(monster, damage, lethal) {
+  const at = { x: monster.position.x, z: monster.position.z }
+  const from = { x: game.player.position.x, z: game.player.position.z }
+  if (!lethal && hasStaffUpgrade(staffBoons, 'whiteout')) applySlow(monster.userData, heroNow, STAFF_UPGRADES.whiteout.slowFor, STAFF_UPGRADES.whiteout.slow)
+  if (!lethal && hasStaffUpgrade(staffBoons, 'ashstorm')) setBurn(monster, STAFF_UPGRADES.ashstorm.burnDps, STAFF_UPGRADES.ashstorm.burnFor)
+  // (these hit again, so they wait for next frame: nothing re-enters damageMonster from inside it)
+  if (!lethal && hasStaffUpgrade(staffBoons, 'sandstorm')) {
+    heroState.pending.push({ at: heroNow, run: () => alive(monster) && heroHurt(monster, damage * 0.1, STAFF_UPGRADES.sandstorm.push, from) })
+  }
+  if (hasStaffUpgrade(staffBoons, 'miasma')) {
+    const u = STAFF_UPGRADES.miasma
+    heroState.pending.push({
+      at: heroNow,
+      run: () => {
+        burst(particleSystem, { x: at.x, y: 0.9, z: at.z }, u.color, 10, u.splash * 0.7, 0.5)
+        for (const mesh of heroTargets(at.x, at.z, u.splash)) if (mesh !== monster) heroHurt(mesh, damage * u.splashMult, 0.6, at)
+      },
+    })
+  }
+}
+
 // One ring of a wind round the player: sand shoves, frost slows, ember burns, mire drains and heals.
 function windRing(kind, at, radius, damage, t) {
   const color = WINDS_COLORS[kind]
@@ -3132,6 +3160,7 @@ function createGame() {
     game.world.depths.fx = createDepthsFx()
     game.arena.group.add(game.world.depths.fx.group)
     game.world.depths.fx.setRelicsTaken(new Set(game.world.journal.depthRelics))
+    game.world.depths.fx.setColossiBeaten(new Set(game.world.journal.colossi))
     stepWorld(game, 0)
     camera.position.set(player.position.x + CAMERA_OFFSET.x, CAMERA_OFFSET.y, player.position.z + CAMERA_OFFSET.z)
     return game
@@ -4263,6 +4292,7 @@ function handleDialogButton(game, id) {
 
 function rememberWorldKill(game, mesh, now) {
   const id = mesh.userData.worldId
+  if (game.world && mesh.userData.colosseumId) winColosseum(game, mesh.userData.colosseumId, mesh.position)
   if (!game.world || !id) return
   game.world.killed.set(id, now)
   game.world.live.delete(id)
@@ -4333,6 +4363,7 @@ function loadWorldChunk(game, cx, cz, now) {
 
   for (const m of coop?.isClient ? [] : content.monsters) { // a co-op joiner's monsters are the host's (puppets)
     if (w.live.has(m.id) || !canRespawn(w.killed.get(m.id), now, m.boss ? BOSS_RESPAWN_SECONDS : undefined)) continue
+    if (m.colosseumId && w.journal.colossi.includes(m.colosseumId)) continue // a colosseum's champion, once beaten, is gone for good
     const stats = MONSTER_TYPES[m.type]
     // Nudge a camp member out of any tree or crystal it was seeded inside.
     const at = { x: m.x, z: m.z }
@@ -4347,6 +4378,7 @@ function loadWorldChunk(game, cx, cz, now) {
     }
     const mesh = spawnWildMonster(game, m.type, at, m)
     mesh.userData.worldId = m.id
+    if (m.colosseumId) mesh.userData.colosseumId = m.colosseumId
     w.live.set(m.id, mesh)
   }
 
@@ -4868,8 +4900,15 @@ const CHAMPION_JAB = 1.5 // ...and a small hit this often in between
 function stepChampion(game, now, dt) {
   const w = game.world
   if (!w.phen) return
-  const storm = companionStorm(w.journal.phenomena, w.phen.tracked)
+  const p0 = game.player.position
+  const storm = companionStorm(w.journal.phenomena, w.phen.tracked, { x: p0.x, z: p0.z })
   const id = storm ? `champion:${storm}` : null
+  if (storm !== (w.phen.companion ?? null)) { // they go home when you leave their land, and meet you again when you come back
+    const was = w.phen.companion
+    w.phen.companion = storm
+    if (was && !storm) questUi.showToast(`${championFor(was).name.toUpperCase()} HEADS HOME TO ${stormCity(was).name.toUpperCase()}`)
+    else if (storm && was !== undefined) questUi.showToast(`${championFor(storm).name.toUpperCase()} JOINS YOU IN THEIR LAND`)
+  }
   // Only one champion walks with you; the others go home.
   for (const [key, npc] of w.npcs) {
     if (npc.def.follow && key !== id) {
@@ -5200,6 +5239,9 @@ function calmPhenomenon(game, id) {
   questUi.showToast(`${def.name.toUpperCase()} IS CALMED  ·  ${def.reward.toUpperCase()}  +${CLEAR_REWARD} CRYSTALS, FULLY HEALED  ·  ${clearedCount(w.journal.phenomena)}/${PHENOMENON_ORDER.length}`)
   if (hud) showLootToast(hud, { title: 'THE SKY CLEARS', name: def.reward, blurb: `${def.name} is over. ${clearedCount(w.journal.phenomena) < PHENOMENON_ORDER.length ? `${PHENOMENON_ORDER.length - clearedCount(w.journal.phenomena)} more regional phenomena rage across the Wilds.` : 'The weather itself has noticed you.'}` })
   grantStormHero(clearedCount(w.journal.phenomena), true)
+  refreshStaffBoons()
+  const boon = STAFF_UPGRADES[id]
+  if (boon) heroState.pending.push({ at: heroNow + 4, run: () => hud && showLootToast(hud, { title: 'YOUR STAFF CHANGES', name: `Wizard Staff: ${boon.name}`, blurb: boon.desc }) })
 }
 
 // A storm-spawn fell (scoreKill): count it toward the stage it belongs to.
@@ -5963,6 +6005,43 @@ function stepChasms(game, now) {
   questUi.showToast(`THE GROUND GIVES WAY  ·  ${c.name.toUpperCase()}`)
 }
 
+// A storm colosseum's champion is down: it stays down (journal `colossi`), with a big reward the first time.
+function winColosseum(game, id, at) {
+  const w = game.world
+  const c = colosseumById(id)
+  if (!w || !c) return
+  const { journal, first } = noteColosseum(w.journal, id)
+  if (!first) return
+  setJournal(game, journal)
+  w.depths?.fx?.setColossiBeaten(new Set(w.journal.colossi))
+  game.inventory = addCrystals(game.inventory, COLOSSEUM_REWARD)
+  game.player.hp = game.player.maxHp
+  const glow = colosseumGlow(c)
+  const p = { x: at?.x ?? c.x, y: 3, z: at?.z ?? c.z }
+  burst(particleSystem, p, glow, 70, 8)
+  burst(particleSystem, p, 0xffffff, 30, 5)
+  spawnShockwave(shockwavePool, p.x, p.z, 12, glow)
+  sfx.play('waveCleared', { x: p.x, z: p.z })
+  const champ = colosseumChampion(c)
+  questUi.showToast(`${champ?.name ?? 'THE CHAMPION'} IS BEATEN FOR GOOD  ·  COLOSSEUMS ${w.journal.colossi.length}/${colosseums().length}  ·  +${COLOSSEUM_REWARD} CRYSTALS, FULLY HEALED`)
+}
+
+// The colosseums, while you are in the Depths: a banner and a word about the champion when you walk in.
+function stepColosseums(game, now) {
+  const w = game.world
+  const d = w.depths
+  const p = game.player.position
+  for (const c of colosseums()) {
+    const dist = Math.hypot(c.x - p.x, c.z - p.z)
+    if (dist < c.radius - 6 && d.colSeen !== c.id) {
+      d.colSeen = c.id
+      biomeBannerShow(c.name, colosseumGlow(c), now)
+      const champ = colosseumChampion(c)
+      questUi.showToast(w.journal.colossi.includes(c.id) ? `${c.name.toUpperCase()} STANDS EMPTY. YOU BEAT ITS CHAMPION` : `${champ.name}, ${champ.title.toUpperCase()}, AWAITS. IT FIGHTS ONLY ONCE`)
+    } else if (dist > c.radius + 15 && d.colSeen === c.id) d.colSeen = null
+  }
+}
+
 // Down in the Depths: Lightroots to climb out by, Umbral Hearts to claim, and the dark.
 function stepDepths(game, now, dt) {
   const w = game.world
@@ -5971,6 +6050,7 @@ function stepDepths(game, now, dt) {
   const p = player.position
   biomeBanner?.classList.toggle('show', now < w.bannerUntil)
   if (dt > 0) stepDeepTemples(game, now)
+  if (dt > 0) stepColosseums(game, now)
   let charging = null
   if (dt > 0) {
     const ok = !coop?.isClient && !player.hidden && !player.falling && player.hp > 0 && !w.jump.air && !blockingPanelOpen() && !game.cutscene
@@ -6019,6 +6099,7 @@ function stepDepths(game, now, dt) {
     const html = [
       ['#b48aff', '<b>THE DEPTHS</b> a Lightroot (pale beam) lifts you home'],
       ['#e08aff', `<b>UMBRAL HEARTS</b> ${hearts}/${depthsLairs().length}`],
+      ['#ffd98a', `<b>COLOSSEUMS</b> ${w.journal.colossi.length}/${colosseums().length} champions beaten`],
       ...(charging ? [['#cfe8ff', '<b>LIGHTROOT</b> hold still...']] : []),
     ].map(([c, text]) => `<div class="ws-chip" style="--c:${c}">${text}</div>`).join('')
     if (html !== wildsStatusKey) {
@@ -6081,6 +6162,23 @@ function drawDepthsMinimap(game, now) {
     ctx.stroke()
   }
   if (nearest && !onMap(at(nearest.b.x, nearest.b.z), -10)) drawMinimapPointer(ctx, size, Math.atan2(nearest.b.z - p0.z, nearest.b.x - p0.x), '#e8f4ff')
+  // The storm colosseums: a ring in the storm's colour (grey once its champion is beaten); a rim arrow to the nearest unbeaten.
+  let nearCol = null
+  for (const c of colosseums()) {
+    const beaten = game.world.journal.colossi.includes(c.id)
+    const [x, y] = at(c.x, c.z)
+    if (!beaten) {
+      const dist = Math.hypot(c.x - p0.x, c.z - p0.z)
+      if (!nearCol || dist < nearCol.dist) nearCol = { c, dist }
+    }
+    if (!onMap([x, y], 14)) continue
+    ctx.strokeStyle = beaten ? '#6a6478' : `#${colosseumGlow(c).toString(16).padStart(6, '0')}`
+    ctx.lineWidth = 3
+    ctx.beginPath()
+    ctx.arc(x, y, Math.max(6, c.radius * k), 0, Math.PI * 2)
+    ctx.stroke()
+  }
+  if (nearCol && !onMap(at(nearCol.c.x, nearCol.c.z), -10)) drawMinimapPointer(ctx, size, Math.atan2(nearCol.c.z - p0.z, nearCol.c.x - p0.x), `#${colosseumGlow(nearCol.c).toString(16).padStart(6, '0')}`)
   // The Umbral Hearts not yet claimed: magenta rings.
   for (const lair of depthsLairs()) {
     if (game.world.journal.depthRelics.includes(lair.relic.id)) continue
@@ -8466,6 +8564,7 @@ let game = createGame()
 grantDepthsHero(loadJournal().depthRelics.length)
 grantTwilightHero()
 grantStormHero(clearedCount(loadJournal().phenomena))
+refreshStaffBoons()
 grantCrownHero(loadJournal().relics.length) // a save that already holds every Nimbus Crown gets the secret hero
 
 // Dev-server only: lets browser tests (and you, in the console) peek at the state.
@@ -8908,6 +9007,8 @@ coop = createCoop({
   // A joiner: the host's boss died on screen -- our own free chests (and a power-up) where it fell.
   onPuppetBossDeath(mesh) {
     if (!started) return
+    const col = game.world && inDepths() ? colosseumForBoss(mesh.userData.type) : null
+    if (col) winColosseum(game, col.id, mesh.position) // (the host's champion fell with us there: it's beaten for us too)
     dropBossLoot(game, { x: mesh.position.x, z: mesh.position.z })
   },
   // Host: a joined player's hit on one of our monsters (already scaled by their gear and hero).

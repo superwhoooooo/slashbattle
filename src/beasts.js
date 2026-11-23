@@ -1382,6 +1382,11 @@ const BEASTS = {
   },
   // Zipzilla: the zippy hound grown into a crested monster.
   boss_zipzilla: { like: 'zippy' },
+  // The storm colosseums' champions: their storm's creature, crowned.
+  boss_sirocco: { like: 'twister', extra: (f) => crown(f, 1.15, 0.5) },
+  boss_rime: { like: 'icicle', extra: (f) => crown(f, 1.15, 0.45) },
+  boss_cinder: { like: 'kablooma', extra: (f) => crown(f, 1.0, 0.5) },
+  boss_mire: { like: 'sporeling', extra: (f) => crown(f, 1.2, 0.45) },
   // Sir Grumpsalot: the shell-ogre in spiked plate, wearing a crown.
   boss_grumpsalot: { like: 'grumpus', extra: (f) => crown(f, 0.2, 0.36, 0.82) },
   // Doctor Wobble: a brain floating in a glass tank, carried on writhing tentacles.

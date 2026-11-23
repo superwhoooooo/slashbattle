@@ -2,7 +2,7 @@
 // say it ("about 140 m to the north-east"), who to go and see first (each storm city's champion) and what the champion says at
 // every point of the chain. `north` is -z, east is +x (the camera looks down -z).
 import { PHENOMENA, PHENOMENON_ORDER, currentStage, isCleared, phenomenonEye, progressOf, stageCount, stagePoints } from './phenomena.js'
-import { CITY_DEFS, villages } from './world.js'
+import { CITY_DEFS, STORM_REGION_RADIUS, villages } from './world.js'
 import { TEMPLE_NAMES, templeArena, templePlace } from './stormTemples.js'
 import { SPECIES } from './species.js'
 
@@ -81,8 +81,15 @@ export const guideText = (t) => `${t.label} · ${distanceText(t.distance)} ${t.b
 // Which storm's champion walks with you (or null): champions join when you take their gift. The one for the storm you
 // are tracking comes first, then any other whose storm still rages; once their storms are calm, they stay on with you
 // like a Tears of the Kingdom sage (the last one you calmed).
-export function companionStorm(phenomena, tracked = null) {
-  const joined = PHENOMENON_ORDER.filter((id) => progressOf(phenomena, id).gift)
+// A champion only walks with you in their own storm's land (its region, the city, its temple and the Depths under it).
+export const CHAMPION_LAND = STORM_REGION_RADIUS + 20
+export function inChampionLand(stormId, x, z) {
+  const eye = phenomenonEye(stormId)
+  return Math.hypot(eye.x - x, eye.z - z) < CHAMPION_LAND
+}
+// `at` ({ x, z }, optional): only a champion whose land you are standing in comes along; leave it and they go home.
+export function companionStorm(phenomena, tracked = null, at = null) {
+  const joined = PHENOMENON_ORDER.filter((id) => progressOf(phenomena, id).gift && (!at || inChampionLand(id, at.x, at.z)))
   if (!joined.length) return null
   const raging = joined.filter((id) => !isCleared(phenomena, id))
   if (tracked && raging.includes(tracked)) return tracked

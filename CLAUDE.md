@@ -1299,6 +1299,18 @@ hands, nervous glances; calm = a smile; champions look grim instead), set by `ma
 storm before you start, then the tracked / nearest started storm's current objective via `objectiveFor`), shown as a GUIDE chip, a minimap diamond
 and a tall beam (`fx.setGuide`). Tests: `test/stormGuide.test.js`, `test/speciesModels.test.js`.
 
+**Storm colosseums (the Depths).** `logic/depths.js`'s `colosseums()` places one great arena per storm in the Depths, ~100 m in from its eye
+(clear of the sunken temples, lairs, Lightroots and cave chambers; the cavern floor is levelled under each via `world.js`'s `setDepthsFlats`).
+`colosseumLayout` streams the `colosseum` model (`cityModels.js`), a ring of `blocker`s with a gate facing the middle, two chests and the storm's own
+champion boss (`bosses.js`'s `COLOSSEUM_BOSS_DEFS`: Sultan Sirocco, Queen Rimefang, the Cinder Tyrant, Mother Miasma; in `ALL_BOSSES` but never a wave
+boss; crowned Realist bodies `like` their storm's creature; own signatures). A champion fights ONCE: beaten (`main.js`'s `winColosseum`, from
+`rememberWorldKill` or a guest's `onPuppetBossDeath`) it is noted in the journal's `colossi` (milestone `colossi4`) and never spawns again;
+`COLOSSEUM_REWARD` crystals + a full heal. `depthsFx.js` draws a storm-coloured beam over each unbeaten one; the Depths minimap rings them.
+**Storm-touched staff** (`logic/stormStaff.js`): each calmed storm upgrades the Wizard Staff for good, in every mode (`staffUpgrades(journal.phenomena)`,
+`main.js`'s `staffBoons` / `staffStormHit` on cause `'magic'` hits): Sandblast (shove), Frostbite (slow), Ember Core (burn), Rot Bloom (a spore puff
+hurts monsters beside the target). **Champions stay home**: `companionStorm(..., at)` only picks a champion whose land you are in (`inChampionLand`,
+`CHAMPION_LAND` of the eye); leave it and they go back to their city.
+
 ## The third secret hero: Nyxara, the Twilight Regent
 `twilight` in `HEROES` (`secret: true`, `heroForSecrets`, `TWILIGHT_HERO`; `main.js`'s `grantTwilightHero`, run after either other
 secret grant and at startup) is granted to whoever owns BOTH the Nimbus Sovereign and Veyra. Trait `twilight` (Twilight Regency): she

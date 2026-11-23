@@ -45,6 +45,14 @@ export const SIGNATURES = {
   boss_urchin: { label: 'SPINE WALL', kind: 'wall', interval: 9, windup: 0.8, color: 0xdbb8ff, count: 14, gap: 3, spacing: 0.9, speed: 7 },
 }
 
+// The storm colosseums' champions: one storm-sized signature each.
+Object.assign(SIGNATURES, {
+  boss_sirocco: { label: 'DUST DEVIL', kind: 'spiral', interval: 9, windup: 0.9, color: 0xffd98a, arms: 5, duration: 3.6, rate: 0.11, speed: 8, turn: 3.2 },
+  boss_rime: { label: 'HAILFALL', kind: 'rain', interval: 9, windup: 0.9, color: 0xcfeaff, count: 10, delay: 1.0, radius: 2.4, mode: 'player' },
+  boss_cinder: { label: 'ASHEN NOVA', kind: 'nova', interval: 10, windup: 1.1, color: 0xff7a3a, radii: [4, 8, 12, 16], gap: 0.4 },
+  boss_mire: { label: 'ROT BLOOM', kind: 'puddles', interval: 10, windup: 1.0, color: 0xb8ff8a, count: 10, radius: 2.6, life: 8, layout: 'ring' },
+})
+
 // The ten new regular enemies get a smaller one of their own too (so they are more than one trick each).
 Object.assign(SIGNATURES, {
   bumble: { label: 'STINGER BURST', kind: 'ring', interval: 7, windup: 0.6, color: 0xffd23a, damageMultiplier: 0.5, count: 8, rings: 1, twist: 0, stagger: 0, speed: 8, size: 0.6 },

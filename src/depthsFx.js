@@ -4,7 +4,7 @@
 //   in the Depths: a Lightroot (a tall pillar of pale light that fills as it charges) beside every chasm's drop, and
 //   the floating Umbral Hearts in their lairs (each with a magenta beam you can steer by).
 import * as THREE from 'three'
-import { beacons, chasms, depthsLairs } from './logic/depths.js'
+import { beacons, chasms, colosseumGlow, colosseums, depthsLairs } from './logic/depths.js'
 import { heightAt, withSurface } from './logic/world.js'
 
 const BEAM_HEIGHT = 90
@@ -81,6 +81,20 @@ function buildRelic(lair) {
   return { group, heart, shell, def: lair }
 }
 
+// A storm colosseum's marker: a tall beam in its storm's colour over the sand, with a slow ring, until its champion is beaten.
+function buildColosseum(c) {
+  const group = new THREE.Group()
+  group.position.set(c.x, 0, c.z)
+  const glow = colosseumGlow(c)
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 3, BEAM_HEIGHT * 1.4, 14, 1, true), beamMaterial(glow, 0.2))
+  beam.position.y = BEAM_HEIGHT * 0.7
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(6, 0.18, 6, 48), new THREE.MeshBasicMaterial({ color: glow, transparent: true, opacity: 0.8, depthWrite: false, blending: THREE.AdditiveBlending }))
+  ring.rotation.x = Math.PI / 2
+  ring.position.y = 0.8
+  group.add(beam, ring)
+  return { group, beam, ring, def: c }
+}
+
 export function createDepthsFx() {
   const group = new THREE.Group()
   const surface = new THREE.Group()
@@ -102,6 +116,11 @@ export function createDepthsFx() {
     under.add(built.group)
     return built
   })
+  const arenas = colosseums().map((c) => {
+    const built = buildColosseum(c)
+    under.add(built.group)
+    return built
+  })
   let depths = false
   return {
     group,
@@ -113,11 +132,16 @@ export function createDepthsFx() {
       if (depths) {
         for (const r of roots) r.group.position.y = heightAt(r.def.x, r.def.z)
         for (const h of hearts) h.group.position.y = heightAt(h.def.relic.x, h.def.relic.z)
+        for (const a of arenas) a.group.position.y = heightAt(a.def.x, a.def.z)
       }
     },
     // Hearts already claimed are gone (a Set of relic ids).
     setRelicsTaken(ids) {
       for (const h of hearts) h.group.visible = !ids.has(h.def.relic.id)
+    },
+    // Colosseums whose champion is beaten lose their beam (a Set of colosseum ids).
+    setColossiBeaten(ids) {
+      for (const a of arenas) a.group.visible = !ids.has(a.def.id)
     },
     // charging: { beaconId, fraction } or null.
     update(time, charging = null) {
@@ -128,6 +152,12 @@ export function createDepthsFx() {
           r.ring.scale.setScalar(1 + 0.08 * Math.sin(time * 3 + r.def.x) + c * 0.4)
           r.core.material.opacity = 0.28 + c * 0.5
           r.core.scale.set(1 + c * 1.5, 1, 1 + c * 1.5)
+        }
+        for (const a of arenas) {
+          if (!a.group.visible) continue
+          a.ring.rotation.z = time * 0.5
+          a.ring.scale.setScalar(1 + 0.1 * Math.sin(time * 2 + a.def.x))
+          a.beam.material.opacity = 0.16 + 0.06 * Math.sin(time * 1.3 + a.def.z)
         }
         for (const h of hearts) {
           if (!h.group.visible) continue

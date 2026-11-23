@@ -13,7 +13,7 @@ export const JOURNAL_KEY = 'slashbattle:journal'
 export const BESTIARY_FIRST_REWARD = 8 // crystals for the first of a kind you ever fell
 
 export function createJournal() {
-  return { landmarks: [], biomes: [], bestiary: {}, lanterns: [], races: {}, treasures: 0, events: 0, shrines: 0, claimed: [], towers: [], isles: [], relics: [], chasms: [], depthRelics: [], fixes: {}, caves: [], phenomena: {} }
+  return { landmarks: [], biomes: [], bestiary: {}, lanterns: [], races: {}, treasures: 0, events: 0, shrines: 0, claimed: [], towers: [], isles: [], relics: [], chasms: [], depthRelics: [], fixes: {}, caves: [], phenomena: {}, colossi: [] }
 }
 
 const strings = (v) => (Array.isArray(v) ? v.filter((s) => typeof s === 'string') : [])
@@ -78,6 +78,7 @@ export function parseJournal(text) {
     fixes: fixesOf(data.fixes),
     caves: strings(data.caves),
     phenomena: phenomenaOf(data.phenomena),
+    colossi: strings(data.colossi),
   }
 }
 export const serializeJournal = (j) => JSON.stringify(j)
@@ -125,6 +126,10 @@ export function noteChasm(j, id) {
 export function noteDepthRelic(j, id) {
   return { journal: { ...j, depthRelics: addTo(j.depthRelics, id) }, first: !j.depthRelics.includes(id) }
 }
+// A storm colosseum's champion beaten (they never come back): { journal, first }.
+export function noteColosseum(j, id) {
+  return { journal: { ...j, colossi: addTo(j.colossi ?? [], id) }, first: !(j.colossi ?? []).includes(id) }
+}
 export const noteTreasure = (j) => ({ ...j, treasures: j.treasures + 1 })
 export const noteEvent = (j) => ({ ...j, events: j.events + 1 })
 export const noteShrine = (j) => ({ ...j, shrines: j.shrines + 1 })
@@ -158,6 +163,7 @@ export const MILESTONES = [
   { id: 'chasms1', title: 'Into the Dark', desc: 'Fall into a chasm', stat: 'chasms', need: 1, crystals: 50 },
   { id: 'chasms6', title: 'Spelunker', desc: 'Drop into 6 different chasms', stat: 'chasms', need: 6, crystals: 220, loot: 'ability' },
   { id: 'hearts3', title: 'Heart Hunter', desc: 'Claim 3 Umbral Hearts in the Depths', stat: 'depthRelics', need: 3, crystals: 200 },
+  { id: 'colossi4', title: 'Grand Champion', desc: 'Beat the champion of every storm colosseum in the Depths', stat: 'colossi', need: 4, crystals: 800, loot: 'weapon' },
   { id: 'hearts5', title: 'Lord of the Depths', desc: 'Claim every Umbral Heart (and something below will answer)', stat: 'depthRelics', need: 5, crystals: 500, loot: 'weapon' },
   { id: 'storms1', title: 'Eye of the Storm', desc: 'Calm one regional phenomenon', stat: 'storms', need: 1, crystals: 200, loot: 'ability' },
   { id: 'storms2', title: 'Weather Watcher', desc: 'Calm two regional phenomena', stat: 'storms', need: 2, crystals: 300, loot: 'weapon' },
@@ -168,7 +174,7 @@ export const MILESTONES = [
 // The number a milestone counts, from the journal.
 export function journalStat(j, stat) {
   if (stat === 'storms') return clearedCount(j.phenomena)
-  if (stat === 'landmarks' || stat === 'biomes' || stat === 'lanterns' || stat === 'towers' || stat === 'isles' || stat === 'relics' || stat === 'chasms' || stat === 'depthRelics') return (j[stat] ?? []).length
+  if (stat === 'landmarks' || stat === 'biomes' || stat === 'lanterns' || stat === 'towers' || stat === 'isles' || stat === 'relics' || stat === 'chasms' || stat === 'depthRelics' || stat === 'colossi') return (j[stat] ?? []).length
   if (stat === 'bestiary' || stat === 'races') return Object.keys(j[stat]).length
   return j[stat] ?? 0
 }

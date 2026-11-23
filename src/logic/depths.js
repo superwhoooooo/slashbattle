@@ -7,8 +7,10 @@
 //   - Umbral lairs: five sunken lairs, each guarded by a boss and holding an Umbral Heart. Claim all five and the
 //     secret hero of the Depths is yours.
 import { DEEP_TEMPLE_RADIUS, deepTemples, nearDeepTemple, templeChasms } from './stormTemples.js'
+import { depthsFloorRaw, setDepthsFlats } from './world.js'
+import { PHENOMENON_ORDER, PHENOMENA, phenomenonEye } from './phenomena.js'
 import { BIOMES, CHUNK_SIZE, PROP_RADIUS, SANCTUM_RADIUS, WORLD_RADIUS, WORLD_SEED, chunkKey, heightAt, lakeAt, mulberry32, nearestSite, nearestVillage, roadDistance, withSurface, inDepths } from './world.js'
-import { BOSSES } from './bosses.js'
+import { BOSSES, COLOSSEUM_BOSS_FOR, bossById } from './bosses.js'
 import { skyTowers } from './skyIslands.js'
 import { CHAMBER_RADIUS, caveBeacons, caveLayout, caveDanger, caves } from './caves.js'
 
@@ -213,6 +215,81 @@ export function lairLayout(lair) {
   return { props, treasure, guards }
 }
 
+// ---- the storm colosseums -----------------------------------------------------------------------------
+// One great arena per regional phenomenon, in the Depths under that storm's land (a walk in from the storm's eye). Each
+// holds that storm's own champion boss (bosses.js's COLOSSEUM_BOSS_DEFS); beaten, it never comes back (journal `colossi`).
+export const COLOSSEUM_RADIUS = 31 // the whole building; other things keep off it
+export const COLOSSEUM_WALL = 24.5 // the arena wall (solid, but for the gate)
+export const COLOSSEUM_GATE = 0.2 // half the gate's opening, radians (it faces the middle of the world)
+export const COLOSSEUM_REWARD = 600
+export const COLOSSEUM_NAMES = {
+  sandstorm: 'The Dune Colosseum',
+  whiteout: 'The Frozen Colosseum',
+  ashstorm: 'The Cinder Colosseum',
+  miasma: 'The Rotting Colosseum',
+}
+
+let colosseumCache = null
+let colosseumBusy = false
+// { id, stormId, name, boss, x, z, radius, floor, gate (the world angle the gate faces) }.
+export function colosseums() {
+  if (colosseumCache) return colosseumCache
+  if (colosseumBusy) return [] // (the floor asks while they are being placed)
+  colosseumBusy = true
+  const rand = mulberry32(WORLD_SEED + 6500)
+  const list = []
+  const clear = (x, z) => {
+    if (Math.hypot(x, z) > WORLD_RADIUS - COLOSSEUM_RADIUS - 12) return false
+    if (nearDeepTemple(x, z, COLOSSEUM_RADIUS + 12)) return false
+    if (depthsLairs().some((l) => Math.hypot(l.x - x, l.z - z) < l.radius + COLOSSEUM_RADIUS + 12)) return false
+    if (beacons().some((b) => Math.hypot(b.x - x, b.z - z) < COLOSSEUM_RADIUS + 16)) return false
+    if (caves().some((c) => Math.hypot(c.chamber.x - x, c.chamber.z - z) < CHAMBER_RADIUS + COLOSSEUM_RADIUS + 10)) return false
+    return !list.some((c) => Math.hypot(c.x - x, c.z - z) < COLOSSEUM_RADIUS * 2 + 40)
+  }
+  for (const stormId of PHENOMENON_ORDER) {
+    const eye = phenomenonEye(stormId)
+    const bearing = Math.atan2(eye.z, eye.x)
+    const er = Math.hypot(eye.x, eye.z)
+    let spot = null
+    for (let tries = 0; tries < 400 && !spot; tries++) {
+      const r = er - 85 - rand() * (30 + tries * 0.4)
+      const a = bearing + (rand() - 0.5) * (0.3 + tries * 0.004)
+      const x = Math.cos(a) * r
+      const z = Math.sin(a) * r
+      if (clear(x, z)) spot = { x, z }
+    }
+    spot ??= { x: Math.cos(bearing) * (er - 100), z: Math.sin(bearing) * (er - 100) }
+    list.push({
+      id: `col-${stormId}`, stormId, name: COLOSSEUM_NAMES[stormId], boss: COLOSSEUM_BOSS_FOR[stormId],
+      x: spot.x, z: spot.z, radius: COLOSSEUM_RADIUS, floor: depthsFloorRaw(spot.x, spot.z), gate: Math.atan2(-spot.z, -spot.x),
+    })
+  }
+  colosseumCache = list
+  colosseumBusy = false
+  return list
+}
+setDepthsFlats(() => colosseums())
+export const colosseumById = (id) => colosseums().find((c) => c.id === id) ?? null
+export const colosseumForBoss = (type) => colosseums().find((c) => c.boss === type) ?? null
+export const nearColosseum = (x, z, margin = 0) => colosseums().some((c) => Math.hypot(c.x - x, c.z - z) < c.radius + margin)
+export const colosseumChampion = (c) => bossById(c.boss)
+export const colosseumGlow = (c) => PHENOMENA[c.stormId]?.glow ?? 0xffd15c
+
+// A colosseum's building, its solid wall (a ring of blockers with the gate left open), two chests and its champion.
+export function colosseumLayout(c) {
+  const props = [{ kind: 'colosseum', x: c.x, z: c.z, scale: 1, rot: Math.atan2(-c.x, -c.z), radius: 0 }] // (the model's gate, +z, faces the middle)
+  const n = 56
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2
+    if (Math.abs(Math.atan2(Math.sin(a - c.gate), Math.cos(a - c.gate))) < COLOSSEUM_GATE) continue
+    props.push({ kind: 'blocker', x: c.x + Math.cos(a) * COLOSSEUM_WALL, z: c.z + Math.sin(a) * COLOSSEUM_WALL, scale: 1, rot: 0, radius: 1.8 })
+  }
+  const back = c.gate + Math.PI
+  const treasure = [-0.45, 0.45].map((da, k) => ({ id: `${c.id}:chest${k}`, kind: 'chest', x: c.x + Math.cos(back + da) * 17, z: c.z + Math.sin(back + da) * 17 }))
+  const guards = [{ id: `${c.id}:boss`, role: 'boss', x: c.x, z: c.z }]
+  return { props, treasure, guards }
+}
+
 // ---- chunks of the Depths -----------------------------------------------------------------------------
 
 const pickWeighted = (rng, entries) => {
@@ -246,7 +323,7 @@ export function depthsChunk(cx, cz) {
   const propCount = 7 + Math.floor(rng() * 7)
   for (let i = 0; i < propCount; i++) {
     const p = place()
-    if (!inWorld(p) || nearLair(p, 3) || nearBeacon(p, 4) || nearChamber(p, 1) || nearDeepTemple(p.x, p.z, 2)) continue
+    if (!inWorld(p) || nearLair(p, 3) || nearBeacon(p, 4) || nearChamber(p, 1) || nearDeepTemple(p.x, p.z, 2) || nearColosseum(p.x, p.z, 3)) continue
     const kind = pickWeighted(rng, biome.props)[0]
     const scale = 0.8 + rng() * 0.9
     out.props.push({ kind, x: p.x, z: p.z, scale, rot: rng() * Math.PI * 2, radius: PROP_RADIUS[kind] * scale })
@@ -256,14 +333,14 @@ export function depthsChunk(cx, cz) {
   const count = Math.floor(rng() * (1.5 + danger * 2.5)) + (rng() < 0.45 ? 1 : 0)
   for (let i = 0; i < count; i++) {
     const p = place()
-    if (!inWorld(p) || nearLair(p, 6) || nearBeacon(p, 22) || nearChamber(p, 2) || nearDeepTemple(p.x, p.z, 10)) continue // the Lightroots are a refuge (the temples have their own guardian)
+    if (!inWorld(p) || nearLair(p, 6) || nearBeacon(p, 22) || nearChamber(p, 2) || nearDeepTemple(p.x, p.z, 10) || nearColosseum(p.x, p.z, 10)) continue // the Lightroots are a refuge (the temples have their own guardian)
     const [type] = pickWeighted(rng, biome.monsters)
     const elite = rng() < 0.07 + danger * 0.12
     out.monsters.push({ id: `${out.key}:${i}`, type, x: p.x, z: p.z, elite, danger, hpScale: (1 + danger * 1.3) * (elite ? 2.4 : 1) })
   }
   if (rng() < 0.16) {
     const p = place()
-    if (inWorld(p) && !nearLair(p, 3) && !nearBeacon(p, 6) && !nearChamber(p, 2) && !nearDeepTemple(p.x, p.z, 2)) out.treasure.push({ id: `${out.key}:chest`, kind: 'chest', x: p.x, z: p.z })
+    if (inWorld(p) && !nearLair(p, 3) && !nearBeacon(p, 6) && !nearChamber(p, 2) && !nearDeepTemple(p.x, p.z, 2) && !nearColosseum(p.x, p.z, 2)) out.treasure.push({ id: `${out.key}:chest`, kind: 'chest', x: p.x, z: p.z })
   }
 
   const inChunk = (p) => p.x >= cx * CHUNK_SIZE && p.x < (cx + 1) * CHUNK_SIZE && p.z >= cz * CHUNK_SIZE && p.z < (cz + 1) * CHUNK_SIZE
@@ -296,6 +373,16 @@ export function depthsChunk(cx, cz) {
     for (const [k, a] of [[0, 0.8], [1, 3.9]]) {
       const c = { id: `deeptemple-${t.stormId}:chest${k}`, kind: 'chest', x: t.x + Math.cos(a) * 15, z: t.z + Math.sin(a) * 15 }
       if (inChunk(c)) out.treasure.push(c)
+    }
+  }
+  // The storm colosseums: the building, its wall, two chests and the storm's champion (once beaten, main.js keeps it gone).
+  for (const c of colosseums()) {
+    if (Math.hypot(c.x - center.x, c.z - center.z) > 70) continue
+    const layout = colosseumLayout(c)
+    for (const p of layout.props) if (inChunk(p)) out.props.push(p)
+    for (const t of layout.treasure) if (inChunk(t)) out.treasure.push(t)
+    for (const g of layout.guards) {
+      if (inChunk(g)) out.monsters.push({ id: g.id, type: c.boss, x: g.x, z: g.z, elite: false, boss: true, danger: 1, hpScale: 2, fights: 7, colosseumId: c.id, name: c.name })
     }
   }
   // Cave chambers: a pocket with its own chest(s) and guards, entered through a doorway on the surface (logic/caves.js).
