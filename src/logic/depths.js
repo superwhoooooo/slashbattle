@@ -382,7 +382,7 @@ export function depthsChunk(cx, cz) {
     for (const p of layout.props) if (inChunk(p)) out.props.push(p)
     for (const t of layout.treasure) if (inChunk(t)) out.treasure.push(t)
     for (const g of layout.guards) {
-      if (inChunk(g)) out.monsters.push({ id: g.id, type: c.boss, x: g.x, z: g.z, elite: false, boss: true, danger: 1, hpScale: 2, fights: 7, colosseumId: c.id, name: c.name })
+      if (inChunk(g)) out.monsters.push({ id: g.id, type: c.boss, x: g.x, z: g.z, elite: false, boss: true, danger: 1, hpScale: 1.4, fights: 7, colosseumId: c.id, name: c.name })
     }
   }
   // Cave chambers: a pocket with its own chest(s) and guards, entered through a doorway on the surface (logic/caves.js).

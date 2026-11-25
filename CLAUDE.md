@@ -1130,10 +1130,14 @@ up to three friends join with it. It plays EVERY mode: the host's mode is everyo
 a joiner on the exit pad sends `floorReq`, the host advances and broadcasts `floor`), the Wilds, the sandbox and the tutorial.
 **In the Wilds players must stay within `COOP_MAX_DISTANCE` (60) of each other** (unless the host unticks the co-op panel's leash checkbox: `main.js`'s `coopLeash` / `setCoopLeash`, sent in the welcome and as a `leash` message; off, the leash, `regroupGuest` and the same-level teleport in `followHost` are skipped): the host only loads the land around itself
 (`LOAD_RADIUS` 125), so a friend this close always has the host's monsters around them (`leashPosition`: only a step AWAY from a
-friend is stopped, with a toast). A joiner's Wilds monsters are all puppets (no camp spawns, no roaming events), chasms and
-Skylift towers stay open but only the HOST falls / launches: the host's level (bit 1 Depths, bit 2 sky) rides in the `mon`
-message and a guest follows it (`followHost` / `jumpToHost`: switches to the Depths or surface and lands where the host stands;
-`regroupGuest` also brings back a guest left far behind; sky monsters carry `FLAG.skyIsle` so an aloft guest can fight them), and a downed player gets back up beside a friend who is up
+friend is stopped, with a toast). A joiner's Wilds monsters are all puppets (no camp spawns, no roaming events), and **by default everyone goes where they like**: a guest falls into chasms, takes caves and Lightroots on its own. The host's
+level (bit 1 Depths, bit 2 sky) rides in the `mon` message, and every player's state carries its world (`lay`): a friend in the
+other world isn't drawn and the host's monsters can't see them (`remote.away`, left out of `targetFor`, `peers` and the leash). A
+guest in the other world from the host has no puppets (`ctx.ownWorld` from `applyMonsters`) and runs that world's monsters itself
+(`guestOwnsWorld` / `ownsMonsters`: camps, wild events, storms, colosseums; `syncGuestWorld` reloads the land when that flips).
+The host can tick **"Friends follow the host into the Depths and the sky"** (`coopFollow`, off by default; the welcome's `follow`
+and a `follow` message): then only the HOST falls / launches and a guest follows it (`followHost` / `jumpToHost`: switches to the
+Depths or surface and lands where the host stands; `regroupGuest` (leash on, same world) also brings back a guest left far behind; sky monsters carry `FLAG.skyIsle` so an aloft guest can fight them), and a downed player gets back up beside a friend who is up
 (`standUpBeside`; if everyone is down, at their save points: the Wilds never end the run). Modeled on flopsim's multiplayer: `src/net/link.js` is peer to peer over WebRTC (PeerJS; the
 free public PeerJS server only matches codes), the host relays everyone's messages (a star), and when a network blocks the
 direct route a joiner falls back by itself to free public MQTT brokers (`RELAY_BROKERS`, slower update rates). A
@@ -1243,11 +1247,17 @@ beacon), **collect** (n stones / cores / lights, each guarded: the pickup is loc
 timed run through gates in order, the clock starts at gate 1, `stepTrial`; too slow resets it) and the **boss** (Zipzilla, the Cone Father,
 Omega Jello, King Gloop forms at the eye with minions). Each stage pays `stageReward` crystals and shows the next stage's card; calming a storm
 pays `CLEAR_REWARD`, a full heal and a treasure map. Progress is in the journal's `phenomena` (`{ started, stage, n, got }`, a save key) with
-milestones (`storms1/2/4`) and a "Regional phenomena" section in the U journal. `main.js`'s `stepPhenomena` (from `stepWorld`, surface only,
-never for a co-op joiner) runs the hazard (`stepStormHazard`), the fog (`worldArena.js`'s `setStorm`), and the stage runner
+milestones (`storms1/2/4`) and a "Regional phenomena" section in the U journal. `main.js`'s `stepPhenomena` (from `stepWorld`, surface only) runs the hazard (`stepStormHazard`), the fog (`worldArena.js`'s `setStorm`), and the stage runner
 (`stepPhenomenonStage`, monsters tagged `userData.phenom` / `phenomRole`, counted in `scoreKill` via `phenomenonKill`); chips (`phenomenaChips`)
 and the minimap (`drawPhenomenaMarks`: storm discs, stage spots, a rim arrow to the nearest) show where to go. The look is
 `src/phenomenaFx.js` (streaked storm walls and an eye beam, stone / seek / ritual / gate markers, hazard zones).
+**Phenomena in co-op**: every player runs their OWN storms (their own journal: hazards, stages, champions, temples, rewards, staff
+upgrades). A guest can't spawn monsters, so its stage runner states what it wants alive (`phenWant`: guards at a stone, purge spawn,
+a hold wave as a one-off `o`, the temple boss) and `flushPhenWants` sends it about once a second (`phw`); the host's `hostPhenWant`
+keeps that many of that guest's storm monsters about (`userData.phenomFor`, never counted in the host's own stages, not dropped while
+that guest is connected). Storm monsters are counted where they die (`rememberWorldKill` -> `phenomenonDeath`, so a friend's killing
+blow counts too): a guest's goes back to them (`phk` -> `guestPhenKill`), and a temple boss's death is broadcast so it counts for
+everyone on that boss stage (only one boss per temple). `PROTOCOL` 8.
 Calming ALL four (`heroForStorms`, `main.js`'s `grantStormHero`, also at startup) grants `tempest` (`secret: true`, can't be bought). Trait
 `stormbound` (Four Winds): `WINDS` (sand, frost, ember, mire) turn every `phase` s (`windAt`); every `every` s the current wind pulses round
 you (sand shoves, frost slows, ember burns, mire drains and feeds you), ember wind adds damage, frost wind slows what you hit, mire wind heals per hit,
@@ -1303,12 +1313,25 @@ and a tall beam (`fx.setGuide`). Tests: `test/stormGuide.test.js`, `test/species
 (clear of the sunken temples, lairs, Lightroots and cave chambers; the cavern floor is levelled under each via `world.js`'s `setDepthsFlats`).
 `colosseumLayout` streams the `colosseum` model (`cityModels.js`), a ring of `blocker`s with a gate facing the middle, two chests and the storm's own
 champion boss (`bosses.js`'s `COLOSSEUM_BOSS_DEFS`: Sultan Sirocco, Queen Rimefang, the Cinder Tyrant, Mother Miasma; in `ALL_BOSSES` but never a wave
-boss; crowned Realist bodies `like` their storm's creature; own signatures). A champion fights ONCE: beaten (`main.js`'s `winColosseum`, from
+boss; each its own Realist body in `beasts.js`: a four-armed sand djinn on a whirling funnel, a crowned frost wyvern, an obsidian
+furnace golem, a weeping toadstool matriarch; own signatures). **Each fights its own way** (`logic/championFights.js`, TotK-style puzzle
+bosses, look in `src/championFx.js`, wired by `main.js`'s `stepChampionFights` from `stepDepths`): it sleeps until you walk within
+`FIGHT_START_RADIUS`, then the gate seals (`sealColosseum`) and it wears a WARD (`userData.immune`, `userData.champion`; the usual immunity
+phases are off) that only the arena's trick breaks; broken, it reels (`championStunUntil`: no AI) and takes `EXPOSED_DAMAGE` for a few
+seconds, then the ward returns. Sirocco's SAND VEIL: stand on each of three SUN MIRRORS (below half they dim again and sand mirages rise).
+Rimefang's ICE ARMOUR: lure her into a lit brazier's fire (it gutters out for a while); away from the fires a cold meter bites, and her
+telegraphed FROST BREATH cone only spares you inside a fire's ring. The Cinder Tyrant's OBSIDIAN SHELL: run into his fizzing cinder bombs
+to kick them back (three cracks); left alone they blow. Mother Miasma's ROOT WARD: `rot_pod` monsters (`CHAMPION_PROP_TYPES`) heal and
+ward her; burst them all and she wilts, then she replants more. Champions never leave the arena (`keepInArena`). Host / solo only. A champion fights ONCE: beaten (`main.js`'s `winColosseum`, from
 `rememberWorldKill` or a guest's `onPuppetBossDeath`) it is noted in the journal's `colossi` (milestone `colossi4`) and never spawns again;
 `COLOSSEUM_REWARD` crystals + a full heal. `depthsFx.js` draws a storm-coloured beam over each unbeaten one; the Depths minimap rings them.
 **Storm-touched staff** (`logic/stormStaff.js`): each calmed storm upgrades the Wizard Staff for good, in every mode (`staffUpgrades(journal.phenomena)`,
-`main.js`'s `staffBoons` / `staffStormHit` on cause `'magic'` hits): Sandblast (shove), Frostbite (slow), Ember Core (burn), Rot Bloom (a spore puff
-hurts monsters beside the target). **Champions stay home**: `companionStorm(..., at)` only picks a champion whose land you are in (`inChampionLand`,
+`main.js`'s `staffBoons` / `staffStormHit` on cause `'magic'` hits, `stepStaffStorms` every frame; the look is `src/staffFx.js`, which
+dresses every live staff orb): **Pocket Tornado** (a little twister circles each orb; a hit drops a tornado zone, `dropZone` / `tornadoPull`,
+that drags monsters in and round, grinds them, then flings them out), **Hoarfrost** (orbiting ice shards; hits slow and burst frost spikes
+round the target, every 4th hit freezes it, `frostStack`, and the next orb SHATTERS it), **Comet Core** (the orb is a burning comet that
+sets alight what it flies past; hitting a burning monster flares up and spreads fire) and **Sporecap** (a glowing toadstool sprouts where
+an orb lands and puffs poison spores, `stepZone`). **Champions stay home**: `companionStorm(..., at)` only picks a champion whose land you are in (`inChampionLand`,
 `CHAMPION_LAND` of the eye); leave it and they go back to their city.
 
 ## The third secret hero: Nyxara, the Twilight Regent

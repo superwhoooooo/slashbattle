@@ -85,7 +85,7 @@ import { setMood } from './speciesModels.js'
 import { championFor, companionStorm, guideTarget, guideText, sageDialog, stormCity } from './logic/stormGuide.js'
 import { CAMP_SIZE, CELL_PICKUP_RADIUS, FIX_REWARD, PARTS_COST, acceptFix, campKill, collectCell, finishFix, fixOf, fixProgressText, issueCamp, issueCells, jammedTowers, keeperDialog, keeperSpot, towerIssue } from './logic/towerQuests.js'
 import { createCavesFx } from './cavesFx.js'
-import { ASCEND_RADIUS, DEPTH_FIRST_REWARD, DEPTH_RELIC_REWARD, RELIC_CLAIM_RADIUS, arrivalSpot, ascendFraction, beacons, chasmById, chasmFalls, chasmRim, chasms, createAscendState, depthsChunk, depthsLairs, stepAscend, COLOSSEUM_REWARD, colosseumById, colosseumChampion, colosseumForBoss, colosseumGlow, colosseums } from './logic/depths.js'
+import { ASCEND_RADIUS, DEPTH_FIRST_REWARD, DEPTH_RELIC_REWARD, RELIC_CLAIM_RADIUS, arrivalSpot, ascendFraction, beacons, chasmById, chasmFalls, chasmRim, chasms, createAscendState, depthsChunk, depthsLairs, stepAscend, COLOSSEUM_GATE, COLOSSEUM_REWARD, COLOSSEUM_WALL, colosseumById, colosseumChampion, colosseumForBoss, colosseumGlow, colosseums } from './logic/depths.js'
 import { createJournalUi } from './journalUi.js'
 import { LANTERN_CATCH_RADIUS, LANTERN_COUNT, lanternReward, lanternsNear } from './logic/lanterns.js'
 import { BOONS, SHRINE_RADIUS, activeBoons, boonEffects, createShrineState, foldBoons, grantBoon, shrineCharge, useShrine, wayshrines } from './logic/wayshrines.js'
@@ -164,6 +164,7 @@ import {
   HIDDEN_CAMERA_OFFSET,
   HITSTOP_PLAYER_HURT,
   JELLY_DEATH_INFLATE_STRENGTH,
+  JELLY_HIT_STRENGTH,
   MAX_DELTA_SECONDS,
   MAX_PIXEL_RATIO,
   MSAA_SAMPLES,
@@ -282,7 +283,10 @@ import {
 import { enemyScale, SPLITS } from './logic/enemies.js'
 import { createMonsterAIState, isUntouchable, separateMonsters, setDeepShield, setMonsterNavigator, setPlayerAloft, setSurfaceShield, setTimeWarp, setWaterRoom, timeWarp, updateMonster, upgradeBossSpecials } from './monster.js'
 import { applyFreeze, applySlow, isFrozen, statusTimeScale } from './logic/status.js'
-import { STAFF_UPGRADES, hasStaffUpgrade, staffUpgrades } from './logic/stormStaff.js'
+import { STAFF_UPGRADES, dropZone, frostStack, hasStaffUpgrade, staffUpgrades, stepZone, tornadoPull } from './logic/stormStaff.js'
+import { createStaffFx } from './staffFx.js'
+import { EXPOSED_DAMAGE, createFight, fightStatus, keepInArena, stepFight } from './logic/championFights.js'
+import { createChampionFx, disposeChampionFx, flashBreath, updateChampionFx } from './championFx.js'
 import { createCoop } from './coop.js'
 import { COOP_MAX_DISTANCE, COOP_RESPAWN_HP, COOP_RESPAWN_IFRAMES, cleanMode, leashPosition, standUpBeside } from './logic/coop.js'
 import { knockbackVector } from './logic/combat.js'
@@ -524,6 +528,7 @@ function petScratch(target, def) {
   showScratch(scratchLayer, ((scratchAt.x + 1) / 2) * window.innerWidth, ((1 - scratchAt.y) / 2) * window.innerHeight, size, def.color)
 }
 scene.add(bulletPool.group)
+const staffFx = createStaffFx(scene, bulletPool.group) // the storm-touched staff's orbs and landing zones
 const scope = createScope(scene)
 let steadyAim = 0 // 0..1, charges while the player stands still with a scoped rifle
 let scopeZoom = 1 // the rifle scope's camera pull-back, smoothed by scope.js
@@ -1137,6 +1142,7 @@ const setBurn = (mesh, dps = tn().dps ?? 0.4, time = tn().burn ?? 3) => {
 setDamageHooks({
   amount(monster, damage, cause) {
     if (!game) return damage
+    if (monster.userData.championExposed) damage = Math.round(damage * EXPOSED_DAMAGE) // a storm champion reeling, its ward broken
     const trait = heroTrait()
     const t = tn()
     // Hexed monsters take more from everything (pets and trait damage too).
@@ -1335,25 +1341,144 @@ let staffBoons = []
 function refreshStaffBoons() {
   staffBoons = staffUpgrades(game?.world ? game.world.journal.phenomena : loadJournal().phenomena)
 }
+let staffBoonIds = new Set()
+let staffZones = [] // Pocket Tornadoes and Sporecaps on the ground ({ kind, x, z, y, damage, born, until, next })
+let staffZonesGame = null
 function staffStormHit(monster, damage, lethal) {
-  const at = { x: monster.position.x, z: monster.position.z }
-  const from = { x: game.player.position.x, z: game.player.position.z }
-  if (!lethal && hasStaffUpgrade(staffBoons, 'whiteout')) applySlow(monster.userData, heroNow, STAFF_UPGRADES.whiteout.slowFor, STAFF_UPGRADES.whiteout.slow)
-  if (!lethal && hasStaffUpgrade(staffBoons, 'ashstorm')) setBurn(monster, STAFF_UPGRADES.ashstorm.burnDps, STAFF_UPGRADES.ashstorm.burnFor)
-  // (these hit again, so they wait for next frame: nothing re-enters damageMonster from inside it)
-  if (!lethal && hasStaffUpgrade(staffBoons, 'sandstorm')) {
-    heroState.pending.push({ at: heroNow, run: () => alive(monster) && heroHurt(monster, damage * 0.1, STAFF_UPGRADES.sandstorm.push, from) })
-  }
-  if (hasStaffUpgrade(staffBoons, 'miasma')) {
-    const u = STAFF_UPGRADES.miasma
+  const ud = monster.userData
+  const at = { x: monster.position.x, y: monster.position.y, z: monster.position.z }
+  const has = (id) => hasStaffUpgrade(staffBoons, id)
+  // Hoarfrost: slow, frost spikes out of the ground round the target, every 4th hit freezes it, and a frozen one SHATTERS.
+  if (has('whiteout')) {
+    const u = STAFF_UPGRADES.whiteout
+    const shatter = !lethal && isFrozen(ud, heroNow)
+    if (!lethal) {
+      applySlow(ud, heroNow, u.slowFor, u.slow)
+      const stack = frostStack(ud.frostStacks)
+      ud.frostStacks = stack.count
+      if (stack.freeze && !shatter) {
+        applyFreeze(ud, heroNow, u.freezeFor)
+        burst(particleSystem, { x: at.x, y: fxY(game, at.y + 1.2), z: at.z }, 0xe8f8ff, 30, 4)
+        showPopup(popupPool, monster.position, 'FROZEN!', '', 0xcfeaff)
+      }
+    }
     heroState.pending.push({
       at: heroNow,
       run: () => {
-        burst(particleSystem, { x: at.x, y: 0.9, z: at.z }, u.color, 10, u.splash * 0.7, 0.5)
-        for (const mesh of heroTargets(at.x, at.z, u.splash)) if (mesh !== monster) heroHurt(mesh, damage * u.splashMult, 0.6, at)
+        staffFx.spikes(at, heroNow)
+        burst(particleSystem, { x: at.x, y: fxY(game, at.y + 0.4), z: at.z }, u.color, 12, u.spikes.radius, 0.5)
+        for (const mesh of heroTargets(at.x, at.z, u.spikes.radius)) {
+          if (mesh === monster) continue
+          heroHurt(mesh, damage * u.spikes.mult, 0.3, at)
+          applySlow(mesh.userData, heroNow, u.slowFor, u.slow)
+        }
+        if (shatter && alive(monster)) {
+          monster.userData.frozenUntil = heroNow // the ice breaks
+          shardBurst(particleSystem, { x: at.x, y: fxY(game, at.y + 1), z: at.z }, 0xe8f8ff, 18, 5)
+          spawnShockwave(shockwavePool, at.x, at.z, 3, 0xcfeaff)
+          showPopup(popupPool, monster.position, 'SHATTER!', `${Math.round(damage * (u.shatter - 1))}`, 0xcfeaff)
+          heroHurt(monster, damage * (u.shatter - 1), 1, game.player.position)
+        }
       },
     })
   }
+  // Comet Core: it burns, and a hit on something already burning flares up and spreads the fire.
+  if (has('ashstorm')) {
+    const u = STAFF_UPGRADES.ashstorm
+    const burning = ud.burn && heroNow < ud.burn.until
+    if (burning && heroNow >= (ud.flareAt ?? 0)) {
+      ud.flareAt = heroNow + u.flare.cooldown
+      heroState.pending.push({
+        at: heroNow,
+        run: () => {
+          burst(particleSystem, { x: at.x, y: fxY(game, at.y + 1), z: at.z }, 0xff7a3a, 34, 6)
+          burst(particleSystem, { x: at.x, y: fxY(game, at.y + 1), z: at.z }, 0xffe08a, 14, 3)
+          spawnShockwave(shockwavePool, at.x, at.z, u.flare.radius, 0xff7a3a)
+          warp.add('ripple', at.x, at.z, u.flare.radius * 1.4, 0.35)
+          for (const mesh of heroTargets(at.x, at.z, u.flare.radius)) {
+            if (mesh !== monster) heroHurt(mesh, damage * u.flare.mult, 0.6, at)
+            if (alive(mesh)) setBurn(mesh, u.burnDps, u.burnFor)
+          }
+        },
+      })
+    }
+    if (!lethal) setBurn(monster, u.burnDps, u.burnFor)
+  }
+  // Pocket Tornado and Sporecap: something stays behind where the orb landed.
+  if (staffZonesGame !== game) {
+    staffZones = []
+    staffZonesGame = game
+  }
+  if (has('sandstorm')) staffZones = dropZone(staffZones, 'tornado', at.x, at.z, at.y, damage, heroNow)
+  if (has('miasma')) staffZones = dropZone(staffZones, 'cap', at.x, at.z, at.y, damage, heroNow)
+  for (const zone of staffZones) if (!zone.shown) {
+    zone.shown = true
+    staffFx.addZone(zone)
+    sfx.play(zone.kind === 'tornado' ? 'swing' : 'podOut', { x: zone.x, z: zone.z })
+  }
+}
+
+// Every frame: the orbs' looks, Comet Core scorching what it flies past, and the zones the orbs left behind.
+function stepStaffStorms(dt, now) {
+  staffBoonIds = new Set(staffBoons.map((u) => u.id))
+  staffFx.updateOrbs(bulletPool, staffBoonIds, now)
+  staffFx.stepSpikes(now)
+  if (!game || dt <= 0) return
+  if (staffZonesGame !== game) {
+    staffZones = []
+    staffZonesGame = game
+  }
+  if (staffBoonIds.has('ashstorm')) {
+    const u = STAFF_UPGRADES.ashstorm
+    for (const slot of bulletPool.slots) {
+      const b = slot.data
+      if (!slot.active || !b || b.cause !== 'magic' || b.ghost) continue
+      if (Math.random() < dt * 30) burst(particleSystem, { x: b.x, y: slot.mesh.position.y, z: b.z }, Math.random() < 0.5 ? 0xff7a3a : 0xffd04a, 2, 0.8, 0.4)
+      b.scorched ??= new Set()
+      for (const mesh of heroTargets(b.x, b.z, u.scorch)) {
+        if (b.scorched.has(mesh) || (mesh.userData.burn && heroNow < mesh.userData.burn.until) || isUntouchable(mesh)) continue
+        b.scorched.add(mesh)
+        setBurn(mesh, u.burnDps, u.burnFor)
+        burst(particleSystem, { x: mesh.position.x, y: fxY(game, mesh.position.y + 1), z: mesh.position.z }, 0xff9a3a, 8, 2)
+      }
+    }
+  }
+  const tornado = STAFF_UPGRADES.sandstorm.tornado
+  const cap = STAFF_UPGRADES.miasma.cap
+  staffZones = staffZones.filter((zone) => {
+    const { tick, done } = stepZone(zone, now)
+    if (zone.kind === 'tornado') {
+      for (const mesh of heroTargets(zone.x, zone.z, tornado.radius)) {
+        const ud = mesh.userData
+        if (ud.immune || ud.lake || isUntouchable(mesh)) continue
+        const pull = tornadoPull(zone, mesh.position.x, mesh.position.z, dt, ud.isBoss)
+        mesh.position.x += pull.x
+        mesh.position.z += pull.z
+        if (!ud.isBoss) mesh.rotation.y += dt * 9
+      }
+      if (Math.random() < dt * 25) {
+        const a = Math.random() * Math.PI * 2
+        const r = Math.random() * tornado.radius * 0.7
+        burst(particleSystem, { x: zone.x + Math.cos(a) * r, y: fxY(game, zone.y + Math.random() * 3), z: zone.z + Math.sin(a) * r }, 0xd8b070, 3, 2.5, 0.6)
+      }
+      if (tick) for (const mesh of heroTargets(zone.x, zone.z, tornado.radius * 0.6)) heroHurt(mesh, zone.damage * tornado.mult, 0, zone)
+      if (done) {
+        // it blows itself out, flinging everything caught in it
+        burst(particleSystem, { x: zone.x, y: fxY(game, zone.y + 1.5), z: zone.z }, 0xffd98a, 40, 7)
+        spawnShockwave(shockwavePool, zone.x, zone.z, tornado.radius, 0xffd98a)
+        for (const mesh of heroTargets(zone.x, zone.z, tornado.radius)) heroHurt(mesh, zone.damage * tornado.mult, tornado.fling, zone)
+      }
+    } else if (tick) {
+      staffFx.puff(zone, now)
+      burst(particleSystem, { x: zone.x, y: fxY(game, zone.y + 1.4), z: zone.z }, 0xb8ff8a, 22, cap.radius * 1.2, 0.5)
+      for (const mesh of heroTargets(zone.x, zone.z, cap.radius)) {
+        heroHurt(mesh, zone.damage * cap.mult, 0, zone)
+        if (alive(mesh)) applySlow(mesh.userData, now, 1, cap.slow)
+      }
+    }
+    return !done
+  })
+  staffFx.updateZones(staffZones, now)
 }
 
 // One ring of a wind round the player: sand shoves, frost slows, ember burns, mire drains and heals.
@@ -4292,6 +4417,7 @@ function handleDialogButton(game, id) {
 
 function rememberWorldKill(game, mesh, now) {
   const id = mesh.userData.worldId
+  if (game.world && mesh.userData.phenom && ownsMonsters()) phenomenonDeath(game, mesh)
   if (game.world && mesh.userData.colosseumId) winColosseum(game, mesh.userData.colosseumId, mesh.position)
   if (!game.world || !id) return
   game.world.killed.set(id, now)
@@ -4361,7 +4487,7 @@ function loadWorldChunk(game, cx, cz, now) {
   const chunk = { content, obstacles, treasure: [], npcIds: [] }
   w.chunks.set(content.key, chunk)
 
-  for (const m of coop?.isClient ? [] : content.monsters) { // a co-op joiner's monsters are the host's (puppets)
+  for (const m of ownsMonsters() ? content.monsters : []) { // a co-op joiner's monsters are the host's (puppets)
     if (w.live.has(m.id) || !canRespawn(w.killed.get(m.id), now, m.boss ? BOSS_RESPAWN_SECONDS : undefined)) continue
     if (m.colosseumId && w.journal.colossi.includes(m.colosseumId)) continue // a colosseum's champion, once beaten, is gone for good
     const stats = MONSTER_TYPES[m.type]
@@ -4681,7 +4807,7 @@ function activateArchipelago(game, arch, now) {
       mesh.userData.obstacle = null
       live.treasure.push(mesh)
     }
-    for (const g of coop?.isClient ? [] : layout.guards) { // (a guest's sky monsters are the host's puppets)
+    for (const g of ownsMonsters() ? layout.guards : []) { // (a guest's sky monsters are the host's puppets)
       if (w.live.has(g.id) || !canRespawn(w.killed.get(g.id), now, g.boss ? BOSS_RESPAWN_SECONDS : undefined)) continue
       const danger = arch.danger
       const mesh = spawnWildMonster(game, g.type, { x: g.x, z: g.z }, { danger, elite: g.elite, boss: g.boss, skyIsle: true, hpScale: g.boss ? 0.9 + danger * 1.1 : (1 + danger * 1.6) * (g.elite ? 2.4 : 1) })
@@ -4943,7 +5069,7 @@ function stepChampion(game, now, dt) {
   npc.dir = { x: Math.sin(yaw), z: Math.cos(yaw) }
   if (w.depths.on && dt > 0) updateNpc(npc, dt, now, p) // (the villagers' loop does not run down there)
   if (npc.roll) stepChampionRoll(game, npc, now, dt)
-  if (dt <= 0 || game.cutscene || coop?.isClient) return
+  if (dt <= 0 || game.cutscene || !ownsMonsters()) return
   // Find the nearest monster to fight.
   const at = npc.mesh.position
   let target = null
@@ -5104,7 +5230,7 @@ function stepStormPads(game, now) {
 }
 
 // A storm's boss, in its temple: on the sky temple's isle, or in the sunken temple in the Depths.
-function spawnTempleBoss(game, id, stage) {
+function spawnTempleBoss(game, id, stage, forPeer = null) {
   const arena = templeArena(id)
   const isle = arena.place === 'sky' ? skyTempleFor(id) : null
   const danger = Math.min(1, dangerAt(arena.x, arena.z) + 0.25)
@@ -5121,9 +5247,10 @@ function spawnTempleBoss(game, id, stage) {
   mesh.userData.phenom = id
   mesh.userData.phenomRole = 'boss'
   mesh.userData.phenomBoss = id
+  if (forPeer) mesh.userData.phenomFor = forPeer
   for (let i = 0; i < stage.minions; i++) {
     const a = (i / stage.minions) * Math.PI * 2
-    sky(spawnStormMonster(game, id, { x: arena.x + Math.cos(a) * 9, z: arena.z + Math.sin(a) * 9 }, 'add', { elite: i === 0 }))
+    sky(spawnStormMonster(game, id, { x: arena.x + Math.cos(a) * 9, z: arena.z + Math.sin(a) * 9 }, 'add', { elite: i === 0, for: forPeer }))
   }
   biomeBannerShow(TEMPLE_NAMES[id], PHENOMENA[id].glow, timer.getElapsed())
   questUi.showToast(`${stage.title.toUpperCase()} RISES IN ${TEMPLE_NAMES[id].toUpperCase()}`)
@@ -5144,11 +5271,16 @@ function stepDeepTemples(game, now) {
       if (!stage) questUi.showToast(`${t.name.toUpperCase()} IS QUIET NOW. THE STORM ABOVE IS CALM`)
       else if (stage.kind !== 'boss') questUi.showToast(`${t.name.toUpperCase()}: THE STORM'S HEART IS SEALED. FINISH ITS TRIALS ABOVE (${progressOf(w.journal.phenomena, t.stormId).stage + 1}/${stageCount(t.stormId)})`)
     } else if (d > t.radius + 20 && w.phen.deepSeen === t.stormId) w.phen.deepSeen = null
-    if (!stage || stage.kind !== 'boss' || coop?.isClient || game.player.hp <= 0) continue
+    if (!stage || stage.kind !== 'boss' || game.player.hp <= 0) continue
+    if (!ownsMonsters()) {
+      if (d < 45) phenWant(t.stormId, 'boss', null, 1, t)
+      continue
+    }
     const boss = game.monsters.find((m) => m.userData.phenomBoss === t.stormId && !m.userData.dying)
     if (!boss && d < 45) spawnTempleBoss(game, t.stormId, stage)
   }
   w.phen.fx.update(now, p, new Set(PHENOMENON_ORDER.filter((id) => isCleared(w.journal.phenomena, id))))
+  flushPhenWants(now)
 }
 function sageDialogInfo(game, npc) {
   const id = npc.def.guide
@@ -5250,7 +5382,6 @@ function phenomenonKill(game, mesh) {
   const u = mesh.userData
   const id = u.phenom
   if (!w.phen || !PHENOMENA[id]) return
-  w.phen.cold = Math.max(0, w.phen.cold - COLD.killWarm)
   const stage = currentStage(w.journal.phenomena, id)
   if (!stage) return
   if (u.phenomRole === 'guard') {
@@ -5262,6 +5393,66 @@ function phenomenonKill(game, mesh) {
     if (out.done) completePhenomenonStage(game, id)
     else if (progressOf(out.phenomena, id).n % 4 === 0) questUi.showToast(`${stage.title.toUpperCase()}: ${progressOf(out.phenomena, id).n} / ${stage.n}`)
   } else if (u.phenomRole === 'boss' && stage.kind === 'boss') completePhenomenonStage(game, id)
+}
+
+// Host: a storm monster died (however, whoever hit it). A guest's own storm monster counts in THEIR storm, not ours; a
+// temple boss counts for everyone fighting that stage.
+function phenomenonDeath(game, mesh) {
+  const u = mesh.userData
+  const info = { s: u.phenom, r: u.phenomRole, p: u.phenomPoint ?? null }
+  if (u.phenomRole === 'boss') coop?.sendPhenKill(null, info)
+  else if (u.phenomFor) return coop?.sendPhenKill(u.phenomFor, info)
+  phenomenonKill(game, mesh)
+}
+
+// ---- co-op: a guest's storms ----
+// A guest runs its own storms (its own journal) but can't spawn monsters; every frame its stage runner says what it wants
+// alive (`phenWant`), sent to the host about once a second, and the host keeps that many of that guest's storm monsters
+// about (tagged `phenomFor`). A one-off burst (a hold stage's wave) has `o: 1`.
+let phenWants = []
+let phenWantAt = 0
+function phenWant(id, role, point, n, at, extra = {}) {
+  phenWants.push({ s: id, r: role, p: point, n: Math.max(0, n), x: Math.round(at.x * 10) / 10, z: Math.round(at.z * 10) / 10, ...extra })
+}
+function flushPhenWants(now) {
+  if (ownsMonsters()) return void (phenWants = [])
+  const once = phenWants.filter((q) => q.o)
+  if (now >= phenWantAt || once.length) {
+    if (now >= phenWantAt) {
+      phenWantAt = now + 1
+      coop.sendPhenWant(phenWants)
+    } else coop.sendPhenWant(once)
+  }
+  phenWants = []
+}
+// Host: a guest's wants. Spawns up to two of each missing kind per message, near where they asked.
+function hostPhenWant(list, peer) {
+  if (!game?.world?.phen || !peer) return
+  for (const q of list.slice(0, 16)) {
+    if (!PHENOMENA[q.s] || !Number.isFinite(q.x) || !Number.isFinite(q.z)) continue
+    if (q.r === 'boss') {
+      const stage = PHENOMENA[q.s].stages.find((st) => st.kind === 'boss')
+      if (stage && !game.monsters.some((m) => m.userData.phenomBoss === q.s && !m.userData.dying)) spawnTempleBoss(game, q.s, stage, peer)
+      continue
+    }
+    if (!['guard', 'purge', 'add'].includes(q.r)) continue
+    const jitter = () => {
+      const a = Math.random() * Math.PI * 2
+      const d = q.o ? 5 + Math.random() * 4 : Math.random() * 3
+      return { x: q.x + Math.cos(a) * d, z: q.z + Math.sin(a) * d }
+    }
+    if (q.o) {
+      for (let i = 0; i < Math.min(6, q.n); i++) spawnStormMonster(game, q.s, jitter(), q.r, { for: peer })
+      continue
+    }
+    const have = game.monsters.filter((m) => m.userData.phenomFor === peer && m.userData.phenom === q.s && m.userData.phenomRole === q.r && (q.p == null || m.userData.phenomPoint === q.p) && !m.userData.dying).length
+    for (let i = 0; i < Math.min(2, Math.min(8, q.n) - have); i++) spawnStormMonster(game, q.s, jitter(), q.r, { point: q.p ?? undefined, elite: have + i === 0 && Boolean(q.e), for: peer })
+  }
+}
+// Guest: one of our storm monsters fell in the host's game.
+function guestPhenKill(m) {
+  if (!game?.world?.phen || !PHENOMENA[m.s]) return
+  phenomenonKill(game, { userData: { phenom: m.s, phenomRole: m.r, phenomPoint: m.p ?? undefined } })
 }
 
 // A spot on dry ground in the storm for a monster: a ring round the player, kept inside the wall.
@@ -5290,9 +5481,10 @@ function spawnStormMonster(game, id, at, role, extra = {}) {
   mesh.userData.phenom = id
   mesh.userData.phenomRole = role
   if (extra.point) mesh.userData.phenomPoint = extra.point
+  if (extra.for) mesh.userData.phenomFor = extra.for // a co-op guest's storm monster (it counts in their storm)
   return mesh
 }
-const stormAlive = (game, id, role, point = null) => game.monsters.filter((m) => m.userData.phenom === id && m.userData.phenomRole === role && (point === null || m.userData.phenomPoint === point) && !m.userData.dying).length
+const stormAlive = (game, id, role, point = null) => game.monsters.filter((m) => m.userData.phenom === id && !m.userData.phenomFor && m.userData.phenomRole === role && (point === null || m.userData.phenomPoint === point) && !m.userData.dying).length
 
 // The storm's own hazard, every frame while you are in it.
 function stepStormHazard(game, id, k, now, dt, alive, scale = 1) {
@@ -5407,7 +5599,8 @@ function stepPhenomenonStage(game, id, now, dt, alive, markers) {
       const remaining = stage.guards - (rt.guardKills[pt.id] ?? 0)
       const guarded = remaining > 0
       markers.push({ id: pt.id, kind: 'stone', x: pt.x, y: pt.y, z: pt.z, color: guarded ? 0x888899 : color })
-      if (!coop?.isClient && near(pt, 48)) {
+      if (!ownsMonsters() && near(pt, 48) && remaining > 0) phenWant(id, 'guard', pt.id, remaining, pt, { e: stage.guards >= 3 ? 1 : 0 })
+      else if (ownsMonsters() && near(pt, 48)) {
         const have = stormAlive(game, id, 'guard', pt.id)
         if (remaining > have && now > ph.spawnAt) {
           ph.spawnAt = now + 0.8
@@ -5432,7 +5625,8 @@ function stepPhenomenonStage(game, id, now, dt, alive, markers) {
       }
     }
   } else if (stage.kind === 'purge') {
-    if (!coop?.isClient && alive) {
+    if (!ownsMonsters() && alive) phenWant(id, 'purge', null, Math.min(stage.wave, stage.n - prog.n), stormSpawnSpot(id, p, 14, 18))
+    else if (alive) {
       const need = stage.n - prog.n
       const have = stormAlive(game, id, 'purge')
       if (have < Math.min(stage.wave, need) && now > ph.spawnAt) {
@@ -5446,7 +5640,8 @@ function stepPhenomenonStage(game, id, now, dt, alive, markers) {
     const out = stepHold(rt.hold, stage, { inside, dt, alive: alive && !game.player.hidden })
     rt.hold = out.state
     markers.push({ id: pt.id, kind: 'hold', x: pt.x, y: pt.y, z: pt.z, color, radius: stage.radius, progress: out.state.progress / stage.secs, active: inside })
-    if (out.waves && !coop?.isClient) {
+    if (out.waves && !ownsMonsters()) phenWant(id, 'add', null, stage.wave, { x: pt.x + stage.radius, z: pt.z }, { o: 1 })
+    else if (out.waves) {
       for (let i = 0; i < stage.wave; i++) {
         const a = (i / stage.wave) * Math.PI * 2 + Math.random()
         spawnStormMonster(game, id, { x: pt.x + Math.cos(a) * (stage.radius + 6), z: pt.z + Math.sin(a) * (stage.radius + 6) }, 'add')
@@ -5478,7 +5673,10 @@ function stepPhenomenonStage(game, id, now, dt, alive, markers) {
     if (arena.place !== 'sky') return
     const boss = game.monsters.find((m) => m.userData.phenomBoss === id && m.userData.phenomRole === 'boss' && !m.userData.dying)
     const onTemple = near(arena, SKY_TEMPLE_REACH) && w.groundY > arena.y - 5
-    if (!coop?.isClient && !boss && onTemple && alive && !w.jump.air) spawnTempleBoss(game, id, stage)
+    if (onTemple && alive && !w.jump.air) {
+      if (!ownsMonsters()) phenWant(id, 'boss', null, 1, arena)
+      else if (!boss) spawnTempleBoss(game, id, stage)
+    }
   }
 }
 
@@ -5490,10 +5688,6 @@ function stepPhenomena(game, now, dt) {
   const p = game.player.position
   const cleared = new Set(PHENOMENON_ORDER.filter((id) => isCleared(w.journal.phenomena, id)))
   ph.fx.update(now, p, cleared)
-  if (coop?.isClient) { // (a guest's storms are the host's; the storm pads still throw a guest up to the sky temples)
-    if (dt > 0 && !w.aloft) stepStormPads(game, now)
-    return
-  }
   const alive = game.player.hp > 0 && !game.player.falling && !game.cutscene
   // The storm you are in (or at its edge): the strongest one.
   let here = null
@@ -5548,6 +5742,7 @@ function stepPhenomena(game, now, dt) {
   }
   ph.guide = guideTarget(w.journal.phenomena, { x: p.x, z: p.z, y: w.groundY }, ph.tracked, phenRtView(game))
   ph.fx.setGuide(ph.guide && !w.aloft ? { x: ph.guide.x, z: ph.guide.z, y: heightAt(ph.guide.x, ph.guide.z), color: PHENOMENA[ph.guide.stormId].glow } : null)
+  flushPhenWants(now)
   ph.fx.setMarkers(markers)
   ph.fx.setZones(ph.zones.filter((z) => !z.struck || now < (z.dead ?? 0)))
 }
@@ -5743,6 +5938,8 @@ function stepSky(game, now, dt) {
 let lastFollowAt = -Infinity
 function followHost(layer) {
   const w = game.world
+  w.hostLayerNow = layer
+  if (!coopFollow) return void (w.hostLayer = layer) // (off: the host's comings and goings don't move us)
   if (layer === w.hostLayer) return
   const now = timer.getElapsed()
   const spot = coop.hostSpot()
@@ -5775,7 +5972,8 @@ function jumpToHost(spot) {
 // A guest left far behind (the host respawned at a save point, a stale position at the moment of a level change...)
 // is brought back to the host.
 function regroupGuest(now) {
-  if (!coop?.isClient || !coopLeash || now - lastFollowAt < 2) return // (no leash: a guest may roam as far as they like)
+  if (!coop?.isClient || !coopLeash || guestOwnsWorld() || now - lastFollowAt < 2) return // (no leash: a guest may roam as far as they like; in the other world, not at all)
+  if (((game.world.hostLayerNow ?? 0) & 1) === 1 !== game.world.depths.on) return
   const spot = coop.hostSpot()
   const p = game.player.position
   if (!spot || Math.hypot(spot.x - p.x, spot.z - p.z) < COOP_MAX_DISTANCE * 1.6) return
@@ -6026,6 +6224,184 @@ function winColosseum(game, id, at) {
   questUi.showToast(`${champ?.name ?? 'THE CHAMPION'} IS BEATEN FOR GOOD  ·  COLOSSEUMS ${w.journal.colossi.length}/${colosseums().length}  ·  +${COLOSSEUM_REWARD} CRYSTALS, FULLY HEALED`)
 }
 
+// ---- The storm champions' own fights (logic/championFights.js, the look in src/championFx.js) ----
+// Each champion wears a ward (Sirocco's sand veil, Rimefang's ice armour, the Cinder Tyrant's obsidian shell, Mother Miasma's
+// root ward) that turns every blow until you break it with its arena's trick; then it reels for a few seconds and takes
+// EXPOSED_DAMAGE from everything. The fight wakes when you walk in and the gate seals behind you. Host / solo only: a co-op
+// joiner's champion is the host's puppet.
+const hexCss = (c) => `#${c.toString(16).padStart(6, '0')}`
+function endChampionFight(game, id) {
+  const w = game.world
+  const f = w.fights?.get(id)
+  if (!f) return
+  w.fights.delete(id)
+  disposeChampionFx(f.fx)
+  if (f.seals.length) game.obstacles = game.obstacles.filter((o) => !f.seals.includes(o))
+  for (const pod of f.pods) {
+    if (!game.monsters.includes(pod) || pod.userData.dying) continue
+    pod.userData.dying = true
+    pod.userData.deathPopElapsed = 0
+    jellyHit(pod, JELLY_DEATH_INFLATE_STRENGTH)
+  }
+  if (w.depths) w.depths.fightChip = null
+}
+function sealColosseum(game, f) {
+  const c = f.c
+  for (let k = -2; k <= 2; k++) {
+    const a = c.gate + k * 0.1
+    f.seals.push({ x: c.x + Math.cos(a) * COLOSSEUM_WALL, z: c.z + Math.sin(a) * COLOSSEUM_WALL, radius: 1.8, top: c.floor + 14 })
+  }
+  game.obstacles.push(...f.seals)
+}
+function stepChampionFights(game, now, dt) {
+  const w = game.world
+  const fights = (w.fights ??= new Map())
+  for (const [id, f] of fights) if (!game.monsters.includes(f.mesh) || f.mesh.userData.dying || !ownsMonsters()) endChampionFight(game, id)
+  if (!ownsMonsters() || dt <= 0) return
+  const player = game.player
+  const p = player.position
+  w.depths.fightChip = null
+  for (const mesh of game.monsters) {
+    const ud = mesh.userData
+    if (!ud.colosseumId || ud.dying || ud.spawning) continue
+    let f = fights.get(ud.colosseumId)
+    if (!f) {
+      const c = colosseumById(ud.colosseumId)
+      const state = c && createFight(ud.type, c)
+      if (!state) continue
+      f = { id: c.id, c, mesh, state, fx: createChampionFx(state, c), seals: [], pods: [] }
+      scene.add(f.fx.group)
+      fights.set(c.id, f)
+      ud.champion = true
+      ud.immunityThresholds = []
+    }
+    const s = f.state
+    const stats = MONSTER_TYPES[ud.type]
+    // It never leaves the arena, and the minions it calls never shield it (its ward does that).
+    const back = keepInArena(s, mesh.position.x, mesh.position.z, stats.radius)
+    if (back) {
+      mesh.position.x = back.x
+      mesh.position.z = back.z
+    }
+    ud.minions = undefined
+    f.pods = f.pods.filter((pod) => game.monsters.includes(pod) && !pod.userData.dying)
+    const events = stepFight(s, {
+      dt,
+      now,
+      player: { x: p.x, z: p.z },
+      boss: { x: mesh.position.x, z: mesh.position.z, radius: stats.radius },
+      hpFrac: ud.hp / Math.max(1, ud.maxHp),
+      podsAlive: f.pods.length,
+    })
+    ud.immune = !s.exposed
+    ud.championExposed = s.exposed
+    ud.championStunUntil = s.staggerUntil
+    if (s.kind === 'pods' && !s.exposed && f.pods.length) ud.hp = Math.min(ud.maxHp, ud.hp + ud.maxHp * s.def.regen * f.pods.length * dt)
+    const name = bossById(ud.type)?.name ?? 'THE CHAMPION'
+    const color = s.def.color
+    const hurt = (dmg, trueFraction = 0.3) => {
+      if (!player.hidden && player.damagePlayer(dmg * (diff().monsterDamage ?? 1), now, trueFraction)) {
+        playerHurtFx(game)
+        return true
+      }
+      return false
+    }
+    for (const e of events) {
+      if (e.type === 'begin') {
+        sealColosseum(game, f)
+        biomeBannerShow(name, color, now)
+        sfx.play('bossSlam', { x: mesh.position.x, z: mesh.position.z })
+        spawnShockwave(shockwavePool, mesh.position.x, mesh.position.z, 10, color)
+        questUi.showToast(`THE GATE SEALS  ·  ${s.def.hint}`)
+      } else if (e.type === 'expose') {
+        spawnShockwave(shockwavePool, mesh.position.x, mesh.position.z, 12, 0xffffff)
+        burst(particleSystem, { x: mesh.position.x, y: mesh.position.y + 3, z: mesh.position.z }, color, 70, 7)
+        burst(particleSystem, { x: mesh.position.x, y: mesh.position.y + 3, z: mesh.position.z }, 0xffffff, 30, 5)
+        jellyHit(mesh, JELLY_HIT_STRENGTH * 2)
+        sfx.play('bossSlam', { x: mesh.position.x, z: mesh.position.z })
+        triggerShake(game.shake, SHAKE_DAMAGE_MAGNITUDE, SHAKE_DAMAGE_DURATION)
+        questUi.showToast(s.def.broken)
+      } else if (e.type === 'cover') {
+        burst(particleSystem, { x: mesh.position.x, y: mesh.position.y + 2, z: mesh.position.z }, color, 40, 4)
+        questUi.showToast(`${name}'S ${s.def.ward} IS BACK`)
+      } else if (e.type === 'mirage') {
+        for (let i = 0; i < e.count; i++) {
+          const a = (i / e.count) * Math.PI * 2 + Math.random()
+          const at = { x: mesh.position.x + Math.cos(a) * 6, z: mesh.position.z + Math.sin(a) * 6 }
+          spawnWildMonster(game, 'twister', at, { danger: 0.7 })
+          burst(particleSystem, { x: at.x, y: mesh.position.y + 1, z: at.z }, 0xffd98a, 20, 4)
+        }
+        questUi.showToast('SAND MIRAGES RISE!  ·  THE MIRRORS DIM IF YOU DAWDLE NOW')
+      } else if (e.type === 'mirrorLit' || e.type === 'brazierLit') {
+        const spot = s.mirrors?.[e.index] ?? s.braziers[e.index]
+        burst(particleSystem, { x: spot.x, y: mesh.position.y + 3.5, z: spot.z }, color, 30, 4)
+        sfx.play('chestOpen', { x: spot.x, z: spot.z })
+        if (e.type === 'mirrorLit') questUi.showToast(`SUN MIRROR ${e.lit}/${s.mirrors.length} TURNED ON ${name}`)
+      } else if (e.type === 'mirrorDim') {
+        questUi.showToast('A SUN MIRROR DIMS! LIGHT THEM ALL TOGETHER')
+      } else if (e.type === 'brazierOut') {
+        const b = s.braziers[e.index]
+        burst(particleSystem, { x: b.x, y: mesh.position.y + 2.5, z: b.z }, 0xcfeaff, 40, 5)
+      } else if (e.type === 'breathWarn') {
+        questUi.showToast(`${name} DRAWS A FROZEN BREATH!  ·  GET TO A FIRE`)
+        sfx.play('announcement', { x: mesh.position.x, z: mesh.position.z })
+      } else if (e.type === 'breath') {
+        flashBreath(f.fx, now)
+        for (let i = 0; i < 6; i++) {
+          const a = e.angle + (Math.random() - 0.5) * e.arc * 2
+          const r = 3 + Math.random() * (e.range - 3)
+          burst(particleSystem, { x: e.x + Math.cos(a) * r, y: mesh.position.y + 1, z: e.z + Math.sin(a) * r }, 0xcfeaff, 14, 3)
+        }
+        sfx.play('bossSlam', { x: mesh.position.x, z: mesh.position.z })
+        if (e.hit && hurt(e.damage, 0.4)) {
+          player.applyStatus('slow', now, { seconds: 2.5, factor: 0.5 })
+          questUi.showToast('FROZEN! THE FIRES KEEP HER BREATH OFF YOU')
+        }
+      } else if (e.type === 'chill') {
+        if (hurt(e.damage, 1)) burst(particleSystem, { x: p.x, y: p.y + 1.2, z: p.z }, 0xcfeaff, 10, 2)
+        player.applyStatus('slow', now, { seconds: 1.2, factor: 0.75 })
+      } else if (e.type === 'throw') {
+        sfx.play('swing', { x: mesh.position.x, z: mesh.position.z })
+      } else if (e.type === 'land') {
+        spawnShockwave(shockwavePool, e.bomb.x, e.bomb.z, 2, 0xff7a3a)
+      } else if (e.type === 'kick') {
+        sfx.play('hit', { x: e.bomb.x, z: e.bomb.z })
+        burst(particleSystem, { x: e.bomb.x, y: p.y + 0.6, z: e.bomb.z }, 0xffd04a, 16, 4)
+      } else if (e.type === 'crack') {
+        burst(particleSystem, { x: mesh.position.x, y: mesh.position.y + 2.5, z: mesh.position.z }, 0xff7a3a, 50, 6)
+        spawnShockwave(shockwavePool, mesh.position.x, mesh.position.z, 6, 0xff7a3a)
+        jellyHit(mesh, JELLY_HIT_STRENGTH)
+        sfx.play('bossSlam', { x: mesh.position.x, z: mesh.position.z })
+        if (e.cracks < e.need) questUi.showToast(`THE SHELL CRACKS  ${e.cracks}/${e.need}`)
+      } else if (e.type === 'blast' || e.type === 'fizzle') {
+        const y = heightAt(e.bomb.x, e.bomb.z)
+        burst(particleSystem, { x: e.bomb.x, y: y + 0.8, z: e.bomb.z }, 0xff7a3a, e.type === 'blast' ? 40 : 12, e.type === 'blast' ? 6 : 2)
+        if (e.type === 'blast') {
+          spawnShockwave(shockwavePool, e.bomb.x, e.bomb.z, e.radius, 0xff7a3a)
+          sfx.play('bossSlam', { x: e.bomb.x, z: e.bomb.z })
+          if (e.hit) hurt(e.damage)
+        }
+      } else if (e.type === 'plant') {
+        for (const at of e.spots) {
+          const pod = spawnWildMonster(game, 'rot_pod', at, { danger: 0.6 })
+          f.pods.push(pod)
+          burst(particleSystem, { x: at.x, y: heightAt(at.x, at.z) + 1, z: at.z }, 0xb8ff8a, 24, 4)
+        }
+        if (s.round > 0) questUi.showToast(`${name} PLANTS ${e.spots.length} NEW ROT PODS`)
+      }
+    }
+    updateChampionFx(f.fx, {
+      now,
+      boss: { x: mesh.position.x, y: mesh.position.y, z: mesh.position.z, radius: stats.radius, size: stats.size },
+      floorAt: (x, z) => heightAt(x, z),
+      podPositions: f.pods.map((pod) => pod.position),
+      sealed: f.seals.length > 0,
+    })
+    const text = fightStatus(s, now, f.pods.length)
+    if (text) w.depths.fightChip = { color: hexCss(color), text: `${text}` }
+  }
+}
+
 // The colosseums, while you are in the Depths: a banner and a word about the champion when you walk in.
 function stepColosseums(game, now) {
   const w = game.world
@@ -6051,9 +6427,10 @@ function stepDepths(game, now, dt) {
   biomeBanner?.classList.toggle('show', now < w.bannerUntil)
   if (dt > 0) stepDeepTemples(game, now)
   if (dt > 0) stepColosseums(game, now)
+  stepChampionFights(game, now, dt)
   let charging = null
   if (dt > 0) {
-    const ok = !coop?.isClient && !player.hidden && !player.falling && player.hp > 0 && !w.jump.air && !blockingPanelOpen() && !game.cutscene
+    const ok = (!coop?.isClient || !coopFollow) && !player.hidden && !player.falling && player.hp > 0 && !w.jump.air && !blockingPanelOpen() && !game.cutscene
     const out = stepAscend(d.ascend, { x: p.x, z: p.z, now, ok })
     d.ascend = out.state
     for (const ev of out.events) {
@@ -6073,7 +6450,7 @@ function stepDepths(game, now, dt) {
       const r = lair.relic
       if (w.journal.depthRelics.includes(r.id)) continue
       if (Math.hypot(r.x - p.x, r.z - p.z) > RELIC_CLAIM_RADIUS || Math.abs(w.groundY - heightAt(r.x, r.z)) > 4.5) continue
-      const bossDown = coop?.isClient ? !game.monsters.some((m) => m.userData.isBoss && Math.hypot(m.position.x - r.x, m.position.z - r.z) < 30) : w.killed.has(`${lair.id}:boss`) // (a guest sees the host's boss as a puppet)
+      const bossDown = !ownsMonsters() ? !game.monsters.some((m) => m.userData.isBoss && Math.hypot(m.position.x - r.x, m.position.z - r.z) < 30) : w.killed.has(`${lair.id}:boss`) // (a guest sees the host's boss as a puppet)
       if (!bossDown) {
         if (now > d.hintAt) {
           d.hintAt = now + 5
@@ -6100,6 +6477,7 @@ function stepDepths(game, now, dt) {
       ['#b48aff', '<b>THE DEPTHS</b> a Lightroot (pale beam) lifts you home'],
       ['#e08aff', `<b>UMBRAL HEARTS</b> ${hearts}/${depthsLairs().length}`],
       ['#ffd98a', `<b>COLOSSEUMS</b> ${w.journal.colossi.length}/${colosseums().length} champions beaten`],
+      ...(d.fightChip ? [[d.fightChip.color, d.fightChip.text]] : []),
       ...(charging ? [['#cfe8ff', '<b>LIGHTROOT</b> hold still...']] : []),
     ].map(([c, text]) => `<div class="ws-chip" style="--c:${c}">${text}</div>`).join('')
     if (html !== wildsStatusKey) {
@@ -6877,7 +7255,7 @@ function stepActivities(game, now) {
   stepShrines(game, now)
   const treasure = stepTreasure(game, now)
   stepRaces(game, now)
-  if (!coop?.isClient) stepWildEvents(game, now)
+  if (ownsMonsters()) stepWildEvents(game, now)
   w.fx.update(now, game.player.position)
   updateWildsStatus(game, now, treasure)
   flushJournal(game, false, now)
@@ -6978,6 +7356,8 @@ function drawActivityMarks(ctx, game, at, onMap, size, now) {
 
 function stepWorld(game, now, dt = 0) {
   const w = game.world
+  syncGuestWorld(game)
+  if (w.fights?.size && !inDepths()) for (const id of [...w.fights.keys()]) endChampionFight(game, id)
   if (!w.starsShown) {
     w.starsShown = true
     game.arena.world.setSkystarsCaught(w.starsCaught)
@@ -6994,6 +7374,7 @@ function stepWorld(game, now, dt = 0) {
   // Anything left far behind is let go, so a long trek never piles up monsters.
   for (const mesh of [...game.monsters]) {
     if (mesh.userData.dying || mesh.userData.falling || mesh.userData.spawning || mesh.userData.isBoss || mesh.userData.netPuppet) continue
+    if (mesh.userData.phenomFor && coop?.hasPeer(mesh.userData.phenomFor)) continue // a co-op guest's storm monster: it's by them (gone with them if they leave)
     if (Math.hypot(mesh.position.x - p.x, mesh.position.z - p.z) > UNLOAD_RADIUS + 30) dropWorldMonster(game, mesh)
   }
 
@@ -7006,10 +7387,10 @@ function stepWorld(game, now, dt = 0) {
   game.arena.shadowY = w.camGround // the sun's shadow box follows you up to the isles
   game.arena.world.setAltitude?.(w.camGround - heightAt(p.x, p.z), w.camGround)
   if (dt > 0) regroupGuest(now)
-  if (!w.depths.on && dt > 0 && !coop?.isClient) {
+  if (!w.depths.on && dt > 0 && (!coop?.isClient || !coopFollow)) {
     stepChasms(game, now)
     if (!w.depths.descent) stepCaves(game, now)
-  } // (in co-op only the host falls: a guest follows the host's level, see followHost)
+  } // (in co-op with following on, only the host falls: a guest follows the host's level, see followHost)
   stepChampion(game, now, dt)
   if (w.depths.on) game.player.inVillage = false // (no villages down there)
   if (w.depths.on) {
@@ -7731,8 +8112,7 @@ function scoreKill(game, mesh, cause, position, now) {
     worldQuestEvent(game, { type: 'kill', monster: mesh.userData.type, elite: Boolean(mesh.userData.elite), biome: biomeAt(position.x, position.z) })
     noteWildsKill(game, mesh.userData.type)
     if (mesh.userData.towerCamp) towerCampKill(game, mesh.userData.towerCamp)
-    if (mesh.userData.phenom) phenomenonKill(game, mesh)
-    else if (game.world.phen) game.world.phen.cold = Math.max(0, game.world.phen.cold - COLD.killWarm * 0.5)
+    if (game.world.phen) game.world.phen.cold = Math.max(0, game.world.phen.cold - COLD.killWarm * (mesh.userData.phenom ? 1 : 0.5)) // (the storm counts it in rememberWorldKill)
   }
   const trick = nameTrick({
     cause,
@@ -8795,6 +9175,37 @@ function setCoopLeash(on, fromHost = false) {
   if (!fromHost) coop?.sendLeash(on)
   if (game?.world || fromHost) questUi.showToast(on ? `CO-OP: STAY WITHIN ${COOP_MAX_DISTANCE} M OF EACH OTHER` : 'CO-OP: ROAM AS FAR AS YOU LIKE (MONSTERS ONLY SHOW UP AROUND THE HOST)')
 }
+// Do co-op guests get taken along when the host drops into the Depths or goes up into the sky? Off by default: everyone goes
+// where they like, and a guest in the other world (the host up top, them in the Depths, or the other way round) has that
+// world's monsters to themselves (`guestOwnsWorld`). The host decides (the co-op panel's checkbox); guests hear it.
+let coopFollow = false
+function setCoopFollow(on, fromHost = false) {
+  on = on === true
+  if (on === coopFollow) return
+  coopFollow = on
+  if (!fromHost) coop?.sendFollow(on)
+  if (game?.world || fromHost) questUi.showToast(on ? 'CO-OP: FRIENDS FOLLOW THE HOST INTO THE DEPTHS AND THE SKY' : 'CO-OP: EVERYONE GOES WHERE THEY LIKE (THE DEPTHS, THE SKY)')
+}
+// A co-op guest standing in the other world from the host: there are no puppets here, so its own monsters live here.
+function guestOwnsWorld() {
+  const w = game?.world
+  return Boolean(coop?.isClient && w && !coopFollow && (((w.hostLayerNow ?? 0) & 1) === 1) !== w.depths.on)
+}
+// Does this game spawn and run its own Wilds monsters (the host, solo, or a guest on a world of its own)?
+const ownsMonsters = () => !coop?.isClient || guestOwnsWorld()
+// A guest's world changed hands (it went where the host isn't, or the host came to it): reload the land around it, with its
+// own monsters or with none (the host's puppets come back with the next snapshot).
+function syncGuestWorld(game) {
+  const w = game.world
+  if (!w || !coop?.isClient) return void (w && (w.ownWorld = false))
+  const own = guestOwnsWorld()
+  if (own === Boolean(w.ownWorld)) return
+  w.ownWorld = own
+  if (own) coop.clearPuppets()
+  for (const mesh of [...game.monsters]) if (!mesh.userData.netPuppet) dropWorldMonster(game, mesh)
+  for (const key of [...w.chunks.keys()]) unloadWorldChunk(game, key)
+  w.live.clear()
+}
 function canCoop() {
   return null
 }
@@ -8844,6 +9255,16 @@ coop = createCoop({
   leash: () => coopLeash,
   setLeash: (on) => setCoopLeash(on),
   onLeash: (on) => setCoopLeash(on, true),
+  follow: () => coopFollow,
+  setFollow: (on) => setCoopFollow(on),
+  onFollow: (on) => setCoopFollow(on, true),
+  ownWorld(layer) {
+    if (!game?.world) return false
+    game.world.hostLayerNow = layer
+    return guestOwnsWorld()
+  },
+  onPhenWant: (list, peer) => hostPhenWant(list, peer),
+  onPhenKill: (m) => guestPhenKill(m),
   onStake: (raw) => hearDuelStake(raw),
   stakeChoices: () => stakeOptions(profile).map((o) => ({ key: stakeKey(o), label: o.kind === 'none' ? 'Nothing' : stakeLabel(o).replace(/^the /, '') })),
   currentStakeKey: () => stakeKey(duelStake),
@@ -9820,11 +10241,11 @@ function gameFrame(timestamp) {
     if (mesh.userData.flight) return flySkyfin(game, mesh, gameplayDelta, elapsedSeconds)
 
     // Immunity phases: at 75 / 50 / 25% health a boss throws up a shield, calls minions, and can't be hurt until they are beaten.
-    if (mesh.userData.isBoss && !mesh.userData.spawning && !mesh.userData.immune) {
+    if (mesh.userData.isBoss && !mesh.userData.champion && !mesh.userData.spawning && !mesh.userData.immune) {
       const phase = immunityPhaseReached(mesh.userData.hp, mesh.userData.maxHp, mesh.userData.immunityDone ?? 0, mesh.userData.immunityThresholds)
       if (phase !== null) startImmunity(game, mesh, phase)
     }
-    if (mesh.userData.immune) stepImmunity(game, mesh, gameplayDelta, elapsedSeconds)
+    if (mesh.userData.immune && !mesh.userData.champion) stepImmunity(game, mesh, gameplayDelta, elapsedSeconds)
     // Phase two: at half health a boss ENRAGES: faster, its moves come round sooner, and it fires its signature at once.
     if (mesh.userData.isBoss && !mesh.userData.phase2 && !mesh.userData.spawning && (diff().bossEnraged || mesh.userData.hp <= mesh.userData.maxHp * 0.5)) {
       mesh.userData.phase2 = true
@@ -9846,7 +10267,10 @@ function gameFrame(timestamp) {
     updateFrozenLook(mesh, elapsedSeconds)
     // Co-op host: it goes after the nearest player who's up; a remote player is a stand-in whose hits are sent to them.
     const target = coop?.isHost ? coop.targetFor(mesh, player, downed) : player
-    const { hitPlayer: monsterHitPlayer, events: rawEvents } = updateMonster(mesh, target, obstacles, gameplayDelta, elapsedSeconds)
+    // A storm champion reeling with its ward broken (logic/championFights.js) does nothing at all.
+    const reeling = mesh.userData.champion && elapsedSeconds < (mesh.userData.championStunUntil ?? 0)
+    if (reeling) mesh.userData.speed = 0
+    const { hitPlayer: monsterHitPlayer, events: rawEvents } = reeling ? { hitPlayer: false, events: [] } : updateMonster(mesh, target, obstacles, gameplayDelta, elapsedSeconds)
     const specialEvents = coop?.isHost ? coop.routeMonsterEvents(mesh, target, rawEvents) : rawEvents
     const hitPlayer = (monsterHitPlayer && target === player) || (specialEvents.length > 0 && applyBossEvents(game, mesh, specialEvents, elapsedSeconds))
     if (mesh.userData.escaped) {
@@ -10025,6 +10449,7 @@ function gameFrame(timestamp) {
     sfx.play('hit', { x: player.position.x, z: player.position.z })
     input.rumble(RUMBLE_LIGHT_STRENGTH, RUMBLE_LIGHT_DURATION)
   }
+  stepStaffStorms(gameplayDelta, heroNow)
   const orbHurt = updateProjectiles(projectilePool, gameplayDelta * (elapsedSeconds < timeWarp.until ? timeWarp.factor : 1), player, elapsedSeconds, ARENA_RADIUS, bulwarkBlockers())
   const poisonHurt = updatePoison(poisonPool, gameplayDelta, player, elapsedSeconds)
   updatePoison(contagionPool, gameplayDelta, NOBODY, elapsedSeconds)

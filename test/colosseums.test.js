@@ -6,7 +6,7 @@ import { BOSSES, COLOSSEUM_BOSSES, bossById } from '../src/logic/bosses.js'
 import { MONSTER_TYPES } from '../src/config.js'
 import { CHUNK_SIZE, WORLD_RADIUS, heightAt, setDepthsMode } from '../src/logic/world.js'
 import { createJournal, noteColosseum, parseJournal, readyMilestones } from '../src/logic/wildsJournal.js'
-import { STAFF_UPGRADES, staffUpgrades } from '../src/logic/stormStaff.js'
+import { STAFF_UPGRADES, dropZone, frostStack, staffUpgrades, stepZone, tornadoPull } from '../src/logic/stormStaff.js'
 import { CHAMPION_LAND, companionStorm } from '../src/logic/stormGuide.js'
 import { hasBeast } from '../src/beasts.js'
 
@@ -82,6 +82,36 @@ describe('the storm-touched staff', () => {
     expect(staffUpgrades(ph)).toEqual([STAFF_UPGRADES.ashstorm])
     for (const id of PHENOMENON_ORDER) ph = calm(joinChampion(ph, id), id)
     expect(staffUpgrades(ph).map((u) => u.id)).toEqual(PHENOMENON_ORDER)
+  })
+
+  it('Pocket Tornado: drops a twister that drags monsters in and round, merges with a nearby one, and blows out', () => {
+    let zones = dropZone([], 'tornado', 0, 0, 0, 20, 0)
+    expect(zones).toHaveLength(1)
+    zones = dropZone(zones, 'tornado', 1, 0, 0, 30, 1) // close by: the same twister, refreshed and stronger
+    expect(zones).toHaveLength(1)
+    expect(zones[0].damage).toBe(30)
+    for (let i = 0; i < 5; i++) zones = dropZone(zones, 'tornado', 10 + i * 10, 0, 0, 20, 1)
+    expect(zones).toHaveLength(STAFF_UPGRADES.sandstorm.tornado.max)
+    const pull = tornadoPull(zones[0], 2, 0, 0.1)
+    expect(pull.x).toBeLessThan(0) // in toward the eye
+    expect(Math.abs(pull.z)).toBeGreaterThan(0) // and round it
+    const boss = tornadoPull(zones[0], 2, 0, 0.1, true)
+    expect(Math.abs(boss.x)).toBeLessThan(Math.abs(pull.x))
+    expect(tornadoPull(zones[0], 50, 0, 0.1)).toEqual({ x: 0, z: 0 })
+    const z = zones[0]
+    expect(stepZone(z, z.next).tick).toBe(true)
+    expect(stepZone(z, z.until + 0.1).done).toBe(true)
+  })
+
+  it('Hoarfrost: every 4th hit freezes', () => {
+    let c = 0
+    const freezes = []
+    for (let i = 0; i < 8; i++) {
+      const r = frostStack(c)
+      c = r.count
+      freezes.push(r.freeze)
+    }
+    expect(freezes).toEqual([false, false, false, true, false, false, false, true])
   })
 })
 

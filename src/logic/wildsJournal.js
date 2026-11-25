@@ -195,7 +195,7 @@ export function pickUnowned(kind, inventory, seed = '') {
 
 // ---- names --------------------------------------------------------------------------------------
 
-const NAME_OVERRIDES = { bandit: 'Bellhop Bandit', paparazzo: 'Paparazzo', gopher: 'Golf Gopher', splitling: 'Splitling', urchin: 'Urchin', eel: 'Eel', angler: 'Angler', skyfin: 'Skyfin' }
+const NAME_OVERRIDES = { bandit: 'Bellhop Bandit', paparazzo: 'Paparazzo', gopher: 'Golf Gopher', splitling: 'Splitling', urchin: 'Urchin', eel: 'Eel', angler: 'Angler', skyfin: 'Skyfin', rot_pod: 'Rot Pod' }
 const CRAZY_NAMES = Object.fromEntries(CRAZY_ENEMIES.map((e) => [e.id, e.name]))
 const titleCase = (s) => s.toLowerCase().replace(/(^|\s)\S/g, (c) => c.toUpperCase())
 

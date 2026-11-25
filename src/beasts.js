@@ -1382,11 +1382,195 @@ const BEASTS = {
   },
   // Zipzilla: the zippy hound grown into a crested monster.
   boss_zipzilla: { like: 'zippy' },
-  // The storm colosseums' champions: their storm's creature, crowned.
-  boss_sirocco: { like: 'twister', extra: (f) => crown(f, 1.15, 0.5) },
-  boss_rime: { like: 'icicle', extra: (f) => crown(f, 1.15, 0.45) },
-  boss_cinder: { like: 'kablooma', extra: (f) => crown(f, 1.0, 0.5) },
-  boss_mire: { like: 'sporeling', extra: (f) => crown(f, 1.2, 0.45) },
+  // ---- The storm colosseums' champions: each its own creature (logic/championFights.js has how each one fights).
+  // Sultan Sirocco: a four-armed sand djinn rising out of a whirling funnel of sand, turbaned, a sun-gem in his chest,
+  // a scimitar in each upper hand and rings of sand orbiting him.
+  boss_sirocco: {
+    float: 0.1,
+    rim: 0.7,
+    skin: 'cloth',
+    build(f, c) {
+      const sand = shade(c, 1.15)
+      const skin = 0x9a5a3a
+      f.add(lathe('siroccoFunnel', [[0.05, -1], [0.18, -0.8], [0.32, -0.5], [0.5, -0.2], [0.62, 0.05]], 22), sand, { wig: [0.02, 0.05, 5, 0], side: 0.08, at: (p) => Math.max(0, (-p.y) / 1) })
+      for (let i = 0; i < 3; i++) f.add(torus(1, 0.035, 26), shade(c, 1.4), { p: [0, -0.75 + i * 0.28, 0], r: [Math.PI / 2 + 0.15 * (i - 1), 0, 0.1 * i], s: 0.22 + i * 0.16, glow: 0.3, wig: [0.03, 0, 4 + i, i] })
+      f.add(blob('siroccoChest', (x, y, z) => 1 + 0.04 * lumpy(x * 2, y * 2, z * 2)), skin, { p: [0, 0.32, 0], s: [0.62, 0.48, 0.42] })
+      f.add(lathe('siroccoSash', [[0.6, 0.02], [0.66, 0.12], [0.6, 0.2]], 20), 0x7a2a8a, { p: [0, 0, 0] })
+      f.add(gem(), 0xffe066, { p: [0, 0.38, 0.4], s: [0.14, 0.18, 0.08], glow: 2 })
+      f.add(torus(1, 0.03, 18), 0xffc847, { p: [0, 0.38, 0.41], s: 0.18, glow: 0.4 })
+      f.add(blob('siroccoHead', (x, y, z) => 1 + 0.03 * lumpy(x * 3, y * 3, z * 3)), skin, { p: [0, 0.98, 0.08], s: [0.27, 0.3, 0.26] })
+      f.add(blob('siroccoTurban', (x, y, z) => 1 + 0.08 * Math.sin(Math.atan2(z, x) * 5 + y * 6)), 0xf2e6c8, { p: [0, 1.24, 0.04], s: [0.36, 0.24, 0.34] })
+      f.add(gem(), 0xff3d6a, { p: [0, 1.24, 0.38], s: [0.07, 0.09, 0.05], glow: 1.6 })
+      f.spike([0, 1.3, 0.38], [0, 1, -0.3], 0.03, 0.35, 0xffc847)
+      eyes(f, { at: [0.1, 1.02, 0.31], size: 0.055, boss: true })
+      brows(f, INK, { at: [0.1, 1.08, 0.31], w: 0.13, tilt: 0.5 })
+      f.add(blob('siroccoBeard', () => 1), INK, { p: [0, 0.75, 0.24], s: [0.12, 0.22, 0.08], wig: [0, 0.03, 3, 0] })
+      f.both((s) => {
+        f.add(sph(10), skin, { p: [s * 0.62, 0.6, 0], s: 0.18 })
+        // Upper arms: raised, each holding a curved scimitar.
+        const o = { wig: [0.06, 0.05, 2.2, s], ramp: [0, 1] }
+        f.limb([s * 0.66, 0.62, 0], [s * 0.98, 0.95, 0.18], 0.1, 0.08, skin, o)
+        f.limb([s * 0.98, 0.95, 0.18], [s * 1.08, 1.32, 0.3], 0.08, 0.07, skin, o)
+        f.add(torus(1, 0.03, 14), 0xffc847, { ...o, p: [s * 1.0, 1.0, 0.2], r: [0.4, 0, s * 0.6], s: 0.09, glow: 0.3 })
+        f.add(rbox(0.05, 0.75, 0.14), 0xe8eef5, { ...o, p: [s * 1.12, 1.72, 0.42], r: [0.5, 0, s * -0.25], glow: 0.15 })
+        f.add(rbox(0.12, 0.06, 0.24), 0xffc847, { ...o, p: [s * 1.09, 1.36, 0.3] })
+        // Lower arms: folded forward, palms cupping whirling sand.
+        const q = { wig: [0.04, 0.06, 2.6, s + 1], ramp: [0, 1] }
+        f.limb([s * 0.6, 0.3, 0.1], [s * 0.8, 0.1, 0.38], 0.09, 0.07, skin, q)
+        f.limb([s * 0.8, 0.1, 0.38], [s * 0.42, 0.12, 0.62], 0.07, 0.06, skin, q)
+        f.add(sph(8), sand, { ...q, p: [s * 0.36, 0.14, 0.66], s: 0.09, glow: 0.5 })
+      })
+      for (let i = 0; i < 10; i++) {
+        const a = (i / 10) * TAU
+        f.add(sph(6), shade(c, 1.3), { p: [Math.sin(a) * 1.2, -0.2 + Math.sin(a * 2) * 0.25, Math.cos(a) * 1.2], s: 0.06 + (i % 3) * 0.02, glow: 0.4, wig: [0.12, 0.08, 3, a], side: 0.12 })
+      }
+    },
+  },
+  // Queen Rimefang: a crowned frost wyvern, long-necked, with crystal wings, a frozen heart glowing in her chest and
+  // a whip of an icicle tail.
+  boss_rime: {
+    rim: 0.85,
+    skin: 'shell',
+    build(f, c) {
+      const ice = 0xe8f8ff
+      const deep = shade(c, 0.7)
+      f.add(blob('rimeBody', (x, y, z) => 1 + 0.05 * lumpy(x, y, z)), c, { p: [0, -0.1, -0.15], s: [0.62, 0.55, 0.85] })
+      f.add(blob('rimeBelly', () => 1), shade(c, 1.3), { p: [0, -0.28, 0.08], s: [0.45, 0.36, 0.62] })
+      f.add(gem(), 0x5ac8ff, { p: [0, 0.05, 0.55], s: [0.16, 0.22, 0.12], glow: 2 })
+      // Neck up and forward, to a long-snouted head.
+      for (let i = 0; i < 4; i++) f.add(sph(10), c, { p: [0, 0.25 + i * 0.22, 0.45 + i * 0.12], s: 0.25 - i * 0.025, wig: [0.03, 0.02, 1.6, i * 0.4] })
+      const head = [0, 1.15, 0.92]
+      const hw = { wig: [0.04, 0.03, 1.6, 1.6] }
+      f.add(blob('rimeHead', (x, y, z) => 1 + 0.04 * lumpy(x * 2, y * 2, z * 2)), c, { ...hw, p: head, s: [0.24, 0.2, 0.36] })
+      f.add(rbox(0.26, 0.1, 0.32), deep, { ...hw, p: [0, 1.04, 1.18] })
+      for (let i = 0; i < 4; i++) f.both((s) => f.spike([s * 0.08, 1.09, 1.06 + i * 0.07], [0, -1, 0.2], 0.022, 0.08, BONE, hw))
+      f.both((s) => {
+        f.add(sph(8), EYE_BOSS, { ...hw, p: [s * 0.13, 1.22, 1.08], s: [0.045, 0.035, 0.05], glow: 1.4 })
+        f.spike([s * 0.12, 1.28, 0.85], [s * 0.4, 0.8, -1], 0.05, 0.42, ice, { ...hw, glow: 0.4 })
+      })
+      // Her crown: a ring of icicle spires.
+      for (let i = 0; i < 7; i++) {
+        const a = -1.1 + (i / 6) * 2.2
+        f.spike([Math.sin(a) * 0.16, 1.32, 0.86 + Math.cos(a) * 0.08 - 0.08], [Math.sin(a) * 0.3, 1, -0.2], 0.035, 0.22 + (i === 3 ? 0.16 : (i % 2) * 0.06), ice, { ...hw, glow: 0.8 })
+      }
+      // Crystal wings.
+      wings(f, 0xbfe8ff, { at: [0.4, 0.45, -0.25], span: 1.5, chord: 0.9, speed: 3, flap: 0.2, glow: 0.5, tilt: 0.4, veins: ice })
+      f.both((s) => {
+        for (let k = 0; k < 3; k++) f.add(gem(), ice, { p: [s * (0.75 + k * 0.35), 0.62 + k * 0.08, -0.3], s: [0.06, 0.16, 0.06], glow: 1, wig: [0.2 * (0.3 + k * 0.3), 0, 3, s > 0 ? 0 : 0.2] })
+      })
+      fourLegs(f, deep, { x: 0.38, zf: 0.3, zb: -0.55, top: -0.4, r: 0.13, foot: ice })
+      tail(f, c, { root: [0, -0.15, -0.95], len: 1.2, r: 0.16, lift: 0.3, tip: ice, sway: 0.3, speed: 1.8 })
+      ridge(f, ice, { n: 6, from: 0.4, to: 1.7, r: 0.06, len: 0.3, radius: 0.7, y0: -0.1 })
+    },
+  },
+  // The Cinder Tyrant: a hulking obsidian golem, all slabs and lava seams, a furnace grate for a belly, chimney stacks
+  // smoking on his back and fists like anvils.
+  boss_cinder: {
+    rim: 0.55,
+    rough: 0.4,
+    metal: 0.2,
+    skin: 'shell',
+    build(f, c) {
+      const rock = 0x2a2230
+      const lava = 0xff6a1a
+      f.add(rbox(1.3, 1.0, 0.95, 0.2), rock, { p: [0, 0.2, 0] })
+      f.add(rbox(0.9, 0.35, 0.8, 0.12), shade(rock, 1.3), { p: [0, 0.78, -0.05] })
+      // The furnace belly: a dark grate over a glowing core.
+      f.add(rbox(0.6, 0.45, 0.1, 0.04), lava, { p: [0, 0.1, 0.46], glow: 1.8 })
+      for (let i = 0; i < 4; i++) f.add(rbox(0.6, 0.05, 0.06, 0.01), INK, { p: [0, -0.06 + i * 0.11, 0.52] })
+      // Lava seams across the slabs.
+      for (const [a, b] of [[[-0.6, 0.6, 0.48], [-0.2, 0.3, 0.49]], [[0.6, 0.55, 0.48], [0.25, 0.35, 0.49]], [[-0.62, -0.1, 0.4], [-0.66, 0.4, 0.3]], [[0.64, 0.0, 0.4], [0.6, 0.5, 0.2]], [[-0.3, 0.7, -0.47], [0.3, 0.4, -0.48]]]) f.limb(a, b, 0.03, 0.02, lava, { glow: 1.6, n: 4 })
+      // A small head sunk between the shoulders: just a brow ridge and two furnace eyes.
+      f.add(rbox(0.42, 0.3, 0.36, 0.08), shade(rock, 1.2), { p: [0, 0.98, 0.25] })
+      f.add(rbox(0.46, 0.08, 0.1, 0.02), INK, { p: [0, 1.06, 0.44], r: [0.2, 0, 0] })
+      f.both((s) => f.add(rbox(0.1, 0.05, 0.04, 0.01), 0xffb04a, { p: [s * 0.1, 0.99, 0.44], r: [0, 0, s * -0.3], glow: 2 }))
+      maw(f, { y: 0.86, z: 0.43, w: 0.24, h: 0.06, teeth: 3, tooth: 0.06, color: lava })
+      // Chimney stacks smoking embers.
+      for (const [x, h] of [[-0.3, 0.55], [0.32, 0.42]]) {
+        f.add(cyl(0.9, 1, 8), shade(rock, 1.1), { p: [x, 0.95 + h / 2, -0.32], s: [0.13, h, 0.13] })
+        f.add(cyl(1, 1, 8), lava, { p: [x, 0.96 + h, -0.32], s: [0.1, 0.03, 0.1], glow: 1.8 })
+        for (let k = 0; k < 3; k++) f.add(sph(6), 0xffa040, { p: [x + (k - 1) * 0.05, 1.05 + h + k * 0.14, -0.32], s: 0.05 - k * 0.01, glow: 1.6, wig: [0.12, 0.03, 3 + k, x * 5 + k] })
+      }
+      // Huge arms with anvil fists.
+      f.both((s) => {
+        const o = { wig: [0.05, 0.12, -1, s > 0 ? Math.PI : 0], at: (p) => Math.max(0, Math.min(1, (0.6 - p.y) / 1.2)) }
+        f.add(rbox(0.42, 0.4, 0.45, 0.1), shade(rock, 1.25), { p: [s * 0.78, 0.6, 0] })
+        f.limb([s * 0.82, 0.5, 0], [s * 0.92, -0.05, 0.12], 0.17, 0.15, rock, o)
+        f.add(rbox(0.38, 0.34, 0.42, 0.08), shade(rock, 1.15), { ...o, p: [s * 0.94, -0.3, 0.16] })
+        f.limb([s * 0.78, -0.22, 0.38], [s * 1.1, -0.22, 0.38], 0.02, 0.02, lava, { ...o, glow: 1.5, n: 4 })
+      })
+      // Stumpy slab legs.
+      f.both((s) => {
+        f.leg([s * 0.35, -0.3, 0], [s * 0.38, -0.6, 0.05], [s * 0.38, -0.92, 0.05], 0.18, rock, s > 0 ? 0 : Math.PI, { lift: 0.08, stride: 0.14 })
+        f.add(rbox(0.36, 0.14, 0.44, 0.05), shade(rock, 1.2), { p: [s * 0.38, -0.93, 0.1], wig: [0.08, 0.14, -1, s > 0 ? 0 : Math.PI] })
+      })
+      spikesAt(f, [[0.5, 0.95, -0.2], [-0.5, 0.95, -0.2], [0.75, 0.82, 0.05], [-0.75, 0.82, 0.05]], shade(rock, 1.5), [0.08, 0.3])
+    },
+  },
+  // Mother Miasma: a vast weeping toadstool matriarch -- a spotted cap the width of a cottage, gills underneath, spore
+  // sacs dangling from the rim, a ring of little eyes in the shadow of the cap, a wide mouth on her stalk and roots
+  // spreading out over the ground.
+  boss_mire: {
+    rim: 0.6,
+    skin: 'fuzz',
+    build(f, c) {
+      const stalk = 0xcfc9a8
+      const spore = 0xc8ff8a
+      f.add(lathe('mireCap', [[0, 1.25], [0.45, 1.2], [0.85, 1.05], [1.12, 0.82], [1.22, 0.62], [1.05, 0.58]], 26), c, { wig: [0.02, 0, 1.2, 0] })
+      f.add(cyl(1, 0.98, 26), shade(c, 0.45), { p: [0, 0.6, 0], s: [1.04, 0.04, 1.04] })
+      for (let i = 0; i < 18; i++) {
+        const a = (i / 18) * TAU
+        f.add(rbox(0.02, 0.1, 0.6, 0.01), shade(c, 0.6), { p: [Math.sin(a) * 0.62, 0.56, Math.cos(a) * 0.62], r: [0, a, 0] })
+      }
+      for (const [x, z, r] of [[0.4, 0.3, 0.13], [-0.35, 0.45, 0.1], [0.1, -0.5, 0.15], [-0.55, -0.2, 0.12], [0.7, -0.25, 0.1], [0, 0.05, 0.12], [-0.15, 0.85, 0.08], [0.55, 0.7, 0.08]]) {
+        const y = 1.25 - (x * x + z * z) * 0.3
+        f.add(sph(8), spore, { p: [x, y, z], s: [r, r * 0.4, r], glow: 1.0 })
+      }
+      // The stalk: a droopy, skirted trunk with a wide toothy mouth.
+      f.add(lathe('mireStalk', [[0.62, -1], [0.5, -0.75], [0.42, -0.3], [0.4, 0.2], [0.46, 0.6]], 22), stalk, { wig: [0.02, 0.03, 1.4, 0], side: 0.03, at: (p) => Math.max(0, (p.y + 1) / 1.6) })
+      f.add(lathe('mireSkirt', [[0.42, 0.25], [0.62, 0.05], [0.72, -0.2]], 22), shade(stalk, 0.85), { wig: [0.03, 0.02, 1.8, 1], side: 0.05 })
+      maw(f, { y: -0.35, z: 0.55, w: 0.55, h: 0.12, teeth: 6, tooth: 0.12, lower: true })
+      // A ring of small eyes in the shade of the cap.
+      for (let i = 0; i < 7; i++) {
+        const a = -0.9 + (i / 6) * 1.8
+        const r = i === 3 ? 0.08 : 0.055
+        f.add(sph(8), EYE_BOSS, { p: [Math.sin(a) * 0.47, 0.42 - Math.abs(a) * 0.05, Math.cos(a) * 0.47], s: r, glow: 1.2 })
+        f.add(sph(6), INK, { p: [Math.sin(a) * (0.47 + r * 0.8), 0.42 - Math.abs(a) * 0.05, Math.cos(a) * (0.47 + r * 0.8)], s: [r * 0.25, r * 0.6, r * 0.25] })
+      }
+      // Spore sacs dangling from the cap's rim.
+      for (let i = 0; i < 9; i++) {
+        const a = (i / 9) * TAU + 0.2
+        const x = Math.sin(a) * 1.0
+        const z = Math.cos(a) * 1.0
+        const o = { wig: [0.04, 0.05, 1.6, a], side: 0.06, at: (p) => Math.max(0, (0.6 - p.y) / 0.6) }
+        f.limb([x, 0.6, z], [x * 1.02, 0.25 - (i % 3) * 0.08, z * 1.02], 0.02, 0.015, stalk, { ...o, n: 4 })
+        f.add(blob('mireSac', (a2, b, d) => 1 + 0.06 * lumpy(a2 * 4, b * 4, d * 4)), spore, { ...o, p: [x * 1.02, 0.18 - (i % 3) * 0.08, z * 1.02], s: [0.11, 0.14, 0.11], glow: 0.9 })
+      }
+      // Roots spreading out over the ground.
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * TAU + 0.3
+        const o = { wig: [0.02, 0.03, 1.2, a], at: (p) => Math.min(1, Math.hypot(p.x, p.z) / 1.6) }
+        f.limb([Math.sin(a) * 0.5, -0.85, Math.cos(a) * 0.5], [Math.sin(a) * 1.0, -0.95, Math.cos(a) * 1.0], 0.12, 0.08, shade(stalk, 0.7), o)
+        f.limb([Math.sin(a) * 1.0, -0.95, Math.cos(a) * 1.0], [Math.sin(a + 0.2) * 1.5, -0.99, Math.cos(a + 0.2) * 1.5], 0.08, 0.03, shade(stalk, 0.6), o)
+      }
+    },
+  },
+  // Mother Miasma's rot pod: a bloated, vein-lit pustule on a knot of roots, breathing.
+  rot_pod: {
+    rim: 0.6,
+    build(f, c) {
+      f.add(blob('rotPod', (x, y, z) => 1 + 0.08 * lumpy(x * 1.5, y * 1.5, z * 1.5) - (y < -0.5 ? (-y - 0.5) * 0.3 : 0)), c, { p: [0, -0.1, 0], s: [0.8, 0.85, 0.8], wig: [0.05, 0, 2.2, 0] })
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * TAU
+        f.limb([Math.sin(a) * 0.2, 0.7, Math.cos(a) * 0.2], [Math.sin(a) * 0.82, -0.2, Math.cos(a) * 0.82], 0.035, 0.03, 0xd8ff8a, { glow: 1.3, n: 4, wig: [0.05, 0, 2.2, 0] })
+      }
+      f.add(sph(10), 0xd8ff8a, { p: [0, 0.72, 0], s: [0.22, 0.08, 0.22], glow: 1.6, wig: [0.05, 0, 2.2, 0] })
+      for (let i = 0; i < 5; i++) {
+        const a = (i / 5) * TAU + 0.4
+        f.limb([Math.sin(a) * 0.5, -0.75, Math.cos(a) * 0.5], [Math.sin(a) * 1.05, -0.99, Math.cos(a) * 1.05], 0.1, 0.03, 0x6a5a3a)
+      }
+    },
+  },
   // Sir Grumpsalot: the shell-ogre in spiked plate, wearing a crown.
   boss_grumpsalot: { like: 'grumpus', extra: (f) => crown(f, 0.2, 0.36, 0.82) },
   // Doctor Wobble: a brain floating in a glass tank, carried on writhing tentacles.

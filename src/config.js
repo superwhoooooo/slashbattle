@@ -4,6 +4,7 @@ import { BOSS_MONSTER_TYPES } from './logic/bosses.js'
 import { CRAZY_TYPES } from './logic/crazyEnemies.js'
 import { SHADY_TYPES } from './logic/shadyGuests.js'
 import { FLYER_TYPES } from './logic/skyFlyers.js'
+import { CHAMPION_PROP_TYPES } from './logic/championFights.js'
 
 export const PLAYER_RADIUS = 0.35
 export const PLAYER_BODY_RADIUS = 0.6 // icosahedron radius for the player's jelly body (visual only; PLAYER_RADIUS stays the collision radius)
@@ -67,6 +68,8 @@ export const MONSTER_TYPES = {
   ...SHADY_TYPES,
   // Skyfins (logic/skyFlyers.js): sky-barracuda that only hunt you up in the Wilds' sky.
   ...FLYER_TYPES,
+  // The storm colosseums' fight props that are monsters (logic/championFights.js: Mother Miasma's rot pods).
+  ...CHAMPION_PROP_TYPES,
   ...BOSS_MONSTER_TYPES,
 }
 

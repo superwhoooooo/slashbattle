@@ -234,6 +234,7 @@ export function createCoop(ctx) {
       mode: ctx.mode(),
       difficulty: ctx.difficultyId(),
       leash: ctx.leash?.() !== false,
+      follow: ctx.follow?.() === true,
       players: [{ id: 'host', name: link.name }, ...[...remotes.values()].map((r) => ({ id: r.id, name: r.name }))],
     })
     addRemote(id, { name: peerName })
@@ -254,7 +255,9 @@ export function createCoop(ctx) {
       try { setPlayerWeapon(remote.mesh, m.w) } catch { /* unknown weapon id */ }
     }
     const p = remote.proxy
-    p.hidden = Boolean(m.hid)
+    remote.lay = Number(m.lay) || 0
+    remote.hid = Boolean(m.hid)
+    p.hidden = remote.hid || remote.lay !== ((ctx.layer?.() ?? 0) & 1)
     p.down = Boolean(m.dn)
     p.diving = Boolean(m.dv)
     p.sightScale = Number.isFinite(m.ss) ? m.ss : 1
@@ -288,10 +291,15 @@ export function createCoop(ctx) {
       mesh.rotation.y = lerpAngle(s.a.f, s.b.f, s.k)
       remote.proxy.position.x = x
       remote.proxy.position.z = z
+      // In another world (one of us is in the Depths, the other up top): not drawn, and our monsters can't see them.
+      remote.away = (remote.lay ?? 0) !== ((ctx.layer?.() ?? 0) & 1)
+      remote.proxy.hidden = Boolean(remote.hid) || remote.away
       stepRemotePets(remote, s, dt, now)
       stepRemoteChests(remote, dt, now)
       const shown = !remote.proxy.hidden && !remote.proxy.down
       mesh.visible = shown
+      for (const pet of remote.pets ?? []) if (pet.mesh) pet.mesh.visible = pet.mesh.visible && !remote.away
+      for (const c of remote.chests?.values?.() ?? []) if (c.mesh) c.mesh.visible = !remote.away
       stepRival(remote, shown)
       if (shown) {
         updateJelly(mesh, dt, now, { speed: 0, moveDir: remote.moveDir, still: Boolean(remote.lookKey) && !remote.lookKey.startsWith('guest:') }) // a hero in gear stays still inside it
@@ -448,7 +456,7 @@ export function createCoop(ctx) {
     if (!isHost() || !remotes.size) return localPlayer
     const players = [
       { key: 'host', x: localPlayer.position.x, z: localPlayer.position.z, alive: !localDown && localPlayer.hp > 0 },
-      ...[...remotes.values()].map((r) => ({ key: r.id, x: r.proxy.position.x, z: r.proxy.position.z, alive: !r.proxy.down && r.snaps.length > 0 })),
+      ...[...remotes.values()].map((r) => ({ key: r.id, x: r.proxy.position.x, z: r.proxy.position.z, alive: !r.proxy.down && !r.away && r.snaps.length > 0 })),
     ]
     const key = pickTarget(mesh.position, players, mesh.userData.netTarget ?? null)
     mesh.userData.netTarget = key
@@ -542,6 +550,12 @@ export function createCoop(ctx) {
   function applyMonsters(m) {
     const game = ctx.getGame()
     if (!Array.isArray(m.m)) return
+    // The host is in the other world (the Depths / the surface) and we aren't following: our monsters are our own here.
+    if (Array.isArray(m.w) && ctx.ownWorld?.(Number(m.w[6]) || 0)) {
+      if (puppets.size) clearPuppets()
+      ctx.onWaveState({ waveNumber: m.w[0], phase: m.w[1], phaseElapsed: m.w[2], spawnedCount: m.w[3], levelIndex: m.w[4], transitioning: m.w[5] === 1, layer: Number(m.w[6]) || 0 })
+      return
+    }
     const t = clock()
     const seen = new Set()
     for (const raw of m.m) {
@@ -712,6 +726,7 @@ export function createCoop(ctx) {
         welcomed = true
         hostDifficulty = m.difficulty ?? null
         ctx.onLeash?.(m.leash !== false)
+        ctx.onFollow?.(m.follow === true)
         for (const p of m.players ?? []) addRemote(p.id, p)
         ctx.onJoined(m)
         ctx.toast(`JOINED ${link.code}! FIGHT TOGETHER`)
@@ -722,6 +737,14 @@ export function createCoop(ctx) {
         break
       case 'floorReq':
         if (isHost()) ctx.onFloorRequest?.()
+        break
+      // Regional phenomena: a guest runs its own storms, but its storm monsters are the host's to spawn ('phw': what it
+      // wants alive), and the host tells it when one of them falls ('phk').
+      case 'phw':
+        if (isHost() && Array.isArray(m.w)) ctx.onPhenWant?.(m.w, from)
+        break
+      case 'phk':
+        if (isClient()) ctx.onPhenKill?.(m)
         break
       case 'nope':
         setStatus(`The host can't take players right now: ${m.why}`)
@@ -775,6 +798,9 @@ export function createCoop(ctx) {
         break
       case 'leash':
         if (isClient()) ctx.onLeash?.(m.on !== false)
+        break
+      case 'follow':
+        if (isClient()) ctx.onFollow?.(m.on === true)
         break
       case 'stake':
         if (isClient() && ctx.duel?.()) ctx.onStake?.(m.s)
@@ -861,6 +887,7 @@ export function createCoop(ctx) {
         sw: lastSwingSeq,
         pt: packPets(local.pets ?? []),
         ch: packChests(local.chests ?? []),
+        lay: (ctx.layer?.() ?? 0) & 1, // which world we stand in (the surface or the Depths): the others only see us in the same one
       })
     } else if (local.swingStarted) lastSwingSeq++
     if (isHost() && remotes.size) {
@@ -884,6 +911,7 @@ export function createCoop(ctx) {
       <div class="coop-row"><input id="coop-code" type="text" maxlength="4" placeholder="CODE" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="go"><button id="coop-join" type="button">Join</button></div>
       <div id="coop-code-big"></div>
       <div class="coop-row" id="coop-leash-row"><label class="coop-check"><input id="coop-leash" type="checkbox" checked> In the Wilds, players must stay within ${COOP_MAX_DISTANCE} m of each other</label></div>
+      <div class="coop-row" id="coop-follow-row"><label class="coop-check"><input id="coop-follow" type="checkbox"> Friends follow the host into the Depths and the sky</label></div>
       <div class="coop-row" id="coop-stake-row" style="display:none"><label class="coop-field">On the line (the winner gets a copy) <select id="coop-stake"></select></label></div>
       <div id="coop-status">Not connected.</div>
       <div class="coop-row"><button id="coop-update" type="button" style="display:none">Update the game now</button></div>
@@ -892,7 +920,7 @@ export function createCoop(ctx) {
     </div>`
   document.body.appendChild(panel)
   const $ = (id) => panel.querySelector(`#${id}`)
-  const ui = { leashRow: $('coop-leash-row'), leash: $('coop-leash'), stakeRow: $('coop-stake-row'), stake: $('coop-stake'), update: $('coop-update'), name: $('coop-name'), code: $('coop-code'), host: $('coop-host'), duel: $('coop-duel'), join: $('coop-join'), leave: $('coop-leave'), status: $('coop-status'), players: $('coop-players'), big: $('coop-code-big') }
+  const ui = { leashRow: $('coop-leash-row'), leash: $('coop-leash'), followRow: $('coop-follow-row'), follow: $('coop-follow'), stakeRow: $('coop-stake-row'), stake: $('coop-stake'), update: $('coop-update'), name: $('coop-name'), code: $('coop-code'), host: $('coop-host'), duel: $('coop-duel'), join: $('coop-join'), leave: $('coop-leave'), status: $('coop-status'), players: $('coop-players'), big: $('coop-code-big') }
   ui.name.value = name
   const saveName = () => {
     name = cleanName(ui.name.value, '')
@@ -904,6 +932,10 @@ export function createCoop(ctx) {
   ui.update.addEventListener('click', () => reloadFresh())
   ui.leash.addEventListener('change', () => {
     ctx.setLeash?.(ui.leash.checked)
+    refresh()
+  })
+  ui.follow.addEventListener('change', () => {
+    ctx.setFollow?.(ui.follow.checked)
     refresh()
   })
   ui.stake.addEventListener('change', () => {
@@ -956,6 +988,9 @@ export function createCoop(ctx) {
     ui.leash.checked = ctx.leash?.() !== false
     ui.leash.disabled = isClient() || Boolean(ctx.duel?.())
     ui.leashRow.style.display = ctx.duel?.() ? 'none' : ''
+    ui.follow.checked = ctx.follow?.() === true
+    ui.follow.disabled = isClient() || Boolean(ctx.duel?.())
+    ui.followRow.style.display = ctx.duel?.() ? 'none' : ''
     // A duel's host picks what's on the line.
     const staking = isHost() && Boolean(ctx.duel?.())
     ui.stakeRow.style.display = staking ? '' : 'none'
@@ -990,6 +1025,7 @@ export function createCoop(ctx) {
     get isClient() { return isClient() },
     get connecting() { return link.active && !active() },
     get difficulty() { return isClient() ? hostDifficulty : null },
+    hasPeer: (id) => remotes.has(id),
     isOpen: () => panel.classList.contains('open'),
     toggle,
     frame,
@@ -1002,6 +1038,7 @@ export function createCoop(ctx) {
     // Duel: tell the rival we went down (they score the round).
     sendKo() { if (active()) link.broadcast({ t: 'ko' }) },
     sendLeash(on) { if (isHost()) link.broadcast({ t: 'leash', on: Boolean(on) }) },
+    sendFollow(on) { if (isHost()) link.broadcast({ t: 'follow', on: Boolean(on) }) },
     sendStake(stake) { if (isHost()) link.broadcast({ t: 'stake', s: stake }) },
     rivalName: () => [...remotes.values()][0]?.name ?? null,
     remoteCount: () => remotes.size,
@@ -1019,8 +1056,15 @@ export function createCoop(ctx) {
     },
     sendFloor() { if (isHost()) link.broadcast({ t: 'floor' }) },
     requestFloor() { if (isClient()) link.broadcast({ t: 'floorReq', hostOnly: true }) },
+    sendPhenWant(list) { if (isClient() && welcomed && list.length) link.broadcast({ t: 'phw', w: list, hostOnly: true }) },
+    sendPhenKill(to, info) {
+      if (!isHost()) return
+      if (to) {
+        if (remotes.has(to)) link.sendTo(to, { t: 'phk', ...info })
+      } else link.broadcast({ t: 'phk', ...info })
+    },
     // Everyone else who is up and where they stand (for the Wilds' leash, and standing up beside a friend).
-    peers: () => [...remotes.values()].map((r) => ({ x: r.mesh.position.x, z: r.mesh.position.z, down: r.proxy.down, ready: r.mesh.position.y > -40 })).filter((p) => p.ready),
+    peers: () => [...remotes.values()].filter((r) => !r.away).map((r) => ({ x: r.mesh.position.x, z: r.mesh.position.z, down: r.proxy.down, ready: r.mesh.position.y > -40 })).filter((p) => p.ready),
     sendRestart() { if (isHost()) link.broadcast({ t: 'restart' }) },
     sendGameOver() { if (isHost()) link.broadcast({ t: 'over' }) },
     leave: () => link.leave(),
