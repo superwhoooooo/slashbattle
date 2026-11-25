@@ -5276,7 +5276,7 @@ function stepDeepTemples(game, now) {
       if (d < 45) phenWant(t.stormId, 'boss', null, 1, t)
       continue
     }
-    const boss = game.monsters.find((m) => m.userData.phenomBoss === t.stormId && !m.userData.dying)
+    const boss = game.monsters.find((m) => m.userData.phenomBoss === t.stormId && !m.userData.phenomFor && !m.userData.dying) // (ours: a guest's is their own)
     if (!boss && d < 45) spawnTempleBoss(game, t.stormId, stage)
   }
   w.phen.fx.update(now, p, new Set(PHENOMENON_ORDER.filter((id) => isCleared(w.journal.phenomena, id))))
@@ -5395,13 +5395,17 @@ function phenomenonKill(game, mesh) {
   } else if (u.phenomRole === 'boss' && stage.kind === 'boss') completePhenomenonStage(game, id)
 }
 
-// Host: a storm monster died (however, whoever hit it). A guest's own storm monster counts in THEIR storm, not ours; a
-// temple boss counts for everyone fighting that stage.
+// Host: a storm monster died. Every player does their storms ALONE: a storm monster (temple boss included) only counts for the
+// player it was spawned for, and only if that player landed the last hit (`netKiller`: null = us) -- a friend's kill never does
+// your trial for you (a guard or purge monster they take just comes back for you to beat).
 function phenomenonDeath(game, mesh) {
   const u = mesh.userData
-  const info = { s: u.phenom, r: u.phenomRole, p: u.phenomPoint ?? null }
-  if (u.phenomRole === 'boss') coop?.sendPhenKill(null, info)
-  else if (u.phenomFor) return coop?.sendPhenKill(u.phenomFor, info)
+  const killer = u.netKiller ?? null
+  if (u.phenomFor) {
+    if (killer === u.phenomFor) coop?.sendPhenKill(u.phenomFor, { s: u.phenom, r: u.phenomRole, p: u.phenomPoint ?? null })
+    return
+  }
+  if (killer) return
   phenomenonKill(game, mesh)
 }
 
@@ -5432,7 +5436,7 @@ function hostPhenWant(list, peer) {
     if (!PHENOMENA[q.s] || !Number.isFinite(q.x) || !Number.isFinite(q.z)) continue
     if (q.r === 'boss') {
       const stage = PHENOMENA[q.s].stages.find((st) => st.kind === 'boss')
-      if (stage && !game.monsters.some((m) => m.userData.phenomBoss === q.s && !m.userData.dying)) spawnTempleBoss(game, q.s, stage, peer)
+      if (stage && !game.monsters.some((m) => m.userData.phenomBoss === q.s && m.userData.phenomFor === peer && !m.userData.dying)) spawnTempleBoss(game, q.s, stage, peer)
       continue
     }
     if (!['guard', 'purge', 'add'].includes(q.r)) continue
@@ -5671,7 +5675,7 @@ function stepPhenomenonStage(game, id, now, dt, alive, markers) {
     // The boss waits in the storm's temple: up on the sky temple (a Depths temple's is run by stepDeepTemples).
     const arena = templeArena(id)
     if (arena.place !== 'sky') return
-    const boss = game.monsters.find((m) => m.userData.phenomBoss === id && m.userData.phenomRole === 'boss' && !m.userData.dying)
+    const boss = game.monsters.find((m) => m.userData.phenomBoss === id && m.userData.phenomRole === 'boss' && !m.userData.phenomFor && !m.userData.dying)
     const onTemple = near(arena, SKY_TEMPLE_REACH) && w.groundY > arena.y - 5
     if (onTemple && alive && !w.jump.air) {
       if (!ownsMonsters()) phenWant(id, 'boss', null, 1, arena)

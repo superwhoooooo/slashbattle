@@ -1255,9 +1255,9 @@ and the minimap (`drawPhenomenaMarks`: storm discs, stage spots, a rim arrow to 
 upgrades). A guest can't spawn monsters, so its stage runner states what it wants alive (`phenWant`: guards at a stone, purge spawn,
 a hold wave as a one-off `o`, the temple boss) and `flushPhenWants` sends it about once a second (`phw`); the host's `hostPhenWant`
 keeps that many of that guest's storm monsters about (`userData.phenomFor`, never counted in the host's own stages, not dropped while
-that guest is connected). Storm monsters are counted where they die (`rememberWorldKill` -> `phenomenonDeath`, so a friend's killing
-blow counts too): a guest's goes back to them (`phk` -> `guestPhenKill`), and a temple boss's death is broadcast so it counts for
-everyone on that boss stage (only one boss per temple). `PROTOCOL` 8.
+that guest is connected). Nobody does a storm together: every storm monster belongs to one player (a guest's carry `phenomFor`; each player gets their
+own temple boss) and only counts if THAT player landed the last hit (`rememberWorldKill` -> `phenomenonDeath`, `netKiller`); a
+guest's goes back to them (`phk` -> `guestPhenKill`). A guard or purge monster a friend takes just comes back. `PROTOCOL` 8.
 Calming ALL four (`heroForStorms`, `main.js`'s `grantStormHero`, also at startup) grants `tempest` (`secret: true`, can't be bought). Trait
 `stormbound` (Four Winds): `WINDS` (sand, frost, ember, mire) turn every `phase` s (`windAt`); every `every` s the current wind pulses round
 you (sand shoves, frost slows, ember burns, mire drains and feeds you), ember wind adds damage, frost wind slows what you hit, mire wind heals per hit,
