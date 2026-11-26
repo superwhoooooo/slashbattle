@@ -171,3 +171,14 @@ describe('the hazards', () => {
     }
   })
 })
+
+describe('storm temple bosses', () => {
+  it('each storm ends with its own element champion', async () => {
+    const { COLOSSEUM_BOSS_FOR } = await import('../src/logic/bosses.js')
+    for (const id of Object.keys(PHENOMENA)) {
+      const stage = PHENOMENA[id].stages.find((st) => st.kind === 'boss')
+      expect(stage.boss).toBe(COLOSSEUM_BOSS_FOR[id])
+    }
+    expect(PHENOMENA.miasma.stages.find((st) => st.kind === 'boss').boss).toBe('boss_mire')
+  })
+})

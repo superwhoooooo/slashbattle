@@ -1244,8 +1244,8 @@ blast, `emberSpot`) and the **Weeping Miasma** (Gloomfen; `spores`: poison cloud
 starts it (`startPhenomenon`, a story card) and it can only end by finishing its SIX stages (`PHENOMENA[id].stages`): **seek** (reach a
 beacon), **collect** (n stones / cores / lights, each guarded: the pickup is locked until its guards are dead), **purge** (fell n storm-spawn,
 `purgeKill`), **hold** (stand in the ritual ring `secs` s while waves arrive; drains at half speed when you step out, `stepHold`), **trial** (a
-timed run through gates in order, the clock starts at gate 1, `stepTrial`; too slow resets it) and the **boss** (Zipzilla, the Cone Father,
-Omega Jello, King Gloop forms at the eye with minions). Each stage pays `stageReward` crystals and shows the next stage's card; calming a storm
+timed run through gates in order, the clock starts at gate 1, `stepTrial`; too slow resets it) and the **boss** (the storm's own colosseum
+champion: Sultan Sirocco, Queen Rimefang, the Cinder Tyrant, Mother Miasma, fought plainly with no ward at `TEMPLE_CHAMPION_HP` 0.5x HP, with minions). Each stage pays `stageReward` crystals and shows the next stage's card; calming a storm
 pays `CLEAR_REWARD`, a full heal and a treasure map. Progress is in the journal's `phenomena` (`{ started, stage, n, got }`, a save key) with
 milestones (`storms1/2/4`) and a "Regional phenomena" section in the U journal. `main.js`'s `stepPhenomena` (from `stepWorld`, surface only) runs the hazard (`stepStormHazard`), the fog (`worldArena.js`'s `setStorm`), and the stage runner
 (`stepPhenomenonStage`, monsters tagged `userData.phenom` / `phenomRole`, counted in `scoreKill` via `phenomenonKill`); chips (`phenomenaChips`)

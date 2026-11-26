@@ -5230,6 +5230,8 @@ function stepStormPads(game, now) {
 }
 
 // A storm's boss, in its temple: on the sky temple's isle, or in the sunken temple in the Depths.
+// The storm's temple boss is its colosseum champion, fought plainly there (no ward to break), so it gets about the old temple boss's HP.
+const TEMPLE_CHAMPION_HP = 0.5
 function spawnTempleBoss(game, id, stage, forPeer = null) {
   const arena = templeArena(id)
   const isle = arena.place === 'sky' ? skyTempleFor(id) : null
@@ -5243,7 +5245,7 @@ function spawnTempleBoss(game, id, stage, forPeer = null) {
     if (effect?.monster === mesh) effect.effect.group.position.y = isle.y
     return mesh
   }
-  const mesh = sky(spawnWildMonster(game, stage.boss, { x: arena.x, z: arena.z }, { boss: true, fights: BOSS_HEAD_START + 2 + PHENOMENON_ORDER.indexOf(id), danger, hpScale: 1 + danger * 1.2 }))
+  const mesh = sky(spawnWildMonster(game, stage.boss, { x: arena.x, z: arena.z }, { boss: true, fights: BOSS_HEAD_START + 2 + PHENOMENON_ORDER.indexOf(id), danger, hpScale: (1 + danger * 1.2) * TEMPLE_CHAMPION_HP }))
   mesh.userData.phenom = id
   mesh.userData.phenomRole = 'boss'
   mesh.userData.phenomBoss = id
@@ -9433,7 +9435,8 @@ coop = createCoop({
   onPuppetBossDeath(mesh) {
     if (!started) return
     const col = game.world && inDepths() ? colosseumForBoss(mesh.userData.type) : null
-    if (col) winColosseum(game, col.id, mesh.position) // (the host's champion fell with us there: it's beaten for us too)
+    // (a champion is also its storm's temple boss: only the one in its own colosseum counts as the colosseum's)
+    if (col && Math.hypot(mesh.position.x - col.x, mesh.position.z - col.z) < col.radius + 12) winColosseum(game, col.id, mesh.position) // (the host's champion fell with us there: it's beaten for us too)
     dropBossLoot(game, { x: mesh.position.x, z: mesh.position.z })
   },
   // Host: a joined player's hit on one of our monsters (already scaled by their gear and hero).

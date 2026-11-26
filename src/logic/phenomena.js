@@ -26,7 +26,7 @@ export const PHENOMENA = {
       { kind: 'purge', title: 'Sand Wraiths', text: 'The stones draw them out of the dunes. Cut down every wraith the storm throws at you.', n: 12, wave: 4 },
       { kind: 'hold', at: 'mid', title: 'Rekindle the Sun Brazier', text: 'Stand in the glowing ring and keep the brazier lit while the storm tries to put it out. Stray outside and it dims.', secs: 40, radius: 9, waveEvery: 9, wave: 3 },
       { kind: 'trial', title: 'The Gale Run', text: 'Wind gates hang round the storm. Hit the first, then thread them all in order before the gale runs out.', gates: 6, secs: 78, radius: 5 },
-      { kind: 'boss', title: 'The Dune Tyrant', text: 'The eye opens. Something ancient has been spinning the sand: end it.', boss: 'boss_zipzilla', minions: 2 },
+      { kind: 'boss', title: 'Sultan Sirocco', text: 'The eye opens. The four-armed djinn who has been spinning the sand turns to face you: end it.', boss: 'boss_sirocco', minions: 2 },
     ],
   },
   whiteout: {
@@ -40,7 +40,7 @@ export const PHENOMENA = {
       { kind: 'collect', title: 'Five Ember Cores', text: 'Frost wardens guard the cores that once kept this valley warm. Take them back.', item: 'Ember Core', n: 5, guards: 2 },
       { kind: 'purge', title: 'Rime Raiders', text: 'The cold has driven the local beasts mad. Fell fourteen of them.', n: 14, wave: 5 },
       { kind: 'hold', at: 'mid', title: 'Keep the Bonfire', text: 'Relight the great bonfire and keep it burning. Stand in the ring: the storm will send everything it has.', secs: 55, radius: 9, waveEvery: 8, wave: 4 },
-      { kind: 'boss', title: 'The Frostbound Warden', text: 'The glacier cracks and something enormous climbs out of the ice.', boss: 'boss_conefather', minions: 3 },
+      { kind: 'boss', title: 'Queen Rimefang', text: 'The glacier cracks and the crowned frost wyvern climbs out of the ice.', boss: 'boss_rime', minions: 3 },
     ],
   },
   ashstorm: {
@@ -54,7 +54,7 @@ export const PHENOMENA = {
       { kind: 'collect', title: 'Three Quenching Stones', text: 'Three stones can cool the vents. They lie in the lairs of the strongest brutes the ashstorm has bred.', item: 'Quenching Stone', n: 3, guards: 3 },
       { kind: 'trial', title: 'Run the Cinder Field', text: 'Eight vent gates mark the safe path. Hit them in order while the sky throws fire at you.', gates: 8, secs: 88, radius: 5 },
       { kind: 'hold', at: 'mid', title: 'Seal the Great Vent', text: 'Hold the ring over the vent while the stones do their work. The storm will not let you.', secs: 50, radius: 9, waveEvery: 8, wave: 4 },
-      { kind: 'boss', title: 'The Cinder King', text: 'The ground splits and a crowned thing of living slag hauls itself out of the vent.', boss: 'boss_omega', minions: 3 },
+      { kind: 'boss', title: 'The Cinder Tyrant', text: 'The ground splits and the obsidian furnace golem hauls itself out of the vent.', boss: 'boss_cinder', minions: 3 },
     ],
   },
   miasma: {
@@ -68,7 +68,7 @@ export const PHENOMENA = {
       { kind: 'hold', at: 'mid', title: 'The Lantern Ritual', text: 'Hold the ring and let the spirit lights burn the fog back. The bog does not like it.', secs: 45, radius: 9, waveEvery: 8, wave: 3 },
       { kind: 'purge', title: 'Mire Spawn', text: 'Whatever the fog fed has hatched. Fell sixteen mire-spawn.', n: 16, wave: 5 },
       { kind: 'trial', title: 'The Will-o-Wisp Chase', text: 'Seven wisps flit through the fog. Catch each in order before they scatter.', gates: 7, secs: 82, radius: 5 },
-      { kind: 'boss', title: 'The Bog Mother', text: 'The fen heaves, and the thing that has been weeping poison rises to meet you.', boss: 'boss_gloop', minions: 3 },
+      { kind: 'boss', title: 'Mother Miasma', text: 'The fen heaves, and the weeping toadstool matriarch who has been breathing poison rises to meet you.', boss: 'boss_mire', minions: 3 },
     ],
   },
 }
