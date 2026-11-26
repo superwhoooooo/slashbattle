@@ -246,3 +246,14 @@ describe('helpers', () => {
     expect(pickWeighted(() => 0.99, [['a', 1], ['b', 1]])).toBe('b')
   })
 })
+
+describe('beaten Wilds bosses stay beaten', () => {
+  it('remembers a beaten guardian across a save and load', async () => {
+    const { createJournal, noteBossBeaten, bossBeaten, serializeJournal, parseJournal } = await import('../src/logic/wildsJournal.js')
+    let j = createJournal()
+    expect(bossBeaten(j, 'ruin3:boss')).toBe(false)
+    j = noteBossBeaten(j, 'ruin3:boss')
+    expect(noteBossBeaten(j, 'ruin3:boss')).toBe(j)
+    expect(bossBeaten(parseJournal(serializeJournal(j)), 'ruin3:boss')).toBe(true)
+  })
+})

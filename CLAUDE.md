@@ -297,8 +297,8 @@ merge with `max`). `LAKES` (~24, on low ground, away from villages) dip the grou
 draws a translucent water disc per lake, wading is slower, and `lakeAt` keeps props/grass/land monsters out. Each lake holds
 urchins, eels and anglers (`WATER_MONSTERS`; chunk monster entries with `lake: {x,z,radius}`, clamped in main.js so they
 never leave it, floating at the surface). `ruins()` seeds ~30 Zelda-style sites on levelled flagstones: **temples** (a ring of
-columns, broken walls, a central shrine, a chest, and a guardian **boss** from `BOSSES` plus two elites; the boss respawns
-after `BOSS_RESPAWN_SECONDS`), **watchtowers** (a chest, an elite and guards) and lone **shrines** (a power-up and a suitcase).
+columns, broken walls, a central shrine, a chest, and a guardian **boss** from `BOSSES` plus two elites; a beaten boss never
+returns: the journal's `bosses` list, `noteBossBeaten` / `bossBeaten`, saved, also covers lair and sky-isle guardians), **watchtowers** (a chest, an elite and guards) and lone **shrines** (a power-up and a suitcase).
 `ruinLayout(ruin)` returns props / treasure / guards; ruins show as triangles on the minimap (gold = boss temple). Villages
 are at least `VILLAGE_MIN_SEPARATION` (135) apart.
 

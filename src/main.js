@@ -74,7 +74,7 @@ import { createGlider, updateGlider } from './glider.js'
 import { createNpc, setNpcMarker, updateNpc, TALK_RANGE } from './npcs.js'
 import { createQuestUi } from './questUi.js'
 import { acceptQuest, claimQuest, createQuestLog, npcDialog, npcMarker, questEvent, questsToClaim, questWeaponFor } from './logic/quests.js'
-import { BIOMES, BOSS_RESPAWN_SECONDS, SANCTUM_RADIUS, SKYSTAR_CATCH_RADIUS, SKYSTAR_REWARD, UNLOAD_RADIUS, VILLAGE_SAFE_RADIUS, WATER_LEVEL, WORLD_RADIUS, biomeAt, canRespawn, chunkContent, chunkKey, propHeight, dangerAt, dayName, diffChunks, groundColorAt, heightAt, inDepths, lakeAt, landmarkById, landmarks, nearestLandmark, nearestVillage, ruins, villageKeepOut, setDepthsMode, skystars, villageById, villages } from './logic/world.js'
+import { BIOMES, SANCTUM_RADIUS, SKYSTAR_CATCH_RADIUS, SKYSTAR_REWARD, UNLOAD_RADIUS, VILLAGE_SAFE_RADIUS, WATER_LEVEL, WORLD_RADIUS, biomeAt, canRespawn, chunkContent, chunkKey, propHeight, dangerAt, dayName, diffChunks, groundColorAt, heightAt, inDepths, lakeAt, landmarkById, landmarks, nearestLandmark, nearestVillage, ruins, villageKeepOut, setDepthsMode, skystars, villageById, villages } from './logic/world.js'
 import { createWildsActivities } from './wildsActivities.js'
 import { createDepthsFx } from './depthsFx.js'
 import { CAVE_FIRST_REWARD, caveArrival, caveAt, caveById, caveExit, caveObstacles, caves } from './logic/caves.js'
@@ -92,7 +92,7 @@ import { BOONS, SHRINE_RADIUS, activeBoons, boonEffects, createShrineState, fold
 import { HEAT_TEXT, MAX_MAPS, addMap, digAt, makeTreasureMap, nearestMap } from './logic/treasure.js'
 import { createRaceState, raceCourses, raceReward, stepRace } from './logic/races.js'
 import { EVENTS, STAR_SHARD_VALUE, createEventDirector, endEvent, hordePlan, merchantName, merchantStock, meteorPlan, stepEventDirector, wandererPlan } from './logic/wildEvents.js'
-import { BESTIARY_FIRST_REWARD, JOURNAL_KEY, claimMilestone, creatureName, noteBiome, noteCave, noteChasm, noteColosseum, noteDepthRelic, noteEvent, noteIsle, noteKill, noteLandmark, noteLantern, noteRace, noteRelic, noteShrine, noteTower, noteTreasure, parseJournal, pickUnowned, readyMilestones, serializeJournal } from './logic/wildsJournal.js'
+import { BESTIARY_FIRST_REWARD, JOURNAL_KEY, bossBeaten, claimMilestone, noteBossBeaten, creatureName, noteBiome, noteCave, noteChasm, noteColosseum, noteDepthRelic, noteEvent, noteIsle, noteKill, noteLandmark, noteLantern, noteRace, noteRelic, noteShrine, noteTower, noteTreasure, parseJournal, pickUnowned, readyMilestones, serializeJournal } from './logic/wildsJournal.js'
 import { formatTime } from './logic/wildsSpots.js'
 import { createMusic } from './music.js'
 import { MUSIC_STYLE_LABELS, nextMusicStyle, pickTrack } from './logic/wildsMusic.js'
@@ -4420,6 +4420,10 @@ function rememberWorldKill(game, mesh, now) {
   if (game.world && mesh.userData.phenom && ownsMonsters()) phenomenonDeath(game, mesh)
   if (game.world && mesh.userData.colosseumId) winColosseum(game, mesh.userData.colosseumId, mesh.position)
   if (!game.world || !id) return
+  if (mesh.userData.isBoss) {
+    const j = noteBossBeaten(game.world.journal, id) // beaten once = gone for good (saved, so a reload doesn't bring it back)
+    if (j !== game.world.journal) setJournal(game, j)
+  }
   game.world.killed.set(id, now)
   game.world.live.delete(id)
 }
@@ -4488,7 +4492,7 @@ function loadWorldChunk(game, cx, cz, now) {
   w.chunks.set(content.key, chunk)
 
   for (const m of ownsMonsters() ? content.monsters : []) { // a co-op joiner's monsters are the host's (puppets)
-    if (w.live.has(m.id) || !canRespawn(w.killed.get(m.id), now, m.boss ? BOSS_RESPAWN_SECONDS : undefined)) continue
+    if (w.live.has(m.id) || (m.boss && bossBeaten(w.journal, m.id)) || !canRespawn(w.killed.get(m.id), now)) continue
     if (m.colosseumId && w.journal.colossi.includes(m.colosseumId)) continue // a colosseum's champion, once beaten, is gone for good
     const stats = MONSTER_TYPES[m.type]
     // Nudge a camp member out of any tree or crystal it was seeded inside.
@@ -4808,7 +4812,7 @@ function activateArchipelago(game, arch, now) {
       live.treasure.push(mesh)
     }
     for (const g of ownsMonsters() ? layout.guards : []) { // (a guest's sky monsters are the host's puppets)
-      if (w.live.has(g.id) || !canRespawn(w.killed.get(g.id), now, g.boss ? BOSS_RESPAWN_SECONDS : undefined)) continue
+      if (w.live.has(g.id) || (g.boss && bossBeaten(w.journal, g.id)) || !canRespawn(w.killed.get(g.id), now)) continue
       const danger = arch.danger
       const mesh = spawnWildMonster(game, g.type, { x: g.x, z: g.z }, { danger, elite: g.elite, boss: g.boss, skyIsle: true, hpScale: g.boss ? 0.9 + danger * 1.1 : (1 + danger * 1.6) * (g.elite ? 2.4 : 1) })
       mesh.userData.skyIsle = true
@@ -6456,7 +6460,7 @@ function stepDepths(game, now, dt) {
       const r = lair.relic
       if (w.journal.depthRelics.includes(r.id)) continue
       if (Math.hypot(r.x - p.x, r.z - p.z) > RELIC_CLAIM_RADIUS || Math.abs(w.groundY - heightAt(r.x, r.z)) > 4.5) continue
-      const bossDown = !ownsMonsters() ? !game.monsters.some((m) => m.userData.isBoss && Math.hypot(m.position.x - r.x, m.position.z - r.z) < 30) : w.killed.has(`${lair.id}:boss`) // (a guest sees the host's boss as a puppet)
+      const bossDown = !ownsMonsters() ? !game.monsters.some((m) => m.userData.isBoss && Math.hypot(m.position.x - r.x, m.position.z - r.z) < 30) : (w.killed.has(`${lair.id}:boss`) || bossBeaten(w.journal, `${lair.id}:boss`)) // (a guest sees the host's boss as a puppet)
       if (!bossDown) {
         if (now > d.hintAt) {
           d.hintAt = now + 5

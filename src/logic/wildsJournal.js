@@ -13,7 +13,7 @@ export const JOURNAL_KEY = 'slashbattle:journal'
 export const BESTIARY_FIRST_REWARD = 8 // crystals for the first of a kind you ever fell
 
 export function createJournal() {
-  return { landmarks: [], biomes: [], bestiary: {}, lanterns: [], races: {}, treasures: 0, events: 0, shrines: 0, claimed: [], towers: [], isles: [], relics: [], chasms: [], depthRelics: [], fixes: {}, caves: [], phenomena: {}, colossi: [] }
+  return { landmarks: [], biomes: [], bestiary: {}, lanterns: [], races: {}, treasures: 0, events: 0, shrines: 0, claimed: [], towers: [], isles: [], relics: [], chasms: [], depthRelics: [], fixes: {}, caves: [], phenomena: {}, colossi: [], bosses: [] }
 }
 
 const strings = (v) => (Array.isArray(v) ? v.filter((s) => typeof s === 'string') : [])
@@ -79,6 +79,7 @@ export function parseJournal(text) {
     caves: strings(data.caves),
     phenomena: phenomenaOf(data.phenomena),
     colossi: strings(data.colossi),
+    bosses: strings(data.bosses),
   }
 }
 export const serializeJournal = (j) => JSON.stringify(j)
@@ -130,6 +131,11 @@ export function noteDepthRelic(j, id) {
 export function noteColosseum(j, id) {
   return { journal: { ...j, colossi: addTo(j.colossi ?? [], id) }, first: !(j.colossi ?? []).includes(id) }
 }
+// A Wilds guardian boss (ruin temple, Umbral lair, sky forge...) beaten by its stable id: it never comes back.
+export function noteBossBeaten(j, id) {
+  return (j.bosses ?? []).includes(id) ? j : { ...j, bosses: addTo(j.bosses ?? [], id) }
+}
+export const bossBeaten = (j, id) => (j?.bosses ?? []).includes(id)
 export const noteTreasure = (j) => ({ ...j, treasures: j.treasures + 1 })
 export const noteEvent = (j) => ({ ...j, events: j.events + 1 })
 export const noteShrine = (j) => ({ ...j, shrines: j.shrines + 1 })
