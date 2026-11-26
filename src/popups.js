@@ -80,7 +80,15 @@ function drawPopupSticker(line1, line2, fill) {
   return canvas
 }
 
-function createPopupTexture(line1, line2, fill) {
+// Accepts a '#rrggbb' string or a 0xrrggbb number, so a numeric colour can't
+// crash the sticker (parseInt(hex.slice(1))).
+function toHex(fill) {
+  if (typeof fill === 'number') return `#${(fill & 0xffffff).toString(16).padStart(6, '0')}`
+  return typeof fill === 'string' && /^#[0-9a-f]{6}$/i.test(fill) ? fill : '#ffd15c'
+}
+
+function createPopupTexture(line1, line2, rawFill) {
+  const fill = toHex(rawFill)
   const key = `${line1}|${line2}|${fill}`
   const cached = textureCache.get(key)
   if (cached) return cached

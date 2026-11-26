@@ -1359,7 +1359,7 @@ function staffStormHit(monster, damage, lethal) {
       if (stack.freeze && !shatter) {
         applyFreeze(ud, heroNow, u.freezeFor)
         burst(particleSystem, { x: at.x, y: fxY(game, at.y + 1.2), z: at.z }, 0xe8f8ff, 30, 4)
-        showPopup(popupPool, monster.position, 'FROZEN!', '', 0xcfeaff)
+        showPopup(popupPool, monster.position, 'FROZEN!', '', '#cfeaff')
       }
     }
     heroState.pending.push({
@@ -1376,7 +1376,7 @@ function staffStormHit(monster, damage, lethal) {
           monster.userData.frozenUntil = heroNow // the ice breaks
           shardBurst(particleSystem, { x: at.x, y: fxY(game, at.y + 1), z: at.z }, 0xe8f8ff, 18, 5)
           spawnShockwave(shockwavePool, at.x, at.z, 3, 0xcfeaff)
-          showPopup(popupPool, monster.position, 'SHATTER!', `${Math.round(damage * (u.shatter - 1))}`, 0xcfeaff)
+          showPopup(popupPool, monster.position, 'SHATTER!', `${Math.round(damage * (u.shatter - 1))}`, '#cfeaff')
           heroHurt(monster, damage * (u.shatter - 1), 1, game.player.position)
         }
       },
