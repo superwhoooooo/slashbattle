@@ -10006,6 +10006,7 @@ function gameFrame(timestamp) {
     if (!player.falling) player.mesh.position.y = hop.state.alt
     if (!game.world.glider.parent) player.mesh.add(game.world.glider)
     updateGlider(game.world.glider, hop.state.gliding && hop.state.air, deltaSeconds, elapsedSeconds)
+    touchControls?.setFly(isFlyer() && hop.state.gliding && hop.state.air)
     if (isFlyer()) {
       game.world.glider.visible = false // the Sovereign flies on their own wings
       if (hop.state.gliding && hop.state.air && Math.random() < 0.5) burst(particleSystem, { x: player.position.x, y: hop.state.alt - (game.world.groundY ?? 0) + 1, z: player.position.z }, heroLook().glow, 2, 1.5, 0.4)

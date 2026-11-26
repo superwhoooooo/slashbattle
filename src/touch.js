@@ -196,7 +196,14 @@ export function createTouchControls(input, hud) {
   }
 
   const actions = el('div', 'touch-actions')
-  const jumpButton = addButton(actions, 'JUMP', 'big', () => input.tapKey('Space'))
+  // JUMP taps Space (a hop; again in the air opens the glider) and HOLDS it while your finger stays on it, so a flying hero
+  // (the Nimbus Sovereign, Nyxara) climbs with its wings open, like holding Space on a keyboard.
+  const jumpButton = addButton(actions, 'JUMP', 'big', () => {
+    input.tapKey('Space')
+    input.holdKey('Space', true)
+  })
+  jumpButton.addEventListener('pointerdown', (event) => jumpButton.setPointerCapture?.(event.pointerId))
+  for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) jumpButton.addEventListener(type, () => input.holdKey('Space', false))
   jumpButton.style.display = 'none'
   const hideButton = addButton(actions, 'HIDE', 'big', () => input.tapKey('KeyE'))
   addButton(actions, 'CHEST', 'big', () => input.tapKey('KeyF'))
@@ -267,6 +274,11 @@ export function createTouchControls(input, hud) {
       jumpButton.style.display = on ? '' : 'none'
       hideButton.textContent = on ? 'TALK' : 'HIDE'
       hideButton.classList.toggle('ready', Boolean(canTalk))
+    },
+    // A flying hero with its wings open: the JUMP button reads FLY (hold it to climb).
+    setFly(on) {
+      const label = on ? 'FLY' : 'JUMP'
+      if (jumpButton.textContent !== label) jumpButton.textContent = label
     },
     setWater(inWater, diving) {
       diveButton.style.display = inWater ? '' : 'none'
