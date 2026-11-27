@@ -9588,7 +9588,10 @@ const FPS_CAP = parseFpsCap(new URLSearchParams(location.search).get('fps'))
 if (new URLSearchParams(location.search).get('post') === '0') {
   composer.render = () => renderer.render(scene, camera)
 }
-const perf = createPerfOverlay(renderer, () => renderer.getPixelRatio(), () => fpsCap)
+const perf = createPerfOverlay(renderer, () => renderer.getPixelRatio(), () => fpsCap, () => {
+  const where = !game ? 'menu' : game.world ? (inDepths() ? 'Depths' : game.world.aloft ? 'Wilds (sky)' : 'Wilds') : game.labyrinth ? 'Labyrinth' : (levelAt(game.levelIndex ?? 0)?.name ?? 'deck')
+  return `${where} · ${game?.monsters?.length ?? 0} monsters · PR ${renderer.getPixelRatio().toFixed(2)} · cap ${fpsCap || 'off'}`
+})
 if (perf) {
   // Console/devtools inspection under ?perf=1 only; changeLevel(i) jumps to LEVELS[i] for profiling.
   window.__slash = { scene, renderer, camera, changeLevel: (index) => changeLevel(game, index) }
