@@ -1479,6 +1479,44 @@ export const PROP_HEIGHT = {
 }
 export const propHeight = (kind) => PROP_HEIGHT[kind] ?? PROP_HEIGHT_DEFAULT
 
+// Props whose solid part isn't one circle at their middle: the circles (model space, [x, z, radius], before the
+// prop's `rot` and `scale`) that stand in for it. A long wall is a chain of them; a big building its walls.
+const ring = (n, r, radius, skip = () => false) => {
+  const out = []
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2
+    if (!skip(a, i)) out.push([Math.cos(a) * r, Math.sin(a) * r, radius])
+  }
+  return out
+}
+const nearFront = (a, half) => Math.abs(Math.atan2(Math.sin(a - Math.PI / 2), Math.cos(a - Math.PI / 2))) < half // (+z)
+export const PROP_FOOTPRINT = {
+  // The crumbling wall: a 3.4 m stretch, a gap, a 2.2 m stub (worldArena.js's ruinWall).
+  ruinWall: [[-2.4, 0, 0.75], [-1.2, 0, 0.75], [0, 0, 0.75], [1.6, 0, 0.6], [2.8, 0, 0.6]],
+  // The sunken temple (cityModels.js's deepTemple): its outer wall (open at the gate and where it has fallen), the
+  // gate towers, the eight tall pillars and the four statues (not the altar: the temple's boss stands on it).
+  deepTemple: [
+    ...ring(60, 26, 1.1, (a, i) => nearFront(a, 0.3) || Math.floor(i / 2) % 7 === 3),
+    [-4.8, 26, 1.6], [4.8, 26, 1.6],
+    ...ring(8, 15.5, 1.4).map(([x, z, r]) => [x * Math.cos(Math.PI / 8) - z * Math.sin(Math.PI / 8), x * Math.sin(Math.PI / 8) + z * Math.cos(Math.PI / 8), r]),
+    ...ring(4, 8, 1.4),
+  ],
+  // The colosseum's banked seating behind its arcade (the arcade itself is the blockers in depths.js's colosseumLayout)
+  // and its gate towers.
+  colosseum: [...ring(48, 28.4, 2.2, (a) => nearFront(a, 0.24)), [-5.2, 24.6, 1.8], [5.2, 24.6, 1.8]],
+}
+
+// The solid circles a prop stands for, in world space: its footprint's, or else one of its own `radius`.
+export function propCircles(p) {
+  const fp = PROP_FOOTPRINT[p.kind]
+  if (!fp) return p.radius > 0 ? [{ x: p.x, z: p.z, radius: p.radius }] : []
+  const s = p.scale ?? 1
+  const c = Math.cos(p.rot ?? 0)
+  const n = Math.sin(p.rot ?? 0)
+  // (A model turned by rotation.y = rot: model x goes to (cos, -sin), model z to (sin, cos).)
+  return fp.map(([x, z, r]) => ({ x: p.x + (x * c + z * n) * s, z: p.z + (-x * n + z * c) * s, radius: r * s }))
+}
+
 export const PROP_RADIUS = {
   blocker: 1, // an invisible obstacle (radius set per prop)
   obelisk: 1.4, standingStone: 1.1,
@@ -1597,7 +1635,9 @@ export function chunkContent(cx, cz) {
   // The village that stands in this chunk: its buildings, and its people.
   const inChunk = (p) => p.x >= cx * CHUNK_SIZE && p.x < (cx + 1) * CHUNK_SIZE && p.z >= cz * CHUNK_SIZE && p.z < (cz + 1) * CHUNK_SIZE
   for (const v of villages()) {
-    if (Math.hypot(v.x - center.x, v.z - center.z) > 60) continue
+    // (A storm city spreads far past a village's 60: its oasis wall alone stands 52 out, and every chunk it reaches
+    // has to stream its share, or that stretch of wall is drawn but has nothing solid in it.)
+    if (Math.hypot(v.x - center.x, v.z - center.z) > (v.city ? CITY_FLAT_RADIUS + 34 : 60)) continue
     const layout = villageLayout(v)
     for (const p of layout.props) if (inChunk(p)) out.props.push(p)
     for (const n of layout.npcs) if (inChunk(n)) out.npcs.push(n)

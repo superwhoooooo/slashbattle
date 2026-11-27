@@ -74,7 +74,7 @@ import { createGlider, updateGlider } from './glider.js'
 import { createNpc, setNpcMarker, updateNpc, TALK_RANGE } from './npcs.js'
 import { createQuestUi } from './questUi.js'
 import { acceptQuest, claimQuest, createQuestLog, npcDialog, npcMarker, questEvent, questsToClaim, questWeaponFor } from './logic/quests.js'
-import { BIOMES, SANCTUM_RADIUS, SKYSTAR_CATCH_RADIUS, SKYSTAR_REWARD, UNLOAD_RADIUS, VILLAGE_SAFE_RADIUS, WATER_LEVEL, WORLD_RADIUS, biomeAt, canRespawn, chunkContent, chunkKey, propHeight, dangerAt, dayName, diffChunks, groundColorAt, heightAt, inDepths, lakeAt, landmarkById, landmarks, nearestLandmark, nearestVillage, ruins, villageKeepOut, setDepthsMode, skystars, villageById, villages } from './logic/world.js'
+import { BIOMES, SANCTUM_RADIUS, SKYSTAR_CATCH_RADIUS, SKYSTAR_REWARD, UNLOAD_RADIUS, VILLAGE_SAFE_RADIUS, WATER_LEVEL, WORLD_RADIUS, biomeAt, canRespawn, chunkContent, chunkKey, propHeight, propCircles, dangerAt, dayName, diffChunks, groundColorAt, heightAt, inDepths, lakeAt, landmarkById, landmarks, nearestLandmark, nearestVillage, ruins, villageKeepOut, setDepthsMode, skystars, villageById, villages } from './logic/world.js'
 import { createWildsActivities } from './wildsActivities.js'
 import { createDepthsFx } from './depthsFx.js'
 import { CAVE_FIRST_REWARD, caveArrival, caveAt, caveById, caveExit, caveObstacles, caves } from './logic/caves.js'
@@ -3281,6 +3281,21 @@ function createGame() {
       game.obstacles.push(...rocks)
       game.props.push(...rocks)
     }
+    // ...and so are the columns of the great ruined ring at each storm's eye (phenomenaFx.js's makeTemple: templeRing's
+    // 10 columns, 14 out, scaled 2.4; every third one broken short).
+    for (const ph of PHENOMENON_LIST) {
+      const eye = phenomenonEye(ph.id)
+      for (let i = 0; i < 10; i++) {
+        const a = (i / 10) * Math.PI * 2
+        const x = eye.x + Math.cos(a) * 14 * 2.4
+        const z = eye.z + Math.sin(a) * 14 * 2.4
+        const tall = (i % 3 === 1 ? 8.5 * 0.4 + (i % 4) : 8.5) * 2.4
+        const column = { x, z, radius: 0.9 * 2.4, top: heightAt(x, z) + tall }
+        game.world.sky.pillars.push(column)
+        game.obstacles.push(column)
+        game.props.push(column)
+      }
+    }
     // The chasms (and, below them, the Depths' Lightroots and Umbral Hearts).
     game.world.depths.fx = createDepthsFx()
     game.arena.group.add(game.world.depths.fx.group)
@@ -4485,7 +4500,8 @@ function loadWorldChunk(game, cx, cz, now) {
   const w = game.world
   const content = inDepths() ? depthsChunk(cx, cz) : chunkContent(cx, cz)
   // Each solid prop knows how high its top is, so a jump or a glide over it clears it (clearsObstacle).
-  const obstacles = content.props.filter((p) => p.radius > 0).map((p) => ({ x: p.x, z: p.z, radius: p.radius, top: heightAt(p.x, p.z) + propHeight(p.kind) * (p.scale ?? 1) }))
+  // (propCircles: a long wall or a big building is several circles, laid along what's actually drawn.)
+  const obstacles = content.props.flatMap((p) => propCircles(p).map((o) => ({ ...o, top: heightAt(p.x, p.z) + propHeight(p.kind) * (p.scale ?? 1) })))
   game.obstacles.push(...obstacles)
   game.props.push(...obstacles)
   const chunk = { content, obstacles, treasure: [], npcIds: [] }
